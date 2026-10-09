@@ -31,5 +31,5 @@ folgt mit Meilenstein 11.
 
 ## Dokumentation
 
-- [doc/Plan.md](doc/Plan.md) – Ziele, Architektur, Meilensteine
-- [doc/Implementierung.md](doc/Implementierung.md) – Arbeitspakete und Entscheidungen
+- [docs/Plan.md](docs/Plan.md) – Ziele, Architektur, Meilensteine
+- [docs/Implementierung.md](docs/Implementierung.md) – Arbeitspakete und Entscheidungen

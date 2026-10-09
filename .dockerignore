@@ -28,7 +28,7 @@ htmlcov/
 .vscode/
 .idea/
 .claude/
-doc/
+docs/
 
 debian/.debhelper/
 debian/multi-gpt/

@@ -62,7 +62,8 @@ multi-gpt/
 ├── deploy/              # gunicorn.conf.py, nginx.conf.example
 ├── debian/              # Paketierung: rules, control, multi-gpt.service, postinst, mgpt-ctl
 ├── Dockerfile, compose.yaml
-└── doc/                 # Plan.md, Implementierung.md
+└── docs/                # Plan.md, Implementierung.md
+    └── website/         # Projekt-Website (Hugo), veröffentlicht über GitHub Pages
 ```
 
 ## 6. Datenmodell
@@ -246,6 +247,8 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 | `make worker` | Worker für Indexierung im Vordergrund starten |
 | `make reindex` | Alle Dokumente neu einbetten (nach Wechsel des Embedding-Modells) |
 | `make deb` | Debian-Paket bauen (`dpkg-buildpackage`), statische Dateien werden dabei gesammelt |
+| `make website` / `make website-serve` | Projekt-Website (Hugo, `docs/website/`) bauen bzw. lokal mit Live-Reload anzeigen |
+| `make deploy` | Website auf GitHub Pages veröffentlichen: prüft Build sowie Commit- und Push-Stand und startet den Workflow `website.yml` (braucht `gh` und ein Git-Remote) |
 
 Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`: Installieren und Aktualisieren mit `apt install ./multi-gpt_<version>_<arch>.deb`, danach `mgpt-ctl migrate`. `mgpt-ctl` ist ein Wrapper um `manage.py`, der als Nutzer `multi-gpt` mit `/etc/multi-gpt/.env` läuft (z. B. `mgpt-ctl createsuperuser`). Der Worker bekommt eine eigene Unit `multi-gpt-worker.service`.
 
