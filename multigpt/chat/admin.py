@@ -15,7 +15,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
-from django.db import models
+from django.db import models, transaction
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -265,8 +265,16 @@ class ProviderAdmin(admin.ModelAdmin):
                 request, f"„{provider.name}“ ist deaktiviert – nicht geprüft.", messages.INFO
             )
             return
-        result = status.force_check(provider, timeout=SAVE_CHECK_TIMEOUT)
-        self.message_user(request, *check_message(provider, result))
+
+        # Erst nach dem Commit prüfen: Die Prüfung kann Sekunden dauern (DNS,
+        # Timeout). Liefe sie in der Admin-Transaktion, bliebe der neue Anbieter so
+        # lange unsichtbar, und ein zweites Absenden scheiterte mit IntegrityError
+        # statt mit der Formularmeldung „existiert bereits“.
+        def check_after_commit():
+            result = status.force_check(provider, timeout=SAVE_CHECK_TIMEOUT)
+            self.message_user(request, *check_message(provider, result))
+
+        transaction.on_commit(check_after_commit)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         """Gemeldete Modelle für die Combobox am Feld „Modell-ID“ der Inline."""

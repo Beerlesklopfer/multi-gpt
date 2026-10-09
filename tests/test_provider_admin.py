@@ -329,7 +329,9 @@ def test_check_requires_post(admin_client, provider):
 
 
 @pytest.mark.django_db
-def test_save_checks_automatically(admin_client, provider, mock):
+def test_save_checks_automatically(
+    admin_client, provider, mock, django_capture_on_commit_callbacks
+):
     mock.get(f"{BASE}/models").mock(side_effect=_refused())
     url = reverse("admin:chat_provider_change", args=[provider.pk])
     data = {
@@ -341,7 +343,10 @@ def test_save_checks_automatically(admin_client, provider, mock):
         "ai_models-TOTAL_FORMS": "0",
         "ai_models-INITIAL_FORMS": "0",
     }
-    response = admin_client.post(url, data)
+    # Die Prüfung läuft erst nach dem Commit der Admin-Transaktion.
+    with django_capture_on_commit_callbacks(execute=True) as callbacks:
+        response = admin_client.post(url, data)
+    assert len(callbacks) == 1
     assert response.status_code == 302
     assert any("Offline: Verbindung abgelehnt" in t for t in texts(response))
     provider.refresh_from_db()
@@ -515,3 +520,9 @@ def test_add_page_without_combobox(admin_client):
     html = response.content.decode()
     assert "reported-model-choices" not in html
     assert "admin_model_combobox.js" not in html
+
+
+@pytest.mark.django_db
+def test_change_page_loads_submit_once_guard(admin_client, provider):
+    url = reverse("admin:chat_provider_change", args=[provider.pk])
+    assert "chat/admin_submit_once.js" in admin_client.get(url).content.decode()

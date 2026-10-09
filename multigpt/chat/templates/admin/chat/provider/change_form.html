@@ -6,6 +6,7 @@
 
 {% block admin_change_form_document_ready %}
   {{ block.super }}
+  <script src="{% static 'chat/admin_submit_once.js' %}" defer></script>
   {% if change %}
     {{ reported_model_choices|default_if_none:""|json_script:"reported-model-choices" }}
     <script src="{% static 'chat/admin_model_combobox.js' %}" defer></script>
