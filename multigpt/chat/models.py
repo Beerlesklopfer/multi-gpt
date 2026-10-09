@@ -7,6 +7,7 @@ import secrets
 from pathlib import PurePath
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 
@@ -73,6 +74,17 @@ class Provider(models.Model):
         help_text="Für Anbieter, die nicht immer erreichbar sind (Plan 8a).",
     )
     last_online = models.DateTimeField("zuletzt online", null=True, blank=True)
+    # Ergebnis der letzten Statusprüfung (Plan 8a, M4-03). In der DB statt im
+    # Prozess-Cache, damit es für alle gunicorn-Worker gilt.
+    online = models.BooleanField("online", default=False, editable=False)
+    last_checked = models.DateTimeField("zuletzt geprüft", null=True, blank=True, editable=False)
+    reported_models = models.JSONField(
+        "gemeldete Modelle",
+        default=list,
+        blank=True,
+        editable=False,
+        help_text="Modell-IDs, die der Anbieter bei der letzten Prüfung gemeldet hat.",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -156,6 +168,19 @@ class McpServer(models.Model):
         default=list,
         blank=True,
         help_text="Liste der Werkzeugnamen, die erst nach Bestätigung ausgeführt werden.",
+    )
+    known_tools = models.JSONField(
+        "eingestufte Werkzeuge",
+        default=list,
+        blank=True,
+        help_text="Vom Verwalter eingestufte Werkzeugnamen. Werkzeuge, die hier fehlen, "
+        "gelten als neu und laufen nur nach Bestätigung.",
+    )
+    timeout_seconds = models.PositiveSmallIntegerField(
+        "Zeitlimit (s)",
+        default=30,
+        validators=[MinValueValidator(1), MaxValueValidator(600)],
+        help_text="Höchstdauer je Werkzeugaufruf in Sekunden.",
     )
 
     class Meta:
@@ -484,6 +509,12 @@ class ToolCall(models.Model):
         verbose_name="MCP-Server",
     )
     tool = models.CharField("Werkzeug", max_length=200)
+    provider_call_id = models.CharField(
+        "Aufruf-ID des Anbieters",
+        max_length=200,
+        blank=True,
+        help_text="Kennung des Werkzeugaufrufs beim KI-Anbieter (ordnet das Ergebnis zu).",
+    )
     arguments = models.JSONField("Argumente", default=dict, blank=True)
     result = models.JSONField("Ergebnis", null=True, blank=True)
     status = models.CharField(

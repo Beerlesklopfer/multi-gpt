@@ -8,8 +8,17 @@ import pytest
 import respx
 
 from multigpt.chat.models import Provider
-from multigpt.chat.providers import ChatMessage, Delta, Done, Error, ProviderError, Usage
-from multigpt.chat.providers.openai_compat import OpenAICompatAdapter
+from multigpt.chat.providers import (
+    ChatMessage,
+    Delta,
+    Done,
+    Error,
+    ProviderError,
+    ToolCallEvent,
+    ToolSpec,
+    Usage,
+)
+from multigpt.chat.providers.openai_compat import OpenAICompatAdapter, _ChunkParser
 
 BASE = "http://lmstudio.test:1234/v1"
 KEY = "sk-test-GEHEIM-1234567890"
@@ -117,13 +126,22 @@ def test_empty_deltas_and_comments_ignored(mock):
     assert run() == [Delta("A"), Delta("B"), Done("length")]
 
 
-def test_tools_passed_through(mock):
+def test_tools_in_openai_form_accepted(mock):
     route = mock.post(f"{BASE}/chat/completions").mock(
         return_value=sse_response(sse(content("x", finish="stop")))
     )
     tools = [{"type": "function", "function": {"name": "t", "parameters": {}}}]
     run(tools=tools)
-    assert json.loads(route.calls.last.request.content)["tools"] == tools
+    assert json.loads(route.calls.last.request.content)["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "t",
+                "description": "",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
 
 
 def test_reserved_params_not_overridden(mock):
@@ -335,3 +353,141 @@ def test_is_online_false(mock, outcome):
     else:
         route.mock(return_value=outcome)
     assert make_adapter().is_online(timeout=0.1) is False
+
+
+# --- Werkzeuge (M4a) ---------------------------------------------------------
+
+WEATHER = ToolSpec(
+    name="wetter",
+    description="Wetter für einen Ort",
+    parameters={"type": "object", "properties": {"ort": {"type": "string"}}, "required": ["ort"]},
+)
+
+
+def tool_delta(index, call_id=None, name=None, arguments=None, finish=None):
+    part = {"index": index, "function": {}}
+    if call_id:
+        part.update(id=call_id, type="function")
+    if name:
+        part["function"]["name"] = name
+    if arguments is not None:
+        part["function"]["arguments"] = arguments
+    return {"choices": [{"index": 0, "delta": {"tool_calls": [part]}, "finish_reason": finish}]}
+
+
+def finish_chunk(reason):
+    return {"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]}
+
+
+def test_tool_definition_and_choice_in_body(mock):
+    route = mock.post(f"{BASE}/chat/completions").mock(
+        return_value=sse_response(sse(content("x", finish="stop")))
+    )
+    run(tools=[WEATHER], tool_choice="wetter")
+    body = json.loads(route.calls.last.request.content)
+    assert body["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "wetter",
+                "description": "Wetter für einen Ort",
+                "parameters": WEATHER.parameters,
+            },
+        }
+    ]
+    assert body["tool_choice"] == {"type": "function", "function": {"name": "wetter"}}
+    run(tools=[WEATHER], tool_choice="required")
+    assert json.loads(route.calls.last.request.content)["tool_choice"] == "required"
+    run(tools=[WEATHER])
+    assert "tool_choice" not in json.loads(route.calls.last.request.content)
+
+
+def test_streamed_parallel_tool_calls(mock):
+    body = sse(
+        {"choices": [{"index": 0, "delta": {"role": "assistant", "content": None}}]},
+        tool_delta(0, "call_a", "wetter", ""),
+        tool_delta(0, arguments='{"o'),
+        tool_delta(0, arguments='rt": "Kö'),
+        tool_delta(1, "call_b", "wetter", '{"ort"'),
+        tool_delta(0, arguments='ln"}'),
+        tool_delta(1, arguments=': "Bonn"}'),
+        tool_delta(2, "call_c", "uhrzeit"),
+        finish_chunk("tool_calls"),
+        USAGE_CHUNK,
+    )
+    mock.post(f"{BASE}/chat/completions").mock(return_value=sse_response(body))
+    assert run(tools=[WEATHER]) == [
+        ToolCallEvent("call_a", "wetter", {"ort": "Köln"}),
+        ToolCallEvent("call_b", "wetter", {"ort": "Bonn"}),
+        ToolCallEvent("call_c", "uhrzeit", {}),
+        Usage(12, 7),
+        Done("tool_calls"),
+    ]
+
+
+def test_tool_calls_without_index_or_id_and_stop_reason():
+    # Manche kompatiblen Server: kein index, keine id, finish_reason "stop".
+    parser = _ChunkParser(emit_tool_calls=True)
+    chunks = [
+        {"choices": [{"delta": {"tool_calls": [{"function": {"name": "wetter"}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"function": {"arguments": {"ort": "Köln"}}}]}}]},
+        finish_chunk("stop"),
+    ]
+    events = [e for c in chunks for e in parser.feed(f"data: {json.dumps(c)}")]
+    events += list(parser.end_of_stream())
+    call = events[0]
+    assert call.id.startswith("call_")
+    assert call == ToolCallEvent(call.id, "wetter", {"ort": "Köln"})
+    assert events[-1] == Done("tool_calls")
+
+
+@pytest.mark.parametrize("raw", ['{"ort": "Kö', '"Köln"'])
+def test_invalid_tool_arguments_become_error(mock, raw):
+    body = sse(tool_delta(0, "call_a", "wetter", raw), finish_chunk("tool_calls"))
+    mock.post(f"{BASE}/chat/completions").mock(return_value=sse_response(body))
+    events = run(tools=[WEATHER])
+    assert len(events) == 1 and isinstance(events[0], Error) and events[0].retryable
+    assert "ungültige Argumente" in events[0].message and "wetter" in events[0].message
+
+
+def test_history_with_tool_calls_and_results(mock):
+    route = mock.post(f"{BASE}/chat/completions").mock(
+        return_value=sse_response(sse(content("x", finish="stop")))
+    )
+    history = [
+        ChatMessage("user", "Wetter?"),
+        ChatMessage(
+            "assistant",
+            "",
+            tool_calls=[
+                ToolCallEvent("call_a", "wetter", {"ort": "Köln"}),
+                ToolCallEvent("call_b", "wetter", {"ort": "Bonn"}),
+            ],
+        ),
+        ChatMessage("tool", "Sonne", tool_call_id="call_a", name="wetter"),
+        ChatMessage("tool", "Dienst aus", tool_call_id="call_b", name="wetter", is_error=True),
+        ChatMessage("tool", "verwaist", tool_call_id="call_z", name="wetter"),
+    ]
+    list(make_adapter().stream("test-model", history, tools=[WEATHER]))
+    messages = json.loads(route.calls.last.request.content)["messages"]
+    assert messages == [
+        {"role": "user", "content": "Wetter?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_a",
+                    "type": "function",
+                    "function": {"name": "wetter", "arguments": '{"ort": "Köln"}'},
+                },
+                {
+                    "id": "call_b",
+                    "type": "function",
+                    "function": {"name": "wetter", "arguments": '{"ort": "Bonn"}'},
+                },
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_a", "content": "Sonne"},
+        {"role": "tool", "tool_call_id": "call_b", "content": "Fehler: Dienst aus"},
+    ]

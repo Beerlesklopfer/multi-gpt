@@ -15,6 +15,7 @@ gthread, weil Antworten per SSE gestreamt werden (lange offene Requests).
 """
 
 import os
+import sys
 
 
 def _int(name: str, default: int) -> int:
@@ -44,3 +45,14 @@ loglevel = _level if _level in {"debug", "info", "warning", "error", "critical"}
 # Gunicorn >= 25.1 legt sonst eine Steuer-Socket unter $HOME/.gunicorn an.
 # Wird nicht gebraucht; ältere Versionen ignorieren die unbekannte Einstellung.
 control_socket_disable = True
+
+
+def worker_exit(server, worker):
+    """MCP-Sitzungen schließen und stdio-Kindprozesse beenden (Plan 8g, M4a-01).
+
+    Nur wenn der Worker die MCP-Brücke überhaupt benutzt hat; zusätzlich
+    räumt ``atexit`` auf.
+    """
+    bridge = sys.modules.get("multigpt.chat.mcp.bridge")
+    if bridge is not None:
+        bridge.shutdown()

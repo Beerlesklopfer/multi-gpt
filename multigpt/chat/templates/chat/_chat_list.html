@@ -1,14 +1,19 @@
-{% if sidebar_conversations %}
-  <ul class="chat-list-items" id="chat-list-items">
-    {% for item in sidebar_conversations %}
-      <li>
-        <a href="{% url 'chat:conversation' item.pk %}"
-           class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
-           {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}</a>
-      </li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <ul class="chat-list-items" id="chat-list-items" hidden></ul>
-  <p class="hint" id="chat-list-empty">Noch keine Chats.</p>
-{% endif %}
+{# Einträge der Chatliste. Das Aktionsmenü (⋯) blendet sidebar.js ein. #}
+<ul class="chat-list-items" id="chat-list-items"{% if not sidebar_conversations %} hidden{% endif %}>
+  {% for item in sidebar_conversations %}
+    <li class="chat-item" data-conversation-id="{{ item.pk }}" data-title="{{ item.title }}"
+        data-archived="{{ item.archived|yesno:'true,false' }}">
+      <a href="{% url 'chat:conversation' item.pk %}"
+         class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
+         {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}</a>
+      <button type="button" class="chat-item-menu-button" hidden
+              aria-haspopup="menu" aria-expanded="false"
+              aria-label="Aktionen für „{{ item.title|default:'Neuer Chat' }}“">&#8943;</button>
+    </li>
+  {% endfor %}
+</ul>
+<p class="hint" id="chat-list-empty"{% if sidebar_conversations %} hidden{% endif %}>
+  {% if q %}Keine Treffer für „{{ q }}“.{% elif show_archived %}Das Archiv ist leer.{% else %}Noch keine Chats.{% endif %}
+</p>
+<p class="hint" id="chat-list-nomatch" hidden>Keine Treffer.</p>
+{% if q %}<p class="hint"><a href="{{ request.path }}{% if show_archived %}?archived=1{% endif %}">Suche zurücksetzen</a></p>{% endif %}

@@ -1,0 +1,14 @@
+{# Online-Anzeige der Anbieter mit Statusprüfung (M4-04). provider_status.js aktualisiert alle 30 s. #}
+{% if status_providers %}
+  <ul class="provider-status" id="provider-status" data-url="{% url 'chat:api_provider_status' %}"
+      aria-label="Status lokaler Anbieter">
+    {% for p in status_providers %}
+      <li class="provider-status-item" data-provider-id="{{ p.id }}" data-name="{{ p.name }}"
+          data-online="{{ p.online|yesno:'true,false' }}"
+          data-last-online="{% if p.last_online %}{{ p.last_online.isoformat }}{% endif %}">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="provider-status-text">{{ p.name }} {% if p.online %}online{% else %}offline{% if p.last_online %}, zuletzt online um {{ p.last_online|date:"H:i" }}{% endif %}{% endif %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

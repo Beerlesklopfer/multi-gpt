@@ -6,3 +6,6 @@ class ChatConfig(AppConfig):
     name = "multigpt.chat"
     label = "chat"
     verbose_name = "Chat"
+
+    def ready(self):
+        from .mcp import signals  # noqa: F401 - registriert Signal-Empfänger

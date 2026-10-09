@@ -1,0 +1,25 @@
+{# Seitenleiste mit Chatliste (Tag chat_sidebar). Ohne JS: Links, Suche per GET, Archiv-Umschalter. #}
+{# Ohne JS führt "Neuer Chat" zur Startseite (neuer, noch leerer Chat). #}
+<a href="{% url 'chat:index' %}" class="button button-primary" id="new-chat-button">Neuer Chat</a>
+<form class="chat-search" id="chat-search" role="search" method="get" action="{{ request.path }}">
+  <label for="chat-search-input" class="sr-only">{% if show_archived %}Archiv durchsuchen{% else %}Chats durchsuchen{% endif %}</label>
+  <input type="search" id="chat-search-input" name="q" value="{{ q }}" maxlength="100"
+         placeholder="{% if show_archived %}Archiv durchsuchen …{% else %}Titel suchen …{% endif %}" autocomplete="off">
+  {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
+  <button type="submit" class="sr-only">Suchen</button>
+</form>
+<div class="chat-list-head">
+  <h2 class="chat-list-title" id="chat-list-title">{% if show_archived %}Archiv{% else %}Chats{% endif %}</h2>
+  {% if show_archived %}
+    <a href="{{ request.path }}" class="chat-list-switch">Zurück zu den Chats</a>
+  {% else %}
+    <a href="{{ request.path }}?archived=1" class="chat-list-switch">Archiv</a>
+  {% endif %}
+</div>
+<nav class="chat-list" id="chat-list" aria-labelledby="chat-list-title"
+     data-view="{% if show_archived %}archived{% else %}active{% endif %}"
+     data-index-url="{% url 'chat:index' %}"
+     data-api-detail-template="{% url 'chat:api_conversation_detail' 0 %}"
+     data-export-template="{% url 'chat:conversation_export' 0 %}">
+  {% include "chat/_chat_list.html" %}
+</nav>

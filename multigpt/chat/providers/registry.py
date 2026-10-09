@@ -12,11 +12,14 @@ if TYPE_CHECKING:
 
 def _adapter_classes() -> dict[str, type[ProviderAdapter]]:
     # Spät importiert, damit ``base`` ohne httpx-Adapter nutzbar bleibt.
+    from .anthropic import AnthropicAdapter
+    from .google import GoogleAdapter
     from .openai_compat import OpenAICompatAdapter
 
     return {
         "openai_compat": OpenAICompatAdapter,
-        # "anthropic" und "google" folgen in M4.
+        "anthropic": AnthropicAdapter,
+        "google": GoogleAdapter,
     }
 
 

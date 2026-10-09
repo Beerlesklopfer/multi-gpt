@@ -1,4 +1,4 @@
-{% load static %}<!DOCTYPE html>
+{% load static chat_tags %}<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
@@ -7,6 +7,10 @@
   <title>{% block title %}MultiGPT{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'chat/app.css' %}">
   <script src="{% static 'chat/app.js' %}" defer></script>
+  {% if user.is_authenticated %}
+    <script src="{% static 'chat/sidebar.js' %}" defer></script>
+    <script src="{% static 'chat/provider_status.js' %}" defer></script>
+  {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}layout-app{% endblock %}">
@@ -18,6 +22,7 @@
     </button>
     <a class="app-name" href="{% url 'chat:index' %}">MultiGPT</a>
     {% if user.is_authenticated %}
+      {% provider_status_indicator %}
       <nav class="account" aria-label="Konto">
         <span class="username">{{ user.get_full_name|default:user.get_username }}</span>
         <a href="{% url 'password_change' %}">Passwort ändern</a>
@@ -31,12 +36,7 @@
   <div class="frame">
     <aside class="sidebar" id="sidebar" aria-label="Chats">
       {% block sidebar %}
-        {# Ohne JS führt der Link zur Startseite (neuer, noch leerer Chat). #}
-        <a href="{% url 'chat:index' %}" class="button button-primary" id="new-chat-button">Neuer Chat</a>
-        {# Platz für Suche im Titel und Archiv (M5). #}
-        <nav class="chat-list" aria-label="Chatliste">
-          {% block chat_list %}<p class="hint"><a href="{% url 'chat:index' %}">Zu den Chats</a></p>{% endblock %}
-        </nav>
+        {% if user.is_authenticated %}{% chat_sidebar %}{% endif %}
       {% endblock %}
     </aside>
     <main class="main-area" id="content">
@@ -44,6 +44,8 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+  {# Meldungen außerhalb der Chatansicht (z. B. Umbenennen, LM Studio online). #}
+  <p class="app-status" id="app-status" role="status" aria-live="polite"></p>
 {% endblock %}
 </body>
 </html>

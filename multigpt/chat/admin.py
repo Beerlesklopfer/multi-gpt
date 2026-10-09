@@ -12,11 +12,15 @@ Dokumenten und Vorlagen erscheinen als Objektbezeichnung (``__str__``).
 """
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db import models
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 
 from multigpt.core.fields import mask_secret
 
+from . import mcp as mcp_client
+from .mcp.config import parse_credentials, split_command
 from .models import (
     AIModel,
     Attachment,
@@ -93,9 +97,17 @@ class McpServerForm(SecretFieldFormMixin, forms.ModelForm):
         strip=True,
         widget=_secret_widget(),
         help_text="Wird verschlüsselt gespeichert. Beim Bearbeiten leer lassen, "
-        "um die gespeicherten Zugangsdaten zu behalten.",
+        "um die gespeicherten Zugangsdaten zu behalten. Format: JSON-Objekt, "
+        'bei stdio {"env": {"NAME": "Wert"}}, bei HTTP {"bearer_token": "…"} '
+        'oder {"headers": {"Name": "Wert"}}; bei HTTP genügt auch das Token allein.',
     )
     clear_credentials = forms.BooleanField(label="Zugangsdaten entfernen", required=False)
+    adopt_listed_tools = forms.BooleanField(
+        label="Angebotene Werkzeuge als eingestuft übernehmen",
+        required=False,
+        help_text="Beim Speichern die aktuelle Werkzeugliste abrufen und alle Werkzeuge "
+        "in „eingestufte Werkzeuge“ aufnehmen. Vorher die Werkzeuge mit Rückfrage eintragen.",
+    )
 
     class Meta:
         model = McpServer
@@ -107,8 +119,31 @@ class McpServerForm(SecretFieldFormMixin, forms.ModelForm):
             "url",
             "credentials",
             "active",
+            "timeout_seconds",
             "tools_requiring_confirmation",
+            "known_tools",
         ]
+
+    def clean(self):
+        cleaned = super().clean()
+        transport = cleaned.get("transport")
+        for key in ("tools_requiring_confirmation", "known_tools"):
+            value = cleaned.get(key)
+            if value is not None and (
+                not isinstance(value, list) or not all(isinstance(v, str) for v in value)
+            ):
+                self.add_error(key, 'Bitte eine JSON-Liste von Werkzeugnamen, z. B. ["suche"].')
+        if transport == McpServer.Transport.STDIO and cleaned.get("command"):
+            try:
+                split_command(cleaned["command"])
+            except ValueError as exc:
+                self.add_error("command", str(exc))
+        if transport:
+            try:
+                parse_credentials(cleaned.get("credentials") or "", transport)
+            except ValueError as exc:
+                self.add_error("credentials", str(exc))
+        return cleaned
 
 
 # --- Anbieter, Modelle, MCP --------------------------------------------------
@@ -130,11 +165,14 @@ class ProviderAdmin(admin.ModelAdmin):
     list_display = ["name", "kind", "base_url", "api_key_hint", "active", "is_local", "last_online"]
     list_filter = ["kind", "active", "is_local"]
     search_fields = ["name", "base_url"]
-    readonly_fields = ["api_key_hint", "last_online"]
+    readonly_fields = ["api_key_hint", "last_online", "online", "last_checked"]
     fieldsets = [
         (None, {"fields": ["name", "kind", "base_url", "active"]}),
         ("API-Key", {"fields": ["api_key_hint", "api_key", "clear_api_key"]}),
-        ("Lokaler Anbieter", {"fields": ["is_local", "check_status", "last_online"]}),
+        (
+            "Lokaler Anbieter",
+            {"fields": ["is_local", "check_status", "online", "last_online", "last_checked"]},
+        ),
     ]
     inlines = [AIModelInline]
 
@@ -165,19 +203,119 @@ class AIModelAdmin(admin.ModelAdmin):
 class McpServerAdmin(admin.ModelAdmin):
     form = McpServerForm
     formfield_overrides = URL_OVERRIDES
-    list_display = ["name", "transport", "command", "url", "credentials_hint", "active"]
+    list_display = [
+        "name",
+        "transport",
+        "command",
+        "url",
+        "credentials_hint",
+        "timeout_seconds",
+        "active",
+    ]
     list_filter = ["transport", "active"]
     search_fields = ["name"]
-    readonly_fields = ["credentials_hint"]
+    readonly_fields = ["credentials_hint", "tool_overview"]
+    actions = ["check_connection_action"]
     fieldsets = [
-        (None, {"fields": ["name", "transport", "command", "url", "active"]}),
+        (None, {"fields": ["name", "transport", "command", "url", "timeout_seconds", "active"]}),
         ("Zugangsdaten", {"fields": ["credentials_hint", "credentials", "clear_credentials"]}),
-        ("Werkzeuge", {"fields": ["tools_requiring_confirmation"]}),
+        (
+            "Werkzeuge",
+            {
+                "fields": [
+                    "tool_overview",
+                    "tools_requiring_confirmation",
+                    "known_tools",
+                    "adopt_listed_tools",
+                ]
+            },
+        ),
     ]
 
     @admin.display(description="gespeicherte Zugangsdaten")
     def credentials_hint(self, obj):
         return mask_secret(obj.credentials) or "–"
+
+    @admin.display(description="Werkzeugliste")
+    def tool_overview(self, obj):
+        if obj is None or not obj.pk:
+            return "Nach dem Speichern sichtbar."
+        if not obj.active:
+            return "Server ist deaktiviert."
+        if not getattr(obj, "_show_tools", False):
+            # Nicht bei jedem Aufruf der Seite verbinden, nur auf Wunsch.
+            return mark_safe('<a href="?tools=1">Werkzeugliste abrufen</a>')
+        try:
+            tools = mcp_client.list_tools(obj, timeout=min(obj.timeout_seconds, ADMIN_TIMEOUT))
+        except mcp_client.McpError as exc:
+            return format_html('<span class="errornote">{}</span>', str(exc))
+        if not tools:
+            return "Der Server bietet keine Werkzeuge an."
+        rows = format_html_join(
+            "",
+            "<tr><td><code>{}</code></td><td>{}</td><td>{}</td></tr>",
+            ((t.name, t.description[:300], _tool_rating(obj, t.name)) for t in tools),
+        )
+        return format_html(
+            "<table><thead><tr><th>Werkzeug</th><th>Beschreibung</th><th>Einstufung</th>"
+            "</tr></thead><tbody>{}</tbody></table>",
+            rows,
+        )
+
+    def get_object(self, request, object_id, from_field=None):
+        obj = super().get_object(request, object_id, from_field)
+        if obj is not None and request.GET.get("tools"):
+            obj._show_tools = True
+        return obj
+
+    @admin.action(description="Verbindung testen")
+    def check_connection_action(self, request, queryset):
+        for server in queryset:
+            try:
+                tools = mcp_client.check_connection(
+                    server, timeout=min(server.timeout_seconds, ADMIN_TIMEOUT)
+                )
+            except mcp_client.McpError as exc:
+                self.message_user(request, str(exc), level=messages.ERROR)
+                continue
+            known = set(server.known_tools or []) | set(server.tools_requiring_confirmation or [])
+            new = [t.name for t in tools if t.name not in known]
+            text = f"„{server.name}“: Verbindung in Ordnung, {len(tools)} Werkzeuge."
+            if new:
+                text += " Nicht eingestuft (laufen nur mit Rückfrage): " + ", ".join(new)
+                self.message_user(request, text, level=messages.WARNING)
+            else:
+                self.message_user(request, text, level=messages.SUCCESS)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not form.cleaned_data.get("adopt_listed_tools"):
+            return
+        try:
+            tools = mcp_client.check_connection(
+                obj, timeout=min(obj.timeout_seconds, ADMIN_TIMEOUT)
+            )
+        except mcp_client.McpError as exc:
+            self.message_user(request, f"Werkzeuge nicht übernommen: {exc}", level=messages.ERROR)
+            return
+        known = list(obj.known_tools or [])
+        added = [t.name for t in tools if t.name not in known]
+        obj.known_tools = known + added
+        obj.save(update_fields=["known_tools"])
+        self.message_user(
+            request, f"{len(added)} Werkzeuge als eingestuft übernommen.", level=messages.SUCCESS
+        )
+
+
+ADMIN_TIMEOUT = 15
+
+
+def _tool_rating(server, name: str) -> str:
+    if name in (server.tools_requiring_confirmation or []):
+        return "mit Rückfrage"
+    if name in (server.known_tools or []):
+        return "ohne Rückfrage"
+    return "nicht eingestuft (Rückfrage)"
 
 
 # --- Nur Metadaten (Privatsphäre) -------------------------------------------

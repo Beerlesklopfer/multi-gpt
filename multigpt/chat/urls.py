@@ -8,5 +8,6 @@ app_name = "chat"
 urlpatterns = [
     path("", views.index, name="index"),
     path("c/<int:pk>/", views.conversation, name="conversation"),
+    path("c/<int:pk>/export.md", views.export_markdown, name="conversation_export"),
     path("api/", include("multigpt.chat.api_urls")),
 ]

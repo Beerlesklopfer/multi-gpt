@@ -440,7 +440,10 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "id": local_model.pk,
         "display_name": "Llama",
         "provider": "LM Studio",
+        "provider_id": local_model.provider_id,
         "is_local": True,
+        "online": True,
+        "available": True,
     }
 
 

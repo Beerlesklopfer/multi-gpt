@@ -1,0 +1,21 @@
+{# System-Prompt des Chats (M5-03). Der feste Prompt der Rolle erscheint hier nie. #}
+{% if has_chat_model and can_write or has_chat_model and not active_conversation %}
+  <details class="chat-settings" id="chat-settings"{% if active_conversation.system_prompt %} data-active="true"{% endif %}>
+    <summary>System-Prompt{% if active_conversation.system_prompt %} <span class="badge">aktiv</span>{% endif %}</summary>
+    <form class="chat-settings-form" id="system-prompt-form">
+      <label for="system-prompt-input">Anweisung an das Modell für diesen Chat</label>
+      <textarea id="system-prompt-input" name="system_prompt" rows="4" maxlength="20000"
+                aria-describedby="system-prompt-hint"
+                placeholder="z. B. „Antworte kurz und auf Deutsch.“">{{ active_conversation.system_prompt|default:"" }}</textarea>
+      <p class="hint" id="system-prompt-hint">{% if active_conversation %}Gilt für alle weiteren Antworten in diesem Chat.{% else %}Wird mit der ersten Nachricht gespeichert.{% endif %}</p>
+      <div class="chat-settings-actions">
+        <button type="submit" class="button button-small button-primary" id="system-prompt-save" disabled>Speichern</button>
+      </div>
+    </form>
+  </details>
+{% elif active_conversation.system_prompt %}
+  <details class="chat-settings">
+    <summary>System-Prompt <span class="badge">aktiv</span></summary>
+    <div class="chat-settings-readonly">{{ active_conversation.system_prompt }}</div>
+  </details>
+{% endif %}

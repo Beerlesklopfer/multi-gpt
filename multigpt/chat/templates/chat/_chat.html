@@ -1,8 +1,16 @@
 {% extends "base.html" %}
 {% load static %}
 {# Gemeinsame Chatansicht für Startseite (ohne Chat) und /c/<pk>/. #}
-{% block extra_head %}<script src="{% static 'chat/chat.js' %}" defer></script>{% endblock %}
-{% block chat_list %}{% include "chat/_chat_list.html" %}{% endblock %}
+{% block extra_head %}
+  {# Markdown (M5-01): Bibliotheken lokal, siehe chat/vendor/README.md. #}
+  <link rel="stylesheet" href="{% static 'chat/vendor/highlight/styles/github.min.css' %}" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)">
+  <link rel="stylesheet" href="{% static 'chat/vendor/highlight/styles/github-dark.min.css' %}" media="(prefers-color-scheme: dark)">
+  <script src="{% static 'chat/vendor/marked/marked.umd.js' %}" defer></script>
+  <script src="{% static 'chat/vendor/dompurify/purify.min.js' %}" defer></script>
+  <script src="{% static 'chat/vendor/highlight/highlight.min.js' %}" defer></script>
+  <script src="{% static 'chat/markdown.js' %}" defer></script>
+  <script src="{% static 'chat/chat.js' %}" defer></script>
+{% endblock %}
 {% block content %}
   <section class="chat" id="chat"
            aria-labelledby="chat-title"
@@ -11,8 +19,40 @@
            data-conversation-url-template="{% url 'chat:conversation' 0 %}"
            data-api-conversations="{% url 'chat:api_conversations' %}"
            data-api-models="{% url 'chat:api_models' %}"
-           data-api-messages-template="{% url 'chat:api_messages' 0 %}">
-    <h1 class="sr-only" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
+           data-api-messages-template="{% url 'chat:api_messages' 0 %}"
+           data-api-detail-template="{% url 'chat:api_conversation_detail' 0 %}">
+    {% if active_conversation %}
+      <header class="chat-header">
+        <h1 class="chat-header-title" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
+        {% if active_conversation.archived %}<span class="badge">Archiviert</span>{% endif %}
+        <div class="chat-header-actions">
+          {% if can_write %}
+            <button type="button" class="button button-small" hidden
+                    data-chat-action="rename" data-conversation-id="{{ active_conversation.pk }}"
+                    data-title="{{ active_conversation.title }}">Umbenennen</button>
+          {% endif %}
+          <a class="button button-small" href="{% url 'chat:conversation_export' active_conversation.pk %}"
+             download>Exportieren</a>
+          {% if is_owner %}
+            {% if active_conversation.archived %}
+              <button type="button" class="button button-small" hidden
+                      data-chat-action="restore" data-conversation-id="{{ active_conversation.pk }}"
+                      data-title="{{ active_conversation.title }}">Wiederherstellen</button>
+            {% else %}
+              <button type="button" class="button button-small" hidden
+                      data-chat-action="archive" data-conversation-id="{{ active_conversation.pk }}"
+                      data-title="{{ active_conversation.title }}">Archivieren</button>
+            {% endif %}
+            <button type="button" class="button button-small button-danger" hidden
+                    data-chat-action="delete" data-conversation-id="{{ active_conversation.pk }}"
+                    data-title="{{ active_conversation.title }}">Löschen</button>
+          {% endif %}
+        </div>
+      </header>
+    {% else %}
+      <h1 class="sr-only" id="chat-title">Neuer Chat</h1>
+    {% endif %}
+    {% include "chat/_system_prompt.html" %}
     <div class="chat-history" id="chat-history" tabindex="-1">
       <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Verlauf">
         {% for msg in chat_messages %}{% include "chat/_message.html" %}{% endfor %}

@@ -14,7 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from multigpt.accounts.permissions import Action, can
 
-from . import services
+from . import services, status
 from .models import AIModel, Conversation, Message
 
 
@@ -81,21 +81,56 @@ def _serialize_message(message: Message) -> dict:
 # --- Endpunkte --------------------------------------------------------------------
 
 
+def _serialize_model(m: AIModel) -> dict:
+    online, available = status.model_state(m)
+    return {
+        "id": m.pk,
+        "display_name": m.display_name,
+        "provider": m.provider.name,
+        "provider_id": m.provider_id,
+        "is_local": m.provider.is_local,
+        # Nach dem letzten gespeicherten Status (M4-03); nicht-lokale immer True.
+        "online": online,
+        "available": available,
+    }
+
+
 @require_GET
 @api_login_required
 def models_list(request):
     return JsonResponse(
-        [
-            {
-                "id": m.pk,
-                "display_name": m.display_name,
-                "provider": m.provider.name,
-                "is_local": m.provider.is_local,
-            }
-            for m in services.available_chat_models(request.user)
-        ],
+        [_serialize_model(m) for m in services.available_chat_models(request.user)],
         safe=False,
     )
+
+
+@require_GET
+@api_login_required
+def provider_status(request):
+    """Status aller aktiven Anbieter mit Statusprüfung (Plan 8a, 15 s Cache in der DB)."""
+    return JsonResponse([status.serialize(p) for p in status.refresh_all()], safe=False)
+
+
+def _check_model_reachable(ai_model: AIModel) -> JsonResponse | None:
+    """Lokales Modell: Anbieter online und Modell gemeldet? Sonst Fehler (M4-05)."""
+    provider = ai_model.provider
+    if not (provider.is_local and provider.check_status):
+        return None
+    status.refresh(provider)  # nur bei Status älter als 15 s ein Netzaufruf
+    online, available = status.model_state(ai_model)
+    if not online:
+        return _error(
+            f"{provider.name} ist offline. Bitte ein anderes Modell wählen "
+            "oder es später erneut versuchen.",
+            503,
+        )
+    if not available:
+        return _error(
+            f"Das Modell „{ai_model.display_name}“ wird von {provider.name} "
+            "derzeit nicht angeboten.",
+            409,
+        )
+    return None
 
 
 @require_POST
@@ -145,6 +180,9 @@ def _stream(request, conversation: Conversation):
         return _error("Ungültige Anfrage.", 400)
     raw_model = data.get("model", conversation.default_model_id)
     ai_model, err = _get_chat_model(user, raw_model)
+    if err:
+        return err
+    err = _check_model_reachable(ai_model)
     if err:
         return err
     regenerate = data.get("regenerate") is True

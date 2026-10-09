@@ -14,6 +14,17 @@ unterscheidet sich. Grundlage (gelesen 2026-10-09):
 - LM Studio: OpenAI-kompatibel unter ``/v1``; ohne Authentifizierung, sofern
   nicht eingeschaltet (dann Bearer-Token wie bei OpenAI).
 
+Werkzeuge (M4a, gelesen 2026-10-09, developers.openai.com/api/docs/api-reference/chat):
+
+- ``tools: [{"type": "function", "function": {name, description,
+  parameters}}]``; ``tool_choice`` ``none``/``auto``/``required`` oder
+  ``{"type": "function", "function": {"name": …}}``.
+- Stream: ``delta.tool_calls[]`` mit ``index``, beim ersten Stück ``id``,
+  ``type`` und ``function.name``, danach Stücke von ``function.arguments``
+  (JSON-Text, nicht immer gültig); ``finish_reason`` ``tool_calls``.
+- Verlauf: Assistant mit ``tool_calls`` (``content`` darf ``null`` sein), dann
+  je Aufruf ``{"role": "tool", "tool_call_id", "content"}``.
+
 Sicherheit (Plan 9): Der API-Key steht nur im Authorization-Header. Er
 erscheint weder in Logs noch in Fehlermeldungen; Fehlertexte der Anbieter
 werden nicht weitergereicht (OpenAI nennt bei 401 Teile des Keys).
@@ -29,6 +40,12 @@ from urllib.parse import urlsplit
 import httpx
 
 from .base import (
+    FINISH_TOOL_CALLS,
+    MSG_INTERRUPTED,
+    MSG_STREAM_ERROR,
+    MSG_TIMEOUT,
+    MSG_UNEXPECTED,
+    MSG_UNREACHABLE,
     ChatMessage,
     Delta,
     Done,
@@ -37,8 +54,28 @@ from .base import (
     ProviderAdapter,
     ProviderError,
     ToolCallEvent,
+    ToolSpec,
     Usage,
+    exception_to_error,
+    http_error_message,
+    new_tool_call_id,
+    normalize_tools,
+    pair_tool_messages,
+    parse_tool_arguments,
+    tool_schema,
 )
+
+# Frühere Namen (vor M4a hier definiert), für Importe von außen.
+_exception_to_error = exception_to_error
+__all__ = [
+    "MSG_INTERRUPTED",
+    "MSG_STREAM_ERROR",
+    "MSG_TIMEOUT",
+    "MSG_UNEXPECTED",
+    "MSG_UNREACHABLE",
+    "OpenAICompatAdapter",
+    "http_error_message",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -50,44 +87,7 @@ STREAM_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
 LIST_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
 
 # Diese Felder setzt der Adapter selbst; ``params`` darf sie nicht überschreiben.
-_RESERVED_PARAMS = {"model", "messages", "stream", "stream_options", "tools"}
-
-MSG_UNREACHABLE = "Der Anbieter ist nicht erreichbar."
-MSG_TIMEOUT = "Der Anbieter hat nicht rechtzeitig geantwortet."
-MSG_INTERRUPTED = "Die Verbindung zum Anbieter wurde während der Antwort unterbrochen."
-MSG_UNEXPECTED = "Unerwarteter Fehler bei der Anfrage an den Anbieter."
-MSG_STREAM_ERROR = "Der Anbieter hat die Antwort mit einem Fehler abgebrochen."
-
-
-def http_error_message(status: int) -> tuple[str, bool]:
-    """Deutscher Text und ``retryable`` zu einem HTTP-Status des Anbieters."""
-    if status in (401, 403):
-        return "Der Anbieter hat den Zugang abgelehnt. Bitte den API-Key prüfen.", False
-    if status == 402:
-        return "Beim Anbieter ist kein Guthaben mehr vorhanden.", False
-    if status == 404:
-        return "Modell oder Adresse beim Anbieter nicht gefunden.", False
-    if status == 429:
-        return (
-            "Der Anbieter meldet zu viele Anfragen oder ein erschöpftes Kontingent. "
-            "Bitte später erneut versuchen.",
-            True,
-        )
-    if status >= 500:
-        return "Der Anbieter hat einen Serverfehler gemeldet. Bitte später erneut versuchen.", True
-    return f"Der Anbieter hat die Anfrage abgelehnt (HTTP {status}).", False
-
-
-def _exception_to_error(exc: Exception, *, started: bool) -> Error:
-    """Netz- und sonstige Ausnahmen in ein ``Error``-Event übersetzen."""
-    if isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout):
-        return Error(MSG_UNREACHABLE, retryable=True)
-    if isinstance(exc, httpx.TimeoutException):
-        return Error(MSG_TIMEOUT, retryable=True)
-    if isinstance(exc, httpx.TransportError):
-        # RemoteProtocolError, ReadError, ... – meist ein abgerissener Stream.
-        return Error(MSG_INTERRUPTED if started else MSG_UNREACHABLE, retryable=True)
-    return Error(MSG_UNEXPECTED, retryable=False)
+_RESERVED_PARAMS = {"model", "messages", "stream", "stream_options", "tools", "tool_choice"}
 
 
 def _error_code(body: bytes) -> str:
@@ -134,14 +134,17 @@ class OpenAICompatAdapter(ProviderAdapter):
         except (ValueError, AttributeError, TypeError) as exc:
             raise ProviderError("Der Anbieter hat eine unerwartete Modellliste geliefert.") from exc
 
-    def list_models(self) -> list[str]:
+    def list_models(self, timeout: float | None = None) -> list[str]:
         try:
-            return self._fetch_models(LIST_TIMEOUT)
+            return self._fetch_models(LIST_TIMEOUT if timeout is None else timeout)
         except ProviderError:
             raise
         except Exception as exc:
-            error = _exception_to_error(exc, started=False)
-            self._log("Modellliste", type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            if timeout is None:
+                # Kurzprüfungen (Statusabfrage, M4-03) loggen nicht: Dort ist
+                # „nicht erreichbar“ der Normalfall (LM Studio meist aus).
+                self._log("Modellliste", type(exc).__name__)
             raise ProviderError(error.message) from None
 
     def is_online(self, timeout: float = 2) -> bool:
@@ -158,13 +161,13 @@ class OpenAICompatAdapter(ProviderAdapter):
         model_id: str,
         messages: list[ChatMessage],
         system: str | None,
-        tools: list[dict] | None,
+        tools: list[ToolSpec],
         params: dict,
     ) -> dict:
         payload_messages = []
         if system:
             payload_messages.append({"role": "system", "content": system})
-        payload_messages += [{"role": m.role, "content": m.content} for m in messages]
+        payload_messages += [_message_payload(m) for m in pair_tool_messages(messages)]
         body = {k: v for k, v in params.items() if k not in _RESERVED_PARAMS and v is not None}
         body.update(
             model=model_id,
@@ -173,8 +176,20 @@ class OpenAICompatAdapter(ProviderAdapter):
             stream_options={"include_usage": True},
         )
         if tools:
-            # M3: unverändert durchreichen; die Übersetzung folgt in M4a.
-            body["tools"] = tools
+            body["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": tool_schema(t),
+                    },
+                }
+                for t in tools
+            ]
+            choice = _tool_choice(params.get("tool_choice"))
+            if choice is not None:
+                body["tool_choice"] = choice
         return body
 
     def stream(
@@ -190,9 +205,10 @@ class OpenAICompatAdapter(ProviderAdapter):
         Bricht der Aufrufer ab (``close()`` am Generator), schließen die
         ``with``-Blöcke Antwort und Client und damit die HTTP-Verbindung.
         """
-        body = self._build_body(model_id, messages, system, tools, params)
         started = False
         try:
+            specs = normalize_tools(tools)
+            body = self._build_body(model_id, messages, system, specs, params)
             with (
                 httpx.Client(timeout=STREAM_TIMEOUT) as client,
                 client.stream(
@@ -211,7 +227,7 @@ class OpenAICompatAdapter(ProviderAdapter):
                     message, retryable = http_error_message(response.status_code)
                     yield Error(message, retryable=retryable)
                     return
-                parser = _ChunkParser(emit_tool_calls=bool(tools))
+                parser = _ChunkParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():
                     for event in parser.feed(line):
                         if isinstance(event, Delta):
@@ -222,7 +238,43 @@ class OpenAICompatAdapter(ProviderAdapter):
                 yield from parser.end_of_stream()
         except Exception as exc:
             self._log("Stream", type(exc).__name__)
-            yield _exception_to_error(exc, started=started)
+            yield exception_to_error(exc, started=started)
+
+
+def _message_payload(message: ChatMessage) -> dict:
+    """``ChatMessage`` im Chat-Completions-Format."""
+    if message.role == "assistant" and message.tool_calls:
+        return {
+            "role": "assistant",
+            "content": message.content or None,
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(call.arguments, ensure_ascii=False),
+                    },
+                }
+                for call in message.tool_calls
+            ],
+        }
+    if message.role == "tool":
+        # Chat Completions kennt kein ``is_error``; Fehler stehen im Text.
+        content = message.content or ""
+        if message.is_error:
+            content = f"Fehler: {content}"
+        return {"role": "tool", "tool_call_id": message.tool_call_id or "", "content": content}
+    return {"role": message.role, "content": message.content}
+
+
+def _tool_choice(choice) -> str | dict | None:
+    if choice is None or isinstance(choice, dict):
+        return choice
+    choice = str(choice)
+    if choice in ("auto", "none", "required"):
+        return choice
+    return {"type": "function", "function": {"name": choice}}
 
 
 class _ChunkParser:
@@ -237,8 +289,9 @@ class _ChunkParser:
         self.finished = False
         self.finish_reason: str | None = None
         self.usage: Usage | None = None
-        # Gerüst für M4a: Werkzeugaufrufe kommen in Stücken, je ``index``.
-        self.tool_calls: dict[int, dict] = {}
+        # Werkzeugaufrufe kommen in Stücken, je ``index`` (Reihenfolge des Eintreffens).
+        self.tool_calls: list[dict] = []
+        self._slots: dict[int, int] = {}
 
     def feed(self, line: str) -> Iterator[Event]:
         line = line.rstrip("\r")
@@ -285,33 +338,65 @@ class _ChunkParser:
             if reason:
                 self.finish_reason = reason
 
-    def _collect_tool_call(self, part: dict) -> None:
-        slot = self.tool_calls.setdefault(
-            part.get("index", 0), {"id": "", "name": "", "arguments": ""}
-        )
-        if part.get("id"):
-            slot["id"] = part["id"]
+    def _collect_tool_call(self, part) -> None:
+        if not isinstance(part, dict):
+            return
+        call_id = str(part.get("id") or "")
+        index = part.get("index")
+        position = self._slots.get(index) if isinstance(index, int) else None
+        if position is None and not isinstance(index, int) and self.tool_calls:
+            # Manche kompatiblen Server lassen ``index`` weg: Fortsetzung des
+            # letzten Aufrufs, außer es kommt eine neue ID.
+            last = len(self.tool_calls) - 1
+            if not call_id or call_id == self.tool_calls[last]["id"]:
+                position = last
+        known_id = self.tool_calls[position]["id"] if position is not None else ""
+        if call_id and known_id not in ("", call_id):
+            position = None  # gleicher Index, neue ID: eigener Aufruf
+        if position is None:
+            self.tool_calls.append({"id": "", "name": "", "arguments": ""})
+            position = len(self.tool_calls) - 1
+            if isinstance(index, int):
+                self._slots[index] = position
+        slot = self.tool_calls[position]
+        if call_id:
+            slot["id"] = call_id
         function = part.get("function") or {}
+        if not isinstance(function, dict):
+            return
         if function.get("name"):
-            slot["name"] += function["name"]
-        if function.get("arguments"):
-            slot["arguments"] += function["arguments"]
+            slot["name"] += str(function["name"])
+        arguments = function.get("arguments")
+        if isinstance(arguments, dict):
+            # Einige Server liefern die Argumente schon als Objekt.
+            slot["arguments"] += json.dumps(arguments, ensure_ascii=False)
+        elif arguments:
+            slot["arguments"] += str(arguments)
 
     def _finish(self) -> Iterator[Event]:
+        calls: list[ToolCallEvent] = []
         if self.emit_tool_calls:
-            for index in sorted(self.tool_calls):
-                call = self.tool_calls[index]
-                try:
-                    arguments = json.loads(call["arguments"] or "{}")
-                except ValueError:
-                    arguments = {}
-                if not isinstance(arguments, dict):
-                    arguments = {}
-                yield ToolCallEvent(id=call["id"], name=call["name"], arguments=arguments)
+            for call in self.tool_calls:
+                arguments = parse_tool_arguments(call["arguments"], call["name"])
+                if isinstance(arguments, Error):
+                    self.finished = True
+                    yield arguments
+                    return
+                calls.append(
+                    ToolCallEvent(
+                        id=call["id"] or new_tool_call_id(),
+                        name=call["name"],
+                        arguments=arguments,
+                    )
+                )
+        yield from calls
         if self.usage:
             yield self.usage
         self.finished = True
-        yield Done(self.finish_reason)
+        reason = self.finish_reason
+        if calls:
+            reason = FINISH_TOOL_CALLS
+        yield Done(reason)
 
     def end_of_stream(self) -> Iterator[Event]:
         """Stream endete ohne ``[DONE]``."""

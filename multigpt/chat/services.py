@@ -26,6 +26,14 @@ Entscheidungen:
   bleibt gespeichert, damit Tokens und Kosten für Verbrauch und Budget (M6)
   zählen (sonst ließe sich das Budget durch Neu-Erzeugen umgehen), taucht aber
   weder im Verlauf noch in der Oberfläche auf (``visible_messages``).
+- **Abriss mitten in der Antwort (M4-05):** Meldet der Adapter einen
+  wiederholbaren Fehler (``retryable``, z. B. LM Studio beendet, Verbindung
+  abgerissen), nachdem schon Text kam, wird die Antwort als ``aborted`` mit
+  dem empfangenen Text und dem Fehlertext gespeichert – wie ein Abbruch, der
+  Nutzer kann mit einem anderen Modell neu erzeugen. Ohne Teiltext oder bei
+  nicht wiederholbaren Fehlern bleibt es ``error``. Bei Anbietern mit
+  Statusprüfung wird außerdem der Status-Cache verworfen, damit die nächste
+  Abfrage sofort neu prüft.
 - **Logs:** nur IDs und Fehlerarten, nie Inhalte oder Keys (Plan 9).
 """
 
@@ -42,9 +50,11 @@ from django.utils import timezone
 
 from multigpt.accounts.permissions import Action, can
 
+from . import status as provider_status
 from .models import AIModel, Conversation, Message
 from .providers import registry
 from .providers.base import ChatMessage, Delta, Done, Error, Usage
+from .titles import title_from
 
 logger = logging.getLogger(__name__)
 
@@ -144,10 +154,8 @@ def _refresh_connection():
 
 
 def _title_from(content: str) -> str:
-    line = content.strip().splitlines()[0].strip() if content.strip() else ""
-    if len(line) > TITLE_LENGTH:
-        line = line[: TITLE_LENGTH - 1].rstrip() + "…"
-    return line
+    # Markdown-Zeichen entfernen, Codeblöcke überspringen (M5-02, titles.py).
+    return title_from(content, TITLE_LENGTH)
 
 
 # --- Vorbereitung ---------------------------------------------------------------
@@ -273,7 +281,13 @@ def run_turn(turn: Turn) -> Iterator[tuple[str, dict]]:
             elif isinstance(event, Usage):
                 tokens_in, tokens_out = event.tokens_in, event.tokens_out
             elif isinstance(event, Error):
-                status, error = Message.Status.ERROR, event.message or GENERIC_ERROR
+                error = event.message or GENERIC_ERROR
+                if event.retryable and parts:
+                    status = Message.Status.ABORTED  # Teiltext bleibt, siehe Moduldoku
+                else:
+                    status = Message.Status.ERROR
+                if event.retryable:
+                    provider_status.invalidate(turn.ai_model.provider_id)
                 logger.info("Anbieterfehler bei Antwort %s (Modell %s)", msg.pk, turn.ai_model.pk)
                 break
             elif isinstance(event, Done):
@@ -290,7 +304,7 @@ def run_turn(turn: Turn) -> Iterator[tuple[str, dict]]:
 
     _close(stream)
     _finish(turn, "".join(parts), status, error, tokens_in, tokens_out)
-    if status == Message.Status.ERROR:
+    if error:
         yield "error", {"message": error}
     yield "usage", {"tokens_in": tokens_in, "tokens_out": tokens_out}
     yield "done", {"status": status}

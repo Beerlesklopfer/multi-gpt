@@ -12,6 +12,7 @@ from .base import (
     ProviderAdapter,
     ProviderError,
     ToolCallEvent,
+    ToolSpec,
     Usage,
 )
 from .registry import get_adapter
@@ -25,6 +26,7 @@ __all__ = [
     "ProviderAdapter",
     "ProviderError",
     "ToolCallEvent",
+    "ToolSpec",
     "Usage",
     "get_adapter",
 ]

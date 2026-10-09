@@ -6,6 +6,21 @@ Files: *
 Copyright: 2026 Joerg Bernau <joerg@bernau.family>
 License: AGPL-3.0+
 
+Files: multigpt/chat/static/chat/vendor/marked/*
+Copyright: 2018-2026 MarkedJS, 2011-2018 Christopher Jeffrey
+License: Expat
+ See multigpt/chat/static/chat/vendor/marked/LICENSE.
+
+Files: multigpt/chat/static/chat/vendor/dompurify/*
+Copyright: Dr.-Ing. Mario Heiderich, Cure53
+License: Apache-2.0 or MPL-2.0
+ See multigpt/chat/static/chat/vendor/dompurify/LICENSE and LICENSE-MPL.
+
+Files: multigpt/chat/static/chat/vendor/highlight/*
+Copyright: 2006 Ivan Sagalaev, Josh Goebel and other contributors
+License: BSD-3-clause
+ See multigpt/chat/static/chat/vendor/highlight/LICENSE.
+
 License: AGPL-3.0+
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published
