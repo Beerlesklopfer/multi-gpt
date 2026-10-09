@@ -564,3 +564,29 @@ def test_check_message_names_provider_error_code_without_secret(mock):
     assert "HTTP 403" in text
     assert "insufficient_permissions" in text
     assert "sk-" not in text
+
+
+@pytest.mark.django_db
+def test_add_form_offers_url_defaults_and_fills_empty_base_url(admin_client):
+    html = admin_client.get(reverse("admin:chat_provider_add")).content.decode()
+    match = re.search(r'id="provider-url-defaults"[^>]*>(.*?)</script>', html, re.S)
+    data = json.loads(match.group(1))
+    assert data["defaults"]["anthropic"] == "https://api.anthropic.com/v1"
+    assert data["defaults"]["google"].startswith("https://generativelanguage.googleapis.com")
+    assert any(p["url"] == "https://openrouter.ai/api/v1" for p in data["presets"])
+    assert "chat/admin_provider_url.js" in html
+
+    response = admin_client.post(
+        reverse("admin:chat_provider_add"),
+        {
+            "name": "Claude",
+            "kind": "anthropic",
+            "base_url": "",
+            "api_key": "",
+            "active": "on",
+            "ai_models-TOTAL_FORMS": "0",
+            "ai_models-INITIAL_FORMS": "0",
+        },
+    )
+    assert response.status_code == 302
+    assert Provider.objects.get(name="Claude").base_url == "https://api.anthropic.com/v1"

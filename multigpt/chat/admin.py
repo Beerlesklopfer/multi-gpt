@@ -92,6 +92,15 @@ class ProviderForm(SecretFieldFormMixin, forms.ModelForm):
     )
     clear_api_key = forms.BooleanField(label="API-Key entfernen", required=False)
 
+    def clean_base_url(self):
+        """Leer = Standard-URL des Anbieters, sichtbar gespeichert."""
+        from .providers.registry import default_base_urls
+
+        value = (self.cleaned_data.get("base_url") or "").strip()
+        if not value:
+            value = default_base_urls().get(self.data.get("kind", ""), "")
+        return value
+
     class Meta:
         model = Provider
         formfield_callback = _formfield
@@ -276,6 +285,16 @@ class ProviderAdmin(admin.ModelAdmin):
             self.message_user(request, *check_message(provider, result))
 
         transaction.on_commit(check_after_commit)
+
+    def render_change_form(self, request, context, *args, **kwargs):
+        """Standard-URLs je Art und Vorschläge für das Feld „Basis-URL“ (JS)."""
+        from .providers.registry import OPENAI_COMPAT_PRESETS, default_base_urls
+
+        context["provider_url_defaults"] = {
+            "defaults": default_base_urls(),
+            "presets": [{"label": label, "url": url} for label, url in OPENAI_COMPAT_PRESETS],
+        }
+        return super().render_change_form(request, context, *args, **kwargs)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         """Gemeldete Modelle für die Combobox am Feld „Modell-ID“ der Inline."""

@@ -607,6 +607,13 @@ MSG_INVALID_MODEL_LIST = "Der Anbieter hat eine unerwartete Modellliste geliefer
 class ProviderAdapter:
     """Basisklasse. Nicht unterstützte Fähigkeiten werfen ``NotImplementedError``."""
 
+    @classmethod
+    def default_base_url(cls) -> str:
+        """Standard-Basis-URL des Anbieters (Modulkonstante ``DEFAULT_BASE_URL``)."""
+        import sys
+
+        return getattr(sys.modules[cls.__module__], "DEFAULT_BASE_URL", "")
+
     def __init__(self, provider: Provider):
         self.provider = provider
 
