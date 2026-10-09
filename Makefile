@@ -9,12 +9,16 @@ MANAGE  := $(PY) manage.py
 DB_NAME ?= multigpt
 DB_USER ?= $(shell id -un)
 PSQL    := sudo -u postgres psql -v ON_ERROR_STOP=1 -X -q
+# Hugo: aus dem PATH, sonst aus ~/go/bin (go install github.com/gohugoio/hugo@<version>).
+HUGO    ?= $(or $(shell command -v hugo 2>/dev/null),$(HOME)/go/bin/hugo)
+SITE    := docs/website
+REMOTE  ?= origin
 
 .DEFAULT_GOAL := help
-.PHONY: help install migrate user dev run static test lint fmt deb db-create clean
+.PHONY: help install migrate user dev run static test lint fmt deb website website-serve deploy db-create clean
 
 help: ## Diese Hilfe anzeigen
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 $(PY):
 	$(PYTHON) -m venv $(VENV)
@@ -68,6 +72,27 @@ fmt: ## Code formatieren und Autofixes anwenden
 deb: ## Debian-Paket bauen
 	dpkg-buildpackage -us -uc -b
 	@echo "Hinweis: Das .deb liegt im übergeordneten Ordner: $$(ls -1 ../multi-gpt_*.deb 2>/dev/null | tail -n 1)"
+
+website: ## Projekt-Website (Hugo) nach docs/website/public bauen
+	$(HUGO) --source $(SITE) --minify --cleanDestinationDir --panicOnWarning
+
+website-serve: ## Website lokal mit Live-Reload anzeigen (http://localhost:1313/)
+	$(HUGO) server --source $(SITE)
+
+# Veröffentlicht wird auf GitHub Pages durch den Workflow website.yml, der auf
+# GitHub baut. deploy prüft lokal, dass die Site baut und der Stand von
+# docs/website committet und gepusht ist, und stößt dann den Workflow an.
+deploy: website ## Website auf GitHub Pages veröffentlichen (braucht gh und Remote)
+	@command -v gh >/dev/null || { echo "deploy: GitHub-CLI 'gh' fehlt (apt install gh, dann gh auth login)." >&2; exit 1; }
+	@git remote get-url $(REMOTE) >/dev/null 2>&1 || { echo "deploy: Git-Remote '$(REMOTE)' fehlt." >&2; exit 1; }
+	@git diff --quiet HEAD -- $(SITE) .github/workflows/website.yml \
+		&& [ -z "$$(git ls-files --others --exclude-standard -- $(SITE))" ] \
+		|| { echo "deploy: Änderungen in $(SITE) sind nicht committet." >&2; exit 1; }
+	git fetch -q $(REMOTE) main
+	@[ -z "$$(git log --oneline $(REMOTE)/main..HEAD -- $(SITE) .github/workflows/website.yml)" ] \
+		|| { echo "deploy: Website-Commits sind noch nicht nach $(REMOTE)/main gepusht." >&2; exit 1; }
+	gh workflow run website.yml --ref main
+	@echo "Workflow gestartet. Fortschritt: gh run watch"
 
 # Entwicklungs-DB anlegen (einmalig, braucht sudo):
 # - Rolle = aktueller Systemnutzer mit CREATEDB (Peer-Auth über den Unix-Socket;
