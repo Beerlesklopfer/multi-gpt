@@ -171,7 +171,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 ## 8d. Websuche
 
 - **Ablauf:** Schalter "Websuche" im Eingabefeld. Ist er an: Suchanfrage aus der Nutzerfrage bilden → Such-Backend abfragen → die besten Treffer abrufen und auf Text reduzieren → als Kontext mit nummerierten Quellen an das Modell. Dieser Ablauf funktioniert mit jedem Modell, auch mit lokalen.
-- **Such-Backend:** hinter einer kleinen Schnittstelle `search(query) -> [Treffer]` austauschbar. Zwei Umsetzungen vorsehen: selbst gehostetes SearXNG im Intranet und eine Such-API mit Key. Auswahl siehe offene Fragen.
+- **Such-Backend:** hinter einer kleinen Schnittstelle `search(query) -> [Treffer]` austauschbar. Beide Umsetzungen werden gebaut: selbst gehostetes SearXNG im Intranet und eine Such-API mit Key. Welche aktiv ist, legt der Verwalter in den Einstellungen fest.
 - **Quellen:** Unter der Antwort stehen Titel und Links der verwendeten Seiten.
 - **Sicherheit:** Abgerufene Seiteninhalte sind nicht vertrauenswürdig. Sie werden klar als Quellmaterial markiert an das Modell gegeben, nie als Anweisung. Der Abruf darf keine Intranet-Adressen ansprechen (Schutz gegen SSRF), hat Timeouts und Größenlimits.
 
@@ -199,7 +199,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 - **Fester System-Prompt:** Hat eine Rolle einen, wird er jedem Chat vorangestellt und ist für das Mitglied weder sichtbar änderbar noch abschaltbar.
 - **Budgets:** Monatsbudget je Rolle, je Mitglied überschreibbar. Bei 80 % ein Hinweis, bei 100 % sind kostenpflichtige Modelle bis zum Monatswechsel gesperrt. Lokale Modelle aus LM Studio bleiben nutzbar.
 - **Gruppen:** Sammlungen (RAG) und einzelne Chats lassen sich mit Gruppen teilen, lesend oder mit Schreibrecht. Standardgruppe "Familie" enthält alle Mitglieder.
-- **Privatsphäre:** Chats sind privat. Auch Verwalter sehen fremde Chats nicht in der Oberfläche, nur Verbrauchszahlen. Eine Einsicht in Chats von Jugendlichen-Konten ist als Option je Konto vorgesehen, standardmäßig aus, und wird dem betroffenen Mitglied in der Oberfläche angezeigt (siehe offene Fragen).
+- **Privatsphäre:** Chats sind privat. Auch Verwalter sehen fremde Chats nicht in der Oberfläche, nur Verbrauchszahlen. Eine Einsicht in Chats von Jugendlichen-Konten ist als Option je Konto vorgesehen, standardmäßig aus, und wird dem betroffenen Mitglied in der Oberfläche angezeigt.
 - **Verwaltung:** Eigene Seite "Familie" für Verwalter: Konten anlegen und sperren, Rolle zuweisen, Passwort zurücksetzen, Gruppen pflegen, Verbrauch je Mitglied.
 
 ## 8g. MCP (Model Context Protocol)
@@ -289,14 +289,14 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 
 1. ~~Welches NAS?~~ **Geklärt (2026-10-09):** Das Zielsystem läuft mit Debian/Ubuntu und apt. Das Debian-Paket ist der Betriebsweg, Docker bleibt Ausweichweg.
 1a. Welche feste IP oder welchen Hostnamen hat der PC mit LM Studio, und ist dort die Freigabe des Servers im lokalen Netz aktiviert?
-2. Läuft im Intranet bereits ein nginx oder anderer Reverse Proxy, und gibt es einen internen Hostnamen samt TLS-Zertifikat?
-3. Welche Anbieter sollen zum Start angebunden werden (Einzel-Keys oder OpenRouter als Sammelzugang)?
+2. ~~Reverse Proxy und TLS?~~ **Geklärt (2026-10-09):** Im Intranet läuft bereits ein nginx. MultiGPT wird dort eingebunden, `deploy/nginx.conf.example` liefert den passenden `location`-Block (Stream ohne Puffer, `X-Accel-Redirect`). Offen sind nur noch Hostname und Zertifikat.
+3. ~~Anbieter zum Start?~~ **Geklärt (2026-10-09):** OpenRouter, OpenAI, Anthropic und Google Gemini. Damit sind alle drei Adapterarten (`openai_compat`, `anthropic`, `google`) zum Start im Einsatz.
 4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
-4a. Websuche: selbst gehostetes SearXNG auf dem NAS oder eine Such-API mit Key?
+4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** Beides, umschaltbar in den Einstellungen.
 4b. Welche Anbieter für Embeddings, Spracherkennung, Sprachausgabe und Bilder? Nicht jeder Chat-Anbieter bietet alle vier.
 4c. Sind die Dokumente für RAG überwiegend deutsch, und gibt es gescannte PDFs (dann wird Texterkennung/OCR nötig)?
 4d. Welche MCP-Server sollen zum Start angebunden werden (außer den mitgelieferten), und laufen schon welche im Intranet?
 4e. Welcher Anbieter für Inpainting und Varianten? Das ist die Engstelle: nur wenige Bild-APIs unterstützen Masken.
 5. Wer gehört zur Familie (Anzahl Konten, Alter der Kinder)? Davon hängt ab, ob die vier Startrollen passen.
-5a. Sollen Eltern Chats von Jugendlichen-Konten einsehen können? Vorgesehen ist: nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar.
+5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `einsicht_erlaubt` an `konten.User`).
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).

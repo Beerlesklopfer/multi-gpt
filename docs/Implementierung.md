@@ -138,7 +138,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M6-02** Verbrauchsübersicht je Nutzer, Modell und Monat auf Basis von `Message.kosten`.
 - **M6-03** Budgets: Hinweis bei 80 %, bei 100 % sind kostenpflichtige Modelle gesperrt, lokale bleiben nutzbar. Die Prüfung läuft vor jedem Anbieteraufruf.
 - **M6-04** Seite "Familie": Konten anlegen und sperren, Rolle zuweisen, Passwort zurücksetzen, Gruppen, Verbrauch.
-- **M6-05** Einsicht in Jugendlichen-Chats nur als Option je Konto, wenn Frage 5a sie freigibt. Das Mitglied sieht in der Oberfläche, dass die Option aktiv ist.
+- **M6-05** Einsicht in Jugendlichen-Chats als Option je Konto (`einsicht_erlaubt`, standardmäßig aus). Das Mitglied sieht in der Oberfläche, dass die Option aktiv ist.
 
 ### M7 – RAG
 *Abhängig von: M2, M4a (für die Suche als Werkzeug), Fragen 4b, 4c.*
@@ -154,7 +154,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M8 – Websuche
 *Abhängig von: M3, M4a (als Werkzeug), Frage 4a.*
 
-- **M8-01** Schnittstelle `search(query)` mit zwei Umsetzungen: SearXNG und eine Such-API.
+- **M8-01** Schnittstelle `search(query)` mit zwei Umsetzungen, SearXNG und eine Such-API. Welche aktiv ist, legt der Verwalter in den Einstellungen fest.
 - **M8-02** Seitenabruf mit SSRF-Schutz: DNS auflösen, private und lokale Adressbereiche sperren, Weiterleitungen erneut prüfen. Dazu Timeouts und Größenlimit.
 - **M8-03** Inhalte auf Text reduzieren und klar als Quellmaterial markiert mit nummerierten Quellen an das Modell geben.
 - **M8-04** Quellenanzeige unter der Antwort. Websuche zusätzlich als Werkzeug.
@@ -177,7 +177,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M10-03** Konfigurierbare Grenzen für Aufnahmelänge und Dateigröße.
 
 ### M11 – Betrieb
-- **M11-01** `deploy/nginx.conf.example` mit TLS, `proxy_buffering off` für den Stream-Endpunkt und `X-Accel-Redirect` für die Medien. **Vor M10 umsetzen.**
+- **M11-01** `deploy/nginx.conf.example` als Baustein für den bestehenden nginx: `server`-/`location`-Block mit TLS, `proxy_buffering off` für den Stream-Endpunkt und `X-Accel-Redirect` für die Medien. Dazu `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1`. **Vor M10 umsetzen.**
 - **M11-02** `make backup`: `pg_dump`, Medienordner und `/etc/multi-gpt/.env` als datiertes Archiv.
 - **M11-03** README mit Installationsanleitung (Paket, PostgreSQL, `/etc/multi-gpt/.env`, nginx).
 - **M11-04** Prüfen, ob das Paket sauber aktualisiert und entfernt wird: `apt install` über eine ältere Version, `apt remove` und `apt purge`.
@@ -219,15 +219,15 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 4 – PostgreSQL + pgvector vorhanden? | – | **Geklärt:** vorhanden, wird genutzt |
 | 5b – Eine Familie oder mehrere Haushalte? | – | **Geklärt:** eine Familie, keine Mandantentrennung |
 | 5 – Konten, Alter der Kinder | M2 (Startrollen) | Startrollen sind anpassbar, blockiert also nur schwach |
-| 3 – Anbieter zum Start | M3 (Abnahme) | Ein Key genügt für M3 |
+| 3 – Anbieter zum Start | – | **Geklärt:** OpenRouter, OpenAI, Anthropic, Gemini |
 | 1a – LM-Studio-Rechner | M4 | |
 | 4d – MCP-Server zum Start | M4a (Abnahme) | Ein Testserver genügt |
-| 5a – Einsicht in Jugendlichen-Chats | M6 | |
+| 5a – Einsicht in Jugendlichen-Chats | – | **Geklärt:** Option je Konto, standardmäßig aus |
 | 4b – Anbieter für Embedding, STT, TTS, Bild | M7, M9, M10 | Das Embedding-Modell legt die Vektordimension fest |
 | 4c – Sprache der Dokumente, OCR? | M7 | |
-| 4a – SearXNG oder Such-API | M8 | |
+| 4a – SearXNG oder Such-API | – | **Geklärt:** beides, umschaltbar |
 | 4e – Inpainting-Anbieter | M9 | |
-| 2 – Reverse Proxy, Hostname, TLS | M10, M11 | |
+| 2 – Reverse Proxy, Hostname, TLS | M10, M11 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
 
 ---
 
@@ -246,4 +246,4 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 - **Nach M1 zu entscheiden:**
   - Automatische Migration im postinst? Derzeit nicht: `dh_installsystemd` startet den Dienst schon vor `mgpt-ctl migrate`.
   - `/healthz/` von der `ALLOWED_HOSTS`-Prüfung und vom ERROR-Logging bei 503 ausnehmen?
-- Die Fragen 1, 4 und 5b sind geklärt. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.
+- Die Fragen 1, 3, 4, 4a, 5a und 5b sind geklärt, Frage 2 teilweise. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.
