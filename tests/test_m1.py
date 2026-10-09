@@ -75,7 +75,7 @@ def test_healthz_ok_ohne_login(client):
 
 
 def test_healthz_503_ohne_db(client):
-    with mock.patch("chat.views.connection") as verbindung:
+    with mock.patch("multigpt.chat.views.connection") as verbindung:
         verbindung.ensure_connection.side_effect = OperationalError("weg")
         antwort = client.get(reverse("healthz"))
     assert antwort.status_code == 503

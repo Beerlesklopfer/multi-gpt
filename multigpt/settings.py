@@ -35,8 +35,8 @@ INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "axes",
-    "konten",
-    "chat",
+    "multigpt.konten",
+    "multigpt.chat",
 ]
 
 MIDDLEWARE = [

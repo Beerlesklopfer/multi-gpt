@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 
-from konten.models import Gruppe, User
+from multigpt.konten.models import Gruppe, User
 
 
 def test_eigenes_user_modell_aktiv():

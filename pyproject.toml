@@ -26,7 +26,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["multigpt*", "chat*", "konten*"]
+include = ["multigpt*"]
 
 [tool.setuptools.package-data]
 "*" = ["templates/**/*", "static/**/*"]
