@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {# Schlankes Layout ohne Seitenleiste, für Login und Sperrseite. #}
-{% block body_class %}layout-schlicht{% endblock %}
+{% block body_class %}layout-minimal{% endblock %}
 {% block layout %}
-  <main class="karte">
+  <main class="card">
     <h1 class="app-name">MultiGPT</h1>
     {% include "_messages.html" %}
-    {% block inhalt %}{% endblock %}
+    {% block content %}{% endblock %}
   </main>
 {% endblock %}

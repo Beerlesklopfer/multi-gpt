@@ -2,34 +2,34 @@
 "use strict";
 
 document.addEventListener("DOMContentLoaded", () => {
-  const umschalter = document.getElementById("seitenleiste-umschalter");
-  const leiste = document.getElementById("seitenleiste");
-  if (!umschalter || !leiste) {
+  const toggle = document.getElementById("sidebar-toggle");
+  const sidebar = document.getElementById("sidebar");
+  if (!toggle || !sidebar) {
     return;
   }
 
-  const setzeOffen = (offen) => {
-    document.body.classList.toggle("seitenleiste-offen", offen);
-    umschalter.setAttribute("aria-expanded", String(offen));
+  const setOpen = (open) => {
+    document.body.classList.toggle("sidebar-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
   };
 
-  umschalter.addEventListener("click", () => {
-    setzeOffen(!document.body.classList.contains("seitenleiste-offen"));
+  toggle.addEventListener("click", () => {
+    setOpen(!document.body.classList.contains("sidebar-open"));
   });
 
   // Schließen mit Escape oder Klick außerhalb der Seitenleiste.
-  document.addEventListener("keydown", (ereignis) => {
-    if (ereignis.key === "Escape") {
-      setzeOffen(false);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setOpen(false);
     }
   });
-  document.addEventListener("click", (ereignis) => {
+  document.addEventListener("click", (event) => {
     if (
-      document.body.classList.contains("seitenleiste-offen") &&
-      !leiste.contains(ereignis.target) &&
-      !umschalter.contains(ereignis.target)
+      document.body.classList.contains("sidebar-open") &&
+      !sidebar.contains(event.target) &&
+      !toggle.contains(event.target)
     ) {
-      setzeOffen(false);
+      setOpen(false);
     }
   });
 });

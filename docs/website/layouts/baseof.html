@@ -4,9 +4,9 @@
   {{- partial "head.html" . }}
 </head>
 <body>
-  <a class="skip-link" href="#inhalt">{{ T "skip_to_content" }}</a>
+  <a class="skip-link" href="#content">{{ T "skip_to_content" }}</a>
   {{- partial "header.html" . }}
-  <main id="inhalt" class="container">
+  <main id="content" class="container">
     {{- block "main" . }}{{ end }}
   </main>
   {{- partial "footer.html" . }}

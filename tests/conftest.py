@@ -17,10 +17,10 @@ def _test_settings(settings, tmp_path):
 
 
 @pytest.fixture
-def passwort():
+def password():
     return "Geheim-Test-1234"
 
 
 @pytest.fixture
-def nutzer(django_user_model, passwort):
-    return django_user_model.objects.create_user(username="anna", password=passwort)
+def user(django_user_model, password):
+    return django_user_model.objects.create_user(username="anna", password=password)

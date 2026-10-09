@@ -1,38 +1,38 @@
 /* MultiGPT – Grundlayout. Systemschriften, helles und dunkles Schema. */
 
 :root {
-  --hg: #f7f7f8;
-  --hg-flaeche: #ffffff;
-  --hg-leiste: #eceef1;
+  --bg: #f7f7f8;
+  --bg-surface: #ffffff;
+  --bg-sidebar: #eceef1;
   --text: #1d1f23;
-  --text-leise: #5f6670;
-  --rand: #d5d9df;
-  --akzent: #2f6fdb;
-  --akzent-text: #ffffff;
-  --fehler: #b42318;
-  --fehler-hg: #fde8e7;
-  --erfolg: #1a7f37;
-  --erfolg-hg: #e6f4ea;
+  --text-muted: #5f6670;
+  --border: #d5d9df;
+  --accent: #2f6fdb;
+  --accent-text: #ffffff;
+  --error: #b42318;
+  --error-bg: #fde8e7;
+  --success: #1a7f37;
+  --success-bg: #e6f4ea;
   --radius: 8px;
-  --kopf-hoehe: 3.25rem;
-  --leiste-breite: 16rem;
+  --header-height: 3.25rem;
+  --sidebar-width: 16rem;
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --hg: #17191c;
-    --hg-flaeche: #1f2226;
-    --hg-leiste: #121416;
+    --bg: #17191c;
+    --bg-surface: #1f2226;
+    --bg-sidebar: #121416;
     --text: #e6e8eb;
-    --text-leise: #9aa1ab;
-    --rand: #33373d;
-    --akzent: #5b8ff0;
-    --akzent-text: #0b1220;
-    --fehler: #ff8a80;
-    --fehler-hg: #3a1d1b;
-    --erfolg: #7ee2a0;
-    --erfolg-hg: #173023;
+    --text-muted: #9aa1ab;
+    --border: #33373d;
+    --accent: #5b8ff0;
+    --accent-text: #0b1220;
+    --error: #ff8a80;
+    --error-bg: #3a1d1b;
+    --success: #7ee2a0;
+    --success-bg: #173023;
   }
 }
 
@@ -53,12 +53,12 @@ body {
     sans-serif;
   font-size: 1rem;
   line-height: 1.5;
-  background: var(--hg);
+  background: var(--bg);
   color: var(--text);
 }
 
 a {
-  color: var(--akzent);
+  color: var(--accent);
 }
 
 h1,
@@ -75,7 +75,7 @@ h2 {
   font-size: 1.25rem;
 }
 
-.nur-screenreader {
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -84,14 +84,14 @@ h2 {
   white-space: nowrap;
 }
 
-.hinweis {
-  color: var(--text-leise);
+.hint {
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 /* Knöpfe */
 
-.knopf,
+.button,
 button,
 textarea,
 input {
@@ -99,38 +99,38 @@ input {
   color: inherit;
 }
 
-.knopf {
+.button {
   display: inline-block;
   padding: 0.5rem 1rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--hg-flaeche);
+  background: var(--bg-surface);
   text-decoration: none;
   cursor: pointer;
 }
 
-.knopf-primaer {
-  background: var(--akzent);
-  border-color: var(--akzent);
-  color: var(--akzent-text);
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
-.knopf:disabled {
+.button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.link-knopf {
+.link-button {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--akzent);
+  color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
 }
 
 :focus-visible {
-  outline: 2px solid var(--akzent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -141,25 +141,25 @@ input {
   flex-direction: column;
 }
 
-.kopfzeile {
+.topbar {
   display: flex;
   align-items: center;
   gap: 1rem;
-  height: var(--kopf-hoehe);
+  height: var(--header-height);
   padding: 0 1rem;
-  border-bottom: 1px solid var(--rand);
-  background: var(--hg-flaeche);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
   flex-shrink: 0;
 }
 
-.kopfzeile .app-name {
+.topbar .app-name {
   font-weight: 700;
   font-size: 1.1rem;
   color: var(--text);
   text-decoration: none;
 }
 
-.konto {
+.account {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -167,47 +167,47 @@ input {
   font-size: 0.9rem;
 }
 
-.konto .nutzer {
-  color: var(--text-leise);
+.account .username {
+  color: var(--text-muted);
 }
 
-.abmelden {
+.logout-form {
   margin: 0;
 }
 
-.seitenleiste-umschalter {
+.sidebar-toggle {
   display: none;
   padding: 0.25rem 0.6rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: none;
   font-size: 1.1rem;
   cursor: pointer;
 }
 
-.rahmen {
+.frame {
   display: flex;
   flex: 1;
   min-height: 0;
 }
 
-.seitenleiste {
-  width: var(--leiste-breite);
+.sidebar {
+  width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   padding: 1rem;
-  border-right: 1px solid var(--rand);
-  background: var(--hg-leiste);
+  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
   overflow-y: auto;
 }
 
-.seitenleiste .knopf {
+.sidebar .button {
   width: 100%;
 }
 
-.hauptbereich {
+.main-area {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -215,66 +215,66 @@ input {
   overflow-y: auto;
 }
 
-.seite {
+.page {
   max-width: 40rem;
   padding: 1.5rem;
 }
 
 /* Meldungen (django.contrib.messages) */
 
-.meldungen {
+.messages {
   list-style: none;
   margin: 1rem 1rem 0;
   padding: 0;
 }
 
-.meldung {
+.message {
   padding: 0.6rem 1rem;
   margin-bottom: 0.5rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--hg-flaeche);
+  background: var(--bg-surface);
 }
 
-.meldung-error {
-  border-color: var(--fehler);
-  background: var(--fehler-hg);
-  color: var(--fehler);
+.message-error {
+  border-color: var(--error);
+  background: var(--error-bg);
+  color: var(--error);
 }
 
-.meldung-success {
-  border-color: var(--erfolg);
-  background: var(--erfolg-hg);
-  color: var(--erfolg);
+.message-success {
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 /* Formulare (form.as_div) */
 
-.formular > div {
+.form > div {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   margin-bottom: 1rem;
 }
 
-.formular label {
+.form label {
   font-weight: 600;
 }
 
-.formular input[type="text"],
-.formular input[type="password"] {
+.form input[type="text"],
+.form input[type="password"] {
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--hg-flaeche);
+  background: var(--bg-surface);
 }
 
-.formular .helptext {
-  color: var(--text-leise);
+.form .helptext {
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
-.formular .helptext ul {
+.form .helptext ul {
   margin: 0.25rem 0 0;
   padding-left: 1.25rem;
 }
@@ -284,8 +284,8 @@ input {
   padding: 0.5rem 0.75rem;
   list-style: none;
   border-radius: var(--radius);
-  background: var(--fehler-hg);
-  color: var(--fehler);
+  background: var(--error-bg);
+  color: var(--error);
   font-size: 0.9rem;
 }
 
@@ -298,87 +298,87 @@ input {
   min-height: 0;
 }
 
-.chat-verlauf {
+.chat-history {
   flex: 1;
   overflow-y: auto;
   padding: 1.5rem;
 }
 
-.leer {
+.empty-state {
   max-width: 30rem;
   margin: 15vh auto 0;
   text-align: center;
-  color: var(--text-leise);
+  color: var(--text-muted);
 }
 
-.leer h1 {
+.empty-state h1 {
   color: var(--text);
 }
 
-.chat-eingabe {
+.chat-input {
   display: flex;
   gap: 0.5rem;
   align-items: flex-end;
   padding: 1rem;
-  border-top: 1px solid var(--rand);
-  background: var(--hg-flaeche);
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
-.chat-eingabe textarea {
+.chat-input textarea {
   flex: 1;
   resize: vertical;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--hg);
+  background: var(--bg);
 }
 
 /* Schlankes Layout (Login, Sperrseite) */
 
-.layout-schlicht {
+.layout-minimal {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
 }
 
-.karte {
+.card {
   width: 100%;
   max-width: 24rem;
   padding: 2rem;
-  border: 1px solid var(--rand);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--hg-flaeche);
+  background: var(--bg-surface);
 }
 
-.karte .app-name {
+.card .app-name {
   text-align: center;
 }
 
-.karte .meldungen {
+.card .messages {
   margin: 0 0 1rem;
 }
 
-.karte .formular .knopf {
+.card .form .button {
   width: 100%;
 }
 
 /* Schmale Bildschirme: Seitenleiste wird zur ausklappbaren Schublade */
 
 @media (max-width: 48rem) {
-  .seitenleiste-umschalter {
+  .sidebar-toggle {
     display: inline-block;
   }
 
-  .konto .nutzer {
+  .account .username {
     display: none;
   }
 
-  .rahmen {
+  .frame {
     position: relative;
   }
 
-  .seitenleiste {
+  .sidebar {
     position: absolute;
     inset: 0 auto 0 0;
     z-index: 10;
@@ -387,13 +387,13 @@ input {
     box-shadow: 2px 0 8px rgb(0 0 0 / 0.2);
   }
 
-  .seitenleiste-offen .seitenleiste {
+  .sidebar-open .sidebar {
     transform: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .seitenleiste {
+  .sidebar {
     transition: none;
   }
 }

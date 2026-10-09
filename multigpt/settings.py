@@ -35,7 +35,7 @@ INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "axes",
-    "multigpt.konten",
+    "multigpt.accounts",
     "multigpt.chat",
 ]
 
@@ -82,7 +82,7 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-AUTH_USER_MODEL = "konten.User"
+AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -133,7 +133,7 @@ AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=5)
 AXES_COOLOFF_TIME = env.float("AXES_COOLOFF_HOURS", default=0.25)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
-AXES_LOCKOUT_TEMPLATE = "registration/gesperrt.html"
+AXES_LOCKOUT_TEMPLATE = "registration/locked.html"
 AXES_IPWARE_PROXY_COUNT = env.int("AXES_PROXY_COUNT", default=0)
 
 # Logging nach stdout (journald bzw. Docker). Keine Nachrichteninhalte, keine Keys.

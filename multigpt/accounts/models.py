@@ -10,7 +10,7 @@ class User(AbstractUser):
         verbose_name_plural = "Konten"
 
 
-class Gruppe(Group):
+class UserGroup(Group):
     """Erweitert Djangos Group (Tabellenvererbung, 1:1 über group_ptr).
 
     Mitgliedschaft läuft weiter über User.groups; die Zusatzfelder liegen hier.

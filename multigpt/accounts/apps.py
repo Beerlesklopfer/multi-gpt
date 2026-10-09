@@ -1,8 +1,8 @@
 from django.apps import AppConfig
 
 
-class KontenConfig(AppConfig):
+class AccountsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "multigpt.konten"
-    label = "konten"
+    name = "multigpt.accounts"
+    label = "accounts"
     verbose_name = "Konten und Gruppen"

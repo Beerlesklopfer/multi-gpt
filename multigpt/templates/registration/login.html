@@ -1,15 +1,15 @@
-{% extends "base_schlicht.html" %}
+{% extends "base_minimal.html" %}
 {% block title %}Anmelden – MultiGPT{% endblock %}
-{% block inhalt %}
+{% block content %}
   <h2>Anmelden</h2>
   {% if user.is_authenticated %}
-    <p class="hinweis">Du bist bereits als {{ user.get_username }} angemeldet.</p>
+    <p class="hint">Du bist bereits als {{ user.get_username }} angemeldet.</p>
   {% endif %}
-  <form method="post" action="{% url 'login' %}" class="formular">
+  <form method="post" action="{% url 'login' %}" class="form">
     {% csrf_token %}
     {{ form.as_div }}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="knopf knopf-primaer">Anmelden</button>
+    <button type="submit" class="button button-primary">Anmelden</button>
   </form>
-  <p class="hinweis">Kein Konto oder Passwort vergessen? Bitte wende dich an die Verwaltung der Familie.</p>
+  <p class="hint">Kein Konto oder Passwort vergessen? Bitte wende dich an die Verwaltung der Familie.</p>
 {% endblock %}
