@@ -1,3 +1,20 @@
+multi-gpt (0.2.0) unstable; urgency=medium
+
+  * Erste getaggte Version (Meilensteine 1–8 und 4a):
+    - Chat mit OpenAI-kompatiblen Anbietern (OpenAI, OpenRouter, LM Studio),
+      Anthropic und Gemini; Streaming, Versionen, Bearbeiten, Vergleichsmodus.
+    - Rollen, Familie, Budgets, verschlüsselte API-Keys, Login-Drosselung.
+    - MCP-Werkzeuge mit Rückfrage, Websuche über SearXNG.
+    - RAG: Sammlungen, Upload, Verzeichnisquellen, lokale Embeddings
+      (nomic) und OCR (olmOCR, Tesseract als Ersatz), Worker-Dienst.
+  * Paket: gunicorn nur auf 127.0.0.1, nginx mit TLS ist Pflicht
+    (debconf: Hostname, Zertifikat); beim Update wird eine LAN-Bindung
+    auf localhost umgestellt.
+  * postinst ergänzt fehlende Pflichtschlüssel in einer vorab angelegten
+    /etc/multi-gpt/.env; Datenbank immer UTF-8.
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 00:27:00 +0200
+
 multi-gpt (0.1.0) unstable; urgency=medium
 
   * Initial package.
