@@ -80,7 +80,7 @@ multi-gpt/
 | `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
 | `Collection` | owner, name | Eine Wissenssammlung für RAG |
 | `Share` | Ziel (`Conversation` oder `Collection`), group, can_write | Freigabe an eine Gruppe, lesend oder schreibend |
-| `Role` | name, allowed_models, can_web_search, can_images, can_voice, can_upload_documents, can_share, allowed_mcp_servers, monthly_budget, fixed_system_prompt | Rechtepaket, im Admin änderbar |
+| `Role` | key (`admin` / `adult` / `teen` / `guest`, stabil), name, is_admin, all_models, allowed_models, all_mcp_servers, allowed_mcp_servers, can_web_search, can_images, can_voice, can_upload_documents, can_share, monthly_budget, fixed_system_prompt | Rechtepaket, im Admin änderbar. Eine leere Liste erlaubt nichts, „alle“ nur über `all_models` bzw. `all_mcp_servers` |
 | `McpServer` | name, transport (`stdio` / `http`), command oder url, credentials (verschlüsselt), active, tools_requiring_confirmation | Ein angebundener MCP-Server |
 | `ToolCall` | message, server, tool, arguments, result, status (`awaiting_confirmation` / `rejected` / `running` / `ok` / `error` / `timeout`), duration | Protokoll jedes Werkzeugaufrufs |
 | `User` (`accounts.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): role, display_name, monthly_budget_override (optional), allow_supervision, auto_read_aloud; Sperren über `is_active` | Ein Familienkonto mit Rolle |
@@ -93,6 +93,8 @@ multi-gpt/
 Regeln:
 - Modell-IDs werden **nicht hart kodiert**, sondern im Admin gepflegt. Zusätzlich `make sync-models`, das die Modellliste beim Anbieter abfragt, soweit dessen API das anbietet.
 - Jeder Nutzer sieht nur seine eigenen Chats. Jede View filtert nach `request.user`.
+- Private Inhalte (Chats, Nachrichten, Dokumente, Anhänge) zeigt auch der Django-Admin nur als Metadaten an, ohne Inhalt. Sie lassen sich dort weder ändern noch löschen.
+- Ein Konto ohne ausdrücklich gewählte Rolle bekommt `guest`, ein Superuser `admin`. So führt eine vergessene Auswahl zu zu wenig Rechten, nie zu zu vielen.
 
 ## 7. Anbieter-Adapter
 

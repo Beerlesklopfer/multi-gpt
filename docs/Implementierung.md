@@ -247,5 +247,17 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Installation, automatische Migration und `purge` des Pakets auf Debian 13.
   - Login im Browser.
   - Docker-Build (ungetestet, auf dem Entwicklungsrechner gibt es kein Docker).
-- **M2–M5 in Arbeit** (freigegeben am 2026-10-09). Umsetzung im Verbund mehrerer Agenten, die sich über einen FIFO-Bus abstimmen, Meilenstein für Meilenstein.
+- **M2 umgesetzt** (2026-10-09, Commit `3077e51`, 210 Tests grün, Paket baut):
+  - Alle Modelle aus Plan 6 außer `Chunk`.
+  - `EncryptedTextField` in `multigpt/core/` (Fernet).
+  - Admin mit maskierten Keys. Private Inhalte erscheinen dort nur als Metadaten.
+  - Vier Startrollen, Standardgruppe „Familie“.
+  - `can()` mit `require_can` und `CanRequiredMixin`.
+  - `FamilyAdminSite` nur für Verwalter, `make user` mit Rollenwahl.
+  - Nachzuziehen in späteren Meilensteinen:
+    - M4a: `ToolCall` braucht die Aufruf-ID des Anbieters, `McpServer` die Liste der vom Verwalter eingestuften Werkzeuge.
+    - M7: `Job` braucht einen Fehlertext und einen späteren Startzeitpunkt (`run_after`).
+    - M6: Budget in `budget_allows()`, Einsicht über `allow_supervision`.
+  - Betrieb: Jugendliche und Gäste haben anfangs keine Modelle. Der Verwalter gibt sie im Admin unter Rolle → Erlaubte Modelle frei.
+- **M3–M5 in Arbeit** (freigegeben am 2026-10-09). Umsetzung im Verbund mehrerer Agenten, die sich über einen FIFO-Bus abstimmen.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
