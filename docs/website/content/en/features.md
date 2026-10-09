@@ -32,8 +32,9 @@ Tested end to end in the browser; the first real conversations with OpenAI work.
   problem, e.g. “connection refused”, “check the API key” or “check the base URL”. Models can
   be picked from the provider's own list (“select models”, or a drop-down on the model ID
   field). Deprecated models are no longer offered.
-- **In progress:** editing your own messages as in ChatGPT. Editing and “regenerate” create
-  versions, and “‹ 1/2 ›” switches between them. Earlier versions are kept.
+- Your own messages can be edited as in ChatGPT. Editing and “regenerate” create versions,
+  and “‹ 1/2 ›” switches between them. Earlier versions are kept. Every message has a copy
+  button.
 - Markdown with code highlighting and a copy button. The libraries are bundled locally and
   the output is sanitised.
 - Automatic chat titles, a system prompt per chat, export as Markdown.

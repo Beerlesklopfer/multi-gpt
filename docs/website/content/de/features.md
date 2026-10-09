@@ -33,8 +33,9 @@ Ende-zu-Ende im Browser getestet, erste echte Gespräche mit OpenAI laufen.
   die Ursache, etwa „Verbindung abgelehnt“, „API-Key prüfen“ oder „Basis-URL prüfen“. Die
   Modelle des Anbieters lassen sich aus seiner Liste auswählen („Modelle auswählen“ bzw. eine
   Auswahlliste am Feld Modell-ID). Abgekündigte Modelle werden nicht mehr angeboten.
-- **In Arbeit:** eigene Nachrichten bearbeiten wie in ChatGPT. Bearbeiten und „Neu erzeugen“
+- Eigene Nachrichten lassen sich bearbeiten wie in ChatGPT. Bearbeiten und „Neu erzeugen“
   legen Versionen an, „‹ 1/2 ›“ schaltet zwischen ihnen um. Frühere Fassungen bleiben erhalten.
+  Jede Nachricht hat einen Kopierknopf.
 - Markdown mit Code-Hervorhebung und Kopierknopf. Die Bibliotheken sind lokal eingebunden,
   die Ausgabe wird bereinigt.
 - Automatische Chattitel, System-Prompt pro Chat, Export als Markdown.

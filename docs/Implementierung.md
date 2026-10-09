@@ -295,6 +295,9 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Prüfung beim Speichern.
   - Seite „Modelle auswählen“ mit Live-Liste des Anbieters.
 - **Datenbank-Kodierung:** Der Entwicklungs-Cluster ist SQL_ASCII. preinst und `make db-create` legen die MultiGPT-Datenbanken deshalb ausdrücklich als UTF-8 aus `template0` an. Die Test-Datenbanken nutzen die UTF-8-Vorlage `multigpt_template` (`DB_TEST_TEMPLATE`).
-- **M5-05 Bearbeiten und Versionen in Arbeit** (Agenten branches und editui).
+- **M5-05 umgesetzt** (Commit `5545ac8`, 656 Tests grün, Browserlauf ohne JS-Fehler):
+  - Bearbeiten mit Inline-Editor, Versionen „‹ i/n ›“, Kopierknopf, „Neu erzeugen“ an jeder Antwort.
+  - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
+  - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
