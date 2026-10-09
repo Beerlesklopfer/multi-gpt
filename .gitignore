@@ -61,3 +61,7 @@ debian/*.substvars
 debian/*.debhelper.log
 debian/*.debhelper
 debian/debhelper-build-stamp
+
+# Temporäre Wurzeln der Paket-Tests
+tests/packaging/root.*
+tests/packaging/last-good-root
