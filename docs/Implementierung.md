@@ -12,19 +12,19 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 
 | Thema | Festlegung |
 |---|---|
-| Namen | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete: `multigpt` mit allen Django-Apps darunter (`multigpt.chat`, `multigpt.konten`, App-Labels `chat` und `konten`), dazu der eigenständige MCP-Server `mcp_bildwerkzeuge`. |
+| Namen | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete: `multigpt` mit allen Django-Apps darunter (`multigpt.chat`, `multigpt.accounts`), dazu der eigenständige MCP-Server `mcp_imagetools`. Bezeichner im Code sind englisch, die Oberfläche ist deutsch (Plan 2). |
 | Projektlayout | Nach Plan 5: Alle Django-Apps liegen unter `multigpt/`. Abhängigkeiten nur in `pyproject.toml`, keine `requirements.txt` (dh-virtualenv installiert sie nur, wenn vorhanden, danach immer `pip install .`). |
 | Installation | `.deb` mit dh-virtualenv nach `/usr/share/python/multi-gpt`, Unit `multi-gpt.service` über `dh_installsystemd`. Entwicklung mit `make install` in `.venv`. |
 | Konfiguration | `/etc/multi-gpt/.env` (`root:multi-gpt`, 0640) als `EnvironmentFile`, auch für Gunicorn-Variablen. Das postinst erzeugt sie einmalig mit generierten Schlüsseln, `purge` entfernt sie. Entwicklung: `.env` im Projektordner. Die Settings lesen zusätzlich die Datei aus `MULTI_GPT_ENV_FILE`. |
-| Verwaltung | `/usr/bin/mgpt-ctl`: Wrapper um `manage.py`, läuft als `multi-gpt` mit `/etc/multi-gpt/.env`. Keine automatische Migration im postinst, sondern `mgpt-ctl migrate` nach jeder Installation. |
+| Verwaltung | `/usr/bin/mgpt-ctl`: Wrapper um `manage.py`, läuft als `multi-gpt` mit `/etc/multi-gpt/.env`. Das postinst migriert bei Installation und Upgrade automatisch, bevor der Dienst (neu) startet, sofern die Datenbank erreichbar ist. Sonst gibt es einen Hinweis auf `sudo mgpt-ctl migrate`, die Installation scheitert daran nicht. `MULTI_GPT_SKIP_MIGRATE=1` überspringt die Migration. |
 | Statische Dateien | `collectstatic` beim Paketbau, `STATIC_ROOT=/usr/share/python/multi-gpt/static`, ausgeliefert über WhiteNoise. |
 | Medien | `MEDIA_ROOT=/var/lib/multi-gpt/media`. Bei einem Pfad außerhalb von `/var/lib/multi-gpt` muss `ReadWritePaths=` in der Unit ergänzt werden. |
 | Gunicorn | `gthread`, 2 Worker × 8 Threads, Timeout 300, über `MULTI_GPT_*` änderbar. |
 | Worker-Prozess | Zweite Unit `multi-gpt-worker.service` im selben Paket, ab M7. |
 | MCP | Ein Loop-Thread je gunicorn-Prozess, Mutexe für Start und Verbindungsaufbau (Plan 8g, M4a-01). |
 | Docker | Ausweichweg: Das Image installiert dasselbe `.deb`. `compose.yaml` mit `db` (PostgreSQL + pgvector). |
-| Health-Check | `/healthz/` ohne Login, prüft die DB-Verbindung. |
-| Konten und Gruppen | App `multigpt.konten`: `konten.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `konten.Gruppe` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
+| Health-Check | `/healthz/` als Middleware ganz vorne: ohne Login, ohne `ALLOWED_HOSTS`-Prüfung, prüft die DB-Verbindung. Bei 503 eine WARNING ohne Stacktrace. |
+| Konten und Gruppen | App `multigpt.accounts`: `accounts.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `accounts.UserGroup` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
 | Login-Drosselung | django-axes, Sperre je Nutzername und IP nach 5 Fehlversuchen für 15 Minuten. |
 | Lizenz | AGPL-3.0-or-later: `LICENSE`, Metadaten in `pyproject.toml`, `debian/copyright`, Website. |
 | Versionen | Python 3.13 (Debian 13), Django 5.2 LTS. Entwicklungs-DB: PostgreSQL 18 mit pgvector 0.8. |
@@ -33,19 +33,19 @@ Das Zielsystem hat Debian/apt und ein PostgreSQL mit pgvector (Fragen 1 und 4, g
 
 ---
 
-## 2. Lücken im Datenmodell (vor M2 klären)
+## 2. Ergänzungen zum Datenmodell (entschieden 2026-10-09)
 
-Beim Ableiten der Arbeitspakete sind diese Punkte im Datenmodell (Plan Abschnitt 6) aufgefallen:
+Diese Lücken im ursprünglichen Datenmodell sind geschlossen und in [Plan.md](Plan.md) Abschnitt 6 eingearbeitet:
 
-1. **Fähigkeiten eines Modells:** `AIModel.faehigkeit` hat einen einzelnen Wert. Gebraucht werden aber zusätzliche Merkmale: Werkzeugunterstützung (7, 8g), Inpainting/Varianten (8e) und später Bild als Eingabe. Vorschlag: `faehigkeit` bleibt die Hauptart, dazu boolesche Felder `kann_werkzeuge`, `kann_bild_bearbeiten`.
-2. **Kosten je Nachricht:** Preise ändern sich. `Message` braucht `kosten` als Momentaufnahme zum Zeitpunkt der Antwort, sonst rechnen Verbrauchsübersicht und Budget rückwirkend falsch. Dasselbe gilt für `Attachment` bei Bildern, die pro Stück abgerechnet werden.
-3. **Geteilte Chats:** 8f erlaubt das Teilen einzelner Chats mit Gruppen (lesend oder schreibend). `Conversation` hat dafür kein Feld. Vorschlag: Zwischentabelle `Freigabe` (Objekt, Gruppe, Schreibrecht), die auch `Collection` nutzt.
-4. **Gruppen (entschieden):** `konten.Gruppe` erweitert Djangos `auth.Group` per Tabellenvererbung. Die Mitgliedschaft läuft über `User.groups`, Zusatzfelder liegen in `Gruppe`. Im Admin ersetzt `Gruppe` die Django-Gruppen.
-5. **Konten (entschieden):** Statt eines `Profil`-Modells erweitert `konten.User` Djangos `AbstractUser` (`AUTH_USER_MODEL = "konten.User"`, angelegt vor der ersten produktiven Migration). Die Felder `rolle`, `anzeigename`, `eigenes_monatsbudget`, `einsicht_erlaubt` (5a) und `automatisch_vorlesen` (8c) kommen in M2 dazu. Gesperrt wird über `is_active`.
-6. **Werkzeugaufrufe:** Die Status-Werte von `ToolCall` sind nicht festgelegt. Vorschlag: `wartet_auf_bestaetigung`, `abgelehnt`, `laeuft`, `ok`, `fehler`, `timeout`.
-7. **Nachrichtenstatus:** 8a verlangt die Markierung "abgebrochen". `Message` braucht ein Feld `status` (`vollstaendig`, `abgebrochen`, `fehler`) statt nur `fehler`.
-8. **Bildherkunft:** Nach 8e verweist jede Bearbeitung auf ihr Ausgangsbild. `Attachment` braucht dafür `ausgangsbild` (FK auf sich selbst).
-9. **Vektordimension:** `Chunk.embedding` braucht für den HNSW-Index eine feste Dimension. Sie hängt vom Embedding-Modell ab, das erst in M7 feststeht (Frage 4b). Die Migration für `Chunk` entsteht deshalb erst in M7, nicht in M2.
+1. **Fähigkeiten eines Modells:** `AIModel.capability` bleibt die Hauptart. Dazu kommen die booleschen Felder `supports_tools` (7, 8g) und `can_edit_images` (8e). Bild als Eingabe folgt in v2.
+2. **Kosten als Momentaufnahme:** `Message.cost` und `Attachment.cost` halten die Kosten zum Zeitpunkt der Antwort fest. Spätere Preisänderungen verfälschen Verbrauch und Budget dadurch nicht.
+3. **Freigaben:** Die Tabelle `Share` (Ziel `Conversation` oder `Collection`, `group`, `can_write`) gilt für Chats und Sammlungen gleichermaßen.
+4. **Gruppen:** `accounts.UserGroup` erweitert Djangos `auth.Group` per Tabellenvererbung. Die Mitgliedschaft läuft über `User.groups`, Zusatzfelder liegen in `UserGroup`. Im Admin ersetzt `UserGroup` die Django-Gruppen.
+5. **Konten:** `accounts.User` erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL = "accounts.User"`). Ein Modell `Profil` gibt es nicht. In M2 kommen die Felder `role`, `display_name`, `monthly_budget_override`, `allow_supervision` (5a) und `auto_read_aloud` (8c) dazu. Gesperrt wird über `is_active`.
+6. **Status von Werkzeugaufrufen:** `ToolCall.status` hat die Werte `awaiting_confirmation`, `rejected`, `running`, `ok`, `error` und `timeout`.
+7. **Nachrichtenstatus:** `Message.status` hat die Werte `complete`, `aborted` und `error`, dazu `error` als Fehlertext.
+8. **Bildherkunft:** `Attachment.source_image` verweist auf das Ausgangsbild (Fremdschlüssel auf `Attachment` selbst).
+9. **Vektordimension:** `Chunk.embedding` braucht für den HNSW-Index eine feste Dimension. Sie ergibt sich aus dem OpenAI-Embedding-Modell (Frage 4b), das in M7 festgelegt wird. Die Migration für `Chunk` entsteht deshalb erst in M7.
 
 ---
 
@@ -80,18 +80,18 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M2-02** Verschlüsseltes Feld mit Fernet für API-Keys und MCP-Zugangsdaten. Im Admin erscheinen nur die letzten 4 Zeichen.
 - **M2-03** Admin-Masken für `Provider`, `AIModel`, `Rolle`, `McpServer` sowie die Zusatzfelder in den bestehenden Masken für Konten und Gruppen.
 - **M2-04** Datenmigration mit den vier Startrollen und der Gruppe "Familie". Neue Konten kommen automatisch in "Familie".
-- **M2-05** Zentrale Prüfung `darf(user, aktion, objekt=None)`, dazu Decorator und Mixin für die Views. Aktionen als Aufzählung festlegen.
+- **M2-05** Zentrale Prüfung `can(user, action, obj=None)`, dazu Decorator und Mixin für die Views. Aktionen als Aufzählung festlegen.
 - **M2-06** `make user` als Management-Kommando mit Rollenwahl.
 
-*Abnahme (Plan):* Anbieter und Modell lassen sich anlegen, der Key ist in der DB nicht lesbar, die vier Startrollen existieren, ein Gast erreicht keine Verwaltungsseite. *Tests:* Verschlüsselungs-Roundtrip, falscher Schlüssel schlägt sauber fehl, `darf()` je Rolle und Aktion.
+*Abnahme (Plan):* Anbieter und Modell lassen sich anlegen, der Key ist in der DB nicht lesbar, die vier Startrollen existieren, ein Gast erreicht keine Verwaltungsseite. *Tests:* Verschlüsselungs-Roundtrip, falscher Schlüssel schlägt sauber fehl, `can()` je Rolle und Aktion.
 
 ### M3 – Erster Adapter und Streaming
 *Abhängig von: M2, Frage 3 (mindestens ein Key für die Abnahme).*
 
 - **M3-01** `providers/base.py`: `ProviderAdapter`, Event-Typen, `is_online()`, Fehlertypen.
 - **M3-02** `openai_compat` mit `httpx` und Streaming. Vorher die aktuelle API-Dokumentation lesen.
-- **M3-03** SSE-Endpunkt mit `StreamingHttpResponse`. Weil `EventSource` nur GET kann, sendet der Browser per `fetch` als POST und liest den Stream aus. Prüfung mit `darf()` vor dem Anbieteraufruf.
-- **M3-04** Abbrechen: Bricht der Client die Verbindung ab, stoppt der Server den Anbieterstream. Der bisherige Text bleibt mit `status=abgebrochen` gespeichert.
+- **M3-03** SSE-Endpunkt mit `StreamingHttpResponse`. Weil `EventSource` nur GET kann, sendet der Browser per `fetch` als POST und liest den Stream aus. Prüfung mit `can()` vor dem Anbieteraufruf.
+- **M3-04** Abbrechen: Bricht der Client die Verbindung ab, stoppt der Server den Anbieterstream. Der bisherige Text bleibt mit `status=aborted` gespeichert.
 - **M3-05** Chatansicht: Nachrichten senden, Modellauswahl pro Nachricht, Antwort neu erzeugen. Der Verlauf bleibt nach Neuladen erhalten.
 - **M3-06** Tests mit gemocktem HTTP (z. B. `respx`): Reihenfolge der Events, Fehlerfall, Abbruch. Außerdem: Nutzer A kann Chats von Nutzer B weder lesen noch ändern.
 
@@ -118,7 +118,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
   - Vorher die aktuelle MCP-Spezifikation und die SDK-Dokumentation lesen und prüfen, ob eine Sitzung parallele Anfragen zulässt.
 - **M4a-02** Werkzeugformat in allen drei Adaptern, hin und zurück.
 - **M4a-03** MCP-Client für die Transporte `stdio` und Streamable HTTP. Im Admin: Verbindungstest und Werkzeugliste.
-- **M4a-04** Werkzeugschleife mit höchstens 10 Runden und Timeout je Aufruf. `darf()` prüft vor jedem Aufruf. Jeder Aufruf wird als `ToolCall` protokolliert.
+- **M4a-04** Werkzeugschleife mit höchstens 10 Runden und Timeout je Aufruf. `can()` prüft vor jedem Aufruf. Jeder Aufruf wird als `ToolCall` protokolliert.
 - **M4a-05** Rückfrage: Der Stream endet mit dem Ereignis "Bestätigung nötig". Nach der Bestätigung setzt eine neue Anfrage die Schleife fort. Unbekannte Werkzeuge gelten als rückfragepflichtig.
 - **M4a-06** Anzeige im Chat als aufklappbare Zeile. Werkzeugergebnisse mit Dateien werden zu `Attachment`.
 - **M4a-07** Tests mit einem MCP-Testserver im Prozess: Rundenlimit, Timeout, keine Ausführung ohne Bestätigung, Rechte je Rolle.
@@ -135,15 +135,15 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 *Abhängig von: M3, M2. Frage 5/5a.*
 
 - **M6-01** Vergleichsmodus mit 2–3 parallelen Streams. Jeder Stream belegt einen Gunicorn-Thread: bei 2 × 8 Threads reicht das für etwa 5 gleichzeitige Vergleiche.
-- **M6-02** Verbrauchsübersicht je Nutzer, Modell und Monat auf Basis von `Message.kosten`.
+- **M6-02** Verbrauchsübersicht je Nutzer, Modell und Monat auf Basis von `Message.cost`.
 - **M6-03** Budgets: Hinweis bei 80 %, bei 100 % sind kostenpflichtige Modelle gesperrt, lokale bleiben nutzbar. Die Prüfung läuft vor jedem Anbieteraufruf.
 - **M6-04** Seite "Familie": Konten anlegen und sperren, Rolle zuweisen, Passwort zurücksetzen, Gruppen, Verbrauch.
-- **M6-05** Einsicht in Jugendlichen-Chats als Option je Konto (`einsicht_erlaubt`, standardmäßig aus). Das Mitglied sieht in der Oberfläche, dass die Option aktiv ist.
+- **M6-05** Einsicht in Jugendlichen-Chats als Option je Konto (`allow_supervision`, standardmäßig aus). Das Mitglied sieht in der Oberfläche, dass die Option aktiv ist.
 
 ### M7 – RAG
 *Abhängig von: M2, M4a (für die Suche als Werkzeug), Fragen 4b, 4c.*
 
-- **M7-01** `Collection`, `Document`, Freigaben an Gruppen. Upload mit Prüfung von Dateityp und Größe, Dateinamen werden nicht übernommen.
+- **M7-01** `Collection`, `Document`, Freigaben an Gruppen über `Share`. Upload mit Prüfung von Dateityp und Größe, Dateinamen werden nicht übernommen.
 - **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
 - **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings über OpenAI. **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
 - **M7-04** Migration für `Chunk` mit fester Vektordimension (aus dem gewählten OpenAI-Embedding-Modell) und HNSW-Index (Kosinus). `make reindex`.
@@ -165,7 +165,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 - **M9-01** `generate_image` für den gewählten Anbieter. Modus "Bild" mit Formatwahl, Ergebnis als `Attachment`.
 - **M9-02** `edit_image` über OpenAI: Bereich auf einer Zeichenfläche markieren, Maske mitsenden, außerdem Varianten. Vorher in der aktuellen API-Dokumentation prüfen, welches Modell das kann.
-- **M9-03** MCP-Server `mcp_bildwerkzeuge` (Pillow, `stdio`): Zuschneiden, Skalieren, Drehen, Umwandeln, Füllen, Text, Collage. Er arbeitet nur im Arbeitsordner des jeweiligen Nutzers.
+- **M9-03** MCP-Server `mcp_imagetools` (Pillow, `stdio`): Zuschneiden, Skalieren, Drehen, Umwandeln, Füllen, Text, Collage. Er arbeitet nur im Arbeitsordner des jeweiligen Nutzers.
 - **M9-04** Geschützte Auslieferung der Medien nur nach Besitzprüfung, mit nginx über `X-Accel-Redirect`, ohne nginx über `FileResponse`.
 - **M9-05** Tests: jede Pillow-Funktion, kein Zugriff außerhalb des Arbeitsordners, das Original bleibt erhalten.
 
@@ -238,12 +238,11 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - `make run` startet gunicorn (`gthread`), `/healthz/` liefert 200, `/` leitet auf den Login um.
   - Der Paketbau ist ohne debhelper nachgestellt: `collectstatic` aus dem venv, `systemd-analyze verify`, `Type=notify` als User-Unit, postinst und postrm mit Stubs.
 - **Offen für die Abnahme von M1:**
-  - Entwicklungs-DB `multigpt` neu aufsetzen: Ihre Tabellen stammen noch vom Standard-`auth.User`. Mit `konten.User` lassen sich die bisherigen Migrationen nicht weiterführen.
+  - Entwicklungs-DB `multigpt` neu aufsetzen: Ihre Tabellen stammen noch vom Standard-`auth.User`. Mit `accounts.User` lassen sich die bisherigen Migrationen nicht weiterführen.
   - Echter Paketbau mit `make deb` (braucht `dh-virtualenv` und `debhelper`).
   - Installation, `mgpt-ctl migrate` und `purge` auf Debian 13.
   - Login im Browser.
   - Docker-Build (ungetestet, auf dem Entwicklungsrechner gibt es kein Docker).
-- **Nach M1 zu entscheiden:**
-  - Automatische Migration im postinst? Derzeit nicht: `dh_installsystemd` startet den Dienst schon vor `mgpt-ctl migrate`.
-  - `/healthz/` von der `ALLOWED_HOSTS`-Prüfung und vom ERROR-Logging bei 503 ausnehmen?
-- Die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b sind geklärt, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.
+- **Entscheidungen nach M1:**
+  - Entschieden (2026-10-09): automatische Migration im postinst, `/healthz/` als Middleware. Beides wird gerade umgesetzt.
+- Die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b sind geklärt, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.

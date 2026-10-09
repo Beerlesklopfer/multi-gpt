@@ -9,6 +9,7 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 ## 2. Rahmenbedingungen
 
 - **Lizenz:** AGPL-3.0-or-later (`LICENSE`).
+- **Bezeichner Englisch, Oberfläche Deutsch:** Alle Namen im Code sind englisch: Apps, Module, Klassen, Felder, Funktionen, Choice-Werte, Templates, URL-Namen, Tests, Make-Ziele, Env-Variablen. Sichtbare Texte und `verbose_name` sind deutsch. Kommentare und diese Planungsdokumente dürfen deutsch sein.
 - **Stack:** Python 3.12+ (Debian 13: 3.13), Django 5.2 LTS, gunicorn, Makefile als Bedienoberfläche für die Entwicklung, `mgpt-ctl` für den Betrieb.
 - **Betrieb:** läuft dauerhaft (24/7) auf dem NAS, nur im Intranet, kein Zugriff aus dem Internet. Ausgehend nur HTTPS zu den KI-Anbietern sowie HTTP im Intranet zu LM Studio.
 - **Lokale Modelle:** LM Studio läuft auf einem anderen Rechner im Intranet und nur bei Bedarf. Die App muss damit umgehen, dass dieser Anbieter meistens offline ist.
@@ -54,11 +55,11 @@ multi-gpt/
 ├── .env.example
 ├── manage.py
 ├── multigpt/            # Django-Projekt: settings, urls, wsgi, Projekt-Templates; alle Django-Apps liegen darunter
-│   ├── konten/          # App-Label konten: User (erweitert AbstractUser), Gruppe (erweitert auth.Group), Rollen, darf()
+│   ├── accounts/        # User (erweitert AbstractUser), UserGroup (erweitert auth.Group), Role, can()
 │   └── chat/            # App-Label chat: Modelle, Views, Templates, Static
 │       ├── providers/   # base.py, openai_compat.py, anthropic.py, google.py
 │       └── mcp/         # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
-├── mcp_bildwerkzeuge/   # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
+├── mcp_imagetools/      # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
 ├── tests/
 ├── deploy/              # gunicorn.conf.py, nginx.conf.example
 ├── debian/              # Paketierung: rules, control, multi-gpt.service, postinst, mgpt-ctl
@@ -71,22 +72,23 @@ multi-gpt/
 
 | Modell | Felder (Kern) | Zweck |
 |---|---|---|
-| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), aktiv, ist_lokal, status_pruefen, zuletzt_online | Ein Anbieterzugang |
-| `AIModel` | provider, model_id, anzeigename, faehigkeit (`chat` / `bild` / `embedding` / `stt` / `tts`), aktiv, sortierung, preis_in / preis_out (optional) | Ein auswählbares Modell |
-| `Conversation` | user, titel, standard_modell, system_prompt, erstellt, geändert, archiviert | Ein Chat |
-| `Message` | conversation, rolle, inhalt, modell, tokens_in, tokens_out, erstellt, fehler | Eine Nachricht |
+| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, last_online | Ein Anbieterzugang |
+| `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order, price_in / price_out (optional) | Ein auswählbares Modell |
+| `Conversation` | user, title, default_model, system_prompt, created, updated, archived | Ein Chat |
+| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error`), error, created | Eine Nachricht |
 | `Preset` (optional) | user, name, system_prompt | Wiederverwendbare Rollen |
-| `Attachment` | message, art (`bild` / `audio` / `datei`), datei, erzeugt_von_modell | Erzeugte Bilder, Audio, Anhänge |
-| `Collection` | besitzer, name, geteilt_mit (Gruppen) | Eine Wissenssammlung für RAG |
-| `Rolle` | name, erlaubte_modelle, darf_websuche, darf_bilder, darf_sprache, darf_dokumente_hochladen, darf_teilen, erlaubte_mcp_server, monatsbudget, fester_system_prompt | Rechtepaket, im Admin änderbar |
-| `McpServer` | name, transport (`stdio` / `http`), befehl oder url, umgebung/zugangsdaten (verschlüsselt), aktiv, werkzeuge_mit_rueckfrage | Ein angebundener MCP-Server |
-| `ToolCall` | message, server, werkzeug, argumente, ergebnis, status, dauer | Protokoll jedes Werkzeugaufrufs |
-| `User` (`konten.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): rolle, anzeigename, eigenes_monatsbudget (optional), einsicht_erlaubt, automatisch_vorlesen; Sperren über `is_active` | Ein Familienkonto mit Rolle |
-| `Gruppe` (`konten.Gruppe`) | erweitert Djangos `auth.Group` per Tabellenvererbung (name, Mitglieder über `User.groups`) plus eigene Zusatzfelder | Zum Teilen, z. B. "Familie", "Eltern" |
-| `Document` | collection, datei, titel, status (`wartend` / `indexiert` / `fehler`), fehlertext | Ein hochgeladenes Dokument |
-| `Chunk` | document, position, text, seite, embedding (`vector`) | Textabschnitt mit Vektor |
-| `Job` | art, nutzdaten, status, versuche, erstellt | Warteschlange für den Worker |
-| `SourceRef` | message, art (`web` / `dokument`), titel, url oder chunk | Quellenangaben einer Antwort |
+| `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
+| `Collection` | owner, name | Eine Wissenssammlung für RAG |
+| `Share` | Ziel (`Conversation` oder `Collection`), group, can_write | Freigabe an eine Gruppe, lesend oder schreibend |
+| `Role` | name, allowed_models, can_web_search, can_images, can_voice, can_upload_documents, can_share, allowed_mcp_servers, monthly_budget, fixed_system_prompt | Rechtepaket, im Admin änderbar |
+| `McpServer` | name, transport (`stdio` / `http`), command oder url, credentials (verschlüsselt), active, tools_requiring_confirmation | Ein angebundener MCP-Server |
+| `ToolCall` | message, server, tool, arguments, result, status (`awaiting_confirmation` / `rejected` / `running` / `ok` / `error` / `timeout`), duration | Protokoll jedes Werkzeugaufrufs |
+| `User` (`accounts.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): role, display_name, monthly_budget_override (optional), allow_supervision, auto_read_aloud; Sperren über `is_active` | Ein Familienkonto mit Rolle |
+| `UserGroup` (`accounts.UserGroup`) | erweitert Djangos `auth.Group` per Tabellenvererbung (name, Mitglieder über `User.groups`) plus eigene Zusatzfelder | Zum Teilen, z. B. "Familie", "Eltern" |
+| `Document` | collection, file, title, status (`pending` / `indexed` / `error`), error_text | Ein hochgeladenes Dokument |
+| `Chunk` | document, position, text, page, embedding (`vector`) | Textabschnitt mit Vektor |
+| `Job` | kind, payload, status, attempts, created | Warteschlange für den Worker |
+| `SourceRef` | message, kind (`web` / `document`), title, url oder chunk | Quellenangaben einer Antwort |
 
 Regeln:
 - Modell-IDs werden **nicht hart kodiert**, sondern im Admin gepflegt. Zusätzlich `make sync-models`, das die Modellliste beim Anbieter abfragt, soweit dessen API das anbietet.
@@ -106,7 +108,7 @@ class ProviderAdapter:
 
 `stream()` nimmt zusätzlich `tools=[...]` (Name, Beschreibung, JSON-Schema) entgegen. Jeder Adapter übersetzt das in das Werkzeugformat seines Anbieters und zurück. Modelle ohne Werkzeugunterstützung werden im Admin als solche markiert und bekommen keine Werkzeuge angeboten.
 
-Weitere Methoden, die ein Adapter je nach Anbieter umsetzt (sonst `NotImplementedError`): `embed(model_id, texts)`, `transcribe(model_id, audio)`, `speak(model_id, text, stimme)`, `generate_image(model_id, prompt, **params)`.
+Weitere Methoden, die ein Adapter je nach Anbieter umsetzt (sonst `NotImplementedError`): `embed(model_id, texts)`, `transcribe(model_id, audio)`, `speak(model_id, text, voice)`, `generate_image(model_id, prompt, **params)`.
 
 - `openai_compat`: deckt OpenAI, Mistral, Groq, OpenRouter und LM Studio ab (nur `base_url` unterschiedlich). Für LM Studio ist kein API-Key nötig, das Feld darf leer sein.
 - Zusätzliche Methode `is_online(timeout=2) -> bool` an der Basisklasse: kurzer Abruf der Modellliste. Für LM Studio liefert derselbe Abruf zugleich die aktuell verfügbaren Modelle.
@@ -144,8 +146,8 @@ Später (v2): Bilder als Eingabe an Modelle, Presets, Volltextsuche über Nachri
 
 LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-IP>:1234/v1`). Vor der Umsetzung die aktuelle LM-Studio-Dokumentation zu Server, Port und Netzwerkfreigabe lesen.
 
-- **Anlage:** als `Provider` mit `kind=openai_compat`, `ist_lokal=True`, `status_pruefen=True`, `base_url` auf den PC im Intranet.
-- **Statusprüfung:** Endpunkt `GET /api/providers/status/` prüft alle Anbieter mit `status_pruefen=True` per `is_online()` (Timeout 2 s) und liefert `online`, Modellliste und `zuletzt_online`. Ergebnis wird 15 s serverseitig gecacht, damit zwei offene Browser den PC nicht doppelt abfragen.
+- **Anlage:** als `Provider` mit `kind=openai_compat`, `is_local=True`, `check_status=True`, `base_url` auf den PC im Intranet.
+- **Statusprüfung:** Endpunkt `GET /api/providers/status/` prüft alle Anbieter mit `check_status=True` per `is_online()` (Timeout 2 s) und liefert `online`, Modellliste und `last_online`. Ergebnis wird 15 s serverseitig gecacht, damit zwei offene Browser den PC nicht doppelt abfragen.
 - **Anzeige:** Statuspunkt in der Kopfzeile und an den lokalen Modellen in der Modellauswahl: grün "LM Studio online", grau "offline, zuletzt online um …". Der Browser fragt alle 30 s nach, solange der Tab sichtbar ist.
 - **Meldung:** Wechselt der Status von offline auf online, erscheint ein kurzer Hinweis ("LM Studio ist jetzt online"). Umgekehrt ebenso.
 - **Modellauswahl:** Lokale Modelle sind bei offline ausgegraut und nicht wählbar. Bei online werden die tatsächlich von LM Studio gemeldeten Modelle angeboten, ohne Pflege im Admin.
@@ -163,8 +165,8 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 
 ## 8c. Sprach-Eingabe und -Ausgabe
 
-- **Eingabe:** Mikrofonknopf im Eingabefeld. Der Browser nimmt auf (`MediaRecorder`), die Aufnahme geht an den Server und von dort an ein Modell mit `faehigkeit=stt`. Der erkannte Text landet zum Korrigieren im Eingabefeld, nicht direkt im Chat.
-- **Ausgabe:** Lautsprecherknopf an jeder Antwort. Der Text geht an ein Modell mit `faehigkeit=tts`, die Audiodatei wird gespeichert und im Browser abgespielt. Optional "Antworten automatisch vorlesen" je Nutzer.
+- **Eingabe:** Mikrofonknopf im Eingabefeld. Der Browser nimmt auf (`MediaRecorder`), die Aufnahme geht an den Server und von dort an ein Modell mit `capability=stt`. Der erkannte Text landet zum Korrigieren im Eingabefeld, nicht direkt im Chat.
+- **Ausgabe:** Lautsprecherknopf an jeder Antwort. Der Text geht an ein Modell mit `capability=tts`, die Audiodatei wird gespeichert und im Browser abgespielt. Optional "Antworten automatisch vorlesen" je Nutzer.
 - **Voraussetzung:** Browser geben das Mikrofon nur über HTTPS frei. TLS im Intranet ist damit Pflicht (siehe Abschnitt 9).
 - **Grenzen:** maximale Aufnahmelänge und Dateigröße konfigurierbar.
 
@@ -177,10 +179,10 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 
 ## 8e. Bildgenerierung
 
-- **Ablauf:** Modus "Bild" im Eingabefeld mit Auswahl eines Modells mit `faehigkeit=bild` sowie Format (quadratisch, quer, hoch). Das Ergebnis wird als `Attachment` gespeichert und im Chat angezeigt, mit Herunterladen und "Neu erzeugen".
+- **Ablauf:** Modus "Bild" im Eingabefeld mit Auswahl eines Modells mit `capability=image` sowie Format (quadratisch, quer, hoch). Das Ergebnis wird als `Attachment` gespeichert und im Chat angezeigt, mit Herunterladen und "Neu erzeugen".
 - **Adapter:** eigene Methode `generate_image(model_id, prompt, **params)`, getrennt vom Chat-Streaming.
-- **Bearbeitung mit Bildmodell:** Bild hochladen oder ein erzeugtes Bild auswählen, dann "Bereich ändern" (Inpainting: Bereich im Browser auf einer Zeichenfläche markieren, Maske geht mit) oder "Varianten". Adaptermethode `edit_image(model_id, bild, prompt, maske=None)`. Nicht jeder Anbieter kann das, die Fähigkeit wird je Modell im Admin markiert.
-- **Klassische Bearbeitung in Python:** Zuschneiden, Skalieren, Drehen, Format umwandeln, Hintergrund füllen, Text einsetzen, Collage. Umgesetzt mit Pillow als mitgelieferter MCP-Server `mcp_bildwerkzeuge` (Abschnitt 8g), damit jedes werkzeugfähige Modell es per Sprache bedienen kann ("mach das Bild quadratisch und 1024 Pixel breit").
+- **Bearbeitung mit Bildmodell:** Bild hochladen oder ein erzeugtes Bild auswählen, dann "Bereich ändern" (Inpainting: Bereich im Browser auf einer Zeichenfläche markieren, Maske geht mit) oder "Varianten". Adaptermethode `edit_image(model_id, image, prompt, mask=None)`. Nicht jeder Anbieter kann das, die Fähigkeit wird je Modell im Admin markiert (`can_edit_images`).
+- **Klassische Bearbeitung in Python:** Zuschneiden, Skalieren, Drehen, Format umwandeln, Hintergrund füllen, Text einsetzen, Collage. Umgesetzt mit Pillow als mitgelieferter MCP-Server `mcp_imagetools` (Abschnitt 8g), damit jedes werkzeugfähige Modell es per Sprache bedienen kann ("mach das Bild quadratisch und 1024 Pixel breit").
 - **Verlauf:** Jede Bearbeitung erzeugt ein neues `Attachment` mit Verweis auf das Ausgangsbild. Das Original bleibt erhalten.
 - **Kosten:** Bilder werden pro Stück in der Verbrauchsübersicht geführt.
 
@@ -195,7 +197,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 | Jugendlicher | Nur die für die Rolle freigegebenen Modelle und Funktionen, fester System-Prompt der Rolle, Monatsbudget |
 | Gast | Nur Chat mit einem festgelegten Modell, kein Upload, kein Teilen, kleines Budget |
 
-- **Durchsetzung:** Rechte werden serverseitig in jeder View und vor jedem Anbieteraufruf geprüft, zentral über eine Funktion `darf(user, aktion, objekt=None)`. Ausblenden in der Oberfläche reicht nicht.
+- **Durchsetzung:** Rechte werden serverseitig in jeder View und vor jedem Anbieteraufruf geprüft, zentral über eine Funktion `can(user, action, obj=None)`. Ausblenden in der Oberfläche reicht nicht.
 - **Fester System-Prompt:** Hat eine Rolle einen, wird er jedem Chat vorangestellt und ist für das Mitglied weder sichtbar änderbar noch abschaltbar.
 - **Budgets:** Monatsbudget je Rolle, je Mitglied überschreibbar. Bei 80 % ein Hinweis, bei 100 % sind kostenpflichtige Modelle bis zum Monatswechsel gesperrt. Lokale Modelle aus LM Studio bleiben nutzbar.
 - **Gruppen:** Sammlungen (RAG) und einzelne Chats lassen sich mit Gruppen teilen, lesend oder mit Schreibrecht. Standardgruppe "Familie" enthält alle Mitglieder.
@@ -213,9 +215,9 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 - **Werkzeugschleife:** Modell meldet `tool_call` → Rechte prüfen → ggf. Rückfrage → Werkzeug über MCP ausführen → Ergebnis zurück an das Modell → weiter streamen. Höchstens 10 Runden je Antwort, Timeout je Aufruf.
 - **Anzeige:** Jeder Aufruf erscheint im Chat als aufklappbare Zeile (Werkzeug, Argumente, Ergebnis, Dauer). Liefert ein Werkzeug ein Bild oder eine Datei, wird daraus ein `Attachment`.
 - **Auswahl im Chat:** Schalter je Server im Eingabefeld, voreingestellt nach Rolle.
-- **Mitgelieferte Server:** `mcp_bildwerkzeuge` (Pillow). Websuche (8d) und RAG-Suche (8b) werden zusätzlich als Werkzeuge bereitgestellt, damit werkzeugfähige Modelle selbst entscheiden, wann sie suchen. Der feste Ablauf aus 8b/8d bleibt für Modelle ohne Werkzeugunterstützung.
-- **Rechte:** `Rolle.erlaubte_mcp_server` legt fest, wer welche Server nutzen darf. Prüfung über `darf()` vor jedem Aufruf.
-- **Rückfrage:** Werkzeuge, die etwas verändern oder nach außen senden, stehen in `werkzeuge_mit_rueckfrage` und werden erst nach Bestätigung des Nutzers im Chat ausgeführt. Neue, unbekannte Werkzeuge eines Servers gelten bis zur Einstufung durch den Verwalter als rückfragepflichtig.
+- **Mitgelieferte Server:** `mcp_imagetools` (Pillow). Websuche (8d) und RAG-Suche (8b) werden zusätzlich als Werkzeuge bereitgestellt, damit werkzeugfähige Modelle selbst entscheiden, wann sie suchen. Der feste Ablauf aus 8b/8d bleibt für Modelle ohne Werkzeugunterstützung.
+- **Rechte:** `Role.allowed_mcp_servers` legt fest, wer welche Server nutzen darf. Prüfung über `can()` vor jedem Aufruf.
+- **Rückfrage:** Werkzeuge, die etwas verändern oder nach außen senden, stehen in `tools_requiring_confirmation` und werden erst nach Bestätigung des Nutzers im Chat ausgeführt. Neue, unbekannte Werkzeuge eines Servers gelten bis zur Einstufung durch den Verwalter als rückfragepflichtig.
 - **Dateizugriff:** Mitgelieferte Server arbeiten nur in einem Arbeitsordner je Nutzer unter `MEDIA_ROOT`.
 
 ## 9. Sicherheit
@@ -256,7 +258,7 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 ## 11. Meilensteine
 
 1. **Grundgerüst:** Projekt, Settings über `.env`, Makefile, Login mit Drosselung, leere Chatseite, gunicorn (`gthread`) startet, `/healthz/`, Debian-Paket und systemd-Unit. *Abnahme: `make install migrate user run`, Login im Browser funktioniert. `make deb` baut, das Paket installiert sich, die Unit startet.*
-2. **Datenmodell und Admin:** Modelle aus Abschnitt 6, Key-Verschlüsselung, Admin-Masken, Rollen, Konten und Gruppen (Erweiterungen von Djangos User und Group) und die zentrale Rechteprüfung `darf()`. *Abnahme: Anbieter und Modell anlegbar, Key in der DB nicht lesbar. Vier Startrollen vorhanden, ein Gast-Konto erreicht keine Verwaltungsseite.*
+2. **Datenmodell und Admin:** Modelle aus Abschnitt 6, Key-Verschlüsselung, Admin-Masken, Rollen, Konten und Gruppen (Erweiterungen von Djangos User und Group) und die zentrale Rechteprüfung `can()`. *Abnahme: Anbieter und Modell anlegbar, Key in der DB nicht lesbar. Vier Startrollen vorhanden, ein Gast-Konto erreicht keine Verwaltungsseite.*
 3. **Erster Adapter und Streaming:** `openai_compat`, SSE-Endpunkt, Chatansicht mit Abbrechen. *Abnahme: gestreamte Antwort, Verlauf bleibt nach Neuladen erhalten.*
 4. **Weitere Adapter und LM Studio:** Anthropic, Google, `sync-models`, LM Studio mit Online-Anzeige. *Abnahme: Modellwechsel mitten im Chat funktioniert. LM Studio starten und beenden ändert die Anzeige innerhalb von 30 s, ohne die Seite neu zu laden.*
 4a. **MCP:** Werkzeugunterstützung in den Adaptern, MCP-Client, Werkzeugschleife, Rückfrage, Anzeige im Chat, Admin-Maske. *Abnahme: Ein Test-MCP-Server wird angebunden, ein Modell ruft dessen Werkzeug auf, der Aufruf ist im Chat sichtbar. Ein Konto ohne Freigabe bekommt das Werkzeug nicht.*
@@ -264,7 +266,7 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 6. **Vergleichsmodus, Verbrauchsübersicht, Budgets und Seite "Familie".** *Abnahme: Konto mit ausgeschöpftem Budget kann nur noch lokale Modelle nutzen.*
 7. **RAG:** Sammlungen, Upload, Worker, pgvector-Suche, Quellenanzeige. *Abnahme: Frage zu einem hochgeladenen PDF wird mit Seitenangabe beantwortet. Private Sammlung des anderen Nutzers ist unsichtbar.*
 8. **Websuche:** Such-Schnittstelle, Abruf, Quellenanzeige. *Abnahme: Frage zu einem aktuellen Ereignis liefert Antwort mit Links.*
-9. **Bildgenerierung und Bildbearbeitung:** Erzeugung, Inpainting mit Maske, Varianten, MCP-Server `mcp_bildwerkzeuge`. *Abnahme: Bild erscheint im Chat und bleibt nach Neuladen erhalten. Ein markierter Bereich wird ersetzt. "Schneide das Bild quadratisch zu" liefert per Werkzeug ein neues Bild, das Original bleibt.*
+9. **Bildgenerierung und Bildbearbeitung:** Erzeugung, Inpainting mit Maske, Varianten, MCP-Server `mcp_imagetools`. *Abnahme: Bild erscheint im Chat und bleibt nach Neuladen erhalten. Ein markierter Bereich wird ersetzt. "Schneide das Bild quadratisch zu" liefert per Werkzeug ein neues Bild, das Original bleibt.*
 10. **Sprache:** Aufnahme → Text, Antwort → Vorlesen. *Abnahme: funktioniert über HTTPS im Browser an PC und Handy.*
 11. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
 
@@ -298,5 +300,5 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 4d. Welche MCP-Server sollen zum Start angebunden werden (außer den mitgelieferten), und laufen schon welche im Intranet?
 4e. ~~Anbieter für Inpainting?~~ **Geklärt (2026-10-09):** OpenAI (Bildbearbeitung mit Maske). Vor M9 in der aktuellen API-Dokumentation prüfen, welches Modell Masken und Varianten unterstützt.
 5. ~~Wer gehört zur Familie?~~ **Geklärt (2026-10-09):** Zwei Erwachsene und Jugendliche. Die vier Startrollen (Verwalter, Erwachsener, Jugendlicher, Gast) passen.
-5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `einsicht_erlaubt` an `konten.User`).
+5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `allow_supervision` an `accounts.User`).
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).
