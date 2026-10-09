@@ -19,7 +19,7 @@ GH      ?= $(or $(shell command -v gh 2>/dev/null),$(HOME)/go/bin/gh)
 REMOTE  ?= origin
 
 .DEFAULT_GOAL := help
-.PHONY: help install migrate user dev run static sync-models test lint fmt deb website website-serve deploy db-create clean
+.PHONY: help install migrate user dev run static sync-models worker reindex test lint fmt deb website website-serve deploy db-create clean
 
 help: ## Diese Hilfe anzeigen
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -65,6 +65,12 @@ static: ## Statische Dateien sammeln (collectstatic)
 
 sync-models: ## Modelllisten der Anbieter abrufen
 	$(MANAGE) sync_models
+
+worker: ## Worker für die Indexierung im Vordergrund starten (Strg+C beendet)
+	$(MANAGE) run_worker
+
+reindex: ## Alle Dokumente neu indexieren (nach Wechsel des Embedding-Modells)
+	$(MANAGE) reindex
 
 test: ## Tests ausführen (pytest, braucht PostgreSQL)
 	$(BIN)/pytest

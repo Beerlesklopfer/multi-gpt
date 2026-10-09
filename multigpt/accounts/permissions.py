@@ -9,13 +9,19 @@ Regeln:
 - Anonyme und gesperrte (``is_active=False``) Konten dürfen nichts.
 - Superuser dürfen alle *Funktionen* (Notfallzugang). Objektbezogene Grenzen
   bleiben bestehen: Ein Modell muss aktiv sein, und fremde Chats/Sammlungen
-  sind auch für Superuser und Verwalter nicht lesbar (Privatsphäre, Plan 8f).
+  sind auch für Superuser und Verwalter nicht lesbar (Privatsphäre, Plan 8f;
+  einzige Ausnahme ist die Einsicht, siehe unten).
 - Alles andere kommt aus der Rolle des Kontos. Ohne Rolle: nichts.
 - READ/WRITE auf Chats und Sammlungen: Besitzer, oder eine Freigabe (``Share``)
   an eine Gruppe, in der das Konto Mitglied ist; WRITE braucht ``can_write``.
+- Einsicht (M6-05): READ (nie WRITE) auf Chats eines Jugendlichen-Kontos mit
+  ``allow_supervision`` für Konten mit MANAGE_FAMILY, siehe ``supervision_active``.
 
-Erweiterungspunkt Budget (M6): ``budget_allows()`` wird bei USE_MODEL mit
-Modell aufgerufen und erlaubt vorerst immer.
+Budget (M6-03): ``budget_allows()`` wird bei USE_MODEL mit Modell aufgerufen.
+Ist das Monatsbudget ausgeschöpft, sind nur noch kostenfreie Modelle erlaubt
+(lokale Anbieter oder ohne Preise, siehe ``usage.model_is_free``).
+``model_permitted()`` prüft dasselbe ohne Budget (Modellauswahl: gesperrte
+Modelle ausgrauen statt ausblenden; Fehlertext unterscheiden).
 """
 
 import enum
@@ -66,11 +72,29 @@ _OWNER_FIELDS = {
 
 
 def budget_allows(user, ai_model) -> bool:
-    """Erweiterungspunkt für M6: Monatsbudget erschöpft -> nur noch lokale Modelle.
+    """Monatsbudget ausgeschöpft -> nur noch kostenfreie (lokale) Modelle.
 
-    Wird bei ``can(user, Action.USE_MODEL, ai_model)`` aufgerufen.
+    Wird bei ``can(user, Action.USE_MODEL, ai_model)`` aufgerufen. Kostenfreie
+    Modelle und Konten ohne Budget brauchen keine Datenbankabfrage.
     """
-    return True
+    from . import usage
+
+    if ai_model is None or usage.model_is_free(ai_model):
+        return True
+    budget = usage.budget_for(user)
+    if budget is None:
+        return True
+    return usage.spent(user) < budget
+
+
+def model_permitted(user, ai_model) -> bool:
+    """Wie ``can(user, USE_MODEL, ai_model)``, aber ohne Budgetprüfung."""
+    if user is None or not user.is_authenticated or not user.is_active:
+        return False
+    role = _role(user)
+    if role is None and not user.is_superuser:
+        return False
+    return _can_use_model(user, role, ai_model, check_budget=False)
 
 
 def _role(user) -> Role | None:
@@ -84,7 +108,7 @@ def _is_active_model(obj) -> bool:
     return provider is None or getattr(provider, "active", True)
 
 
-def _can_use_model(user, role, ai_model) -> bool:
+def _can_use_model(user, role, ai_model, check_budget: bool = True) -> bool:
     if ai_model is None:
         # Allgemein: Darf das Konto überhaupt ein Modell nutzen?
         if user.is_superuser or role.all_models:
@@ -96,7 +120,7 @@ def _can_use_model(user, role, ai_model) -> bool:
         user.is_superuser or role.all_models or role.allowed_models.filter(pk=ai_model.pk).exists()
     ):
         return False
-    return budget_allows(user, ai_model)
+    return not check_budget or budget_allows(user, ai_model)
 
 
 def _can_use_mcp_server(user, role, server) -> bool:
@@ -113,6 +137,33 @@ def _can_use_mcp_server(user, role, server) -> bool:
     )
 
 
+def supervision_active(member) -> bool:
+    """Einsicht (Plan 8f, M6-05): nur für Konten der Rolle "teen" mit gesetzter
+    Option ``allow_supervision``. Wechselt die Rolle, endet die Einsicht sofort."""
+    return bool(
+        member is not None
+        and member.allow_supervision
+        and member.role_id
+        and member.role.key == Role.TEEN
+    )
+
+
+def supervised_conversation_owner(user, conversation):
+    """Besitzer des Chats, wenn ``user`` ihn nur über die Einsicht lesen darf, sonst None."""
+    if conversation.user_id == user.pk or not _can_supervise(user, conversation):
+        return None
+    return conversation.user
+
+
+def _can_supervise(user, obj) -> bool:
+    """Verwalter dürfen Chats eines Kontos mit aktiver Einsicht *lesen* (nie schreiben)."""
+    if obj._meta.label_lower != "chat.conversation":
+        return False
+    if not can(user, Action.MANAGE_FAMILY):
+        return False
+    return supervision_active(obj.user)
+
+
 def _can_access(user, obj, write: bool) -> bool:
     if obj is None:
         return False
@@ -120,6 +171,8 @@ def _can_access(user, obj, write: bool) -> bool:
     if owner_field is None:
         return False
     if getattr(obj, f"{owner_field}_id") == user.pk:
+        return True
+    if not write and _can_supervise(user, obj):
         return True
     shares = obj.shares.filter(group__in=user.groups.values("pk"))
     if write:

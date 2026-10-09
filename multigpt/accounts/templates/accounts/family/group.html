@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+{# Eine Gruppe: umbenennen, Mitglieder, löschen (nicht die Standardgruppe). #}
+{% block title %}{{ group.name }} – Gruppen – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide family-page" aria-labelledby="group-title">
+    <p class="breadcrumb"><a href="{% url 'family:overview' %}">Familie</a> › <a href="{% url 'family:groups' %}">Gruppen</a></p>
+    <div class="page-header">
+      <h1 id="group-title">{{ group.name }}</h1>
+      {% if group.is_default %}<span class="badge">Standardgruppe</span>{% endif %}
+    </div>
+
+    <form method="post" action="{% url 'family:group_rename' group.pk %}" class="inline-form">
+      {% csrf_token %}
+      <label for="{{ name_form.name.id_for_label }}">Name</label>
+      <div class="inline-form-row">{{ name_form.name }}<button type="submit" class="button">Umbenennen</button></div>
+    </form>
+
+    <h2 class="section-title">Mitglieder</h2>
+    {% if group.is_default %}
+      <p class="hint">Die Standardgruppe enthält automatisch alle Konten, auch neu angelegte.</p>
+      <ul class="family-member-list">
+        {% for member in members %}<li>{{ member }}</li>{% empty %}<li>Keine Mitglieder.</li>{% endfor %}
+      </ul>
+    {% else %}
+      <form method="post" action="{% url 'family:group_members' group.pk %}" class="family-form">
+        {% csrf_token %}
+        <fieldset class="family-checkboxes">
+          <legend class="sr-only">Mitglieder auswählen</legend>
+          {% for choice in members_form.members %}
+            <label class="family-checkbox">{{ choice.tag }} {{ choice.choice_label }}</label>
+          {% endfor %}
+        </fieldset>
+        <button type="submit" class="button button-primary">Mitglieder speichern</button>
+      </form>
+
+      <h2 class="section-title">Gruppe löschen</h2>
+      <form method="post" action="{% url 'family:group_delete' group.pk %}" class="family-form"
+            data-confirm="Gruppe „{{ group.name }}“ löschen? Freigaben an diese Gruppe enden.">
+        {% csrf_token %}
+        <p class="hint">Freigaben von Chats und Sammlungen an diese Gruppe werden entfernt.</p>
+        <button type="submit" class="button button-danger">Gruppe löschen</button>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}

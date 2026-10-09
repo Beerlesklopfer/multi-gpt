@@ -1,0 +1,7 @@
+<li class="collection-item" data-collection-id="{{ item.pk }}">
+  <a class="collection-link" href="{% url 'chat:collection_detail' item.pk %}">{{ item.name }}</a>
+  <span class="collection-meta">
+    {{ item.document_count }} Dokument{{ item.document_count|pluralize:"e" }}{% if item.pending_count %} · {{ item.pending_count }} wartend{% endif %}{% if item.error_count %} · <span class="text-error">{{ item.error_count }} mit Fehler</span>{% endif %}
+    {% if not item.is_owner %} · von {{ item.owner.get_full_name|default:item.owner.get_username }}, {% if item.user_can_write %}schreibend{% else %}lesend{% endif %}{% endif %}
+  </span>
+</li>

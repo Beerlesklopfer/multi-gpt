@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static %}
+{# Ein Konto in „Familie“ (M6-04, M6-05). Aktionen per POST mit CSRF, family.js fragt bei Sperren und Passwort nach. #}
+{% block title %}{{ member }} – Familie – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide family-page" aria-labelledby="member-title">
+    <p class="breadcrumb"><a href="{% url 'family:overview' %}">Familie</a> › Konto</p>
+    <div class="page-header">
+      <h1 id="member-title">{{ member }}</h1>
+      {% if member.is_active %}<span class="status-badge status-ok">aktiv</span>{% else %}<span class="status-badge status-locked">gesperrt</span>{% endif %}
+      {% if supervised %}<span class="badge badge-supervision">Einsicht an</span>{% endif %}
+    </div>
+    <dl class="family-facts">
+      <dt>Anmeldename</dt><dd>{{ member.get_username }}</dd>
+      <dt>Rolle</dt><dd>{{ member.role.name|default:"–" }}{% if member.is_superuser %} (Superuser){% endif %}</dd>
+      <dt>Gruppen</dt><dd>{% for group in groups %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}keine{% endfor %}</dd>
+      <dt>Letzte Anmeldung</dt><dd>{% if member.last_login %}{{ member.last_login|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</dd>
+      <dt>Verbrauch {{ month_start|date:"F Y" }}</dt><dd>{% include "accounts/family/_budget.html" with u=usage %}</dd>
+    </dl>
+
+    {% if model_usage %}
+      <div class="table-scroll">
+        <table class="family-table family-table-compact">
+          <caption class="sr-only">Verbrauch je Modell im laufenden Monat</caption>
+          <thead><tr><th scope="col">Modell</th><th scope="col">Antworten</th><th scope="col">Tokens (ein/aus)</th><th scope="col">Kosten</th></tr></thead>
+          <tbody>
+            {% for row in model_usage %}
+              <tr>
+                <td>{{ row.model }}{% if row.is_local %} <span class="badge">lokal</span>{% endif %}</td>
+                <td>{{ row.answers }}</td>
+                <td>{{ row.tokens_in }} / {{ row.tokens_out }}</td>
+                <td>{{ row.cost_text }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if not editable %}
+      <p class="chat-notice">Dieses Konto ist ein Superuser-Konto (Notfallzugang) und kann nur von einem Superuser geändert werden.</p>
+    {% else %}
+      <div class="family-actions">
+        <section class="family-card" aria-labelledby="role-title">
+          <h2 id="role-title">Rolle</h2>
+          {% if is_self %}
+            <p class="hint">Deine eigene Rolle kann nur ein anderer Verwalter ändern.</p>
+          {% else %}
+            <form method="post" action="{% url 'family:member_role' member.pk %}" class="family-form">
+              {% csrf_token %}
+              <label for="{{ role_form.role.id_for_label }}">Rolle</label>
+              <div class="inline-form-row">{{ role_form.role }}<button type="submit" class="button">Rolle speichern</button></div>
+            </form>
+          {% endif %}
+        </section>
+
+        <section class="family-card" aria-labelledby="budget-title">
+          <h2 id="budget-title">Monatsbudget</h2>
+          <form method="post" action="{% url 'family:member_budget' member.pk %}" class="family-form">
+            {% csrf_token %}
+            <label for="{{ budget_form.monthly_budget_override.id_for_label }}">{{ budget_form.monthly_budget_override.label }}</label>
+            <div class="inline-form-row">{{ budget_form.monthly_budget_override }}<button type="submit" class="button">Budget speichern</button></div>
+            <span class="hint">Leer = Budget der Rolle{% if member.role.monthly_budget is not None %} ({{ member.role.monthly_budget }} €){% else %} (unbegrenzt){% endif %}.</span>
+          </form>
+        </section>
+
+        <section class="family-card" aria-labelledby="access-title">
+          <h2 id="access-title">Zugang</h2>
+          {% if is_self %}
+            <p class="hint">Dein eigenes Konto kannst du nicht sperren. Dein Passwort änderst du über „Passwort ändern“.</p>
+          {% else %}
+            <form method="post" action="{% url 'family:member_active' member.pk %}" class="family-form"
+                  {% if member.is_active %}data-confirm="Konto „{{ member }}“ sperren? Das Mitglied wird sofort abgemeldet."{% endif %}>
+              {% csrf_token %}
+              {% if member.is_active %}
+                <input type="hidden" name="active" value="0">
+                <button type="submit" class="button button-danger">Konto sperren</button>
+              {% else %}
+                <input type="hidden" name="active" value="1">
+                <button type="submit" class="button">Konto entsperren</button>
+              {% endif %}
+            </form>
+            <form method="post" action="{% url 'family:member_password' member.pk %}" class="family-form"
+                  data-confirm="Neues Passwort für „{{ member }}“ erzeugen? Das alte Passwort gilt dann nicht mehr.">
+              {% csrf_token %}
+              <button type="submit" class="button">Passwort zurücksetzen</button>
+              <span class="hint">Ein neues Zufallspasswort wird einmal angezeigt.</span>
+            </form>
+          {% endif %}
+        </section>
+
+        <section class="family-card" aria-labelledby="supervision-title">
+          <h2 id="supervision-title">Einsicht in Chats</h2>
+          {% if is_teen or member.allow_supervision %}
+            <p class="hint">Ist die Einsicht an, können Verwalter die Chats dieses Kontos lesen (nicht schreiben). Das Mitglied sieht dauerhaft einen Hinweis.</p>
+            <form method="post" action="{% url 'family:member_supervision' member.pk %}" class="family-form"
+                  {% if not member.allow_supervision %}data-confirm="Einsicht für „{{ member }}“ einschalten? Das Mitglied sieht einen Hinweis."{% endif %}>
+              {% csrf_token %}
+              {% if member.allow_supervision %}
+                <button type="submit" class="button">Einsicht ausschalten</button>
+              {% else %}
+                <input type="hidden" name="allow_supervision" value="on">
+                <button type="submit" class="button">Einsicht einschalten</button>
+              {% endif %}
+            </form>
+          {% else %}
+            <p class="hint">Die Einsicht gibt es nur für Konten der Rolle Jugendlicher. Für alle anderen bleiben die Chats privat.</p>
+          {% endif %}
+        </section>
+      </div>
+    {% endif %}
+
+    {% if supervised %}
+      <h2 class="section-title" id="chats-title">Chats von {{ member }}</h2>
+      <p class="hint">Nur lesen: Die Chats öffnen sich ohne Eingabefeld.</p>
+      {% if conversations %}
+        <ul class="collection-list" id="supervised-chats" aria-labelledby="chats-title">
+          {% for conv in conversations %}
+            <li class="collection-item">
+              <a href="{% url 'chat:conversation' conv.pk %}">{{ conv.title|default:"Neuer Chat" }}</a>
+              <span class="col-date">{{ conv.updated|date:"d.m.Y H:i" }}</span>
+              {% if conv.archived %}<span class="badge">Archiviert</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="hint">Noch keine Chats.</p>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endblock %}

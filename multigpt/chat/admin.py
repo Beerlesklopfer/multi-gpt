@@ -5,10 +5,13 @@ Eingabefeld ist ein PasswordInput ohne Vorbelegung, angezeigt werden nur die
 letzten 4 Zeichen. Ein leeres Feld beim Bearbeiten lässt den Wert unverändert.
 
 Privatsphäre (Plan 8f): Auch Verwalter sehen fremde Chats nicht. Chats,
-Nachrichten, Anhänge, Werkzeugaufrufe, Quellen, Vorlagen, Sammlungen und
-Dokumente sind deshalb nur als Metadaten sichtbar (ohne Inhalte, Chattitel
-und Dateien) und im Admin weder änderbar noch löschbar. Namen von Sammlungen,
-Dokumenten und Vorlagen erscheinen als Objektbezeichnung (``__str__``).
+Nachrichten, Anhänge, Werkzeugaufrufe, Quellen, Vorlagen und Freigaben sind
+deshalb nur als Metadaten sichtbar (ohne Inhalte, Chattitel und Dateien) und
+im Admin weder änderbar noch löschbar. Namen von Vorlagen erscheinen als
+Objektbezeichnung (``__str__``).
+
+Sammlungen, Dokumente, Indexierungsaufträge und RAG-Einstellungen liegen im
+eigenen Abschnitt „Dokumente (RAG)“ (``multigpt/rag/admin.py``).
 """
 
 from django import forms
@@ -26,20 +29,18 @@ from django.utils.text import Truncator
 from multigpt.core.fields import mask_secret
 
 from . import mcp as mcp_client
-from . import status
+from . import status, websearch
 from .management.commands.sync_models import guess_capability
 from .mcp.config import parse_credentials, split_command
 from .models import (
     AIModel,
     Attachment,
-    Collection,
     Conversation,
-    Document,
-    Job,
     McpServer,
     Message,
     Preset,
     Provider,
+    SearchSettings,
     Share,
     SourceRef,
     ToolCall,
@@ -446,6 +447,23 @@ class AIModelAdmin(admin.ModelAdmin):
     search_fields = ["display_name", "model_id"]
     list_select_related = ["provider"]
 
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        """Gemeldete Modelle je Anbieter für die Combobox am Feld „Modell-ID“."""
+        from .management.commands.sync_models import guess_capability
+
+        by_provider = {}
+        for provider in Provider.objects.prefetch_related("ai_models"):
+            existing = {model.model_id for model in provider.ai_models.all()}
+            by_provider[str(provider.pk)] = [
+                {"id": mid, "capability": guess_capability(mid), "exists": mid in existing}
+                for mid in sorted(provider.reported_models or [])
+            ]
+        extra_context = {
+            **(extra_context or {}),
+            "reported_model_choices": {"by_provider": by_provider},
+        }
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
 
 @admin.register(McpServer)
 class McpServerAdmin(admin.ModelAdmin):
@@ -566,6 +584,78 @@ def _tool_rating(server, name: str) -> str:
     return "nicht eingestuft (Rückfrage)"
 
 
+# --- Websuche (M8) ----------------------------------------------------------
+
+SEARCH_CHECK_LEVELS = {
+    websearch.CHECK_OK: messages.SUCCESS,
+    websearch.CHECK_WARNING: messages.WARNING,
+    websearch.CHECK_ERROR: messages.ERROR,
+}
+
+
+@admin.register(SearchSettings)
+class SearchSettingsAdmin(admin.ModelAdmin):
+    """Genau ein Datensatz: Die Liste führt direkt zum Formular, Löschen und
+    zweites Anlegen gibt es nicht. „SearXNG testen“ prüft die *gespeicherten*
+    Einstellungen (Suche nach „test“) und zeigt Trefferzahl oder Ursache."""
+
+    fieldsets = [
+        (None, {"fields": ["enabled"]}),
+        (
+            "Such-Backend",
+            {
+                "fields": ["backend", "searxng_url", "language", "safesearch"],
+                "description": "SearXNG im Intranet. Nach dem Speichern über "
+                "„SearXNG testen“ (oben rechts) prüfen.",
+            },
+        ),
+        ("Umfang", {"fields": ["max_results", "fetch_pages", "timeout_seconds"]}),
+    ]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        if not self.has_view_or_change_permission(request):
+            raise PermissionDenied
+        obj = SearchSettings.load()
+        return HttpResponseRedirect(reverse("admin:chat_searchsettings_change", args=[obj.pk]))
+
+    def get_object(self, request, object_id, from_field=None):
+        # Fehlt der Datensatz noch (frische Installation), wird er angelegt.
+        if str(object_id) == str(SearchSettings.SINGLETON_PK):
+            SearchSettings.load()
+        return super().get_object(request, object_id, from_field)
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/check/",
+                self.admin_site.admin_view(self.check_view),
+                name="chat_searchsettings_check",
+            ),
+            *super().get_urls(),
+        ]
+
+    def check_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        cfg = SearchSettings.load()
+        level, text = websearch.check(cfg)
+        self.message_user(request, text, SEARCH_CHECK_LEVELS[level])
+        return HttpResponseRedirect(reverse("admin:chat_searchsettings_change", args=[cfg.pk]))
+
+
+# --- Dokumentsuche (M7) -----------------------------------------------------
+# RAG-Einstellungen, Sammlungen, Dokumente und Hintergrundjobs verwaltet der
+# eigene Admin-Abschnitt „Dokumente (RAG)“ (multigpt/rag/admin.py).
+
+
 # --- Nur Metadaten (Privatsphäre) -------------------------------------------
 
 
@@ -659,34 +749,9 @@ class PresetAdmin(MetadataOnlyAdmin):
     fields = list_display
 
 
-@admin.register(Collection)
-class CollectionAdmin(MetadataOnlyAdmin):
-    list_display = ["id", "owner", "created"]
-    fields = list_display
-
-
-@admin.register(Document)
-class DocumentAdmin(MetadataOnlyAdmin):
-    # Fehlertext bleibt sichtbar: Er hilft bei Indexierungsproblemen und
-    # enthält keine Dokumentinhalte.
-    list_display = ["id", collection_ref, "status", "created"]
-    list_filter = ["status"]
-    fields = [*list_display, "error_text"]
-
-
 @admin.register(Share)
 class ShareAdmin(MetadataOnlyAdmin):
     # Freigaben legen die Besitzer in der Oberfläche an.
     list_display = ["id", conversation_ref, collection_ref, "group", "can_write", "created"]
     list_filter = ["can_write", "group"]
     fields = list_display
-
-
-# --- Hintergrundjobs ---------------------------------------------------------
-
-
-@admin.register(Job)
-class JobAdmin(admin.ModelAdmin):
-    list_display = ["id", "kind", "status", "attempts", "created"]
-    list_filter = ["kind", "status"]
-    readonly_fields = ["created"]

@@ -1,0 +1,70 @@
+[Unit]
+Description=MultiGPT Worker (Indexierung von Dokumenten)
+# Nur Reihenfolge: die Datenbank kann auch auf einem anderen Rechner laufen.
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=multi-gpt
+Group=multi-gpt
+WorkingDirectory=/var/lib/multi-gpt
+Environment=DJANGO_SETTINGS_MODULE=multigpt.settings
+Environment=STATIC_ROOT=/usr/share/python/multi-gpt/static
+EnvironmentFile=/etc/multi-gpt/.env
+# -P: das Arbeitsverzeichnis nicht in sys.path aufnehmen (wie mgpt-ctl).
+ExecStart=/usr/share/python/multi-gpt/bin/python -P -m django run_worker
+# SIGTERM: Der laufende Job wird an der nächsten Prüfstelle (zwischen
+# PDF-Seiten/Embedding-Paketen) unterbrochen und neu eingereiht. Eine
+# OCR-Seite kann bis zu einige Minuten dauern, danach SIGKILL; der Job wird
+# dann nach spätestens 10 Minuten automatisch neu eingereiht.
+KillMode=mixed
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10
+UMask=0027
+# OCR (tesseract) kann viel Speicher und CPU brauchen; die Weboberfläche hat Vorrang.
+Nice=10
+IOSchedulingClass=idle
+
+StateDirectory=multi-gpt
+StateDirectoryMode=0750
+# Liegt MEDIA_ROOT außerhalb von /var/lib/multi-gpt (z. B. NAS-Freigabe),
+# per Drop-in freigeben: systemctl edit multi-gpt-worker -> ReadWritePaths=/pfad
+#
+# Verzeichnisquellen (RAG_SOURCE_ROOTS): Der Dienst liest dort nur. Wegen
+# ProtectSystem=strict ist alles außer /var/lib/multi-gpt ohnehin schreibgeschützt;
+# Pfade unter /srv, /mnt, /media sind lesbar, Pfade unter /home, /root und
+# /run/user sind wegen ProtectHome=yes unsichtbar. Freigabe per Drop-in für BEIDE
+# Units (Weboberfläche prüft den Pfad, der Worker liest die Dateien):
+#   systemctl edit multi-gpt          (und ebenso: systemctl edit multi-gpt-worker)
+#     [Service]
+#     # Variante A: /home lesbar machen, aber nur lesend
+#     ProtectHome=read-only
+#     # Variante B (enger): nur ein Verzeichnis einblenden, Rest von /home bleibt leer
+#     #ProtectHome=tmpfs
+#     #BindReadOnlyPaths=/home/familie/Dokumente
+#     # Pfade außerhalb von /home (z. B. NAS-Mount) zusätzlich schreibschützen:
+#     #ReadOnlyPaths=/srv/nas/dokumente
+#   systemctl restart multi-gpt multi-gpt-worker
+# Leserechte: den Dienstnutzer in eine Gruppe mit r-x auf die Ordner und r auf
+# die Dateien aufnehmen (usermod -aG <gruppe> multi-gpt) und neu starten.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

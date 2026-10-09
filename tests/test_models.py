@@ -225,21 +225,23 @@ def test_admin_does_not_show_chat_contents(admin_client, conversation):
 @pytest.mark.parametrize(
     "name",
     [
-        "provider",
-        "aimodel",
-        "mcpserver",
-        "conversation",
-        "message",
-        "preset",
-        "attachment",
-        "collection",
-        "share",
-        "toolcall",
-        "document",
-        "job",
-        "sourceref",
+        "chat_provider",
+        "chat_aimodel",
+        "chat_mcpserver",
+        "chat_conversation",
+        "chat_message",
+        "chat_preset",
+        "chat_attachment",
+        "chat_share",
+        "chat_toolcall",
+        "chat_sourceref",
+        # Sammlungen, Dokumente und Jobs im Abschnitt „Dokumente (RAG)“.
+        "rag_collectionproxy",
+        "rag_documentproxy",
+        "rag_jobproxy",
+        "rag_ragoverview",
     ],
 )
 def test_admin_changelists_render(admin_client, name):
-    response = admin_client.get(reverse(f"admin:chat_{name}_changelist"))
+    response = admin_client.get(reverse(f"admin:{name}_changelist"))
     assert response.status_code == 200

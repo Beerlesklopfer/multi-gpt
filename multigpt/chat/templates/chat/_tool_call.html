@@ -5,7 +5,7 @@
     <summary class="tool-call-summary">
       <span class="tool-call-icon" aria-hidden="true">{{ tc.status|tool_status_icon }}</span>
       <span class="tool-call-title">Werkzeug <span class="tool-call-name">{{ tc.tool }}</span>
-        <span class="tool-call-server">({{ tc.server.name|default:"Server entfernt" }})</span></span>
+        <span class="tool-call-server">({{ tc|tool_server }})</span></span>
       <span class="tool-call-status">{{ tc.get_status_display }}</span>
       <span class="tool-call-duration">{{ tc.duration_ms|tool_duration }}</span>
     </summary>

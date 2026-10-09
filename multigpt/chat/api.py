@@ -12,10 +12,16 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from multigpt.accounts.permissions import Action, can
+from multigpt.accounts import usage
+from multigpt.accounts.permissions import Action, can, model_permitted
 
-from . import services, status, tooling
+from . import services, status, tooling, websearch
+from . import sources as source_refs
 from .models import AIModel, Conversation, Message, ToolCall
+from .rag import chat as rag_chat
+from .rag import search as rag_search
+
+MAX_COLLECTIONS = 50
 
 
 def _error(message: str, status: int) -> JsonResponse:
@@ -60,15 +66,26 @@ def _get_chat_model(user, raw) -> tuple[AIModel | None, JsonResponse | None]:
     ai_model = AIModel.objects.select_related("provider").filter(pk=pk).first()
     if ai_model is None or ai_model.capability != AIModel.Capability.CHAT:
         return None, _error("Unbekanntes Modell.", 400)
-    if not can(user, Action.USE_MODEL, ai_model):
-        return None, _error("Dieses Modell steht dir nicht zur Verfügung.", 403)
+    err = _model_denied(user, ai_model)
+    if err:
+        return None, err
     return ai_model, None
+
+
+def _model_denied(user, ai_model: AIModel) -> JsonResponse | None:
+    """403, wenn ``user`` das Modell nicht nutzen darf – mit eigenem Text, wenn
+    nur das ausgeschöpfte Monatsbudget sperrt (M6-03)."""
+    if can(user, Action.USE_MODEL, ai_model):
+        return None
+    if model_permitted(user, ai_model):
+        return _error(usage.BUDGET_EXHAUSTED_MESSAGE, 403)
+    return _error("Dieses Modell steht dir nicht zur Verfügung.", 403)
 
 
 def _serialize_tool_call(tool_call: ToolCall) -> dict:
     return {
         "id": tool_call.pk,
-        "server": tool_call.server.name if tool_call.server_id else "",
+        "server": tooling.server_label(tool_call),
         "tool": tool_call.tool,
         "arguments": tool_call.arguments,
         "status": tool_call.status,
@@ -93,6 +110,11 @@ def _serialize_message(message: Message) -> dict:
         "sibling_index": message.sibling_index,
         "sibling_count": message.sibling_count,
         "tool_calls": [_serialize_tool_call(tc) for tc in message.tool_calls.all()],
+        "sources": [
+            source_refs.serialize(src, n) for n, src in enumerate(message.sources.all(), start=1)
+        ],
+        "notices": message.notices,
+        "web_search_notice": message.web_search_notice,
     }
 
 
@@ -111,6 +133,8 @@ def _serialize_model(m: AIModel) -> dict:
         # Nach dem letzten gespeicherten Status (M4-03); nicht-lokale immer True.
         "online": online,
         "available": available,
+        # Monatsbudget ausgeschöpft und Modell kostenpflichtig (M6-03): ausgrauen.
+        "blocked_by_budget": getattr(m, "blocked_by_budget", False),
     }
 
 
@@ -118,7 +142,7 @@ def _serialize_model(m: AIModel) -> dict:
 @api_login_required
 def models_list(request):
     return JsonResponse(
-        [_serialize_model(m) for m in services.available_chat_models(request.user)],
+        [_serialize_model(m) for m in services.chat_models_for(request.user)],
         safe=False,
     )
 
@@ -231,13 +255,40 @@ def branch(request, pk: int):
     if data is None:
         return _error("Ungültige Anfrage.", 400)
     message_id, valid = _optional_pk(data, "message_id")
-    if not valid or message_id is None:
+    # adopt_model (Vergleichsmodus): Modell der gewählten Antwort wird Standardmodell.
+    adopt_model = data.get("adopt_model", False)
+    if not valid or message_id is None or not isinstance(adopt_model, bool):
         return _error("Ungültige Anfrage.", 400)
     try:
-        services.switch_branch(conversation, message_id)
+        services.switch_branch(conversation, message_id, adopt_model=adopt_model)
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
     return _path_response(conversation)
+
+
+def _parse_collections(user, raw) -> tuple[list[int], JsonResponse | None]:
+    """``collections`` (M7): Sammlungen für die Dokumentsuche dieser Antwort.
+
+    Fehlt/leer -> keine Dokumentsuche. Kein int-Array -> 400; eine nicht
+    lesbare oder unbekannte Sammlung -> 404 (Existenz fremder Sammlungen bleibt
+    verborgen). Die Suche filtert den Zugriff zusätzlich in SQL.
+    """
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list) or not all(
+        isinstance(x, int) and not isinstance(x, bool) for x in raw
+    ):
+        return [], _error("Ungültige Auswahl der Sammlungen.", 400)
+    ids = list(dict.fromkeys(raw))
+    if not ids:
+        return [], None
+    if len(ids) > MAX_COLLECTIONS:
+        return [], _error("Zu viele Sammlungen gewählt.", 400)
+    if rag_search.readable_collections(user).filter(pk__in=ids).count() != len(ids):
+        return [], _error("Sammlung nicht gefunden.", 404)
+    if not rag_chat.search_ready():
+        return [], _error("Die Dokumentsuche ist derzeit nicht eingerichtet.", 409)
+    return ids, None
 
 
 def _stream(request, conversation: Conversation):
@@ -270,6 +321,22 @@ def _stream(request, conversation: Conversation):
         and all(isinstance(x, int) and not isinstance(x, bool) for x in mcp_servers)
     ):
         return _error("Ungültige Auswahl der MCP-Server.", 400)
+    web_search = data.get("web_search") if data.get("web_search") is not None else False
+    if not isinstance(web_search, bool):
+        return _error("Ungültige Anfrage.", 400)
+    if web_search:
+        if not can(user, Action.WEB_SEARCH):
+            return _error("Die Websuche ist für dieses Konto nicht freigegeben.", 403)
+        if not websearch.get_settings().is_ready:
+            return _error("Die Websuche ist derzeit nicht eingerichtet.", 409)
+    collections, err = _parse_collections(user, data.get("collections"))
+    if err:
+        return err
+    # Vergleichsmodus (M6): Spalten ohne MCP-Werkzeuge; weitere Spalten
+    # (regenerate) lassen den angezeigten Zweig stehen, bis der Nutzer wählt.
+    compare = data.get("compare") if data.get("compare") is not None else False
+    if not isinstance(compare, bool):
+        return _error("Ungültige Anfrage.", 400)
     try:
         turn = services.prepare_turn(
             user,
@@ -280,6 +347,8 @@ def _stream(request, conversation: Conversation):
             mcp_servers=mcp_servers,
             edit_of=edit_of,
             regenerate_of=regenerate_of,
+            options={"web_search": web_search, "collections": collections},
+            compare=compare,
         )
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
@@ -318,8 +387,9 @@ def tool_confirm(request, pk: int):
     ai_model = message.model
     if ai_model is None:
         return _error("Das Modell dieser Antwort gibt es nicht mehr.", 409)
-    if not can(user, Action.USE_MODEL, ai_model):
-        return _error("Dieses Modell steht dir nicht zur Verfügung.", 403)
+    err = _model_denied(user, ai_model)
+    if err:
+        return err
     err = _check_model_reachable(ai_model)
     if err:
         return err

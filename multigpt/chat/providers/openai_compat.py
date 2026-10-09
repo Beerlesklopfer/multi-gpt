@@ -25,6 +25,14 @@ Werkzeuge (M4a, gelesen 2026-10-09, developers.openai.com/api/docs/api-reference
 - Verlauf: Assistant mit ``tool_calls`` (``content`` darf ``null`` sein), dann
   je Aufruf ``{"role": "tool", "tool_call_id", "content"}``.
 
+Embeddings (M7, gelesen 2026-10-09, developers.openai.com/api/docs/api-reference/embeddings
+und …/guides/embeddings): ``POST /embeddings`` mit ``model``, ``input`` (Liste
+von Strings, keine leeren; je Eingabe höchstens 8192 Tokens, je Anfrage
+höchstens 2048 Eingaben und 300 000 Tokens), optional ``dimensions`` (nur
+text-embedding-3 und neuer, kürzt den Vektor und behält die Normierung) und
+``encoding_format`` ``float``. Antwort ``data[]`` mit ``embedding`` und
+``index``, dazu ``usage.prompt_tokens``.
+
 Sicherheit (Plan 9): Der API-Key steht nur im Authorization-Header. Er
 erscheint weder in Logs noch in Fehlermeldungen; Fehlertexte der Anbieter
 werden nicht weitergereicht (OpenAI nennt bei 401 Teile des Keys).
@@ -32,6 +40,7 @@ werden nicht weitergereicht (OpenAI nennt bei 401 Teile des Keys).
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from collections.abc import Iterator
@@ -61,6 +70,7 @@ from .base import (
     Usage,
     exception_to_error,
     http_error_message,
+    is_unreachable,
     new_tool_call_id,
     normalize_tools,
     pair_tool_messages,
@@ -88,6 +98,23 @@ APP_TITLE = "MultiGPT"
 # Vertrag: connect 10 s, read 300 s (lange Denkpausen mancher Modelle).
 STREAM_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
 LIST_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+
+EMBED_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=60.0, pool=10.0)
+# Teilanfragen für Embeddings: deutlich unter den OpenAI-Grenzen (2048 Eingaben,
+# 300 000 Tokens). Zeichen als grobe Obergrenze für Tokens (≈ 3–4 Zeichen je Token).
+EMBED_BATCH_SIZE = 128
+EMBED_BATCH_CHARS = 400_000
+MSG_INVALID_EMBEDDINGS = "Der Anbieter hat unerwartete Embeddings geliefert."
+MSG_EMPTY_EMBED_INPUT = "Leere Texte lassen sich nicht einbetten."
+
+# Bildanfragen (OCR): ein 7B-Vision-Modell braucht für eine volle Seite leicht
+# eine Minute oder mehr, beim ersten Aufruf lädt LM Studio das Modell noch.
+VISION_TIMEOUT = httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0)
+MSG_EMPTY_IMAGE = "Es wurde kein Bild übergeben."
+MSG_INVALID_VISION_ANSWER = (
+    "Der Anbieter hat eine unerwartete Antwort auf die Bildanfrage geliefert."
+)
+MSG_VISION_TRUNCATED = "Die Antwort des Modells wurde wegen der Längenbegrenzung abgeschnitten."
 
 # Diese Felder setzt der Adapter selbst; ``params`` darf sie nicht überschreiben.
 _RESERVED_PARAMS = {"model", "messages", "stream", "stream_options", "tools", "tool_choice"}
@@ -185,6 +212,121 @@ class OpenAICompatAdapter(ProviderAdapter):
             return False
         return True
 
+    # --- Embeddings (M7) ------------------------------------------------------
+
+    def embed(
+        self, model_id: str, texts: list[str], dimensions: int | None = None
+    ) -> list[list[float]]:
+        """Ein Vektor je Text (gleiche Reihenfolge), in Teilanfragen.
+
+        Fehler als ``ProviderError`` mit deutschem Text und ``retryable``; der
+        Fehlertext des Anbieters wird nie weitergereicht (kann Key-Teile enthalten).
+        """
+        texts = list(texts)
+        if not texts:
+            return []
+        if any(not isinstance(t, str) or not t.strip() for t in texts):
+            raise ProviderError(MSG_EMPTY_EMBED_INPUT)
+        vectors: list[list[float]] = []
+        try:
+            with httpx.Client(timeout=EMBED_TIMEOUT) as client:
+                for batch in _embed_batches(texts):
+                    body = {"model": model_id, "input": batch, "encoding_format": "float"}
+                    if dimensions:
+                        body["dimensions"] = dimensions
+                    response = client.post(
+                        f"{self.base_url}/embeddings", headers=self._headers(), json=body
+                    )
+                    if response.status_code != 200:
+                        detail = _error_code(response.content)
+                        self._log(f"Embeddings HTTP {response.status_code}", detail)
+                        message, retryable = http_error_message(response.status_code)
+                        if response.status_code == 404 and detail.endswith("/model_not_found"):
+                            message = _model_not_found(model_id)
+                        raise ProviderHTTPError(message, response.status_code, retryable=retryable)
+                    try:
+                        payload = response.json()
+                    except ValueError as exc:
+                        raise ProviderError(MSG_INVALID_EMBEDDINGS) from exc
+                    vectors += _parse_embeddings(payload, len(batch), dimensions)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            self._log("Embeddings", type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            raise ProviderError(
+                error.message, retryable=error.retryable, unreachable=is_unreachable(exc)
+            ) from None
+        return vectors
+
+    # --- Bild-Eingabe (OCR, M7-09) ----------------------------------------------
+
+    def describe_image(
+        self,
+        model_id: str,
+        image: bytes,
+        prompt: str,
+        *,
+        mime_type: str = "image/png",
+        **params,
+    ) -> str:
+        """Nicht streamende Chat-Anfrage mit Text und Bild (data-URI).
+
+        Reihenfolge wie in der olmOCR-Pipeline: erst Text, dann Bild. Bricht das
+        Modell wegen ``max_tokens`` ab (``finish_reason`` ``length``), gilt die
+        Antwort als unvollständig (``ProviderError`` mit ``truncated``).
+        """
+        if not image:
+            raise ProviderError(MSG_EMPTY_IMAGE)
+        data_uri = f"data:{mime_type};base64," + base64.b64encode(image).decode("ascii")
+        body = {k: v for k, v in params.items() if k not in _RESERVED_PARAMS and v is not None}
+        body.update(
+            model=model_id,
+            stream=False,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": data_uri}},
+                    ],
+                }
+            ],
+        )
+        try:
+            with httpx.Client(timeout=VISION_TIMEOUT) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions", headers=self._headers(), json=body
+                )
+        except Exception as exc:
+            self._log("Bildanfrage", type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            raise ProviderError(
+                error.message, retryable=error.retryable, unreachable=is_unreachable(exc)
+            ) from None
+        if response.status_code != 200:
+            detail = _error_code(response.content)
+            self._log(f"Bildanfrage HTTP {response.status_code}", detail)
+            message, retryable = http_error_message(response.status_code)
+            if response.status_code == 404 and detail.endswith("/model_not_found"):
+                message = _model_not_found(model_id)
+            raise ProviderHTTPError(message, response.status_code, retryable=retryable)
+        try:
+            choice = response.json()["choices"][0]
+            content = choice["message"]["content"]
+            finish = choice.get("finish_reason")
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise ProviderError(MSG_INVALID_VISION_ANSWER) from exc
+        if isinstance(content, list):  # Teile-Liste statt Text
+            content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+        if not isinstance(content, str):
+            raise ProviderError(MSG_INVALID_VISION_ANSWER)
+        if finish == "length":
+            error = ProviderError(MSG_VISION_TRUNCATED, retryable=True)
+            error.truncated = True
+            raise error
+        return content
+
     # --- Streaming -----------------------------------------------------------
 
     def _build_body(
@@ -272,6 +414,41 @@ class OpenAICompatAdapter(ProviderAdapter):
         except Exception as exc:
             self._log("Stream", type(exc).__name__)
             yield exception_to_error(exc, started=started)
+
+
+def _embed_batches(texts: list[str]) -> Iterator[list[str]]:
+    batch: list[str] = []
+    size = 0
+    for text in texts:
+        if batch and (len(batch) >= EMBED_BATCH_SIZE or size + len(text) > EMBED_BATCH_CHARS):
+            yield batch
+            batch, size = [], 0
+        batch.append(text)
+        size += len(text)
+    if batch:
+        yield batch
+
+
+def _parse_embeddings(payload, count: int, dimensions: int | None) -> list[list[float]]:
+    """``data[]`` nach ``index`` sortiert prüfen; jede Abweichung -> ProviderError."""
+    try:
+        data = payload["data"]
+        if not isinstance(data, list) or len(data) != count:
+            raise ValueError
+        vectors: list[list[float] | None] = [None] * count
+        for item in data:
+            index = item.get("index")
+            vector = item["embedding"]
+            if not isinstance(index, int) or not 0 <= index < count or vectors[index] is not None:
+                raise ValueError
+            if not isinstance(vector, list) or not vector:
+                raise ValueError
+            if dimensions is not None and len(vector) != dimensions:
+                raise ValueError
+            vectors[index] = [float(x) for x in vector]
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise ProviderError(MSG_INVALID_EMBEDDINGS) from exc
+    return vectors  # type: ignore[return-value]
 
 
 def _message_payload(message: ChatMessage) -> dict:

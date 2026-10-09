@@ -1,7 +1,7 @@
 /* MultiGPT – Admin: Combobox für „Modell-ID“ in der Modell-Tabelle eines Anbieters.
  *
  * Die zuletzt vom Anbieter gemeldeten Modelle kommen als JSON aus dem Element
- * #reported-model-choices ([{id, capability, exists}]). Jedes Feld *-model_id
+ * #reported-model-choices ([{id, capability, exists}] bzw. {by_provider: {...}}). Jedes Feld *-model_id
  * bekommt einen Knopf ▾, der eine filterbare Liste öffnet. Die Auswahl setzt die
  * Modell-ID und schlägt die Fähigkeit vor; der Anzeigename folgt jeder Änderung
  * der Modell-ID (change).
@@ -11,11 +11,20 @@
 
   var dataElement = document.getElementById("reported-model-choices");
   if (!dataElement) return;
-  var choices = [];
+  var data = [];
   try {
-    choices = JSON.parse(dataElement.textContent) || [];
+    data = JSON.parse(dataElement.textContent) || [];
   } catch (error) {
-    choices = [];
+    data = [];
+  }
+
+  // Zwei Formen: eine Liste (Modell-Tabelle eines Anbieters) oder
+  // {"by_provider": {"<id>": [...]}} (Formular „KI-Modell“ mit Anbieterauswahl).
+  function currentChoices() {
+    if (Array.isArray(data)) return data;
+    var provider = document.getElementById("id_provider");
+    var byProvider = data.by_provider || {};
+    return (provider && byProvider[provider.value]) || [];
   }
 
   var MAX_SHOWN = 200;
@@ -106,6 +115,7 @@
     function render(filterText) {
       list.textContent = "";
       active = -1;
+      var choices = currentChoices();
       if (!choices.length) {
         var empty = document.createElement("li");
         empty.className = "model-combobox-empty";
@@ -231,7 +241,7 @@
   }
 
   function enhanceAll(root) {
-    (root || document).querySelectorAll('input[id$="-model_id"]').forEach(enhance);
+    (root || document).querySelectorAll('input[id$="-model_id"], input#id_model_id').forEach(enhance);
   }
 
   enhanceAll(document);

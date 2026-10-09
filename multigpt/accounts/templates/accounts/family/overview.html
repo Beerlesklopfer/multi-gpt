@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load static %}
+{# Seite „Familie“ (M6-04): nur für Verwalter (MANAGE_FAMILY). Aktionen per POST mit CSRF. #}
+{% block title %}Familie – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide family-page" aria-labelledby="family-title">
+    <h1 id="family-title">Familie</h1>
+    {% include "accounts/family/_nav.html" with section="members" %}
+    <p class="page-intro">
+      Konten anlegen und sperren, Rollen, Budgets und Passwörter verwalten. Chats bleiben privat:
+      Du siehst hier nur Verbrauchszahlen – außer bei Jugendlichen mit eingeschalteter Einsicht.
+    </p>
+
+    <h2 class="section-title">Mitglieder</h2>
+    <div class="table-scroll">
+      <table class="family-table" id="family-members">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Rolle</th>
+            <th scope="col">Status</th>
+            <th scope="col">Budget und Verbrauch ({{ month_start|date:"F Y" }})</th>
+            <th scope="col">Letzte Aktivität</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in members %}
+            <tr{% if not member.is_active %} class="is-inactive"{% endif %}>
+              <td>
+                <a href="{% url 'family:member' member.pk %}">{{ member }}</a>
+                <span class="family-username">{{ member.get_username }}</span>
+                {% if member.pk == user.pk %}<span class="badge">Du</span>{% endif %}
+                {% if member.supervised %}<span class="badge badge-supervision">Einsicht an</span>{% endif %}
+              </td>
+              <td>{{ member.role.name|default:"–" }}{% if member.is_superuser %} <span class="badge">Superuser</span>{% endif %}</td>
+              <td>{% if member.is_active %}<span class="status-badge status-ok">aktiv</span>{% else %}<span class="status-badge status-locked">gesperrt</span>{% endif %}</td>
+              <td>{% include "accounts/family/_budget.html" with u=member.usage %}</td>
+              <td class="col-date">{% if member.last_activity %}{{ member.last_activity|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title" id="create-title">Konto anlegen</h2>
+    <form method="post" action="{% url 'family:member_create' %}" class="family-form" aria-labelledby="create-title">
+      {% csrf_token %}
+      <div class="family-form-grid">
+        {% for field in create_form %}
+          <div class="family-field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<span class="hint">{{ field.help_text }}</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="hint">Das Startpasswort wird zufällig erzeugt und nur einmal angezeigt.</p>
+      <button type="submit" class="button button-primary">Konto anlegen</button>
+    </form>
+
+    <h2 class="section-title">Gruppen</h2>
+    <ul class="family-group-summary">
+      {% for group in groups %}
+        <li><a href="{% url 'family:group' group.pk %}">{{ group.name }}</a> · {{ group.member_count }} Mitglied{{ group.member_count|pluralize:"er" }}{% if group.is_default %} · Standardgruppe{% endif %}</li>
+      {% empty %}
+        <li>Noch keine Gruppen.</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endblock %}

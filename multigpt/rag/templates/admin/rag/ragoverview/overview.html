@@ -1,0 +1,203 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{# RAG-Übersicht: Konfiguration, Zahlen, Worker und Warteschlange – nur Metadaten. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'rag/admin_rag.css' %}">{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='rag' %}">Dokumente (RAG)</a>
+  &rsaquo; RAG-Übersicht
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if data.worker_warning %}
+  <p class="errornote rag-warning" role="alert">
+    <strong>Worker läuft nicht?</strong>
+    {% if data.jobs_stale %}{{ data.jobs_stale }} Auftrag/Aufträge ohne Lebenszeichen seit über {{ stale_minutes }} Minuten.{% else %}Aufträge sind seit über {{ silent_minutes }} Minuten fällig, aber kein Worker arbeitet.{% endif %}
+    Bitte prüfen: <code>systemctl status multi-gpt-worker</code> (Debian-Paket) bzw. in der Entwicklung <code>make worker</code> starten.
+  </p>
+  {% endif %}
+
+  <div class="rag-overview">
+    <div class="module">
+      <h2>Konfiguration</h2>
+      <table>
+        <tr>
+          <th scope="row">Embedding-Modell</th>
+          <td>
+            {% if embedding_model %}
+              <span class="rag-ok">{{ embedding_model.display_name }}</span> <code>{{ embedding_model.model_id }}</code>
+            {% else %}
+              <span class="rag-bad">nicht gesetzt</span> – die Dokumentsuche ist aus.
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Anbieter</th>
+          <td>
+            {% if provider %}
+              {{ provider.name }}:
+              {% if not provider.last_checked %}noch nicht geprüft
+              {% elif provider.online %}<span class="rag-ok">online</span> (geprüft {{ provider.last_checked|date:"d.m.Y H:i" }})
+              {% else %}<span class="rag-bad">offline</span>{% if provider.last_error %} – {{ provider.last_error }}{% endif %}
+              {% endif %}
+              {% if not provider.active %}<span class="rag-bad">(deaktiviert)</span>{% endif %}
+            {% else %}–{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Vektordimension</th>
+          <td>{{ dimensions }}{% if embedding_model and data.documents and not data.chunks %} – <span class="rag-bad">noch keine Abschnitte</span>: nach dem Wechsel der Dimension müssen alle Dokumente neu eingebettet werden (Aufträge sind eingereiht, sonst „Alles neu indexieren“).{% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">Präfixe</th>
+          <td>{% if data.settings.document_prefix or data.settings.query_prefix %}Abschnitte <code>{{ data.settings.document_prefix }}</code>, Anfragen <code>{{ data.settings.query_prefix }}</code>{% else %}keine{% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">OCR-Verfahren</th>
+          <td>
+            {{ ocr.backend_label }}
+            {% if ocr.olmocr %}{% if ocr.fallback %}, Tesseract als Ersatz{% else %}, ohne Ersatz (Indexierung wartet, wenn das Modell nicht erreichbar ist){% endif %}{% endif %}
+            {% if ocr.missing_programs %}{% if not ocr.olmocr or ocr.fallback %}<br><span class="rag-bad">{% if ocr.olmocr %}Tesseract (Ersatz) nicht nutzbar{% else %}Tesseract nicht nutzbar{% endif %}:</span> {{ ocr.missing_programs|join:"; " }}.{% endif %}{% endif %}
+          </td>
+        </tr>
+        {% if ocr.olmocr %}
+        <tr>
+          <th scope="row">OCR-Modell</th>
+          <td>
+            {% if ocr_model %}
+              {{ ocr_model.display_name }}{% if ocr_model.display_name != ocr_model.model_id %} <code>{{ ocr_model.model_id }}</code>{% endif %} –
+              {{ ocr_provider.name }}:
+              {% if not ocr_provider.active %}<span class="rag-bad">deaktiviert</span>
+              {% elif not ocr_provider.check_status %}Status wird nicht geprüft
+              {% elif not ocr_provider.last_checked %}noch nicht geprüft
+              {% elif ocr_provider.online %}<span class="rag-ok">online</span>{% if ocr_model.model_id not in ocr_provider.reported_models %}, <span class="rag-bad">Modell wird nicht gemeldet</span> (in LM Studio laden){% endif %}
+              {% else %}<span class="rag-bad">offline</span>{% if ocr_provider.last_error %} – {{ ocr_provider.last_error }}{% endif %}
+              {% endif %}
+            {% else %}<span class="rag-bad">nicht gesetzt</span>{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        <tr>
+          <th scope="row">Zerteilung</th>
+          <td>{{ data.settings.chunk_tokens }} Tokens, {{ data.settings.overlap_tokens }} Überlappung</td>
+        </tr>
+        <tr>
+          <th scope="row">Suche</th>
+          <td>Top {{ data.settings.top_k }}{% if data.settings.hybrid %}, mit Volltextsuche{% endif %}</td>
+        </tr>
+      </table>
+      <div class="rag-actions">
+        <form method="post" action="{% url 'admin:rag_overview_check_embedding' %}">
+          {% csrf_token %}
+          <input type="submit" value="Embedding testen" title="Bettet mit dem gespeicherten Modell einen kurzen Text ein">
+        </form>
+        <form method="post" action="{% url 'admin:rag_overview_check_ocr' %}">
+          {% csrf_token %}
+          <input type="submit" value="OCR testen" title="Liest eine Testseite mit bekanntem Text mit dem eingestellten OCR-Verfahren">
+        </form>
+        <a class="button" href="{% url 'admin:rag_ragsettingsproxy_changelist' %}">Einstellungen</a>
+      </div>
+    </div>
+
+    <div class="module">
+      <h2>Bestand</h2>
+      <table>
+        <tr><th scope="row"><a href="{% url 'admin:rag_collectionproxy_changelist' %}">Sammlungen</a></th><td class="num">{{ data.collections }}</td></tr>
+        <tr><th scope="row"><a href="{% url 'admin:rag_documentproxy_changelist' %}">Dokumente</a></th><td class="num">{{ data.documents }}</td></tr>
+        {% for value, label, count in data.document_states %}
+        <tr>
+          <td>&nbsp;&nbsp;<a href="{% url 'admin:rag_documentproxy_changelist' %}?status__exact={{ value }}"><span class="rag-status rag-status--{{ value }}">{{ label }}</span></a></td>
+          <td class="num">{{ count }}</td>
+        </tr>
+        {% endfor %}
+        <tr><th scope="row">Abschnitte</th><td class="num">{{ data.chunks }}</td></tr>
+        <tr><th scope="row">Speicher der Dateien</th><td class="num">{{ storage }}</td></tr>
+        {% if data.missing_files %}
+        <tr><th scope="row"><span class="rag-bad">Dateien fehlen</span></th><td class="num">{{ data.missing_files }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
+
+    <div class="module">
+      <h2>Worker</h2>
+      <table>
+        <tr>
+          <th scope="row">Letztes Lebenszeichen</th>
+          <td>{% if data.last_heartbeat %}{{ data.last_heartbeat|date:"d.m.Y H:i:s" }} ({{ data.last_heartbeat|timesince }}){% else %}– (kein Auftrag in Arbeit){% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">Zuletzt erledigt</th>
+          <td>{% if data.last_done_job %}<a href="{% url 'admin:rag_jobproxy_change' data.last_done_job.pk %}">Auftrag #{{ data.last_done_job.pk }}</a> (eingereiht {{ data.last_done_job.created|date:"d.m.Y H:i" }}){% else %}–{% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">Ältester fälliger Auftrag</th>
+          <td>{% if data.oldest_due %}fällig seit {{ data.oldest_due|timesince }}{% else %}–{% endif %}</td>
+        </tr>
+      </table>
+      <p class="help rag-hint">Der Worker läuft als <code>multi-gpt-worker.service</code> (Debian-Paket) oder in der Entwicklung mit <code>make worker</code>.</p>
+    </div>
+
+    <div class="module">
+      <h2>Warteschlange</h2>
+      <table>
+        <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=pending">fällig</a></th><td class="num">{{ data.jobs_due }}</td></tr>
+        <tr><th scope="row">wartet auf neuen Versuch</th><td class="num">{{ data.jobs_waiting }}</td></tr>
+        <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=running">läuft</a></th><td class="num">{{ data.jobs_running }}</td></tr>
+        <tr><th scope="row">davon hängend</th><td class="num">{{ data.jobs_stale }}</td></tr>
+        <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=failed">fehlgeschlagen</a></th><td class="num">{{ data.jobs_failed }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="module rag-sources" style="margin-top: 1.2em">
+    <h2>Verzeichnisquellen</h2>
+    {% if not data.sources_enabled %}
+      <p class="help rag-hint">Ausgeschaltet: <code>RAG_SOURCE_ROOTS</code> ist in der Konfiguration leer.</p>
+    {% endif %}
+    {% if data.sources %}
+    <table>
+      <thead>
+        <tr><th scope="col">Sammlung</th><th scope="col">Status</th><th scope="col">Letzter Lauf</th><th scope="col">Ergebnis</th><th scope="col" class="num">Dokumente</th></tr>
+      </thead>
+      <tbody>
+      {% for source in data.sources %}
+        <tr>
+          <td><a href="{% url 'admin:rag_directorysource_change' source.pk %}">{{ source.collection.name }}</a></td>
+          <td>{% if source.scan_open %}<span class="rag-status rag-status--running">wird eingelesen</span>{% elif source.active %}<span class="rag-ok">aktiv</span>{% else %}pausiert{% endif %}</td>
+          <td>{% if source.last_scan_finished %}{{ source.last_scan_finished|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</td>
+          <td>{% with r=source.last_result %}{% if r %}{{ r.new|default:0 }} neu, {{ r.changed|default:0 }} geändert, {{ r.deleted|default:0 }} entfernt{% if r.skipped %}, {{ r.skipped }} übersprungen{% endif %}{% endif %}{% endwith %}{% if source.last_error %} <span class="rag-bad" title="{{ source.last_error }}">Fehler</span>{% endif %}</td>
+          <td class="num">{{ source.document_total }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="help rag-hint">Keine Verzeichnisquellen eingerichtet.</p>
+    {% endif %}
+    <div class="rag-actions">
+      <a class="button" href="{% url 'admin:rag_directorysource_changelist' %}">Verzeichnisquellen</a>
+    </div>
+  </div>
+
+  <div class="module" style="margin-top: 1.2em">
+    <h2>Aktionen</h2>
+    <div class="rag-actions">
+      <a class="button" href="{% url 'admin:rag_overview_reindex_all' %}">Alles neu indexieren …</a>
+      <form method="post" action="{% url 'admin:rag_overview_retry_failed' %}">
+        {% csrf_token %}
+        <input type="submit" value="Fehlgeschlagene erneut versuchen"{% if not data.jobs_failed and not data.documents_by_status.error %} disabled{% endif %}>
+      </form>
+      <form method="post" action="{% url 'admin:rag_overview_reset_stale' %}">
+        {% csrf_token %}
+        <input type="submit" value="Hängende Aufträge zurücksetzen"{% if not data.jobs_stale %} disabled{% endif %} title="Aufträge ohne Lebenszeichen seit über {{ stale_minutes }} Minuten neu einreihen">
+      </form>
+    </div>
+    <p class="help rag-hint">„Alles neu indexieren“ ist nach einem Wechsel des Embedding-Modells oder der Zerteilung nötig. Bis ein Dokument neu indexiert ist, bleiben seine alten Abschnitte durchsuchbar.</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{# Unternavigation der Seite „Familie“. #}
+{% load family_tags %}<nav class="family-nav" aria-label="Familie">
+  <a href="{% url 'family:overview' %}"{% if section == "members" %} aria-current="page"{% endif %}>Mitglieder</a>
+  <a href="{% url 'family:groups' %}"{% if section == "groups" %} aria-current="page"{% endif %}>Gruppen</a>
+  {% if user|can_view_usage_all %}<a href="{% url 'family:usage' %}"{% if section == "usage" %} aria-current="page"{% endif %}>Verbrauch aller</a>{% endif %}
+  <a href="{% url 'admin:index' %}">Verwaltung (Admin)</a>
+</nav>

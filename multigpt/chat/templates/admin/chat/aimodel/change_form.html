@@ -1,0 +1,11 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+{# KI-Modell: Combobox für „Modell-ID“ aus den gemeldeten Modellen des gewählten Anbieters. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
+
+{% block admin_change_form_document_ready %}
+  {{ block.super }}
+  {{ reported_model_choices|json_script:"reported-model-choices" }}
+  <script src="{% static 'chat/admin_model_combobox.js' %}" defer></script>
+{% endblock %}

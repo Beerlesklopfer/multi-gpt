@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load static collection_tags %}
+{# Eine Sammlung (M7, RAG): Dokumente mit Status, Hochladen, Teilen. Titel und #}
+{# Fehlertexte nur über Auto-Escaping; collections.js setzt sie als textContent. #}
+{% block title %}{{ collection.name }} – Sammlungen – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/collections.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide collection-page" id="collection-page"
+           aria-labelledby="collection-title"
+           data-collection-id="{{ collection.pk }}"
+           data-collection-name="{{ collection.name }}"
+           data-list-url="{% url 'chat:collection_list' %}"
+           data-api-detail="{% url 'chat:api_collection_detail' collection.pk %}"
+           data-api-documents="{% url 'chat:api_collection_documents' collection.pk %}"
+           data-api-shares="{% url 'chat:api_collection_shares' collection.pk %}"
+           data-api-document-template="{% url 'chat:api_document_detail' 0 %}"
+           data-poll="{{ has_pending|yesno:'true,false' }}">
+    <p class="breadcrumb"><a href="{% url 'chat:collection_list' %}">Sammlungen</a></p>
+    <header class="page-header">
+      <h1 id="collection-title">{{ collection.name }}</h1>
+      <div class="page-header-actions">
+        {% if can_write %}
+          <button type="button" class="button button-small" id="collection-rename" hidden>Umbenennen</button>
+        {% endif %}
+        {% if is_owner and not from_directory %}
+          <button type="button" class="button button-small button-danger" id="collection-delete" hidden>Löschen</button>
+        {% endif %}
+      </div>
+    </header>
+    <p class="collection-access">
+      {% if is_owner %}Deine Sammlung{% else %}Von {{ collection.owner.get_full_name|default:collection.owner.get_username }} geteilt, {% if can_write %}mit Schreibrecht{% else %}nur lesend{% endif %}{% endif %}
+    </p>
+
+    {% if from_directory %}
+      <p class="chat-notice collection-source-notice">Wird aus einem Serververzeichnis eingelesen. Dokumente daraus werden regelmäßig abgeglichen und lassen sich hier nicht einzeln löschen – sie verschwinden, wenn die Datei im Verzeichnis entfernt wird oder ein Verwalter die Quelle löscht.</p>
+    {% endif %}
+
+    {% if can_share %}
+      <details class="collection-shares" id="collection-shares"{% if shares %} open{% endif %}>
+        <summary>Teilen{% if shares %} <span class="badge">{{ shares|length }} Gruppe{{ shares|length|pluralize:"n" }}</span>{% endif %}</summary>
+        <p class="hint">Mitglieder einer Gruppe können die Sammlung im Chat nutzen und die Dokumente lesen. Mit Schreibrecht dürfen sie auch Dokumente hochladen und löschen.</p>
+        <ul class="share-list" id="share-list"{% if not shares %} hidden{% endif %}>
+          {% for share in shares %}
+            <li class="share-item" data-group-id="{{ share.group }}">
+              <span class="share-group">{{ share.group_name }}</span>
+              <span class="share-mode">{% if share.can_write %}lesen und schreiben{% else %}nur lesen{% endif %}</span>
+              <button type="button" class="button button-small button-danger" data-share-remove="{{ share.group }}" hidden>Entziehen</button>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if groups %}
+          <form class="inline-form share-form" id="share-form" hidden>
+            <div class="inline-form-row">
+              <label for="share-group" class="sr-only">Gruppe</label>
+              <select id="share-group" name="group" required>
+                {% for group in groups %}<option value="{{ group.pk }}">{{ group.name }}</option>{% endfor %}
+              </select>
+              <label for="share-mode" class="sr-only">Zugriff</label>
+              <select id="share-mode" name="mode">
+                <option value="read">nur lesen</option>
+                <option value="write">lesen und schreiben</option>
+              </select>
+              <button type="submit" class="button">Freigeben</button>
+            </div>
+          </form>
+        {% else %}
+          <p class="hint">Es gibt noch keine Gruppen. Ein Verwalter kann sie anlegen.</p>
+        {% endif %}
+        <p class="form-error" id="share-error" role="alert" hidden></p>
+      </details>
+    {% endif %}
+
+    {% rag_search_ready as search_ready %}
+    {% if can_upload and not search_ready %}
+      <p class="chat-notice">Die Dokumentsuche ist noch nicht eingerichtet: Ein Verwalter muss in den RAG-Einstellungen ein Embedding-Modell festlegen. Bis dahin können hochgeladene Dokumente nicht indexiert werden.</p>
+    {% endif %}
+    {% if can_upload %}
+      <form class="upload-form" id="upload-form" data-max-bytes="{{ max_upload_bytes }}" hidden>
+        <label class="upload-drop" id="upload-drop" for="upload-input">
+          <span class="upload-drop-title">Dokumente hochladen</span>
+          <span class="upload-drop-hint">Dateien hierher ziehen oder auswählen – PDF, Word (DOCX), Text (TXT) oder Markdown (MD), höchstens {{ max_upload_mb }} MB je Datei.</span>
+          <input type="file" id="upload-input" name="file" multiple
+                 accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown">
+        </label>
+        <ul class="upload-list" id="upload-list" aria-live="polite" aria-label="Hochladen"></ul>
+      </form>
+    {% elif can_write %}
+      <p class="hint">Für dein Konto ist das Hochladen von Dokumenten nicht freigegeben.</p>
+    {% endif %}
+    <noscript><p class="chat-notice">Zum Hochladen und Löschen wird JavaScript benötigt.</p></noscript>
+
+    <h2 class="section-title" id="documents-title">Dokumente</h2>
+    <p class="hint" id="documents-empty"{% if documents %} hidden{% endif %}>Noch keine Dokumente in dieser Sammlung.</p>
+    <div class="table-scroll">
+      <table class="documents-table" id="documents-table" aria-labelledby="documents-title"{% if not documents %} hidden{% endif %}>
+        <thead>
+          <tr>
+            <th scope="col">Titel</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="col-size">Größe</th>
+            <th scope="col" class="col-date">Hochgeladen</th>
+            <th scope="col"><span class="sr-only">Aktionen</span></th>
+          </tr>
+        </thead>
+        <tbody id="documents-body" data-can-write="{{ can_write|yesno:'true,false' }}">
+          {% for doc in documents %}
+            <tr class="document-row" data-document-id="{{ doc.pk }}" data-status="{{ doc.status }}">
+              <td class="document-title">{{ doc.title }}</td>
+              <td class="document-status">
+                <span class="status-badge status-{{ doc.status }}">{{ doc.get_status_display }}</span>
+                {% if doc.status == "error" and doc.error_text %}<p class="document-error">{{ doc.error_text }}</p>{% elif doc.status == "pending" and doc.error_text %}<p class="document-note">{{ doc.error_text }}</p>{% endif %}
+              </td>
+              <td class="col-size">{% if doc.size is not None %}{{ doc.size|filesizeformat }}{% endif %}</td>
+              <td class="col-date"><time datetime="{{ doc.created|date:'c' }}">{{ doc.created|date:"d.m.Y H:i" }}</time></td>
+              <td class="document-actions">
+                <a class="button button-small" href="{% url 'chat:document_download' doc.pk %}" download>Herunterladen</a>
+                {% if can_write and not doc.source_id %}
+                  <button type="button" class="button button-small button-danger" data-document-delete="{{ doc.pk }}" hidden>Löschen</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="app-status-inline" id="collection-status" role="status" aria-live="polite"></p>
+  </section>
+{% endblock %}

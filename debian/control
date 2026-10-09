@@ -17,7 +17,11 @@ Depends: ${misc:Depends},
          ${shlibs:Depends},
          ${venv:Depends},
          python3 (>= 3.12),
-         adduser
+         adduser,
+         poppler-utils,
+         tesseract-ocr,
+         tesseract-ocr-deu,
+         tesseract-ocr-eng
 Suggests: postgresql (>= 17),
           postgresql-17-pgvector | postgresql-pgvector,
           nginx

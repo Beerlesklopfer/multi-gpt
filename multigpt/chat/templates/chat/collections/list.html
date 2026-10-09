@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static collection_tags %}
+{# Sammlungen (M7, RAG): eigene und mit einer Gruppe geteilte. Namen nur über Auto-Escaping. #}
+{% block title %}Sammlungen – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/collections.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide collections-page" id="collections-page"
+           aria-labelledby="collections-title"
+           data-api-collections="{% url 'chat:api_collections' %}">
+    <h1 id="collections-title">Sammlungen</h1>
+    <p class="page-intro">
+      In einer Sammlung liegen Dokumente (PDF, Word, Text, Markdown). Wählst du sie im Chat aus,
+      stützt sich die Antwort auf diese Dokumente und nennt sie als Quellen.
+    </p>
+    {% rag_search_ready as search_ready %}
+    {% if not search_ready %}
+      <p class="chat-notice">Die Dokumentsuche ist noch nicht eingerichtet: Ein Verwalter muss in den RAG-Einstellungen ein Embedding-Modell festlegen. Bis dahin können hochgeladene Dokumente nicht indexiert werden.</p>
+    {% endif %}
+
+    {% if can_create %}
+      <form class="inline-form" id="collection-create-form" hidden>
+        <label for="collection-name">Neue Sammlung</label>
+        <div class="inline-form-row">
+          <input type="text" id="collection-name" name="name" maxlength="200" required
+                 autocomplete="off" placeholder="z. B. Bedienungsanleitungen">
+          <button type="submit" class="button button-primary">Anlegen</button>
+        </div>
+        <p class="form-error" id="collection-create-error" role="alert" hidden></p>
+      </form>
+      <noscript><p class="chat-notice">Zum Anlegen und Bearbeiten wird JavaScript benötigt.</p></noscript>
+    {% endif %}
+
+    <h2 class="section-title">Eigene Sammlungen</h2>
+    {% if own_collections %}
+      <ul class="collection-list" id="own-collections">
+        {% for item in own_collections %}{% include "chat/collections/_collection_item.html" %}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint" id="own-collections-empty">
+        {% if can_create %}Du hast noch keine Sammlung angelegt.{% else %}Du hast keine eigenen Sammlungen. Für dein Konto ist das Hochladen von Dokumenten nicht freigegeben.{% endif %}
+      </p>
+    {% endif %}
+
+    <h2 class="section-title">Mit dir geteilt</h2>
+    {% if shared_collections %}
+      <ul class="collection-list" id="shared-collections">
+        {% for item in shared_collections %}{% include "chat/collections/_collection_item.html" %}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint">Niemand hat eine Sammlung mit einer deiner Gruppen geteilt.</p>
+    {% endif %}
+  </section>
+{% endblock %}

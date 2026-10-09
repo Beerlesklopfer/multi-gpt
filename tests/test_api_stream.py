@@ -159,7 +159,7 @@ def test_event_order_and_persistence(client, conversation, ai_model, fake):
     assert [name for name, _ in events] == ["start", "delta", "delta", "usage", "done"]
     start = events[0][1]
     assert "".join(d["text"] for n, d in events if n == "delta") == "Hallo"
-    assert events[3][1] == {"tokens_in": 12, "tokens_out": 3}
+    assert events[3][1] == {"tokens_in": 12, "tokens_out": 3, "cost": "0.000060"}
     assert events[4][1] == {"status": "complete"}
 
     user_msg = Message.objects.get(pk=start["user_message_id"])
@@ -397,6 +397,7 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "supports_tools": False,
         "online": True,
         "available": True,
+        "blocked_by_budget": False,
     }
 
 

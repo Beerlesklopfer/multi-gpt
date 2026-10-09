@@ -43,6 +43,21 @@ Entscheidungen:
   nicht wiederholbaren Fehlern bleibt es ``error``. Bei Anbietern mit
   Statusprüfung wird außerdem der Status-Cache verworfen, damit die nächste
   Abfrage sofort neu prüft.
+- **Quellmaterial (M7 Dokumente, M8 Websuche):** Vor dem ersten
+  Anbieteraufruf laufen die registrierten Kontext-Abläufe
+  (``tooling.register_context_provider``, gesteuert über ``Turn.options``,
+  z. B. ``web_search``). Ihr Material hängt als ein ``<quellmaterial>``-Block
+  nur im Verlauf an die Nutzerfrage dieser Runde (nicht in
+  ``Message.content``, nicht in den System-Prompt) und steht in
+  ``tool_state["context"]``, damit es nach einer Rückfrage wörtlich wieder
+  mitgeht; der System-Prompt bekommt den festen Hinweis
+  ``sources.SYSTEM_NOTE``. Quellen werden über ``SourceCollector``
+  durchgehend nummeriert als ``SourceRef`` gespeichert und als SSE
+  ``sources`` (immer die vollständige Liste) gemeldet. Scheitert ein Ablauf,
+  entsteht die Antwort trotzdem: SSE ``status`` mit Hinweis, Hinweis an das
+  Modell, ``tool_state["notices"][<Schlüssel>]``. Eingebaute Werkzeuge
+  (``tooling.register_builtin``, z. B. ``web_search``) laufen ohne Rückfrage;
+  ``available`` wird vor jedem Aufruf erneut geprüft.
 - **Logs:** nur IDs und Fehlerarten, nie Inhalte oder Keys (Plan 9).
 """
 
@@ -51,20 +66,26 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import close_old_connections, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from multigpt.accounts.permissions import Action, can
+from multigpt.accounts import usage
+from multigpt.accounts.permissions import budget_allows, model_permitted
 
+from . import sources as source_refs
 from . import status as provider_status
-from . import tooling
+from . import (
+    tooling,
+    websearch,  # noqa: F401 - registriert Websuche (Kontext und Werkzeug)
+)
 from .models import AIModel, Conversation, McpServer, Message, ToolCall
 from .providers import registry
 from .providers.base import ChatMessage, Delta, Done, Error, ToolCallEvent, Usage
+from .rag import chat as rag_chat  # noqa: F401 - registriert Dokumentsuche (Kontext und Werkzeug)
 from .titles import title_from
 
 logger = logging.getLogger(__name__)
@@ -97,17 +118,40 @@ class Turn:
     user_message: Message | None
     assistant_message: Message
     resume: bool = False  # Fortsetzung nach einer Rückfrage (confirm)
+    # Feste Kontext-Abläufe, z. B. {"web_search": True, "collections": [ids]}.
+    options: dict = field(default_factory=dict)
+    query: str = ""  # Text der Nutzerfrage dieser Runde (Suchanfrage)
 
 
 # --- Hilfen --------------------------------------------------------------------
 
 
-def available_chat_models(user) -> list[AIModel]:
-    """Aktive Chat-Modelle aktiver Anbieter, die ``user`` nutzen darf."""
+def chat_models_for(user) -> list[AIModel]:
+    """Aktive Chat-Modelle aktiver Anbieter, die die Rolle von ``user`` erlaubt –
+    auch solche, die das ausgeschöpfte Monatsbudget gerade sperrt.
+
+    Jedes Modell bekommt ``blocked_by_budget`` (bool). Der Budgetstand wird
+    dafür höchstens einmal abgefragt (nicht je Modell).
+    """
     qs = AIModel.objects.filter(
         capability=AIModel.Capability.CHAT, active=True, provider__active=True
     ).select_related("provider")
-    return [m for m in qs if can(user, Action.USE_MODEL, m)]
+    models = [m for m in qs if model_permitted(user, m)]
+    exhausted = None
+    for m in models:
+        if usage.model_is_free(m):
+            m.blocked_by_budget = False
+            continue
+        if exhausted is None:
+            exhausted = not budget_allows(user, m)
+        m.blocked_by_budget = exhausted
+    return models
+
+
+def available_chat_models(user) -> list[AIModel]:
+    """Aktive Chat-Modelle aktiver Anbieter, die ``user`` jetzt nutzen darf
+    (Rolle und Monatsbudget)."""
+    return [m for m in chat_models_for(user) if not m.blocked_by_budget]
 
 
 CHAT_ROLES = (Message.Role.USER, Message.Role.ASSISTANT)
@@ -176,7 +220,7 @@ def _current_leaf_id(conversation: Conversation, tree: Tree) -> int | None:
 def _load_path(ids: list[int], tree: Tree, *, prefetch: bool) -> list[Message]:
     qs = Message.objects.filter(pk__in=ids).select_related("model")
     if prefetch:
-        qs = qs.prefetch_related("tool_calls__server", "tool_calls__attachments")
+        qs = qs.prefetch_related("tool_calls__server", "tool_calls__attachments", "sources__chunk")
     by_id = {m.pk: m for m in qs}
     messages = [by_id[pk] for pk in ids if pk in by_id]
     for m in messages:
@@ -197,12 +241,15 @@ def visible_messages(conversation: Conversation) -> list[Message]:
     return _load_path(tree.path_to(_current_leaf_id(conversation, tree)), tree, prefetch=True)
 
 
-def append_message(conversation: Conversation, *, parent=_UNSET, **fields) -> Message:
+def append_message(
+    conversation: Conversation, *, parent=_UNSET, move_leaf: bool = True, **fields
+) -> Message:
     """Neue Nachricht im Baum anlegen und als angezeigtes Ende setzen.
 
     Ohne ``parent`` hängt sie an das Ende des angezeigten Pfads;
     ``parent=None`` macht sie zur (weiteren) Wurzel, z. B. beim Bearbeiten der
-    ersten Nachricht.
+    ersten Nachricht. ``move_leaf=False`` lässt current_leaf stehen
+    (weitere Spalten im Vergleichsmodus).
     """
     if parent is _UNSET:
         tree = Tree(conversation)
@@ -210,17 +257,19 @@ def append_message(conversation: Conversation, *, parent=_UNSET, **fields) -> Me
     else:
         parent_id = parent.pk if isinstance(parent, Message) else parent
     message = Message.objects.create(conversation=conversation, parent_id=parent_id, **fields)
-    Conversation.objects.filter(pk=conversation.pk).update(current_leaf=message)
-    conversation.current_leaf = message
+    if move_leaf:
+        Conversation.objects.filter(pk=conversation.pk).update(current_leaf=message)
+        conversation.current_leaf = message
     return message
 
 
-def switch_branch(conversation: Conversation, message_id) -> None:
+def switch_branch(conversation: Conversation, message_id, *, adopt_model: bool = False) -> None:
     """Version umschalten: current_leaf = neuestes Blatt unter ``message_id``.
 
     Wechselt der angezeigte Zweig, werden offene Rückfragen geschlossen (wie
     bei einer neuen Nachricht). ``updated`` bleibt, damit der Chat in der
-    Seitenleiste nicht nach oben springt.
+    Seitenleiste nicht nach oben springt. ``adopt_model`` (Wahl im
+    Vergleichsmodus): das Modell dieser Antwort wird Standardmodell des Chats.
     """
     tree = Tree(conversation)
     if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id not in tree:
@@ -230,6 +279,15 @@ def switch_branch(conversation: Conversation, message_id) -> None:
         close_pending(conversation)
         Conversation.objects.filter(pk=conversation.pk).update(current_leaf_id=leaf_id)
         conversation.current_leaf_id = leaf_id
+    if adopt_model:
+        model_id = (
+            conversation.messages.filter(pk=message_id, role=Message.Role.ASSISTANT)
+            .values_list("model_id", flat=True)
+            .first()
+        )
+        if model_id is not None:
+            Conversation.objects.filter(pk=conversation.pk).update(default_model_id=model_id)
+            conversation.default_model_id = model_id
 
 
 def build_system_prompt(user, conversation: Conversation) -> str | None:
@@ -379,6 +437,8 @@ def prepare_turn(
     mcp_servers: list[int] | None = None,
     edit_of: int | None = None,
     regenerate_of: int | None = None,
+    options: dict | None = None,
+    compare: bool = False,
 ) -> Turn:
     """Legt Nutzer- und (leere) Assistant-Nachricht an. Rechte prüft der Aufrufer.
 
@@ -392,7 +452,14 @@ def prepare_turn(
     Die neue Antwort wird das angezeigte Ende. ``mcp_servers``: eingeschaltete
     MCP-Server (None: Voreinstellung = alle erlaubten). Nur bei Modellen mit
     ``supports_tools``. Offene Rückfragen des Chats werden vorher geschlossen
-    (``close_pending``).
+    (``close_pending``). ``options``: feste Kontext-Abläufe wie
+    ``{"web_search": True, "collections": [ids]}`` (Rechte und Einstellungen
+    prüft der Aufrufer; die Dokumentsuche filtert den Zugriff zusätzlich in SQL).
+
+    ``compare`` (Vergleichsmodus, M6): ohne MCP-Werkzeuge (keine Rückfragen in
+    parallelen Spalten). Eine weitere Spalte (``regenerate``) wird Geschwister,
+    ohne current_leaf und default_model zu ändern – angezeigt bleibt die erste
+    Spalte, bis der Nutzer per ``switch_branch`` wählt.
     """
     if not regenerate:
         content = (content or "").strip()
@@ -400,7 +467,12 @@ def prepare_turn(
             raise TurnError("Die Nachricht ist leer.")
         if len(content) > MAX_CONTENT_LENGTH:
             raise TurnError("Die Nachricht ist zu lang.")
-    servers = tooling.enabled_server_ids(user, mcp_servers) if ai_model.supports_tools else []
+    servers = (
+        tooling.enabled_server_ids(user, mcp_servers)
+        if ai_model.supports_tools and not compare
+        else []
+    )
+    extra_column = compare and regenerate
 
     with transaction.atomic():
         # Sperre gegen gleichzeitige Züge im selben Chat (gleicher current_leaf).
@@ -426,20 +498,50 @@ def prepare_turn(
         assistant_message = append_message(
             conversation,
             parent=question_id,
+            move_leaf=not extra_column,
             role=Message.Role.ASSISTANT,
             model=ai_model,
             status=Message.Status.ABORTED,  # Platzhalter, siehe Moduldoku
-            tool_state={"servers": servers} if servers else {},
+            tool_state=_initial_tool_state(servers, options),
         )
 
-        fields = {"updated": timezone.now(), "default_model": ai_model}
+        fields = {"updated": timezone.now()}
+        if not extra_column:
+            fields["default_model"] = ai_model
         if not conversation.title and user_message is not None:
             fields["title"] = _title_from(content)
         Conversation.objects.filter(pk=conversation.pk).update(**fields)
         for key, value in fields.items():
             setattr(conversation, key, value)
 
-    return Turn(user, conversation, ai_model, user_message, assistant_message)
+    if user_message is not None:
+        query = content
+    else:
+        query = (
+            Message.objects.filter(pk=question_id).values_list("content", flat=True).first() or ""
+        )
+    return Turn(
+        user,
+        conversation,
+        ai_model,
+        user_message,
+        assistant_message,
+        options=dict(options or {}),
+        query=query,
+    )
+
+
+def _initial_tool_state(servers: list[int], options: dict | None) -> dict:
+    """Startzustand der Antwort: eingeschaltete MCP-Server und gewählte
+    Sammlungen (das Werkzeug ``search_documents`` sucht darin, auch nach einer
+    Rückfrage)."""
+    state: dict = {}
+    if servers:
+        state["servers"] = servers
+    collections = (options or {}).get("collections")
+    if collections:
+        state["collections"] = list(collections)
+    return state
 
 
 def _question_for_regenerate(conversation: Conversation, tree: Tree, regenerate_of) -> int:
@@ -642,6 +744,10 @@ class _Loop:
         self.stream = None
         self.paused = False
         self.bindings: dict[str, tooling.Binding] = {}
+        # Quellen der Antwort (durchgehend nummeriert) und Quellmaterial-Block
+        # der festen Abläufe (bleibt über eine Rückfrage hinweg erhalten).
+        self.sources = source_refs.SourceCollector(self.msg)
+        self.context = str(self.state.get("context") or "")
 
     # --- Hilfen ---
 
@@ -695,6 +801,7 @@ class _Loop:
                     "provider_state": event.provider_state,
                     "server_id": binding.server_id if binding else None,
                     "tool": binding.tool if binding else None,
+                    "builtin": binding.builtin if binding else None,
                     "tool_call": None,
                 }
             )
@@ -718,6 +825,8 @@ class _Loop:
         open_calls = [c for c in rnd["calls"] if c["id"] not in done]
         need = []
         for call in open_calls:
+            if call.get("builtin"):
+                continue  # eingebaute Werkzeuge laufen ohne Rückfrage
             server, err = tooling.resolve_server(self.turn.user, call, self.servers)
             if server is not None and call.get("decision") is None:
                 if tooling.needs_confirmation(server, call["tool"]):
@@ -758,6 +867,9 @@ class _Loop:
         yield "done", {"status": Message.Status.AWAITING_CONFIRMATION}
 
     def _execute(self, rnd: dict, call: dict):
+        if call.get("builtin"):
+            yield from self._execute_builtin(rnd, call)
+            return
         user = self.turn.user
         # Rechte vor jedem Aufruf erneut prüfen (auch nach einer Bestätigung).
         server, err = tooling.resolve_server(user, call, self.servers)
@@ -787,6 +899,84 @@ class _Loop:
         self._add_result(rnd, call, outcome.text, outcome.is_error)
         self._persist()
         yield "tool_result", tooling.result_event(tool_call, outcome.attachment_ids)
+
+    def _budget_status(self):
+        """Hinweis ab 80 % des Monatsbudgets als SSE ``status`` (Stufe warning).
+
+        Nach den festen Abläufen, damit deren Info-Status ihn nicht verdrängt.
+        Stand vor dieser Antwort; die Sperre selbst prüft ``can(USE_MODEL)``.
+        """
+        try:
+            if usage.budget_for(self.turn.user) is None:
+                return
+            state = usage.budget_state(self.turn.user)
+        except Exception as exc:  # der Hinweis darf die Antwort nie verhindern
+            logger.error("Budgetstand für Antwort %s: %s", self.msg.pk, type(exc).__name__)
+            return
+        if state.level != usage.LEVEL_OK:
+            yield "status", {"text": usage.warning_text(state), "level": "warning"}
+
+    # --- Quellmaterial und eingebaute Werkzeuge (M7, M8) ---
+
+    def _run_context_providers(self):
+        """Feste Abläufe vor dem ersten Anbieteraufruf (Generator).
+
+        Danach ein ``sources``-Event (falls Quellen dazukamen) und ein gemeinsamer
+        ``<quellmaterial>``-Block für die Nutzerfrage.
+        """
+        entries, notes, notices = [], [], {}
+        for key, provider in tooling.context_providers():
+            try:
+                result = yield from provider(self.turn, self.sources)
+            except Exception as exc:  # ein Ablauf darf die Antwort nie verhindern
+                logger.error("Kontext %s für Antwort %s: %s", key, self.msg.pk, type(exc).__name__)
+                continue
+            if result is None:
+                continue
+            entries += list(result.entries)
+            notes += list(result.notes)
+            if result.notice:
+                notices[key] = result.notice
+        if entries or notes:
+            self.context = source_refs.context_block(entries, notes)
+            self.state["context"] = self.context
+        if notices:
+            self.state["notices"] = notices
+        if entries or notes or notices:
+            self._persist()
+        if self.sources.changed:
+            yield "sources", self.sources.event()
+
+    def _execute_builtin(self, rnd: dict, call: dict):
+        """Eingebautes Werkzeug: ohne Rückfrage, ``available`` vor jedem Aufruf."""
+        tool_call = self._tool_call_for(call, None, ToolCall.Status.RUNNING)
+        yield "tool_call", {**tooling.call_event(tool_call), "status": ToolCall.Status.RUNNING}
+        started = time.monotonic()
+        builtin = tooling.get_builtin(call.get("builtin"))
+        if builtin is None or not builtin.available(self.turn.user, self.turn.ai_model):
+            outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_NOT_ALLOWED, True)
+        else:
+            try:
+                result = builtin.run(self.turn.user, call.get("arguments") or {}, self.sources)
+            except Exception as exc:
+                logger.error("Werkzeug %s (%s): %s", builtin.name, tool_call.pk, type(exc).__name__)
+                outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_FAILED, True)
+            else:
+                status = ToolCall.Status.ERROR if result.is_error else ToolCall.Status.OK
+                text = result.text or tooling.MSG_EMPTY
+                outcome = tooling.Outcome(status, text, bool(result.is_error))
+        elapsed = tooling.record(tool_call, outcome, started)
+        logger.info(
+            "Werkzeugaufruf %s (eingebaut): %s in %d ms",
+            tool_call.pk,
+            outcome.status,
+            int(elapsed * 1000),
+        )
+        self._add_result(rnd, call, outcome.text, outcome.is_error)
+        self._persist()
+        yield "tool_result", tooling.result_event(tool_call, [])
+        if self.sources.changed:
+            yield "sources", self.sources.event()
 
     def _over_limit(self, rnd: dict):
         """Aufrufe trotz ``tool_choice="none"`` in der letzten Runde: protokollieren,
@@ -818,12 +1008,19 @@ class _Loop:
                     "parent_id": (turn.user_message or msg).parent_id,
                 },
             )
+            if not turn.resume:
+                yield from self._run_context_providers()
+                yield from self._budget_status()
+            if turn.ai_model.supports_tools:
+                # MCP-Werkzeuge der eingeschalteten Server plus eingebaute
+                # Werkzeuge (web_search) nach Recht und Einstellung.
+                if self.servers:
+                    self.bindings = tooling.collect_tools(turn.user, self.servers)
+                self.bindings.update(tooling.builtin_bindings(turn.user, turn.ai_model))
             if turn.resume and self.state["rounds"]:
                 paused = yield from self._process_round(self.state["rounds"][-1])
                 if paused:
                     return
-            if turn.ai_model.supports_tools and self.servers:
-                self.bindings = tooling.collect_tools(turn.user, self.servers)
             specs = [b.spec for b in self.bindings.values()]
             provider_id = turn.ai_model.provider_id
             history = build_history(
@@ -833,6 +1030,12 @@ class _Loop:
                 with_tools=bool(specs),
                 leaf=msg,  # Pfad dieser Antwort, auch wenn inzwischen umgeschaltet wurde
             )
+            if self.context:
+                # Quellmaterial nur im Verlauf an die Frage dieser Runde hängen.
+                for item in reversed(history):
+                    if item.role == "user":
+                        item.content = source_refs.wrap_question(item.content, self.context)
+                        break
             if specs:
                 for rnd in self.state["rounds"]:
                     history += round_messages(rnd)
@@ -842,6 +1045,9 @@ class _Loop:
                 if text:
                     history.append(ChatMessage("assistant", text))
             system = build_system_prompt(turn.user, turn.conversation)
+            if self.context or any(b.builtin for b in self.bindings.values()):
+                note = source_refs.SYSTEM_NOTE
+                system = f"{system}\n\n{note}" if system else note
             adapter = registry.get_adapter(turn.ai_model.provider)
 
             while True:
@@ -934,7 +1140,10 @@ class _Loop:
         _finish(turn, self.content, status, error, self.tokens_in, self.tokens_out)
         if error:
             yield "error", {"message": error}
-        yield "usage", {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out}
+        cost = msg.cost
+        usage = {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out}
+        usage["cost"] = None if cost is None else str(cost)
+        yield "usage", usage
         yield "done", {"status": status}
 
 

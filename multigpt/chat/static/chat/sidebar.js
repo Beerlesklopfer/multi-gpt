@@ -213,6 +213,9 @@
     });
   }
 
+  // Auch für andere Seiten (Sammlungen, collections.js).
+  window.MultiGPT.openDialog = openDialog;
+
   // --- Aktionen ------------------------------------------------------------------
 
   async function rename(id, currentTitle) {

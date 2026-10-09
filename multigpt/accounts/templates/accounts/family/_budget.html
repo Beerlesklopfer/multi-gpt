@@ -1,0 +1,10 @@
+{# Budget und Verbrauch im laufenden Monat; u = Ergebnis von views_family._budget_row. #}
+<span class="family-budget family-budget-{{ u.level }}">
+  {% if u.budget is not None %}
+    <meter min="0" max="100" low="80" high="99" optimum="0" value="{{ u.percent }}"
+           aria-label="{{ u.percent }} % des Monatsbudgets verbraucht">{{ u.percent }} %</meter>
+    <span class="family-budget-text">{{ u.spent_text }} von {{ u.budget_text }}{% if u.level == "exhausted" %} · ausgeschöpft{% elif u.level == "warning" %} · über 80 %{% endif %}</span>
+  {% else %}
+    <span class="family-budget-text">{{ u.spent_text }} · unbegrenzt</span>
+  {% endif %}
+</span>

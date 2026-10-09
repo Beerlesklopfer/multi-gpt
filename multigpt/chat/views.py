@@ -10,21 +10,24 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from multigpt.accounts.permissions import Action, can
+from multigpt.accounts.permissions import Action, can, supervised_conversation_owner
 
 from . import services
 from .models import Conversation, Message
+from .websearch import web_search_available
 
 
 def _has_chat_model(user) -> bool:
     """Darf der Nutzer chatten und mindestens ein Chat-Modell verwenden?"""
-    return can(user, Action.CHAT) and bool(services.available_chat_models(user))
+    # Auch vom Budget gesperrte Modelle zählen: Sie erscheinen ausgegraut (M6-03).
+    return can(user, Action.CHAT) and bool(services.chat_models_for(user))
 
 
 def _page_context(request, conversation=None):
     return {
         "active_conversation": conversation,
         "has_chat_model": _has_chat_model(request.user),
+        "web_search_available": web_search_available(request.user),
     }
 
 
@@ -67,6 +70,8 @@ def conversation(request, pk):
             "chat_messages": chat_messages,
             "can_write": can(request.user, Action.WRITE, conv),
             "is_owner": conv.user_id == request.user.pk,
+            # Einsicht (M6-05): Verwalter liest den Chat eines Jugendlichen.
+            "supervised_owner": supervised_conversation_owner(request.user, conv),
         }
     )
     return render(request, "chat/conversation.html", context)

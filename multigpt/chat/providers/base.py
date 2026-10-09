@@ -375,14 +375,29 @@ def exception_to_error(exc: Exception, *, started: bool) -> Error:
 
 
 class ProviderError(Exception):
-    """Fehler bei Konfiguration oder Aufruf eines Anbieters (Text ohne Keys)."""
+    """Fehler bei Konfiguration oder Aufruf eines Anbieters (Text ohne Keys).
+
+    ``retryable``: Ein späterer Versuch kann gelingen (Netz, 429, 5xx).
+    ``unreachable``: Der Anbieter war gar nicht erreichbar (Verbindung
+    abgelehnt, Verbindungsaufbau zu langsam) – z. B. LM-Studio-PC aus.
+    """
+
+    def __init__(self, message: str = "", *, retryable: bool = False, unreachable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable or unreachable
+        self.unreachable = unreachable
+
+
+def is_unreachable(exc: BaseException) -> bool:
+    """Verbindung kam nicht zustande (Anbieter aus oder nicht im Netz)."""
+    return isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)
 
 
 class ProviderHTTPError(ProviderError):
     """``ProviderError`` mit dem HTTP-Status der Anbieterantwort (für ``check``)."""
 
-    def __init__(self, message: str, status: int):
-        super().__init__(message)
+    def __init__(self, message: str, status: int, *, retryable: bool = False):
+        super().__init__(message, retryable=retryable)
         self.status = status
 
 
@@ -606,7 +621,28 @@ class ProviderAdapter:
             return False
         return True
 
-    def embed(self, model_id: str, texts: list[str]):
+    def embed(
+        self, model_id: str, texts: list[str], dimensions: int | None = None
+    ) -> list[list[float]]:
+        """Ein Vektor je Text, gleiche Reihenfolge. ``dimensions``: gewünschte
+        Länge (nur Modelle, die das können). Fehler als ``ProviderError``."""
+        raise NotImplementedError
+
+    def describe_image(
+        self,
+        model_id: str,
+        image: bytes,
+        prompt: str,
+        *,
+        mime_type: str = "image/png",
+        **params,
+    ) -> str:
+        """Ein Bild mit Textanweisung an ein Vision-Modell, nicht streamend
+        (z. B. olmOCR für gescannte Seiten). Liefert den Antworttext.
+
+        ``params``: z. B. ``temperature``, ``max_tokens``. Fehler als
+        ``ProviderError`` (deutscher Text ohne Key und ohne Rohtext des Anbieters).
+        """
         raise NotImplementedError
 
     def transcribe(self, model_id: str, audio):

@@ -1,0 +1,15 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls %}
+{# Nur Metadaten; Knopf „Neu indexieren“ (POST). #}
+
+{% block object-tools-items %}
+  {% if original %}
+  <li>
+    <form method="post" action="{% url 'admin:rag_collectionproxy_reindex' original.pk|admin_urlquote %}" class="rag-tool-form">
+      {% csrf_token %}
+      <button type="submit" class="rag-tool-button">Neu indexieren</button>
+    </form>
+  </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

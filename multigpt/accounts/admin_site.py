@@ -29,6 +29,17 @@ class FamilyAdminSite(admin.AdminSite):
     def has_permission(self, request):
         return can(request.user, Action.ADMIN)
 
+    def get_app_list(self, request, app_label=None):
+        """Wie Django, aber ein ModelAdmin kann mit ``index_order`` (kleiner =
+        weiter oben) seinen Platz im Abschnitt festlegen, z. B. die
+        RAG-Übersicht als ersten Eintrag. Ohne Angabe bleibt es alphabetisch."""
+        app_list = super().get_app_list(request, app_label)
+        for app in app_list:
+            app["models"].sort(
+                key=lambda entry: getattr(self._registry.get(entry["model"]), "index_order", 100)
+            )
+        return app_list
+
     def admin_view(self, view, cacheable=False):
         inner = super().admin_view(view, cacheable)
 

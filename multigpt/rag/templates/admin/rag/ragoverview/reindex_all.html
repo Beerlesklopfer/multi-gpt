@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{# Bestätigung für „Alles neu indexieren“ (POST mit CSRF). #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'rag/admin_rag.css' %}">{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='rag' %}">Dokumente (RAG)</a>
+  &rsaquo; <a href="{% url 'admin:rag_ragoverview_changelist' %}">RAG-Übersicht</a>
+  &rsaquo; Alles neu indexieren
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>Alle <strong>{{ document_count }}</strong> Dokumente werden zur Indexierung eingereiht ({{ chunk_count }} Abschnitte werden dabei neu berechnet).
+  Das ist nach einem Wechsel des Embedding-Modells oder der Zerteilung nötig und kostet beim Anbieter Embedding-Tokens.</p>
+  {% if embedding_model %}
+    <p>Embedding-Modell: <strong>{{ embedding_model.display_name }}</strong> <code>{{ embedding_model.model_id }}</code></p>
+  {% else %}
+    <p class="errornote">Es ist kein Embedding-Modell gesetzt – die Aufträge werden fehlschlagen, bis eines in den Einstellungen gewählt ist.</p>
+  {% endif %}
+  <p>Bis ein Dokument fertig ist, bleiben seine alten Abschnitte durchsuchbar. Die Arbeit macht der Worker.</p>
+  <form method="post">
+    {% csrf_token %}
+    <div>
+      <input type="submit" value="Ja, alles neu indexieren">
+      <a href="{% url 'admin:rag_ragoverview_changelist' %}" class="button cancel-link">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

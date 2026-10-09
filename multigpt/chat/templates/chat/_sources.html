@@ -1,0 +1,23 @@
+{% load source_tags %}
+{% comment %}Quellen einer Antwort (M8, Websuche). Titel und URLs sind nicht vertrauenswürdig: nur
+Auto-Escaping, verlinkt werden nur http(s)-URLs. Aufbau wie in chat.js (renderSources).{% endcomment %}
+{% with sources=msg.sources.all %}
+  {% if sources %}
+    <section class="message-sources" aria-labelledby="message-sources-{{ msg.pk }}">
+      <h3 class="message-sources-title" id="message-sources-{{ msg.pk }}">Quellen</h3>
+      <ol class="message-sources-list">
+        {% for src in sources|sources_head %}{% include "chat/_source.html" %}{% endfor %}
+      </ol>
+      {% with rest=sources|sources_tail %}
+        {% if rest %}
+          <details class="message-sources-more">
+            <summary>Weitere Quellen ({{ rest|length }})</summary>
+            <ol class="message-sources-list" start="4">
+              {% for src in rest %}{% include "chat/_source.html" %}{% endfor %}
+            </ol>
+          </details>
+        {% endif %}
+      {% endwith %}
+    </section>
+  {% endif %}
+{% endwith %}

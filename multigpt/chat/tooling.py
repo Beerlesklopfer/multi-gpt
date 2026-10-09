@@ -25,8 +25,10 @@ import logging
 import mimetypes
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from django.core.files.base import ContentFile
 
@@ -98,13 +100,107 @@ def tool_name(server: McpServer, tool: str, taken=()) -> str:
 
 @dataclass(frozen=True)
 class Binding:
-    """Ein angebotenes Werkzeug: Name für das Modell -> Server und Originalname."""
+    """Ein angebotenes Werkzeug: Name für das Modell -> Server und Originalname.
+
+    Eingebaute Werkzeuge (``builtin`` gesetzt, z. B. ``web_search``) haben
+    keinen Server; sie laufen ohne Rückfrage, Rechte prüft die Schleife.
+    """
 
     name: str
-    server_id: int
+    server_id: int | None
     server_name: str
     tool: str
     spec: ToolSpec
+    builtin: str | None = None
+
+
+# --- Eingebaute Werkzeuge und fester Kontext (M7-06, M8-04) ---------------------------
+#
+# Eingebaute Werkzeuge laufen ohne MCP-Server und ohne Rückfrage (sie lesen nur);
+# ``available`` wird vor dem Anbieten und vor jedem Aufruf erneut geprüft.
+# Namen enthalten nie "__" und können so nicht mit MCP-Namen zusammenfallen.
+# Die Module registrieren sich beim Import (``services`` importiert sie).
+
+MSG_BAD_QUERY = "Bitte einen Suchbegriff im Argument „query“ angeben."
+
+
+@dataclass(frozen=True)
+class BuiltinResult:
+    """Ergebnis eines eingebauten Werkzeugs (Text für Modell und Anzeige)."""
+
+    text: str
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class BuiltinTool:
+    """``available(user, ai_model) -> bool``;
+    ``run(user, arguments: dict, sources: SourceCollector) -> BuiltinResult``."""
+
+    name: str
+    label: str
+    spec: ToolSpec
+    available: Callable[[Any, Any], bool]
+    run: Callable[[Any, dict, Any], BuiltinResult]
+
+
+@dataclass(frozen=True)
+class ContextResult:
+    """Ergebnis eines festen Kontext-Ablaufs (z. B. Websuche vor dem Anbieteraufruf).
+
+    ``entries``: nummerierte ``sources.ContextEntry``; ``notes``: Hinweise an das
+    Modell (z. B. Suche fehlgeschlagen); ``notice``: Hinweis für den Nutzer.
+    """
+
+    entries: list = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    notice: str = ""
+
+
+_BUILTINS: dict[str, BuiltinTool] = {}
+# Schlüssel -> (Reihenfolge, Generator-Funktion(turn, sources) -> return ContextResult)
+_CONTEXT_PROVIDERS: dict[str, tuple[int, Callable]] = {}
+
+
+def register_builtin(tool: BuiltinTool) -> None:
+    if SEPARATOR in tool.name or _slug(tool.name) != tool.name:
+        raise ValueError("Ungültiger Name für ein eingebautes Werkzeug.")
+    _BUILTINS[tool.name] = tool
+
+
+def get_builtin(name: str | None) -> BuiltinTool | None:
+    return _BUILTINS.get(name or "")
+
+
+def register_context_provider(key: str, provider: Callable, *, order: int = 100) -> None:
+    """``provider(turn, sources)`` ist ein Generator: yieldet SSE-Events
+    (z. B. ``status``) und liefert per ``return`` ein ``ContextResult``.
+    ``order``: kleinere Werte laufen zuerst (Dokumente 10 vor Web 100) – die
+    Reihenfolge bestimmt die Quellennummern, unabhängig von der Importfolge."""
+    _CONTEXT_PROVIDERS[key] = (order, provider)
+
+
+def context_providers() -> list[tuple[str, Callable]]:
+    ordered = sorted(_CONTEXT_PROVIDERS.items(), key=lambda item: item[1][0])
+    return [(key, provider) for key, (_, provider) in ordered]
+
+
+def builtin_bindings(user, ai_model) -> dict[str, Binding]:
+    """Eingebaute Werkzeuge für werkzeugfähige Modelle, nach Recht und Einstellung."""
+    if not ai_model.supports_tools:
+        return {}
+    return {
+        tool.name: Binding(
+            name=tool.name,
+            server_id=None,
+            server_name=tool.label,
+            tool=tool.name,
+            spec=tool.spec,
+            builtin=tool.name,
+        )
+        for tool in _BUILTINS.values()
+        if tool.available(user, ai_model)
+    }
 
 
 def collect_tools(user, server_ids) -> dict[str, Binding]:
@@ -227,12 +323,7 @@ def execute(server: McpServer, tool_call: ToolCall, message) -> Outcome:
             text = f"{text}\n\n{note}" if text else note
         status = ToolCall.Status.ERROR if result.is_error else ToolCall.Status.OK
         outcome = Outcome(status, text or MSG_EMPTY, bool(result.is_error), ids)
-    outcome.text = _clip(outcome.text, MAX_RESULT_CHARS)
-    elapsed = time.monotonic() - started
-    tool_call.status = outcome.status
-    tool_call.result = {"text": outcome.text, "is_error": outcome.is_error}
-    tool_call.duration = timedelta(seconds=elapsed)
-    tool_call.save(update_fields=["status", "result", "duration"])
+    elapsed = record(tool_call, outcome, started)
     logger.info(
         "Werkzeugaufruf %s (Server %s): %s in %d ms",
         tool_call.pk,
@@ -241,6 +332,17 @@ def execute(server: McpServer, tool_call: ToolCall, message) -> Outcome:
         int(elapsed * 1000),
     )
     return outcome
+
+
+def record(tool_call: ToolCall, outcome: Outcome, started: float) -> float:
+    """Ergebnis (gekürzt), Status und Dauer im ``ToolCall`` speichern; liefert die Dauer."""
+    outcome.text = _clip(outcome.text, MAX_RESULT_CHARS)
+    elapsed = time.monotonic() - started
+    tool_call.status = outcome.status
+    tool_call.result = {"text": outcome.text, "is_error": outcome.is_error}
+    tool_call.duration = timedelta(seconds=elapsed)
+    tool_call.save(update_fields=["status", "result", "duration"])
+    return elapsed
 
 
 def close_call(tool_call: ToolCall, status: str, text: str) -> None:
@@ -253,10 +355,18 @@ def close_call(tool_call: ToolCall, status: str, text: str) -> None:
 # --- Events -------------------------------------------------------------------------
 
 
+def server_label(tool_call: ToolCall) -> str:
+    """Anzeigename des Servers; eingebaute Werkzeuge (ohne Server) mit eigenem Namen."""
+    if tool_call.server_id:
+        return tool_call.server.name
+    builtin = _BUILTINS.get(tool_call.tool)
+    return builtin.label if builtin else ""
+
+
 def call_event(tool_call: ToolCall, server_name: str = "") -> dict:
     return {
         "id": tool_call.pk,
-        "server": server_name or (tool_call.server.name if tool_call.server_id else ""),
+        "server": server_name or server_label(tool_call),
         "tool": tool_call.tool,
         "arguments": tool_call.arguments,
         "status": tool_call.status,

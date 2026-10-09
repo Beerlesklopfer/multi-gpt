@@ -16,6 +16,10 @@
     {% endwith %}
   {% endif %}
   <div class="chat-message-content"{% if msg.role == "assistant" %} data-markdown="true"{% endif %}>{{ msg.content }}</div>
+  {% if msg.role == "assistant" %}
+    {% if msg.web_search_notice %}<p class="chat-message-status chat-message-status-warning">{{ msg.web_search_notice }}</p>{% endif %}
+    {% include "chat/_sources.html" %}
+  {% endif %}
   {% if msg.status == "aborted" %}
     <p class="chat-message-status chat-message-status-aborted">Abgebrochen{% if msg.error %}: {{ msg.error }}{% endif %}</p>
   {% elif msg.status == "error" %}

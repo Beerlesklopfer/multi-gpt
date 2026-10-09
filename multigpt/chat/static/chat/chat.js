@@ -6,11 +6,14 @@
 // Sicherheit (Plan 9): Nutzertext wird ausschließlich als Text eingesetzt
 // (textContent), Modelltext nur über markdown.js (marked -> DOMPurify).
 // Werkzeugargumente und -ergebnisse sind nicht vertrauenswürdig: nur textContent,
-// nie Markdown oder HTML.
+// nie Markdown oder HTML. Ebenso Titel und URLs der Web-Quellen (M8): Titel nur
+// als Text, verlinkt werden nur http(s)-URLs.
 "use strict";
 
 (() => {
   const STORAGE_KEY = "multigpt.lastModel";
+  const WEB_SEARCH_KEY = "multigpt.webSearch";
+  const SOURCES_VISIBLE = 3; // wie templatetags/source_tags.py
   const SCROLL_STICK_PX = 48;
   const TITLE_MAX = 60;
   const RESULT_DISPLAY_CHARS = 4000;
@@ -118,6 +121,26 @@
     } catch {
       return String(args);
     }
+  }
+
+  // --- Quellen (M8) ------------------------------------------------------------
+  // Gleiche Regeln wie templatetags/source_tags.py.
+
+  function sourceUrl(raw) {
+    if (typeof raw !== "string") {
+      return null;
+    }
+    try {
+      const url = new URL(raw.trim());
+      return (url.protocol === "http:" || url.protocol === "https:") && url.hostname ? url : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function sourceDomain(url) {
+    const host = url ? url.hostname : "";
+    return host.startsWith("www.") ? host.slice(4) : host;
   }
 
   // --- SSE aus einem fetch-Stream lesen -----------------------------------------
@@ -237,9 +260,11 @@
 
     // --- Anzeige ---
 
-    function setStatus(text, isError = false) {
+    // level: false/"info", true/"error" oder "warning" (Hinweis, kein Fehler).
+    function setStatus(text, level = false) {
       statusLine.textContent = text;
-      statusLine.classList.toggle("is-error", Boolean(text) && isError);
+      statusLine.classList.toggle("is-error", Boolean(text) && (level === true || level === "error"));
+      statusLine.classList.toggle("is-warning", Boolean(text) && level === "warning");
     }
 
     function isNearBottom() {
@@ -283,6 +308,91 @@
       const label = status === "aborted" ? "Abgebrochen" : "Fehler";
       note.textContent = `${label}${errorText ? `: ${errorText}` : ""}`;
       article.append(note);
+    }
+
+    // --- Quellen unter der laufenden Antwort (M8) ---
+    // Aufbau wie chat/_sources.html; jedes Event "sources" ersetzt die Liste.
+
+    // Webquelle: Link nur bei http(s), Domain daneben. Dokumentquelle (M7): nur
+    // eigene, relative Pfade ("/…", nicht "//…"), Seite im Text, keine Domain.
+    function buildSourceItem(source) {
+      const item = document.createElement("li");
+      item.className = "message-source";
+      const raw = typeof source.url === "string" ? source.url.trim() : "";
+      const title = String(source.title ?? "").replace(/\s+/g, " ").trim();
+      let href = "";
+      let site = "";
+      let label;
+      if (source.kind === "document") {
+        href = raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "";
+        const page = Number(source.page);
+        label = `${title || "Dokument"}${Number.isInteger(page) && page > 0 ? `, S. ${page}` : ""}`;
+      } else {
+        const url = sourceUrl(raw);
+        href = url ? url.href : "";
+        site = sourceDomain(url);
+        label = title || site || raw || "Quelle";
+      }
+      if (href) {
+        const link = document.createElement("a");
+        link.className = "message-source-link";
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer nofollow";
+        link.textContent = label;
+        const hint = document.createElement("span");
+        hint.className = "sr-only";
+        hint.textContent = " (öffnet in neuem Tab)";
+        link.append(hint);
+        item.append(link);
+        if (site) {
+          const domain = document.createElement("span");
+          domain.className = "message-source-domain";
+          domain.textContent = site;
+          item.append(" ", domain);
+        }
+      } else {
+        const text = document.createElement("span");
+        text.className = "message-source-link";
+        text.textContent = label;
+        item.append(text);
+      }
+      return item;
+    }
+
+    function renderSources(article, sources) {
+      article.querySelector(".message-sources")?.remove();
+      const list = (Array.isArray(sources) ? sources : []).filter((s) => s && typeof s === "object");
+      if (!list.length) {
+        return;
+      }
+      list.sort((a, b) => (Number(a.n) || 0) - (Number(b.n) || 0));
+      const section = document.createElement("section");
+      section.className = "message-sources";
+      const titleId = `message-sources-${article.dataset.messageId || "neu"}`;
+      section.setAttribute("aria-labelledby", titleId);
+      const heading = document.createElement("h3");
+      heading.className = "message-sources-title";
+      heading.id = titleId;
+      heading.textContent = "Quellen";
+      const head = document.createElement("ol");
+      head.className = "message-sources-list";
+      head.append(...list.slice(0, SOURCES_VISIBLE).map(buildSourceItem));
+      section.append(heading, head);
+      const rest = list.slice(SOURCES_VISIBLE);
+      if (rest.length) {
+        const more = document.createElement("details");
+        more.className = "message-sources-more";
+        const summary = document.createElement("summary");
+        summary.textContent = `Weitere Quellen (${rest.length})`;
+        const tail = document.createElement("ol");
+        tail.className = "message-sources-list";
+        tail.start = SOURCES_VISIBLE + 1;
+        tail.append(...rest.map(buildSourceItem));
+        more.append(summary, tail);
+        section.append(more);
+      }
+      article.querySelector(".chat-message-content").after(section);
     }
 
     // --- Werkzeugaufrufe (M4a-06) ---
@@ -623,8 +733,13 @@
     // Leisten unter den Nachrichten (chat/_message_actions.html): Knöpfe je nach
     // Zustand freigeben. Bearbeiten und Neu erzeugen brauchen das Eingabefeld
     // (Schreibrecht und Modelle), Umschalten nur das Schreibrecht (Server).
+    // Läuft ein Stream oder wartet ein Vergleich (compare.js) auf die Wahl?
+    function isBusy() {
+      return Boolean(controller) || Boolean(window.MultiGPT.compare?.pending());
+    }
+
     function updateMessageActions() {
-      const busy = Boolean(controller);
+      const busy = isBusy();
       for (const bar of log.querySelectorAll("[data-message-actions]")) {
         const article = bar.closest(".chat-message");
         bar.hidden = article.classList.contains("is-editing");
@@ -659,6 +774,13 @@
       const toolSwitches = document.getElementById("tool-servers");
       if (toolSwitches) {
         toolSwitches.disabled = active;
+      }
+      if (webSearchToggle) {
+        webSearchToggle.disabled = active;
+      }
+      const collectionPicker = document.getElementById("collection-picker");
+      if (collectionPicker) {
+        collectionPicker.disabled = active;
       }
       updateMessageActions();
     }
@@ -748,10 +870,13 @@
         }
         providers.get(key).push(model);
       }
-      const isAvailable = (model) => model.available !== false;
+      // Vom ausgeschöpften Monatsbudget gesperrte Modelle: ausgegraut (M6-03).
+      const isAvailable = (model) => model.available !== false && model.blocked_by_budget !== true;
       const makeOption = (model) => {
         let label = model.display_name;
-        if (model.is_local) {
+        if (model.blocked_by_budget === true) {
+          label += " (Budget ausgeschöpft)";
+        } else if (model.is_local) {
           if (model.online === false) {
             label += " (lokal, offline)";
           } else if (!isAvailable(model)) {
@@ -793,13 +918,19 @@
       modelSelect.value = preferred || (usable.length ? String(usable[0].id) : "");
 
       modelsReady = usable.length > 0;
-      if (!modelsReady) {
+      if (!modelsReady && models.some((m) => m.blocked_by_budget === true)) {
+        setStatus(
+          "Monatsbudget ausgeschöpft – bis zum Monatsende sind nur lokale Modelle nutzbar. Zurzeit ist kein lokales Modell erreichbar.",
+          true,
+        );
+      } else if (!modelsReady) {
         setStatus("Zurzeit ist kein Modell erreichbar. Lokale Modelle sind offline.", true);
       } else if (statusLine.textContent.startsWith("Zurzeit ist kein Modell")) {
         setStatus("");
       }
       setStreaming(Boolean(controller));
       updateToolSwitches();
+      document.dispatchEvent(new CustomEvent("multigpt:models-loaded"));
     }
 
     // --- Schalter je MCP-Server (M4a-06) ---
@@ -861,9 +992,26 @@
       return Array.from(toolSwitchList.querySelectorAll("input:checked"), (i) => Number(i.value));
     }
 
+    // Ergänzt Werkzeugauswahl und Websuche (nur wenn der Schalter angezeigt wird).
     function withTools(payload) {
       const servers = selectedMcpServers();
-      return servers ? { ...payload, mcp_servers: servers } : payload;
+      const result = servers ? { ...payload, mcp_servers: servers } : { ...payload };
+      if (webSearchToggle) {
+        result.web_search = webSearchToggle.checked;
+      }
+      // Sammlungen für die Dokumentsuche (M7, collections_picker.js).
+      return window.MultiGPT.collectionPicker?.extend(result) ?? result;
+    }
+
+    // --- Schalter Websuche (M8) ---
+    // Nur vorhanden, wenn die Websuche eingeschaltet ist und das Recht besteht (Server).
+
+    const webSearchToggle = document.getElementById("web-search-toggle");
+    if (webSearchToggle) {
+      webSearchToggle.checked = storageGet(WEB_SEARCH_KEY) === "1";
+      webSearchToggle.addEventListener("change", () => {
+        storageSet(WEB_SEARCH_KEY, webSearchToggle.checked ? "1" : "0");
+      });
     }
 
     // --- Senden und Streamen ---
@@ -976,6 +1124,9 @@
 
       let started = false;
       let rejected = false;
+      // Statuszeile zeigt einen Text des Servers: "info" weicht beim ersten
+      // delta, ein Hinweis ("warning", z. B. Websuche fehlgeschlagen) bleibt bis done.
+      let serverStatus = null;
       let status = null;
       let errorText = "";
 
@@ -1032,6 +1183,9 @@
           if (response.status === 503 || response.status === 409) {
             // Lokaler Anbieter offline oder Modell nicht geladen: Status neu prüfen.
             document.dispatchEvent(new CustomEvent("multigpt:provider-status-refresh"));
+          } else if (response.status === 403) {
+            // z. B. Monatsbudget gerade ausgeschöpft: Modellauswahl neu laden (M6-03).
+            loadModels();
           }
           undo(await errorMessage(response));
           return;
@@ -1064,7 +1218,27 @@
           } else if (event === "confirmation_required") {
             const ids = Array.isArray(data.tool_call_ids) ? data.tool_call_ids : [];
             showConfirmation(assistantEl, ids);
+          } else if (event === "status") {
+            if (typeof data.text === "string" && data.text) {
+              serverStatus = data.level === "warning" ? "warning" : "info";
+              setStatus(data.text, serverStatus === "warning" ? "warning" : false);
+            }
+          } else if (event === "sources") {
+            stick = isNearBottom();
+            renderSources(assistantEl, data.sources);
+            const count = assistantEl.querySelectorAll(".message-source").length;
+            if (count && serverStatus !== "warning") {
+              setStatus(`${count === 1 ? "1 Quelle" : `${count} Quellen`} gefunden. Antwort wird erzeugt …`);
+              serverStatus = "info";
+            }
+            if (stick) {
+              scrollToBottom();
+            }
           } else if (event === "delta") {
+            if (serverStatus === "info") {
+              serverStatus = null;
+              setStatus("Antwort wird erzeugt …");
+            }
             stick = isNearBottom();
             const chunk = typeof data.text === "string" ? data.text : "";
             if (renderer) {
@@ -1155,6 +1329,16 @@
       const text = textarea.value;
       if (!text.trim()) {
         textarea.focus();
+        return;
+      }
+      // Vergleichsmodus (M6, compare.js): eigene Spalten statt einer Antwort.
+      const compare = window.MultiGPT.compare;
+      if (compare?.pending()) {
+        setStatus("Bitte zuerst eine Antwort wählen („Mit dieser Antwort weiter“).", true);
+        return;
+      }
+      if (compare?.isActive()) {
+        await compare.send(text);
         return;
       }
       const model = selectedModel();
@@ -1452,7 +1636,7 @@
       }
       if (button.hasAttribute("data-copy-message")) {
         copyMessage(article, button);
-      } else if (controller) {
+      } else if (isBusy()) {
         setStatus("Bitte warte, bis die laufende Antwort fertig ist.", true);
       } else if (button.hasAttribute("data-edit-message")) {
         openEditor(article);
@@ -1466,6 +1650,44 @@
     function autosize() {
       textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight + 2}px`;
+      updateInputCopy();
+    }
+
+    // --- Eingabe kopieren ---
+
+    const inputCopyButton = document.getElementById("input-copy-button");
+    let inputCopyTimer = null;
+
+    function updateInputCopy() {
+      if (inputCopyButton) {
+        inputCopyButton.disabled = !textarea.value;
+      }
+    }
+
+    async function copyInput() {
+      if (!textarea.value || !markdown?.copyText) {
+        return;
+      }
+      const done = inputCopyButton.querySelector(".input-copy-done");
+      try {
+        await markdown.copyText(textarea.value);
+        inputCopyButton.classList.add("is-done");
+        done.hidden = false;
+        window.clearTimeout(inputCopyTimer);
+        inputCopyTimer = window.setTimeout(() => {
+          inputCopyButton.classList.remove("is-done");
+          done.hidden = true;
+        }, 2000);
+        if (!controller) {
+          setStatus("Eingabe kopiert.");
+        }
+      } catch {
+        setStatus("Kopieren ist fehlgeschlagen.", true);
+      }
+      // Der Ersatzweg über eine Textauswahl nimmt den Fokus weg.
+      if (!inputCopyButton.disabled) {
+        inputCopyButton.focus({ preventScroll: true });
+      }
     }
 
     // --- Neuer Chat ---
@@ -1496,6 +1718,56 @@
         setStatus(`Neuer Chat konnte nicht angelegt werden. ${err.message || ""}`.trim(), true);
       }
     });
+
+    // --- Schnittstelle für den Vergleichsmodus (compare.js, M6) ---
+    // begin() übernimmt den Senden/Abbrechen-Knopf (liefert einen
+    // AbortController, null wenn schon etwas läuft), end() gibt ihn frei.
+
+    window.MultiGPT.chatView = {
+      readEvents,
+      postJson,
+      ensureConversation,
+      syncSystemPrompt,
+      withTools,
+      refreshMessages,
+      appendMessage,
+      setStatus,
+      markSidebar,
+      currentConversation,
+      selectedModel,
+      scrollToBottom,
+      isNearBottom,
+      messageElements,
+      returnFocus,
+      autosize,
+      updateMessageActions,
+      storeModel(id) {
+        storageSet(STORAGE_KEY, String(id));
+      },
+      isReady() {
+        return modelsReady;
+      },
+      branchUrl() {
+        return conversationId && urls.branchTemplate
+          ? fillTemplate(urls.branchTemplate, conversationId)
+          : null;
+      },
+      messagesUrl() {
+        return fillTemplate(urls.messagesTemplate, conversationId);
+      },
+      begin() {
+        if (controller) {
+          return null;
+        }
+        controller = new AbortController();
+        setStreaming(true);
+        return controller;
+      },
+      end() {
+        controller = null;
+        setStreaming(false);
+      },
+    };
 
     // --- Start ---
 
@@ -1530,6 +1802,11 @@
       }
     });
     textarea.addEventListener("input", autosize);
+    if (inputCopyButton) {
+      inputCopyButton.hidden = !markdown?.copyText;
+      inputCopyButton.addEventListener("click", copyInput);
+      updateInputCopy();
+    }
 
     promptInput?.addEventListener("input", updatePromptUi);
     promptForm?.addEventListener("submit", async (event) => {

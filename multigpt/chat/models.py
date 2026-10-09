@@ -1,4 +1,4 @@
-"""Datenmodell der App chat (Plan Abschnitt 6, ohne Chunk – der folgt in M7).
+"""Datenmodell der App chat (Plan Abschnitt 6).
 
 Bezeichner sind englisch, verbose_name und Choice-Labels deutsch (Plan 2).
 """
@@ -6,16 +6,27 @@ Bezeichner sind englisch, verbose_name und Choice-Labels deutsch (Plan 2).
 import json
 import secrets
 from pathlib import PurePath
+from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector, SearchVectorField
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
+from pgvector.django import HnswIndex, VectorField
 
 from multigpt.core.fields import EncryptedTextField, UnicodeJSONEncoder
 
 # Geldbeträge (Preise und Kosten-Momentaufnahmen) mit Bruchteilen von Cent.
 MONEY = {"max_digits": 12, "decimal_places": 6}
+
+# Feste Dimension der Abschnittsvektoren (RAG, M7), siehe settings.
+EMBEDDING_DIMENSIONS = settings.RAG_EMBEDDING_DIMENSIONS
+# Textsuchkonfiguration für die Volltextsuche (Dokumente überwiegend deutsch).
+SEARCH_CONFIG = "german"
 
 
 def _random_name(filename: str) -> str:
@@ -208,6 +219,116 @@ class McpServer(models.Model):
         return self.name
 
 
+# --- Websuche (Plan 8d, M8) --------------------------------------------------
+
+
+def validate_service_url(value: str) -> None:
+    """http(s)-URL mit Rechnernamen; einteilige Intranet-Namen sind erlaubt
+    (``URLField`` verlangt eine Domainendung)."""
+    try:
+        parts = urlsplit(value)
+        host = parts.hostname
+        parts.port  # noqa: B018 - löst bei ungültigem Port ValueError aus
+    except ValueError:
+        host = None
+        parts = None
+    if parts is None or parts.scheme not in ("http", "https") or not host:
+        raise ValidationError(
+            "Bitte eine http- oder https-Adresse angeben, z. B. http://searx:8888"
+        )
+    if parts.username or parts.password:
+        raise ValidationError("Bitte keine Zugangsdaten in die Adresse schreiben.")
+    if parts.query or parts.fragment:
+        raise ValidationError("Bitte nur die Basisadresse ohne ?… oder #… angeben.")
+
+
+class SearchSettings(models.Model):
+    """Einstellungen der Websuche – genau ein Datensatz (pk=1), siehe ``load()``.
+
+    Die SearXNG-URL kommt nur aus dieser Verwalter-Konfiguration und ist vom
+    SSRF-Schutz des Seitenabrufs ausgenommen (sie liegt im Intranet).
+    """
+
+    class Backend(models.TextChoices):
+        SEARXNG = "searxng", "SearXNG"
+
+    class SafeSearch(models.IntegerChoices):
+        OFF = 0, "aus"
+        MODERATE = 1, "mittel"
+        STRICT = 2, "streng"
+
+    SINGLETON_PK = 1
+
+    enabled = models.BooleanField(
+        "Websuche aktiv",
+        default=False,
+        help_text="Erst einschalten, wenn „SearXNG testen“ erfolgreich war.",
+    )
+    backend = models.CharField(
+        "Such-Backend", max_length=20, choices=Backend.choices, default=Backend.SEARXNG
+    )
+    searxng_url = models.CharField(
+        "SearXNG-URL",
+        max_length=500,
+        blank=True,
+        validators=[validate_service_url],
+        help_text="Basisadresse der SearXNG-Instanz im Intranet, z. B. http://searx.intern:8888. "
+        "SearXNG muss das JSON-Format erlauben (settings.yml: search.formats: [html, json]).",
+    )
+    max_results = models.PositiveSmallIntegerField(
+        "Trefferzahl",
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
+        help_text="So viele Treffer gehen als nummerierte Quellen an das Modell.",
+    )
+    fetch_pages = models.PositiveSmallIntegerField(
+        "Seiten abrufen",
+        default=3,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+        help_text="Von so vielen der besten Treffer wird der Seitentext abgerufen; "
+        "von den übrigen nur der Kurztext der Suche. 0 = nur Kurztexte.",
+    )
+    timeout_seconds = models.PositiveSmallIntegerField(
+        "Zeitlimit (s)",
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+        help_text="Höchstdauer für die Suche und je abgerufener Seite.",
+    )
+    language = models.CharField(
+        "Sprache",
+        max_length=20,
+        default="de",
+        help_text="Sprachcode für SearXNG, z. B. de, en, de-DE oder all.",
+    )
+    safesearch = models.PositiveSmallIntegerField(
+        "Jugendschutzfilter",
+        choices=SafeSearch.choices,
+        default=SafeSearch.MODERATE,
+        help_text="SafeSearch der Suchmaschinen (soweit sie es unterstützen).",
+    )
+
+    class Meta:
+        verbose_name = "Sucheinstellungen"
+        verbose_name_plural = "Sucheinstellungen"
+
+    def __str__(self):
+        return "Sucheinstellungen"
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SINGLETON_PK
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "SearchSettings":
+        obj, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
+        return obj
+
+    @property
+    def is_ready(self) -> bool:
+        """Eingeschaltet und eingerichtet."""
+        return self.enabled and bool(self.searxng_url.strip())
+
+
 # --- Chats -------------------------------------------------------------------
 
 
@@ -332,6 +453,18 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.get_role_display()} #{self.pk}"
+
+    @property
+    def notices(self) -> dict:
+        """Hinweise der festen Abläufe an den Nutzer, z. B. {"web_search": "…"}."""
+        state = self.tool_state if isinstance(self.tool_state, dict) else {}
+        notices = state.get("notices")
+        return {str(k): str(v) for k, v in notices.items()} if isinstance(notices, dict) else {}
+
+    @property
+    def web_search_notice(self) -> str:
+        """Hinweis zur Websuche dieser Antwort (z. B. Suche fehlgeschlagen), sonst leer."""
+        return self.notices.get("web_search", "")
 
 
 class Preset(models.Model):
@@ -515,21 +648,210 @@ class Document(models.Model):
     collection = models.ForeignKey(
         Collection, on_delete=models.CASCADE, related_name="documents", verbose_name="Sammlung"
     )
-    file = models.FileField("Datei", upload_to=document_upload_to, max_length=255)
+    file = models.FileField("Datei", upload_to=document_upload_to, max_length=255, blank=True)
     title = models.CharField("Titel", max_length=300)
     status = models.CharField(
         "Status", max_length=20, choices=Status.choices, default=Status.PENDING
     )
     error_text = models.TextField("Fehlertext", blank=True)
     created = models.DateTimeField("hochgeladen", auto_now_add=True)
+    # Verzeichnisquelle (Agent crawler): Die Datei bleibt auf dem Server/NAS,
+    # ``file`` ist dann leer; gelesen wird über source.path + source_path.
+    source = models.ForeignKey(
+        "rag.DirectorySource",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="documents",
+        verbose_name="Verzeichnisquelle",
+    )
+    source_path = models.CharField("Pfad in der Quelle", max_length=1000, blank=True)
+    source_mtime = models.DateTimeField("geändert (Quelle)", null=True, blank=True)
+    source_size = models.BigIntegerField("Größe (Quelle)", null=True, blank=True)
+    source_sha256 = models.CharField("SHA-256 (Quelle)", max_length=64, blank=True)
 
     class Meta:
         ordering = ["title"]
         verbose_name = "Dokument"
         verbose_name_plural = "Dokumente"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "source_path"],
+                condition=Q(source__isnull=False),
+                name="chat_document_unique_source_path",
+            ),
+        ]
 
     def __str__(self):
         return self.title
+
+    @property
+    def from_source(self) -> bool:
+        return self.source_id is not None
+
+
+class Chunk(models.Model):
+    """Textabschnitt eines Dokuments mit Vektor (Plan 8b, M7-04).
+
+    ``search_vector`` ist eine von PostgreSQL berechnete Spalte
+    (``to_tsvector('german', text)``, GENERATED … STORED): Sie stimmt immer
+    mit ``text`` überein, auch bei ``bulk_create``, ohne Trigger.
+    """
+
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="chunks", verbose_name="Dokument"
+    )
+    position = models.PositiveIntegerField("Position", help_text="Reihenfolge im Dokument, ab 0.")
+    text = models.TextField("Text")
+    page = models.PositiveIntegerField(
+        "Seite", null=True, blank=True, help_text="Seitenzahl ab 1; leer bei Formaten ohne Seiten."
+    )
+    embedding = VectorField("Vektor", dimensions=EMBEDDING_DIMENSIONS)
+    search_vector = models.GeneratedField(
+        expression=SearchVector("text", config=SEARCH_CONFIG),
+        output_field=SearchVectorField(),
+        db_persist=True,
+        verbose_name="Suchvektor",
+    )
+
+    class Meta:
+        ordering = ["document", "position"]
+        verbose_name = "Abschnitt"
+        verbose_name_plural = "Abschnitte"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "position"], name="chat_chunk_unique_document_position"
+            ),
+        ]
+        indexes = [
+            HnswIndex(
+                name="chat_chunk_embedding_hnsw",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+            GinIndex(fields=["search_vector"], name="chat_chunk_search_gin"),
+        ]
+
+    def __str__(self):
+        # Ohne Text: privater Inhalt (Plan 6, Admin nur Metadaten).
+        return f"Abschnitt {self.position} von Dokument {self.document_id}"
+
+
+class RagSettings(models.Model):
+    """Einstellungen für Sammlungen und Dokumentsuche – genau ein Datensatz (pk=1)."""
+
+    SINGLETON_PK = 1
+
+    class OcrBackend(models.TextChoices):
+        OLMOCR = "olmocr", "olmOCR (Vision-Modell, z. B. über LM Studio)"
+        TESSERACT = "tesseract", "Tesseract (auf dem Server)"
+
+    embedding_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        limit_choices_to={"capability": AIModel.Capability.EMBEDDING},
+        verbose_name="Embedding-Modell",
+        help_text="Genau ein Modell, z. B. text-embedding-nomic-embed-text-v1.5 über "
+        "LM Studio (768 Dimensionen). Nach einem Wechsel „Alles neu indexieren“.",
+    )
+    document_prefix = models.CharField(
+        "Präfix für Abschnitte",
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Wird jedem Abschnitt beim Einbetten vorangestellt, bei nomic-embed "
+        "„search_document: “ (laut Modellkarte). Wird bei Auswahl eines nomic-Modells "
+        "vorbelegt.",
+    )
+    query_prefix = models.CharField(
+        "Präfix für Suchanfragen",
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Wird jeder Suchanfrage beim Einbetten vorangestellt, bei nomic-embed "
+        "„search_query: “.",
+    )
+    ocr_backend = models.CharField(
+        "OCR-Verfahren",
+        max_length=20,
+        choices=OcrBackend.choices,
+        default=OcrBackend.TESSERACT,
+        help_text="Texterkennung für gescannte PDF-Seiten ohne Textebene.",
+    )
+    ocr_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="OCR-Modell",
+        help_text="Vision-Modell für olmOCR, z. B. allenai/olmocr-2-7b in LM Studio. "
+        "Wird auch genutzt, wenn es für den Chat deaktiviert ist.",
+    )
+    ocr_fallback_tesseract = models.BooleanField(
+        "Tesseract als Ersatz",
+        default=True,
+        help_text="Ist das OCR-Modell nicht erreichbar, liest Tesseract die Seite. "
+        "Sonst wartet die Indexierung, bis der Anbieter wieder erreichbar ist.",
+    )
+    chunk_tokens = models.PositiveIntegerField(
+        "Abschnittsgröße (Tokens)",
+        default=800,
+        validators=[MinValueValidator(100), MaxValueValidator(4000)],
+    )
+    overlap_tokens = models.PositiveIntegerField(
+        "Überlappung (Tokens)",
+        default=100,
+        validators=[MinValueValidator(0), MaxValueValidator(1000)],
+    )
+    top_k = models.PositiveSmallIntegerField(
+        "Treffer je Frage",
+        default=6,
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
+        help_text="So viele Abschnitte gehen als Quellen an das Modell.",
+    )
+    hybrid = models.BooleanField(
+        "Volltextsuche dazunehmen",
+        default=True,
+        help_text="Vektorsuche und Volltextsuche (deutsch) zusammenführen "
+        "(Reciprocal Rank Fusion).",
+    )
+
+    class Meta:
+        verbose_name = "RAG-Einstellungen"
+        verbose_name_plural = "RAG-Einstellungen"
+
+    def __str__(self):
+        return "RAG-Einstellungen"
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SINGLETON_PK
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        model = self.embedding_model
+        if model is not None:
+            if model.capability != AIModel.Capability.EMBEDDING:
+                raise ValidationError({"embedding_model": "Bitte ein Embedding-Modell wählen."})
+        # Lokale Anbieter (LM Studio) sind ausdrücklich erlaubt (M7-09): Ist der
+        # Anbieter offline, wartet die Indexierung, der Chat antwortet ohne Dokumente.
+        if self.ocr_backend == self.OcrBackend.OLMOCR and self.ocr_model is None:
+            raise ValidationError({"ocr_model": "Für olmOCR bitte ein Vision-Modell wählen."})
+        if self.overlap_tokens >= self.chunk_tokens:
+            raise ValidationError(
+                {"overlap_tokens": "Die Überlappung muss kleiner als die Abschnittsgröße sein."}
+            )
+
+    @classmethod
+    def load(cls) -> "RagSettings":
+        obj, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
+        return obj
 
 
 # --- Werkzeugaufrufe, Quellen, Hintergrundjobs -------------------------------
@@ -605,10 +927,10 @@ class ToolCall(models.Model):
 
 
 class SourceRef(models.Model):
-    """Quellenangabe einer Antwort.
+    """Quellenangabe einer Antwort; Nummer [n] = Reihenfolge (id) je Nachricht.
 
-    Das Feld ``chunk`` (Verweis auf den Textabschnitt bei Dokumentquellen) kommt
-    mit dem Modell Chunk in M7 als echter Fremdschlüssel dazu.
+    Bei Dokumentquellen verweist ``chunk`` auf den Textabschnitt; ``page`` wird
+    zusätzlich festgehalten, damit die Angabe nach Löschen des Dokuments bleibt.
     """
 
     class Kind(models.TextChoices):
@@ -621,6 +943,15 @@ class SourceRef(models.Model):
     kind = models.CharField("Art", max_length=10, choices=Kind.choices)
     title = models.CharField("Titel", max_length=500, blank=True)
     url = models.URLField("URL", max_length=2000, blank=True)
+    chunk = models.ForeignKey(
+        Chunk,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Abschnitt",
+    )
+    page = models.PositiveIntegerField("Seite", null=True, blank=True)
 
     class Meta:
         ordering = ["id"]
@@ -634,6 +965,7 @@ class SourceRef(models.Model):
 class Job(models.Model):
     class Kind(models.TextChoices):
         INDEX_DOCUMENT = "index_document", "Dokument indexieren"
+        SCAN_DIRECTORY = "scan_directory", "Verzeichnis einlesen"
 
     class Status(models.TextChoices):
         PENDING = "pending", "wartet"
@@ -647,6 +979,11 @@ class Job(models.Model):
         "Status", max_length=20, choices=Status.choices, default=Status.PENDING
     )
     attempts = models.PositiveSmallIntegerField("Versuche", default=0)
+    # Wiederholung mit Backoff (M7-02): frühestens dann wieder abholen.
+    run_after = models.DateTimeField("frühestens ab", default=timezone.now)
+    # Abholzeit bzw. letztes Lebenszeichen des Workers; veraltet -> Job neu einreihen.
+    locked_at = models.DateTimeField("in Arbeit seit", null=True, blank=True)
+    last_error = models.TextField("letzter Fehler", blank=True)
     created = models.DateTimeField("erstellt", auto_now_add=True)
 
     class Meta:
@@ -655,6 +992,7 @@ class Job(models.Model):
         verbose_name_plural = "Hintergrundjobs"
         indexes = [
             models.Index(fields=["status", "created"], name="chat_job_status_created"),
+            models.Index(fields=["status", "run_after"], name="chat_job_status_run_after"),
         ]
 
     def __str__(self):

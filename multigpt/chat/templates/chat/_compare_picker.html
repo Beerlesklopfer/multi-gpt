@@ -1,0 +1,13 @@
+{% comment %}Vergleichsmodus (M6): Schalter und Auswahl von 2–3 Modellen. compare.js füllt die
+Liste aus der Modellauswahl (gleiche Freigaben, offline/Budget ausgegraut) und blendet beides ein.{% endcomment %}
+<label class="tool-switch compare-switch" for="compare-toggle" hidden>
+  <input type="checkbox" id="compare-toggle" aria-controls="compare-models" aria-describedby="compare-hint-text">
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/></svg>
+  <span>Vergleichen</span>
+</label>
+<span class="sr-only" id="compare-hint-text">Schickt die Nachricht an zwei oder drei Modelle gleichzeitig und zeigt die Antworten nebeneinander.</span>
+<fieldset class="chat-input-tools compare-models" id="compare-models" hidden>
+  <legend>Vergleichen mit (2–3 Modelle)</legend>
+  <div class="chat-input-tools-list" id="compare-models-list"></div>
+  <p class="compare-models-note">Im Vergleich ohne Werkzeuge (MCP).</p>
+</fieldset>

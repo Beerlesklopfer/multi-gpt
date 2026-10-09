@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     "axes",
     "multigpt.accounts",
     "multigpt.chat",
+    # Admin-Abschnitt „Dokumente (RAG)“ (nur Proxy-Modelle auf chat).
+    "multigpt.rag",
 ]
 
 MIDDLEWARE = [
@@ -157,3 +159,32 @@ LOGGING = {
         "django.db.backends": {"level": "WARNING"},
     },
 }
+
+# Websuche (M8): Seitenabruf auch von Intranet-Adressen erlauben. Nur für
+# Browsertests in der Entwicklung; wirkt ausschließlich zusammen mit DEBUG=True.
+WEBSEARCH_ALLOW_PRIVATE = env.bool("WEBSEARCH_ALLOW_PRIVATE", default=False)
+
+# RAG (M7): feste Vektordimension von Chunk.embedding (HNSW-Index braucht eine
+# feste Dimension, pgvector indexiert höchstens 2000). 768 = nomic-embed-text-v1.5
+# lokal über LM Studio (M7-09); OpenAI text-embedding-3-* würden per
+# ``dimensions`` auf 768 gekürzt. Bewusst keine Umgebungsvariable: Eine Änderung
+# braucht eine Migration der Spalte und „Alles neu indexieren“.
+RAG_EMBEDDING_DIMENSIONS = 768
+# Deterministische Schein-Embeddings ohne Anbieteraufruf (Browsertests in der
+# Entwicklung); wirkt ausschließlich zusammen mit DEBUG=True.
+RAG_FAKE_EMBEDDINGS = env.bool("RAG_FAKE_EMBEDDINGS", default=False)
+
+# RAG-Indexierung (M7, Agent ingest): Upload-Grenze für Dokumente in MB,
+# Sprachen der Texterkennung (Tesseract-Sprachpakete, z. B. "deu+eng") und
+# Wiederholungen fehlgeschlagener Hintergrundjobs.
+DOCUMENT_MAX_UPLOAD_MB = env.int("DOCUMENT_MAX_UPLOAD_MB", default=25)
+OCR_LANGUAGES = env("OCR_LANGUAGES", default="deu+eng")
+JOB_MAX_ATTEMPTS = env.int("JOB_MAX_ATTEMPTS", default=5)
+
+# Verzeichnisquellen (Agent crawler): erlaubte Wurzeln auf dem Server/NAS, aus
+# denen Sammlungen Dateien einlesen dürfen (Komma-Liste absoluter Pfade). Leer =
+# Funktion aus. Die Dateien bleiben am Ort; der Dienstnutzer braucht Leserechte,
+# unter /home zusätzlich ein systemd-Drop-in (ProtectHome, siehe Unit-Dateien).
+RAG_SOURCE_ROOTS = [p for p in env.list("RAG_SOURCE_ROOTS", default=[]) if p.strip()]
+# Grenze je Einlesevorgang (weitere Dateien kommen beim nächsten Lauf dran).
+RAG_SOURCE_MAX_FILES = env.int("RAG_SOURCE_MAX_FILES", default=5000)

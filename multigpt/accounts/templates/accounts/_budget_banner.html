@@ -1,0 +1,8 @@
+{# Hinweis zum Monatsbudget in der Kopfzeile (Tag budget_banner). Nur bei warning/exhausted. #}
+{% if budget_level == "warning" or budget_level == "exhausted" %}
+  <a href="{% url 'usage' %}" class="budget-banner budget-banner-{{ budget_level }}" title="{{ budget_text }}">
+    <span aria-hidden="true">&#9888;</span>
+    <span class="budget-banner-short">{{ budget_short }}</span>
+    <span class="sr-only">: {{ budget_text }} Zur Seite „Mein Verbrauch“.</span>
+  </a>
+{% endif %}

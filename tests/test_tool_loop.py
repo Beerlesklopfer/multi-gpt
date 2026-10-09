@@ -218,7 +218,7 @@ def test_loop_runs_tool_and_continues(client, conversation, ai_model, server, sc
     result = events[2][1]
     assert result["status"] == "ok" and result["result"] == "5"
     assert result["attachment_ids"] == [] and result["duration_ms"] >= 0
-    assert events[-2][1] == {"tokens_in": 30, "tokens_out": 4}
+    assert events[-2][1] == {"tokens_in": 30, "tokens_out": 4, "cost": None}
     assert events[-1][1] == {"status": "complete"}
 
     assert tool_call.status == ToolCall.Status.OK
@@ -281,7 +281,7 @@ def test_round_limit_last_round_without_tools_choice(
     assert statuses == ["ok"] * 9 + ["error"]
     assert ToolCall.objects.last().result["text"] == tooling.MSG_ROUND_LIMIT
     assert events[-1] == ("done", {"status": "complete"})
-    assert events[-2][1] == {"tokens_in": 100, "tokens_out": 10}
+    assert events[-2][1] == {"tokens_in": 100, "tokens_out": 10, "cost": None}
 
 
 def test_tool_timeout(client, conversation, ai_model, server, scripted):
@@ -459,7 +459,7 @@ def test_confirm_approve_resumes_with_provider_state(
     assert msg.status == Message.Status.COMPLETE
     assert msg.content == "Erledigt."
     assert (msg.tokens_in, msg.tokens_out) == (15, 3)  # über die Pause summiert
-    assert events[-2][1] == {"tokens_in": 15, "tokens_out": 3}
+    assert events[-2][1] == {"tokens_in": 15, "tokens_out": 3, "cost": None}
     # Zweites confirm: nichts wartet mehr.
     assert confirm(client, conversation, {str(tool_call.pk): "approve"}).status_code == 409
 

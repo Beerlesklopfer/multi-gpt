@@ -1,0 +1,15 @@
+{% load usage_tags %}{# Budgetbalken (Tag budget_meter). Zahlen stehen immer als Text daneben. #}
+{% if state.budget is None %}
+  <p class="budget-text">{{ state.spent|eur }} verbraucht – kein Monatsbudget festgelegt (unbegrenzt).</p>
+{% else %}
+  <div class="budget-meter budget-meter-{{ state.level }}">
+    {% if meter_max %}
+      <meter min="0" max="{{ meter_max }}" low="{{ meter_low }}" high="{{ meter_low }}" optimum="0"
+             value="{{ meter_value }}"{% if label_id %} aria-labelledby="{{ label_id }}"{% endif %}
+             aria-describedby="budget-meter-text">{{ state.percent }} %</meter>
+    {% endif %}
+    <p class="budget-text" id="budget-meter-text">
+      {{ state.spent|eur }} von {{ state.budget|eur }} verbraucht{% if state.percent is not None %} ({{ state.percent }} %){% endif %}{% if state.remaining %}, noch {{ state.remaining|eur }} frei{% endif %}.
+    </p>
+  </div>
+{% endif %}

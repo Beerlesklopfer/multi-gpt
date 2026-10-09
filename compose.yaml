@@ -63,6 +63,28 @@ services:
     volumes:
       - multi-gpt-data:/var/lib/multi-gpt
 
+  # Indexierung der Dokumente (RAG): gleiches Image, gleiche Konfiguration.
+  worker:
+    image: multi-gpt:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: ["python", "-P", "-m", "django", "run_worker"]
+    stop_grace_period: 60s
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      DATABASE_URL: postgres://multi-gpt:${POSTGRES_PASSWORD}@db:5432/multi-gpt
+      DEBUG: "False"
+      STATIC_ROOT: /usr/share/python/multi-gpt/static
+      MEDIA_ROOT: /var/lib/multi-gpt/media
+    volumes:
+      - multi-gpt-data:/var/lib/multi-gpt
+
 volumes:
   multi-gpt-db:
   multi-gpt-data:

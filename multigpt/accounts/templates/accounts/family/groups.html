@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load static %}
+{# Gruppen pflegen (M6-04). Freigaben von Chats und Sammlungen laufen über Gruppen. #}
+{% block title %}Gruppen – Familie – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide family-page" aria-labelledby="groups-title">
+    <h1 id="groups-title">Gruppen</h1>
+    {% include "accounts/family/_nav.html" with section="groups" %}
+    <p class="page-intro">Mit Gruppen teilen Mitglieder Chats und Sammlungen. Die Standardgruppe enthält immer alle Konten.</p>
+    <ul class="collection-list" id="family-groups">
+      {% for group in groups %}
+        <li class="collection-item">
+          <a href="{% url 'family:group' group.pk %}">{{ group.name }}</a>
+          <span class="hint">{{ group.member_count }} Mitglied{{ group.member_count|pluralize:"er" }}</span>
+          {% if group.is_default %}<span class="badge">Standardgruppe</span>{% endif %}
+        </li>
+      {% empty %}
+        <li class="collection-item">Noch keine Gruppen.</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{% url 'family:group_create' %}" class="inline-form">
+      {% csrf_token %}
+      <label for="{{ create_form.name.id_for_label }}">Neue Gruppe</label>
+      <div class="inline-form-row">{{ create_form.name }}<button type="submit" class="button button-primary">Anlegen</button></div>
+    </form>
+  </section>
+{% endblock %}

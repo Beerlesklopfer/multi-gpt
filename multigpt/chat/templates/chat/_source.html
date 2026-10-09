@@ -1,0 +1,2 @@
+{% load source_tags %}
+{% with href=src|source_link site=src|source_site %}<li class="message-source">{% if href %}<a class="message-source-link" href="{{ href }}" target="_blank" rel="noopener noreferrer nofollow">{{ src|source_label }}<span class="sr-only"> (öffnet in neuem Tab)</span></a>{% if site %} <span class="message-source-domain">{{ site }}</span>{% endif %}{% else %}<span class="message-source-link">{{ src|source_label }}</span>{% if src|source_removed %} <span class="message-source-domain">(entfernt)</span>{% endif %}{% endif %}</li>{% endwith %}

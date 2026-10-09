@@ -526,3 +526,18 @@ def test_add_page_without_combobox(admin_client):
 def test_change_page_loads_submit_once_guard(admin_client, provider):
     url = reverse("admin:chat_provider_change", args=[provider.pk])
     assert "chat/admin_submit_once.js" in admin_client.get(url).content.decode()
+
+
+@pytest.mark.django_db
+def test_aimodel_form_offers_reported_models_per_provider(admin_client, provider):
+    provider.reported_models = ["nomic-embed-text-v1.5", "qwen3-8b"]
+    provider.save(update_fields=["reported_models"])
+    for url in (reverse("admin:chat_aimodel_add"), reverse("admin:chat_aimodel_add") + "?_popup=1"):
+        html = admin_client.get(url).content.decode()
+        match = re.search(r'id="reported-model-choices"[^>]*>(.*?)</script>', html, re.S)
+        assert match
+        data = json.loads(match.group(1))
+        choices = data["by_provider"][str(provider.pk)]
+        assert [c["id"] for c in choices] == ["nomic-embed-text-v1.5", "qwen3-8b"]
+        assert choices[0]["capability"] == "embedding"
+        assert "chat/admin_model_combobox.js" in html

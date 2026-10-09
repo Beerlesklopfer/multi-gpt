@@ -1,0 +1,56 @@
+/* MultiGPT – Admin-Abschnitt „Dokumente (RAG)“. */
+.rag-status {
+  display: inline-block;
+  padding: 0 0.6em;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: var(--darkened-bg);
+  color: var(--body-fg);
+}
+.rag-status--indexed, .rag-status--done { background: #dff0d8; color: #2b5a1e; }
+.rag-status--pending { background: #fcf3cf; color: #6b5300; }
+.rag-status--running { background: #d9e8f6; color: #1d4c79; }
+.rag-status--error, .rag-status--failed { background: #f6d6d6; color: #8a1f1f; }
+
+.rag-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(20em, 1fr)); gap: 1.2em; }
+.rag-overview .module { margin: 0; }
+.rag-overview table { width: 100%; }
+.rag-overview td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rag-overview .rag-hint { padding: 8px 10px; }
+.rag-warning { margin: 0 0 1.2em; }
+.rag-actions { display: flex; flex-wrap: wrap; gap: 0.6em; padding: 10px; align-items: center; }
+.rag-actions form { display: inline; margin: 0; }
+.rag-actions .button, .rag-actions input[type="submit"] { margin: 0; }
+.rag-ok { color: #2b5a1e; }
+.rag-bad { color: #ba2121; }
+.object-tools .rag-tool-form { display: inline; margin: 0; }
+.object-tools .rag-tool-button {
+  display: block;
+  float: left;
+  padding: 3px 12px;
+  background: var(--object-tools-bg);
+  color: var(--object-tools-fg);
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 0;
+  border-radius: 15px;
+  cursor: pointer;
+}
+.object-tools .rag-tool-button:hover,
+.object-tools .rag-tool-button:focus-visible { background-color: var(--object-tools-hover-bg); }
+
+@media (prefers-color-scheme: dark) {
+  .rag-status--indexed, .rag-status--done { background: #24421b; color: #cfe8c4; }
+  .rag-status--pending { background: #4a3c05; color: #f5e3a3; }
+  .rag-status--running { background: #1b3653; color: #c9def3; }
+  .rag-status--error, .rag-status--failed { background: #5a1c1c; color: #f3caca; }
+  .rag-ok { color: #9fd38a; }
+  .rag-bad { color: #f19a9a; }
+}
+
+/* RAG-Einstellungen: Test-Knöpfe im Formular (speichern und testen). */
+.rag-test-row { justify-content: flex-start; }

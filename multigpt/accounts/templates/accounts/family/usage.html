@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+{# Verbrauch aller Mitglieder je Modell und Monat (VIEW_USAGE_ALL). Keine Chatinhalte. #}
+{% block title %}Verbrauch aller – Familie – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide family-page" aria-labelledby="usage-title">
+    <h1 id="usage-title">Verbrauch aller</h1>
+    {% include "accounts/family/_nav.html" with section="usage" %}
+    <form method="get" class="inline-form family-month-form">
+      <label for="usage-month">Monat</label>
+      <div class="inline-form-row">
+        <select id="usage-month" name="monat" data-autosubmit>
+          {% for option in options %}
+            <option value="{{ option|date:'Y-m' }}"{% if option == selected %} selected{% endif %}>{{ option|date:"F Y" }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="button" data-autosubmit-button>Anzeigen</button>
+      </div>
+    </form>
+    <p class="page-intro">Summe {{ selected|date:"F Y" }}: <strong>{{ total_text }}</strong>. Lokale Modelle kosten nichts.</p>
+    <div class="table-scroll">
+      <table class="family-table" id="family-usage">
+        <thead>
+          <tr>
+            <th scope="col">Mitglied / Modell</th>
+            <th scope="col">Antworten</th>
+            <th scope="col">Tokens (ein/aus)</th>
+            <th scope="col">Kosten</th>
+          </tr>
+        </thead>
+        {% for row in rows %}
+          <tbody class="family-usage-member">
+            <tr class="family-usage-total">
+              <th scope="row"><a href="{% url 'family:member' row.member.pk %}">{{ row.member }}</a></th>
+              <td colspan="2">{% if is_current %}{% include "accounts/family/_budget.html" with u=row.usage %}{% endif %}</td>
+              <td>{{ row.usage.spent_text }}</td>
+            </tr>
+            {% for m in row.models %}
+              <tr>
+                <td class="family-usage-model">{{ m.model }}{% if m.is_local %} <span class="badge">lokal</span>{% endif %}</td>
+                <td>{{ m.answers }}</td>
+                <td>{{ m.tokens_in }} / {{ m.tokens_out }}</td>
+                <td>{{ m.cost_text }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -50,6 +50,16 @@ override_dh_dwz:
 override_dh_shlibdeps:
 	dh_shlibdeps --exclude=/site-packages/
 
+# Zwei Units: Weboberfläche (debian/multi-gpt.service) und Worker für die
+# Indexierung (debian/multi-gpt.multi-gpt-worker.service, M7). Jeweils mit
+# --name, damit jeder Aufruf genau seine Unit behandelt (ohne --name würde der
+# zweite Aufruf beide Units erneut einbinden). Beide werden bei Installation
+# aktiviert und gestartet, beim Upgrade nach der Migration im postinst neu
+# gestartet (compat 13: --restart-after-upgrade).
+override_dh_installsystemd:
+	dh_installsystemd --name=multi-gpt
+	dh_installsystemd --name=multi-gpt-worker
+
 # dh_auto_clean ist durch die Sequenz entfernt; Reste des Wheel-Builds
 # (setuptools baut im Quellbaum) selbst wegräumen.
 execute_after_dh_clean:

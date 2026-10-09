@@ -27,6 +27,24 @@ StateDirectory=multi-gpt
 StateDirectoryMode=0750
 # Liegt MEDIA_ROOT außerhalb von /var/lib/multi-gpt (z. B. NAS-Freigabe),
 # per Drop-in freigeben: systemctl edit multi-gpt -> ReadWritePaths=/pfad
+#
+# Verzeichnisquellen (RAG_SOURCE_ROOTS): Der Dienst liest dort nur. Wegen
+# ProtectSystem=strict ist alles außer /var/lib/multi-gpt ohnehin schreibgeschützt;
+# Pfade unter /srv, /mnt, /media sind lesbar, Pfade unter /home, /root und
+# /run/user sind wegen ProtectHome=yes unsichtbar. Freigabe per Drop-in für BEIDE
+# Units (Weboberfläche prüft den Pfad, der Worker liest die Dateien):
+#   systemctl edit multi-gpt          (und ebenso: systemctl edit multi-gpt-worker)
+#     [Service]
+#     # Variante A: /home lesbar machen, aber nur lesend
+#     ProtectHome=read-only
+#     # Variante B (enger): nur ein Verzeichnis einblenden, Rest von /home bleibt leer
+#     #ProtectHome=tmpfs
+#     #BindReadOnlyPaths=/home/familie/Dokumente
+#     # Pfade außerhalb von /home (z. B. NAS-Mount) zusätzlich schreibschützen:
+#     #ReadOnlyPaths=/srv/nas/dokumente
+#   systemctl restart multi-gpt multi-gpt-worker
+# Leserechte: den Dienstnutzer in eine Gruppe mit r-x auf die Ordner und r auf
+# die Dateien aufnehmen (usermod -aG <gruppe> multi-gpt) und neu starten.
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes

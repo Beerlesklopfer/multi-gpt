@@ -50,3 +50,11 @@ def tool_result_display(text) -> str:
 @register.filter
 def tool_result_truncated(text) -> bool:
     return len(text or "") > RESULT_DISPLAY_CHARS
+
+
+@register.filter
+def tool_server(tool_call) -> str:
+    """Servername; eingebaute Werkzeuge (z. B. Websuche) mit eigenem Namen (M8)."""
+    from multigpt.chat.tooling import server_label
+
+    return server_label(tool_call) or "Server entfernt"

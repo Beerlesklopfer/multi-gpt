@@ -1,0 +1,24 @@
+{% comment %}Vergleichsmodus (M6): Antworten mehrerer Modelle nebeneinander (mobil untereinander).
+compare.js füllt die Spalten; Modelltext nur über markdown.js, alles andere als Text.{% endcomment %}
+<section class="compare" id="compare-panel" aria-labelledby="compare-title" hidden>
+  <h2 class="compare-title" id="compare-title">Vergleich</h2>
+  <p class="compare-hint" id="compare-hint"></p>
+  <div class="compare-columns" id="compare-columns"></div>
+  <template id="compare-column-template">
+    <article class="compare-column" data-status="streaming" aria-busy="true">
+      <header class="compare-column-head">
+        <h3 class="compare-column-model"></h3>
+        <span class="compare-column-state"></span>
+      </header>
+      <div class="chat-message-content compare-column-content" data-markdown="true"></div>
+      <p class="chat-message-status compare-column-note" hidden></p>
+      <footer class="compare-column-foot">
+        <span class="compare-column-usage"></span>
+        <span class="compare-column-actions">
+          <button type="button" class="button button-small button-stop" data-compare-abort>Abbrechen</button>
+          <button type="button" class="button button-small button-primary" data-compare-choose hidden>Mit dieser Antwort weiter</button>
+        </span>
+      </footer>
+    </article>
+  </template>
+</section>

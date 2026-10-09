@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load usage_tags %}
+{# Seite „Mein Verbrauch“ (M6-02): nur eigene Zahlen, ohne JavaScript. #}
+{% block title %}Mein Verbrauch – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page page-wide usage-page" aria-labelledby="usage-title">
+    <h1 id="usage-title">Mein Verbrauch</h1>
+    <p class="page-intro">
+      Kosten sind Schätzungen nach den hinterlegten Preisen zum Zeitpunkt der Antwort.
+      Alle Versionen einer Antwort zählen mit. Lokale Modelle kosten nichts.
+    </p>
+
+    <h2 class="section-title" id="usage-month-title">Aktueller Monat: {{ month_label }}</h2>
+    {% budget_meter state "usage-month-title" %}
+    {% if warning_text %}
+      <p class="budget-notice budget-notice-{{ state.level }}" role="status">{{ warning_text }}</p>
+    {% endif %}
+
+    <h2 class="section-title" id="usage-models-title">Je Modell im {{ month_label }}</h2>
+    {% if model_rows %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="usage-models-title">
+          <thead>
+            <tr>
+              <th scope="col">Modell</th>
+              <th scope="col" class="num">Antworten</th>
+              <th scope="col" class="num">Tokens Eingabe</th>
+              <th scope="col" class="num">Tokens Ausgabe</th>
+              <th scope="col" class="num">Kosten</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in model_rows %}
+              <tr>
+                <th scope="row">
+                  {{ row.model }}
+                  {% if row.provider %}<span class="usage-provider">{{ row.provider }}{% if row.is_local %}, lokal{% endif %}</span>{% endif %}
+                </th>
+                <td class="num">{{ row.answers|tokens }}{% if row.files %} <span class="usage-provider">+ {{ row.files|tokens }} Datei{{ row.files|pluralize:"en" }}</span>{% endif %}</td>
+                <td class="num">{{ row.tokens_in|tokens }}</td>
+                <td class="num">{{ row.tokens_out|tokens }}</td>
+                <td class="num">{{ row.cost|eur }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Summe</th>
+              <td></td>
+              <td class="num">{{ total_tokens_in|tokens }}</td>
+              <td class="num">{{ total_tokens_out|tokens }}</td>
+              <td class="num">{{ state.spent|eur }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <p class="hint">In diesem Monat hast du noch keine Antworten erhalten.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="usage-history-title">Letzte 12 Monate</h2>
+    <div class="table-scroll">
+      <table class="usage-table usage-history" aria-labelledby="usage-history-title">
+        <thead>
+          <tr>
+            <th scope="col">Monat</th>
+            <th scope="col" class="num">Antworten</th>
+            <th scope="col" class="num">Tokens</th>
+            <th scope="col" class="num">Kosten</th>
+            <th scope="col"><span class="sr-only">Anteil am teuersten Monat</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in months %}
+            <tr{% if forloop.first %} class="is-current"{% endif %}>
+              <th scope="row">{{ m.label }}{% if forloop.first %} <span class="usage-provider">(laufend)</span>{% endif %}</th>
+              <td class="num">{{ m.answers|tokens }}</td>
+              <td class="num">{{ m.tokens_in|add:m.tokens_out|tokens }}</td>
+              <td class="num">{{ m.cost|eur }}</td>
+              <td class="usage-bar-cell">
+                <meter class="usage-bar" min="0" max="1" value="{% bar_value m.cost max_month %}" aria-hidden="true"></meter>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
