@@ -75,6 +75,7 @@ from .base import (
     normalize_tools,
     pair_tool_messages,
     parse_tool_arguments,
+    provider_error_code,
     tool_schema,
 )
 
@@ -180,7 +181,9 @@ class OpenAICompatAdapter(ProviderAdapter):
             response = client.get(f"{self.base_url}/models", headers=self._headers())
         if response.status_code != 200:
             message, _ = http_error_message(response.status_code)
-            raise ProviderHTTPError(message, response.status_code)
+            raise ProviderHTTPError(
+                message, response.status_code, code=provider_error_code(response.content)
+            )
         try:
             data = response.json().get("data") or []
             today = datetime.now(UTC).date()

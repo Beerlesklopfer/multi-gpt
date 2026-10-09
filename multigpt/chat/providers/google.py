@@ -81,6 +81,7 @@ from .base import (
     http_error_message,
     new_tool_call_id,
     normalize_tools,
+    provider_error_code,
     sse_data,
     tool_schema,
 )
@@ -193,7 +194,9 @@ class GoogleAdapter(ProviderAdapter):
                     status = response.status_code
                     if status == 400 and reason == "API_KEY_INVALID":
                         status = 401  # falscher Key, siehe _http_error
-                    raise ProviderHTTPError(message, status)
+                    raise ProviderHTTPError(
+                        message, status, code=provider_error_code(response.content)
+                    )
                 try:
                     page = response.json()
                     for item in page.get("models") or []:

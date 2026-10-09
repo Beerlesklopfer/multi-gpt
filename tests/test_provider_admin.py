@@ -541,3 +541,26 @@ def test_aimodel_form_offers_reported_models_per_provider(admin_client, provider
         assert [c["id"] for c in choices] == ["nomic-embed-text-v1.5", "qwen3-8b"]
         assert choices[0]["capability"] == "embedding"
         assert "chat/admin_model_combobox.js" in html
+
+
+def test_check_message_names_provider_error_code_without_secret(mock):
+    from multigpt.chat.providers.base import check_error_message
+    from multigpt.chat.providers.openai_compat import OpenAICompatAdapter
+
+    body = {
+        "error": {
+            "message": "You have insufficient permissions for this operation. Key sk-abc…xyz",
+            "type": "invalid_request_error",
+            "code": "insufficient_permissions",
+        }
+    }
+    mock.get("https://api.example.test/v1/models").mock(return_value=httpx.Response(403, json=body))
+    provider = Provider(name="X", kind="openai_compat", base_url="https://api.example.test/v1")
+    provider.api_key = "sk-geheim"
+    try:
+        OpenAICompatAdapter(provider).list_models(timeout=2)
+    except Exception as exc:  # noqa: BLE001
+        text = check_error_message(exc, "https://api.example.test/v1")
+    assert "HTTP 403" in text
+    assert "insufficient_permissions" in text
+    assert "sk-" not in text

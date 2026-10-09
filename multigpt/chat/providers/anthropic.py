@@ -78,6 +78,7 @@ from .base import (
     http_error_message,
     normalize_tools,
     parse_tool_arguments,
+    provider_error_code,
     sse_data,
     tool_schema,
 )
@@ -145,7 +146,9 @@ class AnthropicAdapter(ProviderAdapter):
                 )
                 if response.status_code != 200:
                     message, _ = _http_error(response.status_code)
-                    raise ProviderHTTPError(message, response.status_code)
+                    raise ProviderHTTPError(
+                        message, response.status_code, code=provider_error_code(response.content)
+                    )
                 try:
                     page = response.json()
                     for item in page.get("data") or []:

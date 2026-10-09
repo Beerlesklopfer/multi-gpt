@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import errno
 import json
+import re
 import socket
 import ssl
 import uuid
@@ -396,9 +397,41 @@ def is_unreachable(exc: BaseException) -> bool:
 class ProviderHTTPError(ProviderError):
     """``ProviderError`` mit dem HTTP-Status der Anbieterantwort (für ``check``)."""
 
-    def __init__(self, message: str, status: int, *, retryable: bool = False):
+    def __init__(self, message: str, status: int, *, retryable: bool = False, code: str = ""):
         super().__init__(message, retryable=retryable)
         self.status = status
+        # Maschinenlesbarer Fehlercode des Anbieters (z. B. ``insufficient_permissions``),
+        # nur für die Anzeige im Admin; nie der Fehlertext (kann Key-Teile enthalten).
+        self.code = safe_error_code(code)
+
+
+_SAFE_CODE = re.compile(r"[A-Za-z0-9_.-]{1,60}")
+
+
+def safe_error_code(value) -> str:
+    """Nur unbedenkliche Kurzcodes durchlassen (Buchstaben, Ziffern, ``_.-``)."""
+    text = str(value or "").strip()
+    return text if _SAFE_CODE.fullmatch(text) else ""
+
+
+def provider_error_code(body: bytes) -> str:
+    """Fehlercode aus einer JSON-Fehlerantwort (OpenAI ``error.code``/``type``,
+    Anthropic ``error.type``, Google ``error.status``/``details[].reason``)."""
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return ""
+    err = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(err, dict):
+        return ""
+    for detail in err.get("details") or []:
+        if isinstance(detail, dict) and safe_error_code(detail.get("reason")):
+            return safe_error_code(detail.get("reason"))
+    for key in ("code", "status", "type"):
+        code = safe_error_code(err.get(key))
+        if code:
+            return code
+    return ""
 
 
 # --- Verbindungsprüfung --------------------------------------------------------
@@ -529,7 +562,8 @@ def check_error_message(exc: BaseException, url: str) -> str:
     if isinstance(exc, ProviderHTTPError):
         status = exc.status
         if status in (401, 403):
-            return CHECK_AUTH.format(status=status)
+            message = CHECK_AUTH.format(status=status)
+            return f"{message} (Code des Anbieters: {exc.code})" if exc.code else message
         if status == 402:
             return CHECK_PAYMENT
         if status == 404:
