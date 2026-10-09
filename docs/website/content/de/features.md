@@ -90,11 +90,12 @@ nebeneinander lesen.
 
 ## Werkzeuge über MCP
 
-{{< status "partial" "4a" >}}
+{{< status "done" "4a" >}}
 
-Fertig sind das Werkzeugformat in allen Anbieter-Adaptern und der MCP-Client (offizielles
-Python-SDK) mit Verbindungstest und Einstufung der Werkzeuge in der Verwaltung. In Arbeit
-sind die Werkzeugschleife im Chat, die Rückfrage vor heiklen Aufrufen und die Anzeige im Chat.
+Umgesetzt und mit einem MCP-Testserver getestet: Werkzeuge in allen Anbieter-Adaptern, der
+MCP-Client (offizielles Python-SDK) mit Verbindungstest und Einstufung in der Verwaltung, die
+Werkzeugschleife im Chat, die Rückfrage vor nicht freigegebenen Werkzeugen und die Anzeige
+jedes Aufrufs. Ein Test mit echten Modellen steht noch aus.
 
 MultiGPT wird Client für das [Model Context Protocol](https://modelcontextprotocol.io/).
 Modelle, die Werkzeuge unterstützen, können damit Funktionen aus angebundenen MCP-Servern

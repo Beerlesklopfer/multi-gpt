@@ -72,14 +72,14 @@
     en = "Ask two or three models the same question at once and see the answers side by side."
 
 [[items]]
-  status = "partial"
+  status = "done"
   milestone = "4a"
   [items.title]
     de = "Werkzeuge über MCP"
     en = "Tools via MCP"
   [items.text]
-    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Heikle Aufrufe brauchen eine Bestätigung im Chat. Fertig sind MCP-Client und Verwaltung; die Werkzeugschleife im Chat ist in Arbeit."
-    en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat. The MCP client and admin screens are done; the tool loop in the chat is in progress."
+    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Heikle Aufrufe brauchen eine Bestätigung im Chat. Jeder Aufruf ist im Chat aufklappbar sichtbar."
+    en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat. Every call is visible in the chat as an expandable row."
 
 [[items]]
   status = "planned"

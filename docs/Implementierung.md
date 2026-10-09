@@ -278,5 +278,17 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Werkzeuge in allen drei Adaptern (`provider_state` für Denk-Signaturen).
   - MCP-Brücke und MCP-Client auf dem SDK `mcp` 2.3. Zugangsdaten sind ein JSON-Objekt mit `env`, `headers` und `bearer_token`.
   - Offen für die Abnahme: echte Aufrufe mit Keys für Anthropic, Gemini und OpenRouter sowie LM Studio im LAN (Frage 1a).
-- **M4a in Arbeit:** Werkzeugschleife, Rückfrage und Anzeige im Chat.
+- **M4a umgesetzt** (Commit `cc3788d`, 623 Tests grün):
+  - Werkzeugschleife mit höchstens 10 Anbieteraufrufen, der letzte mit `tool_choice="none"`.
+  - Werkzeugnamen haben die Form `<Server>__<Werkzeug>`.
+  - Rückfrage pausiert die ganze Runde (`awaiting_confirmation`). Zwischenrunden und `provider_state` liegen in `Message.tool_state`.
+  - `can()` wird vor jedem Aufruf erneut geprüft. Werkzeugergebnisse heben die Rückfrage nicht auf.
+  - Anzeige im Chat (Browserlauf ohne JS-Fehler, XSS-Probe).
+  - Offen: Bilder aus Werkzeugergebnissen gehen nur als Hinweis an das Modell, ausgeliefert werden Anhänge erst in M9. Der Export enthält noch keine Werkzeugaufrufe.
+- **Anbieter-Admin** (nach Rückmeldung des Nutzers):
+  - „Verbindung jetzt prüfen“ mit konkreter Fehlerursache (`Provider.last_error`), auch im Chat-Status sichtbar.
+  - Prüfung beim Speichern.
+  - Seite „Modelle auswählen“ mit Live-Liste des Anbieters.
+- **Datenbank-Kodierung:** Der Entwicklungs-Cluster ist SQL_ASCII. preinst und `make db-create` legen die MultiGPT-Datenbanken deshalb ausdrücklich als UTF-8 aus `template0` an. Die Test-Datenbanken nutzen die UTF-8-Vorlage `multigpt_template` (`DB_TEST_TEMPLATE`).
+- **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.

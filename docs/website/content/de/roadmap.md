@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 description: "Die Meilensteine von MultiGPT und ihr Stand."
-lead: "MultiGPT wird Meilenstein für Meilenstein gebaut. Nach jedem Meilenstein laufen die Tests, es gibt einen kurzen Bericht, dann geht es weiter. Umgesetzt sind bisher die Meilensteine 1 bis 5, Meilenstein 4a (MCP-Werkzeuge) ist in Arbeit."
+lead: "MultiGPT wird Meilenstein für Meilenstein gebaut. Nach jedem Meilenstein laufen die Tests, es gibt einen kurzen Bericht, dann geht es weiter. Umgesetzt sind bisher die Meilensteine 1 bis 5 einschließlich 4a (MCP-Werkzeuge)."
 menus:
   main:
     weight: 40

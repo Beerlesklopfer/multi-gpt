@@ -72,17 +72,17 @@ multi-gpt/
 
 | Modell | Felder (Kern) | Zweck |
 |---|---|---|
-| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, last_online | Ein Anbieterzugang |
+| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, online, last_checked, last_online, last_error, reported_models | Ein Anbieterzugang |
 | `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order, price_in / price_out (optional) | Ein auswählbares Modell |
 | `Conversation` | user, title, default_model, system_prompt, created, updated, archived | Ein Chat |
-| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `superseded`), error, created | Eine Nachricht. „Neu erzeugen“ markiert die alte Antwort als `superseded`: Sie ist unsichtbar, ihre Kosten zählen weiter |
+| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `superseded` / `awaiting_confirmation`), error, tool_state (Zwischenrunden der Werkzeugschleife inkl. `provider_state`), created | Eine Nachricht. „Neu erzeugen“ markiert die alte Antwort als `superseded`: Sie ist unsichtbar, ihre Kosten zählen weiter |
 | `Preset` (optional) | user, name, system_prompt | Wiederverwendbare Rollen |
 | `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
 | `Collection` | owner, name | Eine Wissenssammlung für RAG |
 | `Share` | Ziel (`Conversation` oder `Collection`), group, can_write | Freigabe an eine Gruppe, lesend oder schreibend |
 | `Role` | key (`admin` / `adult` / `teen` / `guest`, stabil), name, is_admin, all_models, allowed_models, all_mcp_servers, allowed_mcp_servers, can_web_search, can_images, can_voice, can_upload_documents, can_share, monthly_budget, fixed_system_prompt | Rechtepaket, im Admin änderbar. Eine leere Liste erlaubt nichts, „alle“ nur über `all_models` bzw. `all_mcp_servers` |
-| `McpServer` | name, transport (`stdio` / `http`), command oder url, credentials (verschlüsselt), active, tools_requiring_confirmation | Ein angebundener MCP-Server |
-| `ToolCall` | message, server, tool, arguments, result, status (`awaiting_confirmation` / `rejected` / `running` / `ok` / `error` / `timeout`), duration | Protokoll jedes Werkzeugaufrufs |
+| `McpServer` | name, transport (`stdio` / `http`), command oder url, credentials (verschlüsselt, JSON mit `env` / `headers` / `bearer_token`), active, tools_requiring_confirmation, known_tools, timeout_seconds | Ein angebundener MCP-Server |
+| `ToolCall` | message, server, tool, provider_call_id, arguments, result, status (`awaiting_confirmation` / `rejected` / `running` / `ok` / `error` / `timeout`), duration | Protokoll jedes Werkzeugaufrufs |
 | `User` (`accounts.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): role, display_name, monthly_budget_override (optional), allow_supervision, auto_read_aloud; Sperren über `is_active` | Ein Familienkonto mit Rolle |
 | `UserGroup` (`accounts.UserGroup`) | erweitert Djangos `auth.Group` per Tabellenvererbung (name, Mitglieder über `User.groups`) plus eigene Zusatzfelder | Zum Teilen, z. B. "Familie", "Eltern" |
 | `Document` | collection, file, title, status (`pending` / `indexed` / `error`), error_text | Ein hochgeladenes Dokument |

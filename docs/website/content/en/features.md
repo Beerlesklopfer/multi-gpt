@@ -87,11 +87,12 @@ Ask two or three models the same question at the same time and read the answers 
 
 ## Tools via MCP
 
-{{< status "partial" "4a" >}}
+{{< status "done" "4a" >}}
 
-Done: the tool format in all provider adapters and the MCP client (official Python SDK) with a
-connection test and tool classification in the admin area. In progress: the tool loop in the
-chat, the confirmation before sensitive calls and the display in the chat.
+Built and tested with an MCP test server: tools in all provider adapters, the MCP client
+(official Python SDK) with a connection test and tool classification in the admin area, the
+tool loop in the chat, the confirmation before unapproved tools and the display of every call.
+A test with real models is still pending.
 
 MultiGPT becomes a client for the [Model Context Protocol](https://modelcontextprotocol.io/).
 Models that support tools can then call functions from connected MCP servers.

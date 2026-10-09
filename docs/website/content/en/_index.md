@@ -35,8 +35,8 @@ keys, an admin area for administrators and a Debian package that sets up the dat
 schema itself.
 
 So far this has been tested with simulated providers; tests with real API keys and on a fresh
-Debian installation are still pending. There are no release packages yet. MCP tools are
-partially done. Budgets, your own documents, web search, images and voice follow – details
+Debian installation are still pending. There are no release packages yet. MCP tools with
+confirmation are included as well. Budgets, your own documents, web search, images and voice follow – details
 in the [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence

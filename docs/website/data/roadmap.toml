@@ -57,7 +57,7 @@
 
 [[milestones]]
   id = "4a"
-  status = "partial"
+  status = "done"
   [milestones.title]
     de = "MCP-Werkzeuge"
     en = "MCP tools"
@@ -65,8 +65,8 @@
     de = "Modelle nutzen Werkzeuge aus angebundenen MCP-Servern – mit Rechteprüfung, Rückfrage vor heiklen Aufrufen und Anzeige im Chat."
     en = "Models use tools from connected MCP servers – with permission checks, confirmation before sensitive calls and display in the chat."
   [milestones.note]
-    de = "Fertig: Werkzeugformat in allen drei Adaptern, MCP-Client (offizielles Python-SDK) mit Verbindungstest und Einstufung der Werkzeuge in der Verwaltung. In Arbeit: Werkzeugschleife im Chat, Rückfrage vor heiklen Aufrufen, Anzeige im Chat."
-    en = "Done: tool format in all three adapters, MCP client (official Python SDK) with connection test and tool classification in the admin area. In progress: tool loop in the chat, confirmation before sensitive calls, display in the chat."
+    de = "Werkzeugschleife mit höchstens 10 Runden, Rückfrage vor nicht freigegebenen Werkzeugen (auch nach Neuladen), Anzeige jedes Aufrufs im Chat, Schalter je MCP-Server. Mit einem MCP-Testserver und simulierten Anbietern getestet, Ende-zu-Ende im Browser. Noch offen: Test mit echten Modellen."
+    en = "Tool loop with at most 10 rounds, confirmation before unapproved tools (also after a reload), every call shown in the chat, a switch per MCP server. Tested with an MCP test server and simulated providers, end-to-end in the browser. Still open: a test with real models."
 
 [[milestones]]
   id = "5"

@@ -26,7 +26,7 @@ menus:
 - **Provider adapters:** one common interface with an adapter for
   OpenAI-compatible APIs (OpenAI, OpenRouter, LM Studio), one for Anthropic
   and one for Google Gemini. Implemented with `httpx` directly against the HTTP APIs.
-- **MCP client (partially done):** connects to MCP servers via the official Python SDK and
+- **MCP client:** connects to MCP servers via the official Python SDK and
   passes their tools on to the models. The client and connection test are done; the tool
   loop in the chat is in progress.
 

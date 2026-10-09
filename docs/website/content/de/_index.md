@@ -36,7 +36,7 @@ Verwaltung für Verwalter und ein Debian-Paket, das Datenbank und Schema selbst 
 
 Getestet ist das bisher mit simulierten Anbietern; Tests mit echten API-Keys und einer
 frischen Debian-Installation stehen noch aus. Fertige Release-Pakete gibt es noch nicht.
-MCP-Werkzeuge sind teilweise umgesetzt. Budgets, eigene Dokumente, Websuche, Bilder und
+MCP-Werkzeuge mit Rückfrage sind ebenfalls dabei. Budgets, eigene Dokumente, Websuche, Bilder und
 Sprache folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
