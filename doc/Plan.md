@@ -8,11 +8,11 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 
 ## 2. Rahmenbedingungen
 
-- **Stack:** Python 3.12+, Django (aktuelle LTS), gunicorn, Makefile als Bedienoberfläche für alle Abläufe.
+- **Stack:** Python 3.12+ (Debian 13: 3.13), Django 5.2 LTS, gunicorn, Makefile als Bedienoberfläche für die Entwicklung, `mgpt-ctl` für den Betrieb.
 - **Betrieb:** läuft dauerhaft (24/7) auf dem NAS, nur im Intranet, kein Zugriff aus dem Internet. Ausgehend nur HTTPS zu den KI-Anbietern sowie HTTP im Intranet zu LM Studio.
 - **Lokale Modelle:** LM Studio läuft auf einem anderen Rechner im Intranet und nur bei Bedarf. Die App muss damit umgehen, dass dieser Anbieter meistens offline ist.
 - **Nutzer:** Familiensystem mit einer Handvoll Konten, keine Selbstregistrierung. Anlage durch einen Verwalter in der Oberfläche, im Django-Admin oder per `make user`.
-- **Kein Docker-Zwang:** Installation in ein venv, Start über systemd.
+- **Installation als Debian-Paket:** `multi-gpt` (gebaut mit dh-virtualenv) bringt sein eigenes venv in `/usr/share/python/multi-gpt` mit und wird über systemd gestartet. Systemnutzer `multi-gpt`, Konfiguration in `/etc/multi-gpt/.env`, Daten in `/var/lib/multi-gpt`. Docker (`Dockerfile`, `compose.yaml`) ist der Ausweichweg für Systeme ohne apt.
 - **Kein Node-Buildschritt:** Frontend aus Django-Templates plus schlankem Vanilla-JS, alle Assets lokal (keine CDNs).
 - **Sprache der Oberfläche:** Deutsch.
 
@@ -47,18 +47,21 @@ Django ──HTTP (Intranet)──> LM Studio auf dem PC (nur zeitweise online)
 ## 5. Projektstruktur
 
 ```
-multigpt/
+multi-gpt/
 ├── Makefile
-├── pyproject.toml
+├── pyproject.toml       # einzige Quelle der Abhängigkeiten
 ├── .env.example
 ├── manage.py
-├── multigpt/            # settings, urls, wsgi
+├── multigpt/            # settings, urls, wsgi, Projekt-Templates
 ├── chat/                # Modelle, Views, Templates, Static
 │   ├── providers/       # base.py, openai_compat.py, anthropic.py, google.py
-│   ├── mcp/             # MCP-Client, Werkzeugschleife, Rechteprüfung
+│   ├── mcp/             # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
 ├── mcp_bildwerkzeuge/   # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
-│   └── tests/
-└── deploy/              # gunicorn.conf.py, multigpt.service, nginx.conf.example
+├── tests/
+├── deploy/              # gunicorn.conf.py, nginx.conf.example
+├── debian/              # Paketierung: rules, control, multi-gpt.service, postinst, mgpt-ctl
+├── Dockerfile, compose.yaml
+└── doc/                 # Plan.md, Implementierung.md
 ```
 
 ## 6. Datenmodell
@@ -200,6 +203,8 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 
 Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Werkzeuge an das Modell weiter und führt die Aufrufe aus. Damit lassen sich Fähigkeiten nachrüsten, ohne die App zu ändern. Umsetzung mit dem offiziellen Python-SDK `mcp`. **Vor der Umsetzung die aktuelle MCP-Spezifikation und SDK-Dokumentation lesen.**
 
+- **Brücke sync ↔ async:** Das SDK ist asyncio-basiert, Django läuft synchron in gunicorn-`gthread`-Threads. Je gunicorn-Prozess gibt es genau einen Thread mit dauerhaftem Event-Loop, in dem alle MCP-Sitzungen leben. Request-Threads übergeben Aufrufe per `asyncio.run_coroutine_threadsafe()` und warten mit Timeout. Mutexe: ein `threading.Lock` für den verzögerten Start des Loop-Threads (erst nach dem Fork), ein `asyncio.Lock` je Server für Verbindungsaufbau und Neuverbindung (und für Aufrufe, falls ein Server keine parallelen Anfragen verträgt). Beim Beenden des Workers werden alle Sitzungen und `stdio`-Prozesse geschlossen.
+
 - **Einordnung:** MCP ist die Steckverbindung für Werkzeuge, kein Bildmodell. Inpainting braucht weiterhin ein Bildmodell (API-Anbieter oder ein MCP-Server, der eines anspricht). MCP macht es für alle Modelle einheitlich bedienbar.
 - **Server anbinden:** Verwalter legen `McpServer` im Admin an. Transport `stdio` (lokaler Prozess auf dem NAS, Befehl und Umgebung) oder `http` (Streamable HTTP, URL und Zugangsdaten). Verbindungstest und Werkzeugliste im Admin sichtbar.
 - **Werkzeugschleife:** Modell meldet `tool_call` → Rechte prüfen → ggf. Rückfrage → Werkzeug über MCP ausführen → Ergebnis zurück an das Modell → weiter streamen. Höchstens 10 Runden je Antwort, Timeout je Aufruf.
@@ -213,7 +218,7 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 ## 9. Sicherheit
 
 - API-Keys mit Fernet (`cryptography`) verschlüsselt in der DB. Schlüssel aus `FIELD_ENCRYPTION_KEY` in `.env`. Keys werden im Admin nie im Klartext angezeigt, nur die letzten 4 Zeichen.
-- `.env` mit Rechten 600, nicht im Repository. `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` aus der Umgebung.
+- Konfiguration im Betrieb in `/etc/multi-gpt/.env` (`root:multi-gpt`, 0640), beim ersten Installieren mit generierten Schlüsseln erzeugt und nie überschrieben. In der Entwicklung `.env` im Projektordner (600). Nie im Repository. Alle Settings kommen aus der Umgebung.
 - `DEBUG=False` im Betrieb. Sichere Cookies, sobald TLS aktiv ist.
 - Markdown-Ausgabe der Modelle wird vor dem Einfügen ins DOM bereinigt (XSS).
 - Login-Drosselung gegen Durchprobieren von Passwörtern.
@@ -227,9 +232,10 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 
 | Ziel | Wirkung |
 |---|---|
-| `make install` | venv anlegen, Abhängigkeiten installieren, `.env` aus Vorlage erzeugen (inkl. generierter Schlüssel) |
+| `make install` | `.venv` anlegen, Abhängigkeiten installieren, `.env` aus Vorlage erzeugen (inkl. generierter Schlüssel) |
+| `make db-create` | Entwicklungs-DB samt pgvector anlegen (braucht sudo) |
 | `make migrate` | Datenbankmigrationen |
-| `make user` | Nutzer anlegen |
+| `make user` | Nutzer anlegen (ab M2 mit Rollenwahl) |
 | `make dev` | Entwicklungsserver |
 | `make run` | gunicorn im Vordergrund |
 | `make static` | `collectstatic` |
@@ -238,12 +244,13 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 | `make backup` | `pg_dump`, Medienordner und `.env` als Archiv mit Datum sichern |
 | `make worker` | Worker für Indexierung im Vordergrund starten |
 | `make reindex` | Alle Dokumente neu einbetten (nach Wechsel des Embedding-Modells) |
-| `make service-install` | systemd-Unit installieren und starten |
-| `make update` | pull, install, migrate, static, Neustart |
+| `make deb` | Debian-Paket bauen (`dpkg-buildpackage`), statische Dateien werden dabei gesammelt |
+
+Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`: Installieren und Aktualisieren mit `apt install ./multi-gpt_<version>_<arch>.deb`, danach `mgpt-ctl migrate`. `mgpt-ctl` ist ein Wrapper um `manage.py`, der als Nutzer `multi-gpt` mit `/etc/multi-gpt/.env` läuft (z. B. `mgpt-ctl createsuperuser`). Der Worker bekommt eine eigene Unit `multi-gpt-worker.service`.
 
 ## 11. Meilensteine
 
-1. **Grundgerüst:** Projekt, Settings über `.env`, Makefile, Login, leere Chatseite, gunicorn startet. *Abnahme: `make install migrate user run`, Login im Browser funktioniert.*
+1. **Grundgerüst:** Projekt, Settings über `.env`, Makefile, Login mit Drosselung, leere Chatseite, gunicorn (`gthread`) startet, `/healthz/`, Debian-Paket und systemd-Unit. *Abnahme: `make install migrate user run`, Login im Browser funktioniert. `make deb` baut, das Paket installiert sich, die Unit startet.*
 2. **Datenmodell und Admin:** Modelle aus Abschnitt 6, Key-Verschlüsselung, Admin-Masken, Rollen, Gruppen, Profile und die zentrale Rechteprüfung `darf()`. *Abnahme: Anbieter und Modell anlegbar, Key in der DB nicht lesbar. Vier Startrollen vorhanden, ein Gast-Konto erreicht keine Verwaltungsseite.*
 3. **Erster Adapter und Streaming:** `openai_compat`, SSE-Endpunkt, Chatansicht mit Abbrechen. *Abnahme: gestreamte Antwort, Verlauf bleibt nach Neuladen erhalten.*
 4. **Weitere Adapter und LM Studio:** Anthropic, Google, `sync-models`, LM Studio mit Online-Anzeige. *Abnahme: Modellwechsel mitten im Chat funktioniert. LM Studio starten und beenden ändert die Anzeige innerhalb von 30 s, ohne die Seite neu zu laden.*
@@ -254,7 +261,7 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 8. **Websuche:** Such-Schnittstelle, Abruf, Quellenanzeige. *Abnahme: Frage zu einem aktuellen Ereignis liefert Antwort mit Links.*
 9. **Bildgenerierung und Bildbearbeitung:** Erzeugung, Inpainting mit Maske, Varianten, MCP-Server `mcp_bildwerkzeuge`. *Abnahme: Bild erscheint im Chat und bleibt nach Neuladen erhalten. Ein markierter Bereich wird ersetzt. "Schneide das Bild quadratisch zu" liefert per Werkzeug ein neues Bild, das Original bleibt.*
 10. **Sprache:** Aufnahme → Text, Antwort → Vorlesen. *Abnahme: funktioniert über HTTPS im Browser an PC und Handy.*
-11. **Betrieb:** Dienste für App und Worker, nginx mit TLS, Backup, README mit Installationsanleitung.
+11. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
 
 Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 eingerichtet, TLS spätestens vor Meilenstein 10.
 
@@ -275,11 +282,11 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 
 ## 13. Offene Fragen (vor Meilenstein 1 klären)
 
-1. Welches NAS (Hersteller, Modell)? Davon hängt ab, ob venv plus systemd dort möglich ist oder die App besser als Container läuft (dann zusätzlich `Dockerfile` und `compose.yaml` in `deploy/`).
+1. Welches NAS (Hersteller, Modell)? Hat es Debian/apt? Sonst läuft die App als Container (`Dockerfile`, `compose.yaml` liegen bereit).
 1a. Welche feste IP oder welchen Hostnamen hat der PC mit LM Studio, und ist dort die Freigabe des Servers im lokalen Netz aktiviert?
 2. Läuft im Intranet bereits ein nginx oder anderer Reverse Proxy, und gibt es einen internen Hostnamen samt TLS-Zertifikat?
 3. Welche Anbieter sollen zum Start angebunden werden (Einzel-Keys oder OpenRouter als Sammelzugang)?
-4. Gibt es schon ein PostgreSQL auf dem NAS, und lässt sich dort `pgvector` installieren? Sonst kommt PostgreSQL mit pgvector als eigener Container dazu.
+4. Gibt es schon ein PostgreSQL auf dem NAS, und lässt sich dort `pgvector` installieren? Sonst kommt PostgreSQL mit pgvector als eigener Container dazu. (Entwicklungsrechner: PostgreSQL 18 mit pgvector 0.8 vorhanden.)
 4a. Websuche: selbst gehostetes SearXNG auf dem NAS oder eine Such-API mit Key?
 4b. Welche Anbieter für Embeddings, Spracherkennung, Sprachausgabe und Bilder? Nicht jeder Chat-Anbieter bietet alle vier.
 4c. Sind die Dokumente für RAG überwiegend deutsch, und gibt es gescannte PDFs (dann wird Texterkennung/OCR nötig)?

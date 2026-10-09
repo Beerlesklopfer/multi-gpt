@@ -1,27 +1,31 @@
 # Implementierungsgerüst MultiGPT
 
-Abgeleitet aus [Plan.md](Plan.md), Stand 2026-10-09. Dieses Dokument zerlegt den Plan in Arbeitspakete, gleicht ihn mit dem bereits angelegten Gerüst (Debian-Paket, systemd, Docker) ab und ordnet die offenen Fragen den Meilensteinen zu, die sie blockieren.
+Abgeleitet aus [Plan.md](Plan.md), Stand 2026-10-09. Dieses Dokument zerlegt den Plan in Arbeitspakete, hält die Betriebsentscheidungen fest und ordnet die offenen Fragen den Meilensteinen zu, die sie blockieren.
 
 Arbeitsweise wie im Plan: meilensteinweise umsetzen, nach jedem Meilenstein Tests, kurzer Bericht, Freigabe abwarten.
 
 ---
 
-## 1. Abgleich Plan ↔ bestehendes Gerüst
+## 1. Festgelegte Betriebsentscheidungen
 
-| Thema | Plan.md | Ist-Stand im Repo | Entscheidung / Vorschlag |
-|---|---|---|---|
-| Namen | Projekt `multigpt`, Unit `multigpt.service` | Debian-Paket `multi-gpt`, Platzhalter `src/multi_gpt` | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete heißen wie im Plan (`multigpt`, `chat`, `mcp_bildwerkzeuge`). |
-| Projektlayout | flach: `manage.py`, `multigpt/`, `chat/`, `mcp_bildwerkzeuge/`, `deploy/` | `src/`-Layout mit Platzhalter-WSGI | Layout nach Plan. `src/multi_gpt` entfällt, `pyproject.toml` listet die Pakete explizit. |
-| Installation | venv + systemd über `make service-install`, `make update` mit `git pull` | `.deb` mit dh-virtualenv nach `/usr/share/python/multi-gpt`, Unit über `dh_installsystemd` | **Das `.deb` ist der Betriebsweg.** `make install` bleibt für die Entwicklung (lokale `.venv`). `make service-install` wird ersetzt durch `make deb` + `apt install ./multi-gpt_*.deb`. `make update` baut und installiert das Paket. |
-| Konfiguration | `.env` im Projektordner, Rechte 600 | `/etc/default/multi-gpt` (nur Gunicorn-Variablen) | **Im Betrieb `/etc/multi-gpt/.env`** (`root:multi-gpt`, 0640) als `EnvironmentFile`, enthält auch die Gunicorn-Variablen. `/etc/default/multi-gpt` entfällt. Das postinst erzeugt die Datei beim ersten Installieren mit generierten Schlüsseln und überschreibt sie nie. In der Entwicklung `.env` im Repo. Die Settings lesen ausschließlich Umgebungsvariablen. |
-| Statische Dateien | `make static`, WhiteNoise | – | `collectstatic` läuft beim Paketbau, `STATIC_ROOT` liegt im Paket. Damit entfällt der Schritt bei der Installation. |
-| Medien | `MEDIA_ROOT` auf dem NAS | `StateDirectory=/var/lib/multi-gpt` | `MEDIA_ROOT=/var/lib/multi-gpt/media` (über Env änderbar, z. B. auf eine NAS-Freigabe). Bei abweichendem Pfad `ReadWritePaths=` in der Unit ergänzen. |
-| Migrationen | `make migrate` | – | Kommando `/usr/bin/mgpt-ctl` (Wrapper um `manage.py` mit Env-Datei, läuft als `multi-gpt`). Das postinst migriert **nicht** automatisch, sondern gibt einen Hinweis aus. Ob automatisch migriert werden soll, entscheiden wir nach M1. |
-| Gunicorn | `gthread`, 2 Worker × 8 Threads, `--timeout 300` | Standard-Worker (`sync`), Timeout 120 | In M1 auf `gthread` 2 × 8, Timeout 300 umstellen. |
-| Worker-Prozess | `make worker` | – | Zweite Unit `multi-gpt-worker.service` im selben Paket, ab M7. |
-| Docker | nur falls das NAS kein venv/systemd kann, dann `deploy/Dockerfile` + `compose.yaml` | `Dockerfile` und `compose.yaml` im Projektwurzelordner, ohne Datenbank | Bleibt als Nebenweg. Die Compose-Datei bekommt in M1 einen Dienst `db` (PostgreSQL + pgvector), den wir auch für die Entwicklung nutzen. Später kommt der Worker als Dienst dazu. |
-| Health-Check | – | Docker prüft `/` | Eigener Endpunkt `/healthz/` (ohne Login, prüft die DB-Verbindung). |
-| Versionen | Python 3.12+, aktuelle Django-LTS | Debian 13, Python 3.13 | Django 5.2 LTS, Python 3.13. |
+Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 8g, 9, 10).
+
+| Thema | Festlegung |
+|---|---|
+| Namen | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete: `multigpt`, `chat`, `mcp_bildwerkzeuge`. |
+| Projektlayout | Flach nach Plan 5. Abhängigkeiten nur in `pyproject.toml`, keine `requirements.txt` (dh-virtualenv installiert sie nur, wenn vorhanden, danach immer `pip install .`). |
+| Installation | `.deb` mit dh-virtualenv nach `/usr/share/python/multi-gpt`, Unit `multi-gpt.service` über `dh_installsystemd`. Entwicklung mit `make install` in `.venv`. |
+| Konfiguration | `/etc/multi-gpt/.env` (`root:multi-gpt`, 0640) als `EnvironmentFile`, auch für Gunicorn-Variablen. Das postinst erzeugt sie einmalig mit generierten Schlüsseln, `purge` entfernt sie. Entwicklung: `.env` im Projektordner. Die Settings lesen zusätzlich die Datei aus `MULTI_GPT_ENV_FILE`. |
+| Verwaltung | `/usr/bin/mgpt-ctl`: Wrapper um `manage.py`, läuft als `multi-gpt` mit `/etc/multi-gpt/.env`. Keine automatische Migration im postinst, sondern `mgpt-ctl migrate` nach jeder Installation. |
+| Statische Dateien | `collectstatic` beim Paketbau, `STATIC_ROOT=/usr/share/python/multi-gpt/static`, ausgeliefert über WhiteNoise. |
+| Medien | `MEDIA_ROOT=/var/lib/multi-gpt/media`. Bei einem Pfad außerhalb von `/var/lib/multi-gpt` muss `ReadWritePaths=` in der Unit ergänzt werden. |
+| Gunicorn | `gthread`, 2 Worker × 8 Threads, Timeout 300, über `MULTI_GPT_*` änderbar. |
+| Worker-Prozess | Zweite Unit `multi-gpt-worker.service` im selben Paket, ab M7. |
+| MCP | Ein Loop-Thread je gunicorn-Prozess, Mutexe für Start und Verbindungsaufbau (Plan 8g, M4a-01). |
+| Docker | Ausweichweg: Das Image installiert dasselbe `.deb`. `compose.yaml` mit `db` (PostgreSQL + pgvector). |
+| Health-Check | `/healthz/` ohne Login, prüft die DB-Verbindung. |
+| Login-Drosselung | django-axes, Sperre je Nutzername und IP nach 5 Fehlversuchen für 15 Minuten. |
+| Versionen | Python 3.13 (Debian 13), Django 5.2 LTS. Entwicklungs-DB: PostgreSQL 18 mit pgvector 0.8. |
 
 **Wichtig:** Das `.deb` setzt voraus, dass das NAS Debian bzw. apt hat. Siehe offene Frage 1 in Abschnitt 6.
 
@@ -50,13 +54,13 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M1 – Grundgerüst
 *Abhängig von: Frage 1 (NAS), Frage 4 (PostgreSQL).*
 
-- **M1-01** Django-5.2-Projekt `multigpt` und App `chat` im Layout nach Plan anlegen. `pyproject.toml` bekommt `django`, `gunicorn`, `psycopg[binary]`, `pgvector`, `whitenoise`, die Entwicklungsabhängigkeiten `pytest-django` und `ruff`. Platzhalter `src/` entfernen.
+- **M1-01** Django-5.2-Projekt `multigpt` und App `chat` im Layout nach Plan. `pyproject.toml` mit `django`, `django-environ`, `django-axes`, `gunicorn`, `psycopg[binary]`, `pgvector`, `whitenoise`, Extra `dev` mit `pytest`, `pytest-django`, `ruff`.
 - **M1-02** Settings ausschließlich aus der Umgebung: `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, `MEDIA_ROOT`, `STATIC_ROOT`, `FIELD_ENCRYPTION_KEY`. Sprache `de`, Zeitzone `Europe/Berlin`. Logging ohne Nachrichteninhalte und Keys. `.env.example` anlegen.
 - **M1-03** PostgreSQL mit pgvector: Migration `CREATE EXTENSION IF NOT EXISTS vector`. Für die Entwicklung kommt der Dienst `db` (Image `pgvector/pgvector`) in `compose.yaml`.
-- **M1-04** Login, Logout und Passwort ändern mit den Django-Auth-Views und deutschen Templates. Login-Drosselung (Plan 9), Bibliothek oder eigene Umsetzung entscheiden wir in M1.
+- **M1-04** Login, Logout und Passwort ändern mit den Django-Auth-Views und deutschen Templates unter `/konto/`. Login-Drosselung mit django-axes.
 - **M1-05** Basislayout: Kopfzeile, Seitenleiste, leere Chatseite. Vanilla-JS und CSS lokal, Auslieferung über WhiteNoise.
-- **M1-06** Makefile mit `install`, `migrate`, `user`, `dev`, `run`, `static`, `test`, `lint` und `deb`. `make install` erzeugt `.env` mit generiertem `SECRET_KEY` und `FIELD_ENCRYPTION_KEY`.
-- **M1-07** `deploy/gunicorn.conf.py` auf `gthread` 2 × 8 und Timeout 300 umstellen. Endpunkt `/healthz/` anlegen.
+- **M1-06** Makefile mit `install`, `db-create`, `migrate`, `user`, `dev`, `run`, `static`, `test`, `lint` und `deb`. `make install` erzeugt `.env` mit generiertem `SECRET_KEY` und `FIELD_ENCRYPTION_KEY`.
+- **M1-07** `deploy/gunicorn.conf.py` mit `gthread` 2 × 8 und Timeout 300. Endpunkt `/healthz/`.
 - **M1-08** Paketierung angleichen:
   - Unit startet `multigpt.wsgi:application`.
   - Env-Datei `/etc/multi-gpt/.env`, vom postinst einmalig mit generiertem `SECRET_KEY` und `FIELD_ENCRYPTION_KEY` erzeugt. `debian/multi-gpt.default` entfällt.
@@ -227,10 +231,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 
 ---
 
-## 7. Nächster Schritt
+## 7. Stand
 
-Für den Start von M1 werden gebraucht:
-1. die Antworten auf die Fragen 1 und 4,
-2. die Freigabe der Entscheidungen aus Abschnitt 1, vor allem: `.deb` als Betriebsweg, Layout nach Plan.
-
-Bis M2 sollten außerdem Frage 5b und die Lücken aus Abschnitt 2 geklärt sein.
+- **M1 in Arbeit** (2026-10-09). Die Fragen 1 und 4 sind für die Entwicklung überbrückt: Gebaut und getestet wird auf Debian 13 mit lokalem PostgreSQL 18 und pgvector. Für das NAS sind beide Fragen weiter offen.
+- Bis M2 müssen Frage 5b und die Lücken aus Abschnitt 2 geklärt sein.
