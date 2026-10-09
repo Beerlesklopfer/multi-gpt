@@ -154,6 +154,12 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
 - **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings über OpenAI. **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
 - **M7-04** Migration für `Chunk` mit fester Vektordimension (aus dem gewählten OpenAI-Embedding-Modell) und HNSW-Index (Kosinus). `make reindex`.
+- **M7-09** (Entscheidung 2026-10-09) Dokumentverarbeitung komplett lokal:
+  - Embeddings über LM Studio (nomic-embed-text, Dimension 768 statt 1536). Dafür Migration der Vektorspalte und „Alles neu indexieren“.
+  - Die Sperre von LM-Studio-Anbietern in `RagSettings.clean()` entfällt.
+  - Neue OCR-Einstellung „olmOCR (LM Studio)“ oder „Tesseract“, mit Auswahl des Vision-Modells.
+  - `openai_compat` bekommt Bild-Eingaben (Seite als PNG) mit dem Prompt aus der olmOCR-Dokumentation.
+  - Ist LM Studio offline: Der Worker wartet und wiederholt, bei OCR springt optional Tesseract ein.
 - **M7-05** Abfrage: Top 6 mit Zugriffsfilter **in der SQL-Abfrage selbst**, optional zusätzlich Volltextsuche. Quellen mit Seitenangabe unter der Antwort.
 - **M7-06** RAG-Suche zusätzlich als Werkzeug für werkzeugfähige Modelle.
 - **M7-07** Tests: Zerteilung, Trefferqualität, Zugriffsgrenzen (fremde private Sammlung ist nie im Ergebnis), Entzug einer Freigabe wirkt sofort, Worker-Wiederholung.
@@ -234,8 +240,8 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 1a – LM-Studio-Rechner | M4 | |
 | 4d – MCP-Server zum Start | M4a (Abnahme) | Ein Testserver genügt |
 | 5a – Einsicht in Jugendlichen-Chats | – | **Geklärt:** Option je Konto, standardmäßig aus |
-| 4b – Anbieter für Embedding, STT, TTS, Bild | – | **Geklärt:** OpenAI für alles. Das Modell wird in M7 festgelegt und bestimmt die Vektordimension |
-| 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans, OCR mit Tesseract in v1 |
+| 4b – Anbieter für Embedding, STT, TTS, Bild | – | **Geklärt:** Embeddings lokal über LM Studio (nomic, 768), sonst OpenAI |
+| 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans. OCR über olmOCR in LM Studio, Tesseract als Ersatz |
 | 4a – SearXNG oder Such-API | – | **Geklärt:** SearXNG, Such-API später optional |
 | 4e – Inpainting-Anbieter | – | **Geklärt:** OpenAI |
 | 2 – Reverse Proxy, Hostname, TLS | M10, M11 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |

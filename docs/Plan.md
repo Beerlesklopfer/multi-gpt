@@ -165,8 +165,8 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 ## 8b. RAG mit PostgreSQL und pgvector
 
 - **Sammlungen:** Jeder Nutzer legt Sammlungen an und lädt Dokumente hoch (PDF, DOCX, TXT, MD). Eine Sammlung ist privat oder mit Gruppen geteilt (Abschnitt 8f).
-- **Indexierung (Worker):** Text extrahieren → in überlappende Abschnitte teilen (ca. 800 Tokens, 100 Überlappung, Seitenzahl merken) → Embeddings über das konfigurierte Embedding-Modell → in `Chunk` speichern. Status und Fehler sind in der Oberfläche sichtbar.
-- **Embedding-Modell:** genau eines, in den Einstellungen festgelegt. Es muss immer erreichbar sein, also ein API-Anbieter und nicht LM Studio. Die Vektordimension ist damit fest. Ein Wechsel des Modells erfordert `make reindex`.
+- **Indexierung (Worker):** Text extrahieren → in überlappende Abschnitte teilen (ca. 800 Tokens, 100 Überlappung, Seitenzahl merken) → Embeddings über das konfigurierte Embedding-Modell → in `Chunk` speichern. Status und Fehler sind in der Oberfläche sichtbar. **OCR für gescannte Seiten:** wahlweise mit dem Vision-Modell **olmOCR** (`allenai/olmocr-2-7b`) über LM Studio, empfohlen für Tabellen, Spalten und Formeln, oder mit Tesseract (`deu+eng`). Tesseract springt ein, wenn LM Studio nicht erreichbar ist. Die Auswahl steht in den RAG-Einstellungen.
+- **Embedding-Modell:** genau eines, in den RAG-Einstellungen festgelegt. **Entscheidung vom 2026-10-09: lokal über LM Studio** (`text-embedding-nomic-embed-text-v1.5`, 768 Dimensionen), damit keine Dokumentinhalte das Haus verlassen. Indexierung und Dokumentsuche brauchen dann einen laufenden LM-Studio-PC: Der Worker wartet und wiederholt, die Chat-Antwort entsteht mit Hinweis ohne Dokumente. Ein Wechsel des Modells oder der Dimension erfordert eine Migration und „Alles neu indexieren“.
 - **Abfrage:** Im Chat wählt der Nutzer eine oder mehrere Sammlungen. Die Frage wird eingebettet, die ähnlichsten Abschnitte (Kosinus-Abstand, HNSW-Index, Top 6) kommen als Kontext in die Anfrage. Optional zusätzlich PostgreSQL-Volltextsuche und Zusammenführung beider Trefferlisten.
 - **Quellen:** Unter der Antwort stehen die verwendeten Dokumente mit Seitenzahl, anklickbar zum Textabschnitt.
 - **Zugriff:** Abschnitte fremder privater Sammlungen dürfen nie in einer Abfrage landen. Dafür gibt es einen eigenen Test.
@@ -309,8 +309,8 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 3. ~~Anbieter zum Start?~~ **Geklärt (2026-10-09):** OpenRouter, OpenAI, Anthropic und Google Gemini. Damit sind alle drei Adapterarten (`openai_compat`, `anthropic`, `google`) zum Start im Einsatz.
 4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
 4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** SearXNG im Intranet. Eine Such-API bleibt als spätere Erweiterung möglich.
-4b. ~~Anbieter für Embeddings, Sprache, Bilder?~~ **Geklärt (2026-10-09):** OpenAI für alle vier: Embeddings, Spracherkennung, Sprachausgabe und Bilder. Das konkrete Embedding-Modell und damit die Vektordimension werden in M7 nach der aktuellen API-Dokumentation festgelegt.
-4c. ~~Sprache der Dokumente, OCR?~~ **Geklärt (2026-10-09):** Überwiegend deutsch, auch gescannte PDFs. OCR ist Teil von v1 (Tesseract mit deutschem Sprachpaket im Worker).
+4b. ~~Anbieter für Embeddings, Sprache, Bilder?~~ **Geklärt (2026-10-09), Embeddings geändert am selben Tag:** Embeddings **lokal über LM Studio** (nomic-embed-text, 768 Dimensionen). Spracherkennung, Sprachausgabe und Bilder kommen über OpenAI.
+4c. ~~Sprache der Dokumente, OCR?~~ **Geklärt (2026-10-09):** Überwiegend deutsch, auch gescannte PDFs. OCR mit olmOCR über LM Studio, Tesseract (`tesseract-ocr`, `tesseract-ocr-deu`) als Ersatz.
 4d. Welche MCP-Server sollen zum Start angebunden werden (außer den mitgelieferten), und laufen schon welche im Intranet?
 4e. ~~Anbieter für Inpainting?~~ **Geklärt (2026-10-09):** OpenAI (Bildbearbeitung mit Maske). Vor M9 in der aktuellen API-Dokumentation prüfen, welches Modell Masken und Varianten unterstützt.
 5. ~~Wer gehört zur Familie?~~ **Geklärt (2026-10-09):** Zwei Erwachsene und Jugendliche. Die vier Startrollen (Verwalter, Erwachsener, Jugendlicher, Gast) passen.
