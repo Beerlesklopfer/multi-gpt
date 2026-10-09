@@ -170,6 +170,12 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 - **Abfrage:** Im Chat wählt der Nutzer eine oder mehrere Sammlungen. Die Frage wird eingebettet, die ähnlichsten Abschnitte (Kosinus-Abstand, HNSW-Index, Top 6) kommen als Kontext in die Anfrage. Optional zusätzlich PostgreSQL-Volltextsuche und Zusammenführung beider Trefferlisten.
 - **Quellen:** Unter der Antwort stehen die verwendeten Dokumente mit Seitenzahl, anklickbar zum Textabschnitt.
 - **Zugriff:** Abschnitte fremder privater Sammlungen dürfen nie in einer Abfrage landen. Dafür gibt es einen eigenen Test.
+- **Verwaltung im Admin:** eigener Abschnitt „Dokumente (RAG)“, nur für Verwalter. Er umfasst:
+  - die Übersicht: Konfiguration, Embedding-Test, Zahlen je Status, Speicherbedarf, Zustand des Workers und Warteschlange;
+  - die Aktionen „Alles neu indexieren“ (z. B. nach einem Modellwechsel), „Fehlgeschlagene erneut versuchen“ und „Hängende Aufträge zurücksetzen“;
+  - Listen der Sammlungen, Dokumente und Indexierungsaufträge sowie die Einstellungen.
+
+  Wie bei den Chats sehen Verwalter dort nur Metadaten, keinen Dokument- oder Abschnittsinhalt.
 
 ## 8c. Sprach-Eingabe und -Ausgabe
 

@@ -157,6 +157,10 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M7-05** Abfrage: Top 6 mit Zugriffsfilter **in der SQL-Abfrage selbst**, optional zusätzlich Volltextsuche. Quellen mit Seitenangabe unter der Antwort.
 - **M7-06** RAG-Suche zusätzlich als Werkzeug für werkzeugfähige Modelle.
 - **M7-07** Tests: Zerteilung, Trefferqualität, Zugriffsgrenzen (fremde private Sammlung ist nie im Ergebnis), Entzug einer Freigabe wirkt sofort, Worker-Wiederholung.
+- **M7-08** (Nutzerwunsch) Eigene RAG-Verwaltung im Admin: App `multigpt.rag` ohne eigene Tabellen, mit Proxy-Modellen für die Abschnitte Einstellungen, Sammlungen, Dokumente und Aufträge. Die bisherigen Einträge unter „Chat“ entfallen.
+  - **Übersichtsseite:** Konfiguration, Zahlen, Worker-Zustand, Warteschlange.
+  - **Aktionen:** neu indexieren (alles, je Sammlung, je Dokument), erneut versuchen, hängende Aufträge zurücksetzen.
+  - **Datenschutz:** kein Inhalt sichtbar, ein Test prüft das.
 
 ### M8 – Websuche
 *Abhängig von: M3, M4a (als Werkzeug), Frage 4a.*
@@ -300,7 +304,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
   - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
 - **M8 (Websuche) vorgezogen und in Arbeit** (Nutzerwunsch): Agenten websearch, webui und wiki.
-- **M7 (RAG) in Arbeit**, parallel zu M8:
+- **M7 (RAG) in Arbeit**, parallel zu M8 (retrieval, ingest und ragui sind fertig, ragadmin baut die RAG-Verwaltung im Admin):
   - **retrieval:** `Chunk` mit HNSW- und Volltextindex, `RagSettings`, `embed()`, Suche mit Zugriffsfilter in SQL, Chat-Einbindung, Werkzeug `search_documents`.
   - **ingest:** Extraktion, OCR mit Tesseract, Zerteilung, Worker mit `SKIP LOCKED`, `multi-gpt-worker.service`.
   - **ragui:** Seiten für Sammlungen, Upload, Teilen, Abschnittsansicht, Auswahl im Chat.
