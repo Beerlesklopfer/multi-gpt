@@ -442,6 +442,7 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "provider": "LM Studio",
         "provider_id": local_model.provider_id,
         "is_local": True,
+        "supports_tools": False,
         "online": True,
         "available": True,
     }

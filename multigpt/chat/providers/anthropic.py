@@ -59,6 +59,7 @@ import httpx
 from .base import (
     FINISH_TOOL_CALLS,
     MSG_INTERRUPTED,
+    MSG_INVALID_MODEL_LIST,
     MSG_STREAM_ERROR,
     ChatMessage,
     Delta,
@@ -67,6 +68,7 @@ from .base import (
     Event,
     ProviderAdapter,
     ProviderError,
+    ProviderHTTPError,
     ToolCallEvent,
     ToolSpec,
     Turn,
@@ -143,7 +145,7 @@ class AnthropicAdapter(ProviderAdapter):
                 )
                 if response.status_code != 200:
                     message, _ = _http_error(response.status_code)
-                    raise ProviderError(message)
+                    raise ProviderHTTPError(message, response.status_code)
                 try:
                     page = response.json()
                     for item in page.get("data") or []:
@@ -152,9 +154,7 @@ class AnthropicAdapter(ProviderAdapter):
                     last_id = page.get("last_id")
                     has_more = bool(page.get("has_more"))
                 except (ValueError, AttributeError, TypeError) as exc:
-                    raise ProviderError(
-                        "Der Anbieter hat eine unerwartete Modellliste geliefert."
-                    ) from exc
+                    raise ProviderError(MSG_INVALID_MODEL_LIST) from exc
                 if not has_more or not last_id:
                     break
                 query["after_id"] = str(last_id)

@@ -1,7 +1,7 @@
 """Online-Status von Anbietern mit ``check_status`` (Plan 8a, M4-03).
 
 Cache prozessübergreifend in der DB: Das Ergebnis steht am ``Provider``
-(``online``, ``last_checked``, ``last_online``, ``reported_models``). Ein
+(``online``, ``last_checked``, ``last_online``, ``reported_models``, ``last_error``). Ein
 Prozess-Cache (LocMemCache) wirkt bei 2 gunicorn-Workern nicht.
 
 Sperre gegen Doppelprüfung – bedingtes UPDATE als Anspruch:
@@ -40,6 +40,7 @@ from django.utils import timezone
 
 from .models import AIModel, Provider
 from .providers import registry
+from .providers.base import CHECK_UNEXPECTED, CheckResult
 
 logger = logging.getLogger(__name__)
 
@@ -85,34 +86,52 @@ def _sync_local_models(provider: Provider, model_ids: list[str]) -> int:
     return len(new)
 
 
-def check_provider(provider: Provider) -> None:
+def check_provider(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckResult:
     """Prüft einen Anbieter über das Netz und schreibt das Ergebnis.
 
-    Nicht innerhalb einer Transaktion aufrufen (Netzaufruf bis ca. 2 s).
+    Setzt ``online`` und ``last_error`` (Ursache bei offline, sonst leer).
+    Nicht innerhalb einer Transaktion aufrufen (Netzaufruf bis ``timeout``).
     """
     try:
-        adapter = registry.get_adapter(provider)
-        model_ids = list(dict.fromkeys(adapter.list_models(timeout=CHECK_TIMEOUT)))
-        online = True
+        result = registry.get_adapter(provider).check(timeout=timeout)
     except Exception:
-        # ProviderError (nicht erreichbar, Timeout, HTTP-Fehler) oder Adapter
-        # ohne Modellliste: offline. Kein Log je Prüfung, nur beim Wechsel.
-        model_ids, online = [], False
+        # z. B. unbekannte Anbieterart; check() selbst wirft nie.
+        result = CheckResult(online=False, error=CHECK_UNEXPECTED)
 
-    fields = {"online": online}
+    online = result.online
+    fields = {"online": online, "last_error": "" if online else (result.error or "")}
     if online:
         fields["last_online"] = timezone.now()
-        fields["reported_models"] = model_ids
+        fields["reported_models"] = result.models
     Provider.objects.filter(pk=provider.pk).update(**fields)
     if online != provider.online:
-        logger.info("Anbieter %s ist jetzt %s", provider.pk, "online" if online else "offline")
+        # Kein Log je Prüfung, nur beim Wechsel; nur die Kurzursache.
+        logger.info(
+            "Anbieter %s ist jetzt %s%s",
+            provider.pk,
+            "online" if online else "offline",
+            "" if online else f" ({result.short_error})",
+        )
     for key, value in fields.items():
         setattr(provider, key, value)
 
     if online and provider.is_local:
-        created = _sync_local_models(provider, model_ids)
+        created = _sync_local_models(provider, result.models)
         if created:
             logger.info("Anbieter %s: %d neue lokale Modelle angelegt", provider.pk, created)
+    return result
+
+
+def force_check(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckResult:
+    """Prüft sofort, ohne 15-s-Cache (Admin „Verbindung jetzt prüfen“).
+
+    Gleiche Speicherlogik wie ``refresh``; ``last_checked`` wird wie beim
+    Anspruch vorab gesetzt, damit parallele Statusabfragen nicht zusätzlich prüfen.
+    """
+    now = timezone.now()
+    Provider.objects.filter(pk=provider.pk).update(last_checked=now)
+    provider.last_checked = now
+    return check_provider(provider, timeout=timeout)
 
 
 def refresh(provider: Provider) -> Provider:
@@ -120,7 +139,9 @@ def refresh(provider: Provider) -> Provider:
     Aufruf gerade prüft. Gibt den aktuellen Stand aus der DB zurück."""
     if provider.check_status and _claim(provider.pk):
         check_provider(provider)
-    provider.refresh_from_db(fields=["online", "last_online", "last_checked", "reported_models"])
+    provider.refresh_from_db(
+        fields=["online", "last_online", "last_checked", "reported_models", "last_error"]
+    )
     return provider
 
 
@@ -160,4 +181,6 @@ def serialize(provider: Provider) -> dict:
         "last_online": provider.last_online.isoformat() if provider.last_online else None,
         "last_checked": provider.last_checked.isoformat() if provider.last_checked else None,
         "models": list(provider.reported_models or []) if provider.online else [],
+        # Ursache bei offline (deutscher Text ohne Key/Anbieter-Rohtext), sonst None.
+        "error": None if provider.online else (provider.last_error or None),
     }

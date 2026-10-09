@@ -20,7 +20,9 @@
            data-api-conversations="{% url 'chat:api_conversations' %}"
            data-api-models="{% url 'chat:api_models' %}"
            data-api-messages-template="{% url 'chat:api_messages' 0 %}"
-           data-api-detail-template="{% url 'chat:api_conversation_detail' 0 %}">
+           data-api-detail-template="{% url 'chat:api_conversation_detail' 0 %}"
+           data-api-mcp-servers="{% url 'chat:api_mcp_servers' %}"
+           data-api-tool-confirm-template="{% url 'chat:api_tool_confirm' 0 %}">
     {% if active_conversation %}
       <header class="chat-header">
         <h1 class="chat-header-title" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
@@ -84,6 +86,11 @@
             <option value="">Modelle werden geladen …</option>
           </select>
         </div>
+        {# Schalter je MCP-Server (M4a-06); chat.js zeigt sie nur bei werkzeugfähigem Modell. #}
+        <fieldset class="chat-input-tools" id="tool-servers" hidden>
+          <legend>Werkzeuge</legend>
+          <div class="chat-input-tools-list" id="tool-servers-list"></div>
+        </fieldset>
         <div class="chat-input-row">
           <label for="message-input" class="sr-only">Nachricht</label>
           <textarea id="message-input" name="content" rows="2"

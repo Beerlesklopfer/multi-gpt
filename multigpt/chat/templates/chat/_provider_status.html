@@ -5,9 +5,11 @@
     {% for p in status_providers %}
       <li class="provider-status-item" data-provider-id="{{ p.id }}" data-name="{{ p.name }}"
           data-online="{{ p.online|yesno:'true,false' }}"
-          data-last-online="{% if p.last_online %}{{ p.last_online.isoformat }}{% endif %}">
+          data-last-online="{% if p.last_online %}{{ p.last_online.isoformat }}{% endif %}"
+          data-error="{% if not p.online %}{{ p.last_error }}{% endif %}"
+          {% if not p.online and p.last_error %}title="{{ p.name }} offline – {{ p.last_error }}"{% endif %}>
         <span class="status-dot" aria-hidden="true"></span>
-        <span class="provider-status-text">{{ p.name }} {% if p.online %}online{% else %}offline{% if p.last_online %}, zuletzt online um {{ p.last_online|date:"H:i" }}{% endif %}{% endif %}</span>
+        <span class="provider-status-text">{{ p.name }} {% if p.online %}online{% else %}offline{% if p.last_error %} – {{ p.error_short }}{% endif %}{% if p.last_online %}, zuletzt online um {{ p.last_online|date:"H:i" }}{% endif %}{% endif %}</span>
       </li>
     {% endfor %}
   </ul>

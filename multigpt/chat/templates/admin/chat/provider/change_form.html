@@ -1,0 +1,29 @@
+{% extends "admin/change_form.html" %}
+{% load static admin_urls %}
+{# Anbieter: Verbindung prüfen und Modelle auswählen (Knöpfe oben rechts). #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
+
+{% block object-tools-items %}
+  <li>
+    <form method="post" action="{% url 'admin:chat_provider_check' original.pk|admin_urlquote %}" class="provider-check-form">
+      {% csrf_token %}
+      <button type="submit" class="provider-tool-button">Verbindung jetzt prüfen</button>
+    </form>
+  </li>
+  <li><a href="{% url 'admin:chat_provider_select_models' original.pk|admin_urlquote %}">Modelle auswählen</a></li>
+  {{ block.super }}
+{% endblock %}
+
+{% block inline_field_sets %}
+  {% if change %}
+    <p class="help provider-models-hint">
+      Modelle bequemer über
+      <a href="{% url 'admin:chat_provider_select_models' original.pk|admin_urlquote %}">„Modelle auswählen“</a>
+      übernehmen; die Tabelle unten dient der Feinarbeit.
+    </p>
+  {% else %}
+    <p class="help provider-models-hint">Nach dem Speichern lassen sich die Modelle des Anbieters über „Modelle auswählen“ übernehmen.</p>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

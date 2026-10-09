@@ -5,6 +5,7 @@
 // es einen Hinweis über die Statuszeile (aria-live), und chat.js lädt die
 // Modellliste neu (Ereignis "multigpt:provider-status" mit detail.changed).
 // Die Leiste rendert der Server nur, wenn es Anbieter mit Statusprüfung gibt.
+// Offline zeigt sie die Ursache (Feld "error" der API) kurz an, ganz im Tooltip.
 "use strict";
 
 (() => {
@@ -27,12 +28,23 @@
     return `zuletzt online am ${day} um ${time}`;
   }
 
-  function statusText(name, online, lastOnline) {
+  // Fehlerursachen haben die Form „Kurzursache: Einzelheiten“ (status.py);
+  // sichtbar ist die Kurzursache, der Tooltip zeigt den ganzen Text.
+  function shortError(error) {
+    return error ? String(error).split(": ")[0] : "";
+  }
+
+  function statusText(name, online, lastOnline, error) {
     if (online) {
       return `${name} online`;
     }
+    const cause = shortError(error);
+    let text = cause ? `${name} offline – ${cause}` : `${name} offline`;
     const last = formatLastOnline(lastOnline);
-    return last ? `${name} offline, ${last}` : `${name} offline`;
+    if (last) {
+      text += `, ${last}`;
+    }
+    return text;
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -63,17 +75,24 @@
       return li;
     }
 
-    function show(li, name, online, lastOnline) {
+    function show(li, name, online, lastOnline, error) {
       li.dataset.online = String(online);
       li.dataset.name = name;
-      const text = statusText(name, online, lastOnline);
+      li.dataset.error = online ? "" : error || "";
+      const text = statusText(name, online, lastOnline, error);
       li.querySelector(".provider-status-text").textContent = text;
-      li.title = text;
+      li.title = !online && error ? `${name} offline – ${error}` : text;
     }
 
     // Serverseitig gerenderten Stand übernehmen (Zeitformat wie im Client).
     for (const li of bar.querySelectorAll("li[data-provider-id]")) {
-      show(li, li.dataset.name, li.dataset.online === "true", li.dataset.lastOnline);
+      show(
+        li,
+        li.dataset.name,
+        li.dataset.online === "true",
+        li.dataset.lastOnline,
+        li.dataset.error,
+      );
     }
 
     async function poll() {
@@ -111,7 +130,7 @@
         // Erster Abruf: Stand aus dem HTML als Vergleich, damit ein Wechsel
         // zwischen Seitenaufbau und erster Abfrage auch gemeldet wird.
         const previousOnline = before ? before.online : li.dataset.online === "true";
-        show(li, String(p.name ?? ""), online, p.last_online);
+        show(li, String(p.name ?? ""), online, p.last_online, p.error ? String(p.error) : "");
         if (previousOnline !== online) {
           changed = true;
           window.MultiGPT.announce(

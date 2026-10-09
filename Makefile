@@ -33,8 +33,8 @@ $(PY):
 .env: | .env.example
 	@$(PYTHON) -c 'import base64, os, secrets; \
 	t = open(".env.example", encoding="utf-8").read(); \
-	t = t.replace("__SECRET_KEY__", secrets.token_urlsafe(50)); \
-	t = t.replace("__FIELD_ENCRYPTION_KEY__", base64.urlsafe_b64encode(os.urandom(32)).decode()); \
+	t = t.replace("SECRET_KEY=__SECRET_KEY__", "SECRET_KEY=" + secrets.token_urlsafe(50)); \
+	t = t.replace("FIELD_ENCRYPTION_KEY=__FIELD_ENCRYPTION_KEY__", "FIELD_ENCRYPTION_KEY=" + base64.urlsafe_b64encode(os.urandom(32)).decode()); \
 	fd = os.open(".env", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600); \
 	os.write(fd, t.encode()); os.close(fd)'
 	@chmod 600 .env

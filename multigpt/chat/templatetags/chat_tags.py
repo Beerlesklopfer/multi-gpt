@@ -8,6 +8,7 @@ Seite die Seitenleiste wirklich zeigt (nicht bei Login, JSON, Admin).
 from django import template
 
 from ..models import Conversation, Provider
+from ..providers.base import short_error
 
 register = template.Library()
 
@@ -44,6 +45,8 @@ def provider_status_indicator(context):
     providers = list(
         Provider.objects.filter(active=True, check_status=True)
         .order_by("name")
-        .values("id", "name", "online", "last_online")
+        .values("id", "name", "online", "last_online", "last_error")
     )
+    for p in providers:
+        p["error_short"] = short_error(p["last_error"])
     return {"status_providers": providers}

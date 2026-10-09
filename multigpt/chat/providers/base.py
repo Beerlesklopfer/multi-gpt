@@ -7,11 +7,15 @@ werden intern zu ``Error`` und gelangen nie roh zum Aufrufer.
 
 from __future__ import annotations
 
+import errno
 import json
+import socket
+import ssl
 import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -374,6 +378,183 @@ class ProviderError(Exception):
     """Fehler bei Konfiguration oder Aufruf eines Anbieters (Text ohne Keys)."""
 
 
+class ProviderHTTPError(ProviderError):
+    """``ProviderError`` mit dem HTTP-Status der Anbieterantwort (für ``check``)."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+# --- Verbindungsprüfung --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    """Ergebnis von ``ProviderAdapter.check``.
+
+    ``error`` ist bei ``online=False`` ein deutscher Text der Form
+    „Kurzursache: Einzelheiten“ – ohne Key, ohne Rohtext des Anbieters.
+    """
+
+    online: bool
+    models: list[str] = field(default_factory=list)
+    error: str | None = None
+
+    @property
+    def short_error(self) -> str:
+        return short_error(self.error)
+
+
+def short_error(error: str | None) -> str:
+    """Kurzursache vor dem ersten „: “ (für knappe Anzeigen)."""
+    return (error or "").split(": ", 1)[0]
+
+
+CHECK_REFUSED = (
+    "Verbindung abgelehnt: {endpoint} nimmt keine Verbindung an. Läuft der Dienst, stimmt der Port?"
+)
+CHECK_DNS = "Rechnername unbekannt: {host} lässt sich nicht auflösen. Bitte die Basis-URL prüfen."
+CHECK_UNREACHABLE = (
+    "Rechner nicht erreichbar: Keine Verbindung zu {endpoint}. "
+    "Ist der Rechner eingeschaltet und im Netz?"
+)
+CHECK_CONNECT = "Keine Verbindung: {endpoint} ist nicht erreichbar."
+CHECK_TLS = (
+    "TLS-Fehler: Die sichere Verbindung zu {endpoint} ist fehlgeschlagen "
+    "(Zertifikat oder http/https verwechselt?)."
+)
+CHECK_CONNECT_TIMEOUT = (
+    "Zeitüberschreitung: {endpoint} antwortet nicht auf den Verbindungsaufbau "
+    "(Rechner aus oder Firewall?)."
+)
+CHECK_READ_TIMEOUT = "Zeitüberschreitung: {endpoint} hat nicht rechtzeitig geantwortet."
+CHECK_INTERRUPTED = "Verbindung abgebrochen: {endpoint} hat die Verbindung unerwartet beendet."
+CHECK_BAD_URL = "Ungültige Basis-URL: Bitte die Adresse prüfen (z. B. http://rechner:1234/v1)."
+CHECK_AUTH = "Zugang abgelehnt (HTTP {status}): Bitte den API-Key prüfen."
+CHECK_PAYMENT = "Kein Guthaben (HTTP 402): Beim Anbieter ist kein Guthaben mehr vorhanden."
+CHECK_NOT_FOUND = (
+    "Adresse nicht gefunden (HTTP 404): Bitte die Basis-URL prüfen – fehlt z. B. „/v1“?"
+)
+CHECK_RATE_LIMIT = (
+    "Zu viele Anfragen (HTTP 429): Limit oder Kontingent erschöpft. Später erneut prüfen."
+)
+CHECK_SERVER = "Serverfehler beim Anbieter (HTTP {status}): Später erneut prüfen."
+CHECK_HTTP_OTHER = "Anfrage abgelehnt (HTTP {status}): {message}"
+CHECK_INVALID = (
+    "Ungültige Antwort: Der Anbieter hat keine verwertbare Modellliste geliefert. "
+    "Ist die Basis-URL richtig?"
+)
+CHECK_UNSUPPORTED = "Keine Modellliste: Dieser Anbietertyp kann keine Modelle melden."
+CHECK_UNEXPECTED = "Unerwarteter Fehler: Die Prüfung ist fehlgeschlagen."
+
+_REFUSED_TEXT = ("connection refused", "verbindungsaufbau abgelehnt")
+_DNS_TEXT = (
+    "name or service not known",
+    "nodename nor servname",
+    "temporary failure in name resolution",
+    "no address associated",
+    "getaddrinfo failed",
+)
+_UNREACHABLE_TEXT = ("no route to host", "network is unreachable", "host is unreachable")
+_UNREACHABLE_ERRNOS = {errno.EHOSTUNREACH, errno.ENETUNREACH, errno.EHOSTDOWN, errno.ENETDOWN}
+
+
+def endpoint_of(url: str) -> tuple[str, str]:
+    """(Host, „Host:Port“) einer URL – ohne Zugangsdaten, Pfad oder Query."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        port = parts.port or {"https": 443, "http": 80}.get(parts.scheme)
+    except ValueError:
+        host, port = "", None
+    if not host:
+        return "der Anbieter", "der Anbieter"
+    shown = f"[{host}]" if ":" in host else host
+    return host, f"{shown}:{port}" if port else shown
+
+
+def _exception_chain(exc: BaseException):
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        yield exc
+        exc = exc.__cause__ or exc.__context__
+
+
+def _connect_cause(exc: BaseException) -> str:
+    """Ursache eines Verbindungsfehlers: refused, dns, unreachable, tls oder other."""
+    for item in _exception_chain(exc):
+        if isinstance(item, ssl.SSLError):
+            return "tls"
+        if isinstance(item, socket.gaierror):
+            return "dns"
+        if isinstance(item, ConnectionRefusedError):
+            return "refused"
+        if isinstance(item, OSError) and item.errno in _UNREACHABLE_ERRNOS:
+            return "unreachable"
+    text = " ".join(str(item) for item in _exception_chain(exc)).lower()
+    if any(t in text for t in _REFUSED_TEXT):
+        return "refused"
+    if any(t in text for t in _DNS_TEXT):
+        return "dns"
+    if any(t in text for t in _UNREACHABLE_TEXT):
+        return "unreachable"
+    if "ssl" in text or "certificate" in text or "tls" in text:
+        return "tls"
+    return "other"
+
+
+def check_error_message(exc: BaseException, url: str) -> str:
+    """Deutsche Ursache zu einer Ausnahme beim Abruf der Modellliste.
+
+    Nennt Host:Port, aber nie den Key oder den Fehlertext des Anbieters.
+    """
+    host, endpoint = endpoint_of(url)
+    if isinstance(exc, ProviderHTTPError):
+        status = exc.status
+        if status in (401, 403):
+            return CHECK_AUTH.format(status=status)
+        if status == 402:
+            return CHECK_PAYMENT
+        if status == 404:
+            return CHECK_NOT_FOUND
+        if status == 429:
+            return CHECK_RATE_LIMIT
+        if status >= 500:
+            return CHECK_SERVER.format(status=status)
+        return CHECK_HTTP_OTHER.format(status=status, message=str(exc))
+    if isinstance(exc, ProviderError):
+        if str(exc) == MSG_INVALID_MODEL_LIST:
+            return CHECK_INVALID
+        return str(exc)  # eigene, deutsche Texte der Adapter
+    if isinstance(exc, NotImplementedError):
+        return CHECK_UNSUPPORTED
+    if isinstance(exc, httpx.ConnectTimeout):
+        return CHECK_CONNECT_TIMEOUT.format(endpoint=endpoint)
+    if isinstance(exc, httpx.TimeoutException):
+        return CHECK_READ_TIMEOUT.format(endpoint=endpoint)
+    if isinstance(exc, httpx.ConnectError):
+        cause = _connect_cause(exc)
+        if cause == "refused":
+            return CHECK_REFUSED.format(endpoint=endpoint)
+        if cause == "dns":
+            return CHECK_DNS.format(host=host)
+        if cause == "unreachable":
+            return CHECK_UNREACHABLE.format(endpoint=endpoint)
+        if cause == "tls":
+            return CHECK_TLS.format(endpoint=endpoint)
+        return CHECK_CONNECT.format(endpoint=endpoint)
+    if isinstance(exc, httpx.InvalidURL | httpx.UnsupportedProtocol):
+        return CHECK_BAD_URL
+    if isinstance(exc, httpx.TransportError):
+        return CHECK_INTERRUPTED.format(endpoint=endpoint)
+    return CHECK_UNEXPECTED
+
+
+MSG_INVALID_MODEL_LIST = "Der Anbieter hat eine unerwartete Modellliste geliefert."
+
+
 class ProviderAdapter:
     """Basisklasse. Nicht unterstützte Fähigkeiten werfen ``NotImplementedError``."""
 
@@ -399,6 +580,23 @@ class ProviderAdapter:
         """Modell-IDs des Anbieters. ``timeout`` in Sekunden (None: Standard des
         Adapters). Fehler als ``ProviderError``."""
         raise NotImplementedError
+
+    def _fetch_models(self, timeout: httpx.Timeout | float) -> list[str]:
+        """Modellliste ohne Übersetzung der Netzfehler (für ``check``).
+
+        Adapter mit eigenem HTTP-Abruf überschreiben das; die Vorgabe nutzt
+        ``list_models`` (dann sind nur dessen Texte verfügbar).
+        """
+        return self.list_models(timeout=timeout)
+
+    def check(self, timeout: float = 2) -> CheckResult:
+        """Modellliste abrufen und das Ergebnis samt Ursache liefern; nie eine Ausnahme."""
+        try:
+            models = self._fetch_models(timeout)
+        except Exception as exc:
+            url = getattr(self, "base_url", "") or getattr(self.provider, "base_url", "") or ""
+            return CheckResult(online=False, error=check_error_message(exc, url))
+        return CheckResult(online=True, models=list(dict.fromkeys(models)))
 
     def is_online(self, timeout: float = 2) -> bool:
         """Kurzer Abruf der Modellliste; True/False, nie eine Ausnahme."""

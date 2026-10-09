@@ -1,0 +1,37 @@
+/* MultiGPT – Admin: Anbieter prüfen und Modelle auswählen. */
+.object-tools .provider-check-form { display: inline; margin: 0; }
+.object-tools .provider-tool-button {
+  display: block;
+  float: left;
+  padding: 3px 12px;
+  background: var(--object-tools-bg);
+  color: var(--object-tools-fg);
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 0;
+  border-radius: 15px;
+  cursor: pointer;
+}
+.object-tools .provider-tool-button:hover,
+.object-tools .provider-tool-button:focus-visible { background-color: var(--object-tools-hover-bg); }
+.provider-models-hint { margin: 1em 0 0.5em; }
+.provider-models-filter { margin: 1em 0; display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; }
+.provider-models-filter input[type="search"] { min-width: 18em; }
+.provider-models { width: 100%; }
+.provider-models td { vertical-align: middle; }
+.provider-models .vTextField { width: 100%; min-width: 12em; }
+.provider-models tr.model-existing td { background: var(--selected-row); }
+.provider-models tr.model-off .vTextField,
+.provider-models tr.model-off select { opacity: 0.55; }
+.model-badge {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.5em;
+  border-radius: 8px;
+  background: var(--message-success-bg);
+  font-size: 0.75rem;
+}
+.provider-models-count { color: var(--body-quiet-color); }

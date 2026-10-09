@@ -1,0 +1,88 @@
+{% extends "admin/base_site.html" %}
+{% load static admin_urls %}
+{# Modelle eines Anbieters auswählen (live abgerufene Liste). JS nur für Filter und Zeilenumschaltung. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin/css/forms.css' %}"><link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'chat/admin_select_models.js' %}" defer></script>{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-chat model-provider provider-select-models{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; <a href="{{ change_url }}">{{ provider.name }}</a>
+  &rsaquo; Modelle auswählen
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if not result.online %}
+    <p class="errornote">Die Modellliste konnte nicht abgerufen werden. Offline: {{ result.error }}</p>
+    <p><a href="{{ change_url }}">Zurück zum Anbieter</a> – Basis-URL und API-Key prüfen, dann erneut versuchen.</p>
+  {% else %}
+    <p>Der Anbieter meldet <strong>{{ result.models|length }}</strong> Modelle. Bereits vorhandene sind markiert und vorausgewählt.
+       Übernommen werden nur angehakte Zeilen; nichts wird gelöscht.</p>
+
+    <form method="get" class="provider-models-filter" role="search">
+      <label for="model-filter">Filter</label>
+      <input type="search" id="model-filter" name="q" value="{{ query }}" placeholder="z. B. gpt-4o, claude, llama" autocomplete="off">
+      <button type="submit">Filtern</button>
+      <span class="provider-models-count" id="model-filter-count" aria-live="polite"></span>
+    </form>
+
+    {% if rows %}
+    <form method="post" id="provider-models-form">
+      {% csrf_token %}
+      <table class="provider-models">
+        <thead>
+          <tr>
+            <th scope="col"><input type="checkbox" id="take-all" aria-label="Alle sichtbaren übernehmen"> übernehmen</th>
+            <th scope="col">Modell-ID</th>
+            <th scope="col">Anzeigename</th>
+            <th scope="col">Fähigkeit</th>
+            <th scope="col">aktiv</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+          <tr class="model-row{% if row.existing %} model-existing{% endif %}" data-model-id="{{ row.model_id|lower }}">
+            <td>
+              {% if row.too_long %}
+                <span title="Modell-ID zu lang">–</span>
+              {% else %}
+                <input type="checkbox" name="take" value="{{ row.model_id }}" class="take" id="take-{{ forloop.counter }}"{% if row.existing %} checked{% endif %}>
+              {% endif %}
+            </td>
+            <td><label for="take-{{ forloop.counter }}"><code>{{ row.model_id }}</code></label>{% if row.existing %} <span class="model-badge">vorhanden</span>{% endif %}</td>
+            <td><input type="text" name="name:{{ row.model_id }}" value="{{ row.display_name }}" maxlength="200" aria-label="Anzeigename {{ row.model_id }}" class="vTextField"></td>
+            <td>
+              <select name="cap:{{ row.model_id }}" aria-label="Fähigkeit {{ row.model_id }}">
+                {% for value, label in capabilities %}
+                  <option value="{{ value }}"{% if value == row.capability %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="checkbox" name="active" value="{{ row.model_id }}" aria-label="aktiv {{ row.model_id }}"{% if row.active %} checked{% endif %}></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="submit-row">
+        <input type="submit" value="Ausgewählte übernehmen" class="default">
+        <a href="{{ change_url }}" class="closelink">Abbrechen</a>
+      </div>
+    </form>
+    {% else %}
+      <p>Keine Modelle{% if query %} zum Filter „{{ query }}“{% endif %}.</p>
+    {% endif %}
+
+    {% if missing %}
+      <p class="help">Vorhanden, aber vom Anbieter nicht mehr gemeldet (bleiben erhalten):
+        {% for model_id in missing %}<code>{{ model_id }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

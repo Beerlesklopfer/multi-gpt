@@ -1,0 +1,37 @@
+{% load tool_tags %}
+{# Ein Werkzeugaufruf (M4a-06). Argumente und Ergebnis sind nicht vertrauenswürdig: nur Auto-Escaping, kein Markdown. Aufbau wie in chat.js (buildToolRow). #}
+<li class="tool-call-item" data-tool-call-id="{{ tc.pk }}" data-status="{{ tc.status }}">
+  <details class="tool-call"{% if tc.status == "awaiting_confirmation" %} open{% endif %}>
+    <summary class="tool-call-summary">
+      <span class="tool-call-icon" aria-hidden="true">{{ tc.status|tool_status_icon }}</span>
+      <span class="tool-call-title">Werkzeug <span class="tool-call-name">{{ tc.tool }}</span>
+        <span class="tool-call-server">({{ tc.server.name|default:"Server entfernt" }})</span></span>
+      <span class="tool-call-status">{{ tc.get_status_display }}</span>
+      <span class="tool-call-duration">{{ tc.duration_ms|tool_duration }}</span>
+    </summary>
+    <div class="tool-call-body">
+      <p class="tool-call-label">Argumente</p>
+      <pre class="tool-call-arguments">{{ tc.arguments_json }}</pre>
+      <div class="tool-call-output"{% if tc.result is None %} hidden{% endif %}>
+        <p class="tool-call-label">Ergebnis</p>
+        <pre class="tool-call-result">{{ tc.result_text|tool_result_display }}</pre>
+        <p class="hint tool-call-truncated"{% if not tc.result_text|tool_result_truncated %} hidden{% endif %}>Ergebnis gekürzt angezeigt (höchstens 4000 Zeichen).</p>
+        {% with attachments=tc.attachments.all %}
+          <ul class="tool-call-attachments"{% if not attachments %} hidden{% endif %}>
+            {% for att in attachments %}<li>{{ att.get_kind_display }} #{{ att.pk }} (Anzeige folgt)</li>{% endfor %}
+          </ul>
+        {% endwith %}
+      </div>
+    </div>
+  </details>
+  {% if tc.status == "awaiting_confirmation" and can_write %}
+    <div class="tool-call-actions" role="group" aria-label="Werkzeug {{ tc.tool }}: Entscheidung">
+      <button type="button" class="button button-small button-primary"
+              data-tool-decision="approve" data-tool-call-id="{{ tc.pk }}" aria-pressed="false"
+              aria-label="Werkzeug {{ tc.tool }} ausführen">Ausführen</button>
+      <button type="button" class="button button-small"
+              data-tool-decision="reject" data-tool-call-id="{{ tc.pk }}" aria-pressed="false"
+              aria-label="Werkzeug {{ tc.tool }} ablehnen">Ablehnen</button>
+    </div>
+  {% endif %}
+</li>

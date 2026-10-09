@@ -13,13 +13,21 @@ Dokumenten und Vorlagen erscheinen als Objektbezeichnung (``__str__``).
 
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
+from django.core.exceptions import PermissionDenied
 from django.db import models
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
+from django.utils.text import Truncator
 
 from multigpt.core.fields import mask_secret
 
 from . import mcp as mcp_client
+from . import status
+from .management.commands.sync_models import guess_capability
 from .mcp.config import parse_credentials, split_command
 from .models import (
     AIModel,
@@ -152,26 +160,67 @@ URL_OVERRIDES = {models.URLField: {"assume_scheme": "https"}}
 
 
 class AIModelInline(admin.TabularInline):
+    """Feinarbeit an einzelnen Modellen; übernommen wird über „Modelle auswählen“."""
+
     model = AIModel
     extra = 0
     fields = ["model_id", "display_name", "capability", "active", "sort_order"]
     show_change_link = True
 
 
+# Zeitlimits der Prüfungen im Admin (Sekunden). Beim Speichern kurz, damit die
+# Seite nicht hängt; auf Knopfdruck und für die Modellauswahl großzügiger
+# (OpenRouter liefert Hunderte Modelle).
+SAVE_CHECK_TIMEOUT = 3.0
+MANUAL_CHECK_TIMEOUT = 10.0
+SELECT_MODELS_TIMEOUT = 20.0
+
+
+def _models(count: int) -> str:
+    return f"{count} Modell" if count == 1 else f"{count} Modelle"
+
+
+def check_message(provider: Provider, result) -> tuple[str, int]:
+    """Admin-Meldung (Text, Stufe) zu einem ``CheckResult``."""
+    if result.online:
+        return (
+            f"„{provider.name}“: Online – {_models(len(result.models))} gemeldet.",
+            messages.SUCCESS,
+        )
+    return f"„{provider.name}“: Offline: {result.error}", messages.ERROR
+
+
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
     form = ProviderForm
     formfield_overrides = URL_OVERRIDES
-    list_display = ["name", "kind", "base_url", "api_key_hint", "active", "is_local", "last_online"]
+    list_display = [
+        "name",
+        "kind",
+        "base_url",
+        "api_key_hint",
+        "active",
+        "is_local",
+        "online_state",
+        "last_checked",
+        "error_short",
+        "select_models_link",
+    ]
     list_filter = ["kind", "active", "is_local"]
     search_fields = ["name", "base_url"]
-    readonly_fields = ["api_key_hint", "last_online", "online", "last_checked"]
+    readonly_fields = ["api_key_hint", "last_online", "online", "last_checked", "last_error"]
+    actions = ["check_selected_action"]
     fieldsets = [
         (None, {"fields": ["name", "kind", "base_url", "active"]}),
         ("API-Key", {"fields": ["api_key_hint", "api_key", "clear_api_key"]}),
+        ("Lokaler Anbieter", {"fields": ["is_local", "check_status"]}),
         (
-            "Lokaler Anbieter",
-            {"fields": ["is_local", "check_status", "online", "last_online", "last_checked"]},
+            "Verbindung",
+            {
+                "fields": ["online", "last_checked", "last_online", "last_error"],
+                "description": "Ergebnis der letzten Prüfung. Prüfen über „Verbindung jetzt "
+                "prüfen“ oben rechts; beim Speichern wird automatisch kurz geprüft.",
+            },
         ),
     ]
     inlines = [AIModelInline]
@@ -179,6 +228,179 @@ class ProviderAdmin(admin.ModelAdmin):
     @admin.display(description="gespeicherter Key")
     def api_key_hint(self, obj):
         return mask_secret(obj.api_key) or "–"
+
+    @admin.display(description="Online", boolean=True, ordering="online")
+    def online_state(self, obj):
+        # Ungeprüft: unbekannt (Fragezeichen) statt „offline“.
+        return obj.online if obj.last_checked else None
+
+    @admin.display(description="Ursache")
+    def error_short(self, obj):
+        if obj.online or not obj.last_error:
+            return "–"
+        return format_html(
+            '<span title="{}">{}</span>', obj.last_error, Truncator(obj.last_error).chars(60)
+        )
+
+    @admin.display(description="Modelle")
+    def select_models_link(self, obj):
+        url = reverse("admin:chat_provider_select_models", args=[obj.pk])
+        return format_html('<a href="{}">Modelle auswählen</a>', url)
+
+    # --- Prüfen ----------------------------------------------------------------
+
+    @admin.action(description="Ausgewählte prüfen")
+    def check_selected_action(self, request, queryset):
+        for provider in queryset:
+            result = status.force_check(provider, timeout=MANUAL_CHECK_TIMEOUT)
+            self.message_user(request, *check_message(provider, result))
+
+    def save_related(self, request, form, formsets, change):
+        # Nach den Inlines prüfen: Die Prüfung legt bei lokalen Anbietern ggf.
+        # Modelle an und darf neuen Inline-Zeilen nicht zuvorkommen.
+        super().save_related(request, form, formsets, change)
+        provider = form.instance
+        if not provider.active:
+            self.message_user(
+                request, f"„{provider.name}“ ist deaktiviert – nicht geprüft.", messages.INFO
+            )
+            return
+        result = status.force_check(provider, timeout=SAVE_CHECK_TIMEOUT)
+        self.message_user(request, *check_message(provider, result))
+
+    def get_urls(self):
+        view = self.admin_site.admin_view
+        return [
+            path(
+                "<path:object_id>/check/",
+                view(self.check_view),
+                name="chat_provider_check",
+            ),
+            path(
+                "<path:object_id>/models/",
+                view(self.select_models_view),
+                name="chat_provider_select_models",
+            ),
+            *super().get_urls(),
+        ]
+
+    def _provider_or_deny(self, request, object_id) -> Provider:
+        provider = self.get_object(request, unquote(object_id))
+        if provider is None:
+            raise Http404("Anbieter nicht gefunden.")
+        if not self.has_change_permission(request, provider):
+            raise PermissionDenied
+        return provider
+
+    def _change_url(self, provider):
+        return reverse("admin:chat_provider_change", args=[provider.pk])
+
+    def check_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        provider = self._provider_or_deny(request, object_id)
+        result = status.force_check(provider, timeout=MANUAL_CHECK_TIMEOUT)
+        self.message_user(request, *check_message(provider, result))
+        return HttpResponseRedirect(self._change_url(provider))
+
+    # --- Modelle auswählen -----------------------------------------------------
+
+    def select_models_view(self, request, object_id):
+        provider = self._provider_or_deny(request, object_id)
+        if request.method == "POST":
+            return self._adopt_models(request, provider)
+        result = status.force_check(provider, timeout=SELECT_MODELS_TIMEOUT)
+        existing = {m.model_id: m for m in provider.ai_models.all()}
+        query = (request.GET.get("q") or "").strip()
+        rows = []
+        if result.online:
+            for model_id in sorted(result.models, key=str.lower):
+                if query and query.lower() not in model_id.lower():
+                    continue
+                model = existing.get(model_id)
+                rows.append(
+                    {
+                        "model_id": model_id,
+                        "existing": model is not None,
+                        "display_name": model.display_name if model else model_id,
+                        "capability": model.capability if model else guess_capability(model_id),
+                        "active": model.active if model else True,
+                        "too_long": len(model_id) > MODEL_ID_MAX_LENGTH,
+                    }
+                )
+        missing = sorted(set(existing) - set(result.models)) if result.online else []
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": f"Modelle auswählen: {provider.name}",
+            "subtitle": None,
+            "provider": provider,
+            "result": result,
+            "rows": rows,
+            "query": query,
+            "missing": missing,
+            "capabilities": AIModel.Capability.choices,
+            "change_url": self._change_url(provider),
+            "has_view_permission": True,
+            "original": provider,
+        }
+        return TemplateResponse(request, "admin/chat/provider/select_models.html", context)
+
+    def _adopt_models(self, request, provider):
+        # Nur Modelle, die der Anbieter bei der Prüfung (GET der Seite) gemeldet
+        # hat oder die es schon gibt – keine beliebigen IDs aus dem Formular.
+        provider.refresh_from_db(fields=["reported_models"])
+        allowed = set(provider.reported_models or [])
+        existing = {m.model_id: m for m in provider.ai_models.all()}
+        allowed |= set(existing)
+        valid_caps = set(AIModel.Capability.values)
+        active_ids = set(request.POST.getlist("active"))
+        created = updated = 0
+        new_models = []
+        for model_id in dict.fromkeys(request.POST.getlist("take")):
+            if model_id not in allowed or not 0 < len(model_id) <= MODEL_ID_MAX_LENGTH:
+                continue
+            name = (request.POST.get(f"name:{model_id}") or "").strip()[:MODEL_ID_MAX_LENGTH]
+            capability = request.POST.get(f"cap:{model_id}") or ""
+            if capability not in valid_caps:
+                capability = guess_capability(model_id)
+            active = model_id in active_ids
+            model = existing.get(model_id)
+            if model is None:
+                new_models.append(
+                    AIModel(
+                        provider=provider,
+                        model_id=model_id,
+                        display_name=name or model_id,
+                        capability=capability,
+                        active=active,
+                    )
+                )
+                continue
+            changes = {
+                "display_name": name or model.display_name,
+                "capability": capability,
+                "active": active,
+            }
+            changed = [k for k, v in changes.items() if getattr(model, k) != v]
+            if changed:
+                for key in changed:
+                    setattr(model, key, changes[key])
+                model.save(update_fields=changed)
+                updated += 1
+        if new_models:
+            # ignore_conflicts: Ein paralleler Abgleich (Statusprüfung) darf nicht stören.
+            AIModel.objects.bulk_create(new_models, ignore_conflicts=True)
+            created = len(new_models)
+        self.message_user(
+            request,
+            f"{_models(created)} übernommen, {updated} aktualisiert.",
+            messages.SUCCESS,
+        )
+        return HttpResponseRedirect(self._change_url(provider))
+
+
+MODEL_ID_MAX_LENGTH = AIModel._meta.get_field("model_id").max_length
 
 
 @admin.register(AIModel)

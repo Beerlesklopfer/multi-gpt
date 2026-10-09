@@ -3,6 +3,7 @@
 Bezeichner sind englisch, verbose_name und Choice-Labels deutsch (Plan 2).
 """
 
+import json
 import secrets
 from pathlib import PurePath
 
@@ -11,7 +12,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 
-from multigpt.core.fields import EncryptedTextField
+from multigpt.core.fields import EncryptedTextField, UnicodeJSONEncoder
 
 # Geldbeträge (Preise und Kosten-Momentaufnahmen) mit Bruchteilen von Cent.
 MONEY = {"max_digits": 12, "decimal_places": 6}
@@ -84,6 +85,13 @@ class Provider(models.Model):
         blank=True,
         editable=False,
         help_text="Modell-IDs, die der Anbieter bei der letzten Prüfung gemeldet hat.",
+    )
+    last_error = models.TextField(
+        "Fehlerursache",
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Ursache, falls die letzte Prüfung fehlschlug (ohne Key); sonst leer.",
     )
 
     class Meta:
@@ -252,6 +260,8 @@ class Message(models.Model):
         # Durch "Neu erzeugen" ersetzt: unsichtbar und nicht im Verlauf, zählt
         # aber weiter für Verbrauch und Budget (M6).
         SUPERSEDED = "superseded", "ersetzt"
+        # Werkzeugschleife pausiert, bis der Nutzer die Aufrufe bestätigt (M4a-05).
+        AWAITING_CONFIRMATION = "awaiting_confirmation", "wartet auf Bestätigung"
 
     conversation = models.ForeignKey(
         Conversation, on_delete=models.CASCADE, related_name="messages", verbose_name="Chat"
@@ -276,9 +286,15 @@ class Message(models.Model):
         help_text="Euro, festgehalten zum Zeitpunkt der Antwort.",
     )
     status = models.CharField(
-        "Status", max_length=20, choices=Status.choices, default=Status.COMPLETE
+        "Status", max_length=30, choices=Status.choices, default=Status.COMPLETE
     )
     error = models.TextField("Fehlertext", blank=True)
+    # Zustand der Werkzeugschleife (M4a-04, siehe services/tool_loop.py): Runden
+    # mit Werkzeugaufrufen, Ergebnissen und provider_state, damit der Verlauf
+    # wörtlich an das Modell zurückgeht – auch über eine Rückfrage hinweg.
+    tool_state = models.JSONField(
+        "Werkzeugzustand", default=dict, blank=True, editable=False, encoder=UnicodeJSONEncoder
+    )
     created = models.DateTimeField("erstellt", auto_now_add=True)
 
     class Meta:
@@ -343,6 +359,15 @@ class Attachment(models.Model):
         blank=True,
         related_name="derived",
         verbose_name="Ausgangsbild",
+    )
+    tool_call = models.ForeignKey(
+        "ToolCall",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attachments",
+        verbose_name="Werkzeugaufruf",
+        help_text="Werkzeugaufruf, der diese Datei geliefert hat (Plan 8g).",
     )
     cost = models.DecimalField(
         "Kosten",
@@ -515,8 +540,8 @@ class ToolCall(models.Model):
         blank=True,
         help_text="Kennung des Werkzeugaufrufs beim KI-Anbieter (ordnet das Ergebnis zu).",
     )
-    arguments = models.JSONField("Argumente", default=dict, blank=True)
-    result = models.JSONField("Ergebnis", null=True, blank=True)
+    arguments = models.JSONField("Argumente", default=dict, blank=True, encoder=UnicodeJSONEncoder)
+    result = models.JSONField("Ergebnis", null=True, blank=True, encoder=UnicodeJSONEncoder)
     status = models.CharField(
         "Status", max_length=30, choices=Status.choices, default=Status.RUNNING
     )
@@ -530,6 +555,30 @@ class ToolCall(models.Model):
 
     def __str__(self):
         return f"{self.tool} ({self.get_status_display()})"
+
+    # Hilfen für die Anzeige (Templates, API).
+
+    @property
+    def result_text(self) -> str:
+        """Ergebnistext (``result = {"text": str, "is_error": bool}``), sonst leer."""
+        if isinstance(self.result, dict):
+            return str(self.result.get("text") or "")
+        return ""
+
+    @property
+    def result_is_error(self) -> bool:
+        return isinstance(self.result, dict) and bool(self.result.get("is_error"))
+
+    @property
+    def duration_ms(self) -> int | None:
+        if self.duration is None:
+            return None
+        return int(self.duration.total_seconds() * 1000)
+
+    @property
+    def arguments_json(self) -> str:
+        """Argumente als eingerücktes JSON (Escapen übernimmt das Template)."""
+        return json.dumps(self.arguments, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 class SourceRef(models.Model):

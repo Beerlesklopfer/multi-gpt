@@ -42,6 +42,7 @@ import httpx
 from .base import (
     FINISH_TOOL_CALLS,
     MSG_INTERRUPTED,
+    MSG_INVALID_MODEL_LIST,
     MSG_STREAM_ERROR,
     MSG_TIMEOUT,
     MSG_UNEXPECTED,
@@ -53,6 +54,7 @@ from .base import (
     Event,
     ProviderAdapter,
     ProviderError,
+    ProviderHTTPError,
     ToolCallEvent,
     ToolSpec,
     Usage,
@@ -127,12 +129,12 @@ class OpenAICompatAdapter(ProviderAdapter):
             response = client.get(f"{self.base_url}/models", headers=self._headers())
         if response.status_code != 200:
             message, _ = http_error_message(response.status_code)
-            raise ProviderError(message)
+            raise ProviderHTTPError(message, response.status_code)
         try:
             data = response.json().get("data") or []
             return [str(item["id"]) for item in data if isinstance(item, dict) and "id" in item]
         except (ValueError, AttributeError, TypeError) as exc:
-            raise ProviderError("Der Anbieter hat eine unerwartete Modellliste geliefert.") from exc
+            raise ProviderError(MSG_INVALID_MODEL_LIST) from exc
 
     def list_models(self, timeout: float | None = None) -> list[str]:
         try:

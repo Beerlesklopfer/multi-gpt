@@ -61,6 +61,7 @@ import httpx
 from .base import (
     FINISH_TOOL_CALLS,
     MSG_INTERRUPTED,
+    MSG_INVALID_MODEL_LIST,
     MSG_STREAM_ERROR,
     MSG_TOOL_ARGUMENTS,
     ChatMessage,
@@ -70,6 +71,7 @@ from .base import (
     Event,
     ProviderAdapter,
     ProviderError,
+    ProviderHTTPError,
     ToolCallEvent,
     ToolSpec,
     Turn,
@@ -188,7 +190,10 @@ class GoogleAdapter(ProviderAdapter):
                 if response.status_code != 200:
                     _, reason = _parse_error(response.content)
                     message, _ = _http_error(response.status_code, reason)
-                    raise ProviderError(message)
+                    status = response.status_code
+                    if status == 400 and reason == "API_KEY_INVALID":
+                        status = 401  # falscher Key, siehe _http_error
+                    raise ProviderHTTPError(message, status)
                 try:
                     page = response.json()
                     for item in page.get("models") or []:
@@ -196,9 +201,7 @@ class GoogleAdapter(ProviderAdapter):
                             ids.append(str(item["name"]).removeprefix("models/"))
                     token = page.get("nextPageToken")
                 except (ValueError, AttributeError, TypeError) as exc:
-                    raise ProviderError(
-                        "Der Anbieter hat eine unerwartete Modellliste geliefert."
-                    ) from exc
+                    raise ProviderError(MSG_INVALID_MODEL_LIST) from exc
                 if not token:
                     break
                 query["pageToken"] = str(token)

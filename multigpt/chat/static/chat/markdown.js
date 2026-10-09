@@ -174,7 +174,16 @@
 
   // Text als bereinigtes Markdown in el darstellen. final=false während des
   // Streams (ohne Hervorhebung, die bei jedem Bild neu liefe).
+  // Quelltext je Element, damit eine fortgesetzte Antwort (Rückfrage bei
+  // Werkzeugen) weiter angehängt werden kann.
+  const sources = new WeakMap();
+
+  function sourceOf(el) {
+    return sources.has(el) ? sources.get(el) : el.textContent;
+  }
+
   function render(el, text, final = true) {
+    sources.set(el, String(text ?? ""));
     if (!ready) {
       el.textContent = text;
       return false;
@@ -196,8 +205,9 @@
 
   // Gedrosselter Renderer für den Stream: höchstens ein Rendern je Bild.
   // onRender wird nach jedem Rendern aufgerufen (z. B. zum Mitscrollen).
-  function streamRenderer(el, onRender) {
-    let text = "";
+  // initial: bereits vorhandener Text (Fortsetzung einer Antwort).
+  function streamRenderer(el, onRender, initial = "") {
+    let text = initial;
     let frame = 0;
     const flush = () => {
       frame = 0;
@@ -233,7 +243,7 @@
   }
 
   window.MultiGPT = window.MultiGPT || {};
-  window.MultiGPT.markdown = { ready, render, streamRenderer, renderAll };
+  window.MultiGPT.markdown = { ready, render, streamRenderer, renderAll, sourceOf };
 
   document.addEventListener("DOMContentLoaded", () => renderAll());
 })();

@@ -1,14 +1,29 @@
 // MultiGPT – Chatansicht (M3-05): Modellauswahl, Senden, Streaming, Abbrechen,
-// Neu erzeugen, neuer Chat. Kein Inline-JS, keine externen Ressourcen.
+// Neu erzeugen, neuer Chat, Werkzeugaufrufe mit Rückfrage (M4a-06).
+// Kein Inline-JS, keine externen Ressourcen.
 //
 // Sicherheit (Plan 9): Nutzertext wird ausschließlich als Text eingesetzt
 // (textContent), Modelltext nur über markdown.js (marked -> DOMPurify).
+// Werkzeugargumente und -ergebnisse sind nicht vertrauenswürdig: nur textContent,
+// nie Markdown oder HTML.
 "use strict";
 
 (() => {
   const STORAGE_KEY = "multigpt.lastModel";
   const SCROLL_STICK_PX = 48;
   const TITLE_MAX = 60;
+  const RESULT_DISPLAY_CHARS = 4000;
+
+  // Status eines Werkzeugaufrufs -> [Symbol, Text]; wie templatetags/tool_tags.py.
+  const TOOL_STATUS = {
+    awaiting_confirmation: ["?", "wartet auf Bestätigung"],
+    running: ["\u21bb", "läuft"],
+    ok: ["\u2713", "erfolgreich"],
+    error: ["\u2717", "Fehler"],
+    timeout: ["\u29d7", "Zeitüberschreitung"],
+    rejected: ["\u2298", "abgelehnt"],
+    interrupted: ["\u2717", "unterbrochen"],
+  };
 
   // --- Hilfen ----------------------------------------------------------------
 
@@ -79,6 +94,29 @@
     }
     line = line || fallback;
     return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1).trimEnd()}\u2026` : line;
+  }
+
+  function formatDuration(ms) {
+    if (typeof ms !== "number" || !Number.isFinite(ms)) {
+      return "";
+    }
+    const value = Math.max(0, Math.round(ms));
+    if (value < 1000) {
+      return `${value} ms`;
+    }
+    if (value < 60000) {
+      return `${(value / 1000).toFixed(1).replace(".", ",")} s`;
+    }
+    const seconds = Math.round(value / 1000);
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  }
+
+  function formatArguments(args) {
+    try {
+      return JSON.stringify(args ?? {}, null, 2);
+    } catch {
+      return String(args);
+    }
   }
 
   // --- SSE aus einem fetch-Stream lesen -----------------------------------------
@@ -186,10 +224,13 @@
       messagesTemplate: chat.dataset.apiMessagesTemplate,
       detailTemplate: chat.dataset.apiDetailTemplate,
       conversationTemplate: chat.dataset.conversationUrlTemplate,
+      mcpServers: chat.dataset.apiMcpServers,
+      toolConfirmTemplate: chat.dataset.apiToolConfirmTemplate,
     };
     let conversationId = chat.dataset.conversationId || null;
     let controller = null; // AbortController des laufenden Streams
     let modelsReady = false;
+    let mcpServers = []; // [{id, name, default_enabled}] aus /api/mcp-servers/
 
     // --- Anzeige ---
 
@@ -241,6 +282,341 @@
       article.append(note);
     }
 
+    // --- Werkzeugaufrufe (M4a-06) ---
+    // Aufbau wie chat/_tool_call.html und chat/_tool_confirm.html.
+
+    function node(tag, className, text) {
+      const element = document.createElement(tag);
+      if (className) {
+        element.className = className;
+      }
+      if (text !== undefined) {
+        element.textContent = text;
+      }
+      return element;
+    }
+
+    function toolList(article) {
+      let list = article.querySelector(".tool-calls");
+      if (!list) {
+        list = node("ol", "tool-calls");
+        list.setAttribute("aria-label", "Werkzeugaufrufe");
+        article.insertBefore(list, article.querySelector(".chat-message-content"));
+      }
+      return list;
+    }
+
+    function toolRow(article, id) {
+      return article.querySelector(`.tool-call-item[data-tool-call-id="${CSS.escape(String(id))}"]`);
+    }
+
+    function toolName(row) {
+      return row.querySelector(".tool-call-name")?.textContent || "Werkzeug";
+    }
+
+    function setToolStatus(row, status, durationMs) {
+      const [icon, label] = TOOL_STATUS[status] || ["•", status];
+      row.dataset.status = status;
+      row.querySelector(".tool-call-icon").textContent = icon;
+      row.querySelector(".tool-call-status").textContent = label;
+      if (durationMs !== undefined) {
+        row.querySelector(".tool-call-duration").textContent = formatDuration(durationMs);
+      }
+    }
+
+    function buildToolRow(data) {
+      const row = node("li", "tool-call-item");
+      row.dataset.toolCallId = String(data.id);
+      const details = node("details", "tool-call");
+      const summary = node("summary", "tool-call-summary");
+      const icon = node("span", "tool-call-icon");
+      icon.setAttribute("aria-hidden", "true");
+      const title = node("span", "tool-call-title", "Werkzeug ");
+      title.append(
+        node("span", "tool-call-name", String(data.tool ?? "")),
+        " ",
+        node("span", "tool-call-server", `(${data.server || "Server entfernt"})`),
+      );
+      // Leerzeichen zwischen den Teilen wie im Template (Vorlesen, Kopieren).
+      summary.append(
+        icon,
+        " ",
+        title,
+        " ",
+        node("span", "tool-call-status"),
+        " ",
+        node("span", "tool-call-duration"),
+      );
+      const body = node("div", "tool-call-body");
+      const output = node("div", "tool-call-output");
+      output.hidden = true;
+      const truncated = node(
+        "p",
+        "hint tool-call-truncated",
+        `Ergebnis gekürzt angezeigt (höchstens ${RESULT_DISPLAY_CHARS} Zeichen).`,
+      );
+      truncated.hidden = true;
+      const attachments = node("ul", "tool-call-attachments");
+      attachments.hidden = true;
+      output.append(
+        node("p", "tool-call-label", "Ergebnis"),
+        node("pre", "tool-call-result"),
+        truncated,
+        attachments,
+      );
+      body.append(
+        node("p", "tool-call-label", "Argumente"),
+        node("pre", "tool-call-arguments", formatArguments(data.arguments)),
+        output,
+      );
+      details.append(summary, body);
+      row.append(details);
+      return row;
+    }
+
+    // Event tool_call: Zeile anlegen oder (Fortsetzung nach Rückfrage) aktualisieren.
+    function upsertToolCall(article, data) {
+      if (data.id == null) {
+        return;
+      }
+      let row = toolRow(article, data.id);
+      if (!row) {
+        row = buildToolRow(data);
+        toolList(article).append(row);
+      }
+      const status = typeof data.status === "string" ? data.status : "running";
+      setToolStatus(row, status);
+      if (status === "running") {
+        row.querySelector(".tool-call-actions")?.remove();
+        setStatus(`Werkzeug „${toolName(row)}“ wird ausgeführt …`);
+      } else if (status === "awaiting_confirmation") {
+        row.querySelector(".tool-call").open = true;
+      }
+    }
+
+    // Event tool_result: Status, Dauer, Ergebnis (als Text, gekürzt) und Anhänge.
+    function applyToolResult(article, data) {
+      const row = data.id == null ? null : toolRow(article, data.id);
+      if (!row) {
+        return;
+      }
+      const status = typeof data.status === "string" ? data.status : "ok";
+      // Abgelehnte Aufrufe liefen nie: keine Dauer (wie nach dem Neuladen).
+      setToolStatus(row, status, status === "rejected" ? null : data.duration_ms);
+      row.querySelector(".tool-call-actions")?.remove();
+      const output = row.querySelector(".tool-call-output");
+      const text = typeof data.result === "string" ? data.result : "";
+      row.querySelector(".tool-call-result").textContent =
+        text.length > RESULT_DISPLAY_CHARS ? `${text.slice(0, RESULT_DISPLAY_CHARS)}…` : text;
+      row.querySelector(".tool-call-truncated").hidden = text.length < RESULT_DISPLAY_CHARS;
+      const ids = Array.isArray(data.attachment_ids) ? data.attachment_ids : [];
+      const list = row.querySelector(".tool-call-attachments");
+      list.replaceChildren(
+        ...ids.map((id) => node("li", "", `Anhang #${Number(id)} (Anzeige folgt)`)),
+      );
+      list.hidden = !ids.length;
+      output.hidden = !text && !ids.length && status === "rejected";
+      const duration = formatDuration(data.duration_ms);
+      setStatus(
+        `Werkzeug „${toolName(row)}“: ${TOOL_STATUS[status]?.[1] || status}${duration ? ` (${duration})` : ""}.`,
+        status === "error" || status === "timeout",
+      );
+    }
+
+    function pendingToolRows(article) {
+      return Array.from(
+        article.querySelectorAll('.tool-call-item[data-status="awaiting_confirmation"]'),
+      );
+    }
+
+    function decisionButton(decision, id, name) {
+      const approve = decision === "approve";
+      const button = node(
+        "button",
+        `button button-small${approve ? " button-primary" : ""}`,
+        approve ? "Ausführen" : "Ablehnen",
+      );
+      button.type = "button";
+      button.dataset.toolDecision = decision;
+      button.dataset.toolCallId = String(id);
+      button.setAttribute("aria-pressed", "false");
+      button.setAttribute("aria-label", `Werkzeug ${name} ${approve ? "ausführen" : "ablehnen"}`);
+      return button;
+    }
+
+    function buildConfirmBox(article) {
+      const box = node("div", "tool-confirm");
+      box.setAttribute("role", "group");
+      const titleId = `tool-confirm-title-${article.dataset.messageId || "neu"}`;
+      box.setAttribute("aria-labelledby", titleId);
+      const title = node("p", "tool-confirm-title");
+      title.id = titleId;
+      const icon = node("span", "", "⚠ ");
+      icon.setAttribute("aria-hidden", "true");
+      title.append(icon, "Bestätigung nötig");
+      const actions = node("div", "tool-confirm-actions");
+      const all = node("button", "button button-small button-primary", "Alle ausführen");
+      all.type = "button";
+      all.dataset.toolConfirmAll = "";
+      const none = node("button", "button button-small", "Alle ablehnen");
+      none.type = "button";
+      none.dataset.toolRejectAll = "";
+      actions.append(all, none);
+      box.append(
+        title,
+        node(
+          "p",
+          "tool-confirm-text",
+          "Das Modell möchte Werkzeuge ausführen, die etwas verändern oder Daten nach außen " +
+            "senden können. Prüfe die Argumente und entscheide je Aufruf.",
+        ),
+        actions,
+      );
+      return box;
+    }
+
+    // Event confirmation_required: Knöpfe je Aufruf und für alle.
+    function showConfirmation(article, ids) {
+      for (const id of ids) {
+        const row = toolRow(article, id);
+        if (!row || row.querySelector(".tool-call-actions")) {
+          continue;
+        }
+        setToolStatus(row, "awaiting_confirmation");
+        row.querySelector(".tool-call").open = true;
+        const actions = node("div", "tool-call-actions");
+        actions.setAttribute("role", "group");
+        actions.setAttribute("aria-label", `Werkzeug ${toolName(row)}: Entscheidung`);
+        actions.append(
+          decisionButton("approve", id, toolName(row)),
+          decisionButton("reject", id, toolName(row)),
+        );
+        row.append(actions);
+      }
+      if (!article.querySelector(".tool-confirm")) {
+        // Hinweis vor den Aufrufen, damit er vor den Knöpfen gelesen wird.
+        article.insertBefore(buildConfirmBox(article), toolList(article));
+      }
+      refreshConfirmBox(article);
+    }
+
+    // Hinweis oben im sichtbaren Bereich zeigen, sonst bis ans Ende scrollen.
+    function revealConfirmation(article) {
+      const box = article.querySelector(".tool-confirm");
+      if (!box) {
+        return;
+      }
+      scrollToBottom();
+      const offset = box.getBoundingClientRect().top - history.getBoundingClientRect().top;
+      if (offset < 0) {
+        history.scrollTop += offset - 8;
+      }
+    }
+
+    // "Alle …" nur bei mehreren offenen Aufrufen.
+    function refreshConfirmBox(article) {
+      const box = article.querySelector(".tool-confirm");
+      if (!box) {
+        return;
+      }
+      const several = pendingToolRows(article).length > 1;
+      for (const button of box.querySelectorAll("[data-tool-confirm-all], [data-tool-reject-all]")) {
+        button.hidden = !several;
+      }
+    }
+
+    function setConfirmDisabled(article, disabled) {
+      for (const button of article.querySelectorAll(
+        "[data-tool-decision], [data-tool-confirm-all], [data-tool-reject-all]",
+      )) {
+        button.disabled = disabled;
+      }
+    }
+
+    // Offene Rückfragen anderer Antworten verfallen, sobald eine neue Antwort
+    // beginnt (der Server lehnt sie ab und bricht die Nachricht ab).
+    function expireConfirmations(except) {
+      for (const article of log.querySelectorAll('.chat-message[data-status="awaiting_confirmation"]')) {
+        if (article === except) {
+          continue;
+        }
+        for (const row of pendingToolRows(article)) {
+          setToolStatus(row, "rejected");
+          row.querySelector(".tool-call-actions")?.remove();
+        }
+        article.querySelector(".tool-confirm")?.remove();
+        setMessageStatus(article, "aborted", "Rückfrage nicht beantwortet");
+      }
+    }
+
+    // Laufende Zeilen nach Abbruch/Fehler nicht ewig "läuft" zeigen lassen.
+    function interruptRunningTools(article) {
+      for (const row of article.querySelectorAll('.tool-call-item[data-status="running"]')) {
+        setToolStatus(row, "interrupted");
+      }
+    }
+
+    const toolDecisions = new WeakMap(); // article -> Map(id -> decision)
+
+    function decide(article, ids, decision) {
+      let decisions = toolDecisions.get(article);
+      if (!decisions) {
+        decisions = new Map();
+        toolDecisions.set(article, decisions);
+      }
+      for (const id of ids) {
+        decisions.set(String(id), decision);
+        const row = toolRow(article, id);
+        for (const button of row?.querySelectorAll("[data-tool-decision]") || []) {
+          button.setAttribute("aria-pressed", String(button.dataset.toolDecision === decision));
+        }
+      }
+      const pending = pendingToolRows(article).map((row) => row.dataset.toolCallId);
+      const open = pending.filter((id) => !decisions.has(id));
+      if (open.length) {
+        setStatus(`Entscheidung gespeichert. Noch offen: ${open.length} Werkzeugaufruf(e).`);
+        return;
+      }
+      const payload = {};
+      for (const id of pending) {
+        payload[id] = decisions.get(id);
+      }
+      toolDecisions.delete(article);
+      confirmTools(article, payload);
+    }
+
+    log.addEventListener("click", (event) => {
+      const button = event.target.closest(
+        "[data-tool-decision], [data-tool-confirm-all], [data-tool-reject-all]",
+      );
+      const article = button?.closest(".chat-message");
+      if (!button || !article || button.disabled || !form) {
+        return;
+      }
+      if (controller) {
+        setStatus("Bitte warte, bis die laufende Antwort fertig ist.", true);
+        return;
+      }
+      if (button.dataset.toolDecision) {
+        decide(article, [button.dataset.toolCallId], button.dataset.toolDecision);
+      } else {
+        const ids = pendingToolRows(article).map((row) => row.dataset.toolCallId);
+        decide(article, ids, button.hasAttribute("data-tool-confirm-all") ? "approve" : "reject");
+      }
+    });
+
+    async function confirmTools(article, decisions) {
+      if (controller || !conversationId) {
+        return;
+      }
+      setConfirmDisabled(article, true);
+      setStatus("Entscheidung wird gesendet …");
+      await runStream({ decisions }, article, {
+        url: fillTemplate(urls.toolConfirmTemplate, conversationId),
+        continuation: true,
+      });
+    }
+
     // "Neu erzeugen" nur an der letzten Antwort.
     function updateRegenerateButton() {
       for (const actions of log.querySelectorAll(".chat-message-actions")) {
@@ -250,7 +626,7 @@
         return;
       }
       const last = messageElements().at(-1);
-      if (!last || last.dataset.role !== "assistant") {
+      if (!last || last.dataset.role !== "assistant" || last.dataset.status === "awaiting_confirmation") {
         return;
       }
       const actions = document.createElement("div");
@@ -282,6 +658,10 @@
       sendButton.disabled = !active && !modelsReady;
       if (modelSelect) {
         modelSelect.disabled = active || !modelsReady;
+      }
+      const toolSwitches = document.getElementById("tool-servers");
+      if (toolSwitches) {
+        toolSwitches.disabled = active;
       }
       updateRegenerateButton();
     }
@@ -385,6 +765,7 @@
         }
         const option = new Option(label, String(model.id));
         option.dataset.name = model.display_name;
+        option.dataset.tools = String(model.supports_tools === true);
         if (model.is_local) {
           option.className = isAvailable(model) ? "model-online" : "model-offline";
         }
@@ -421,6 +802,71 @@
         setStatus("");
       }
       setStreaming(Boolean(controller));
+      updateToolSwitches();
+    }
+
+    // --- Schalter je MCP-Server (M4a-06) ---
+
+    const toolFieldset = document.getElementById("tool-servers");
+    const toolSwitchList = document.getElementById("tool-servers-list");
+
+    function modelSupportsTools() {
+      return modelSelect?.selectedOptions[0]?.dataset.tools === "true";
+    }
+
+    // Nur sichtbar, wenn es Server gibt und das gewählte Modell Werkzeuge kann.
+    function updateToolSwitches() {
+      if (toolFieldset) {
+        toolFieldset.hidden = !mcpServers.length || !modelSupportsTools();
+      }
+    }
+
+    async function loadMcpServers() {
+      if (!toolFieldset || !urls.mcpServers) {
+        return;
+      }
+      try {
+        const response = await fetch(urls.mcpServers, {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          throw new Error(await errorMessage(response));
+        }
+        const data = await response.json();
+        mcpServers = Array.isArray(data) ? data.filter((s) => s && s.id != null) : [];
+      } catch {
+        mcpServers = []; // Ohne Liste eben ohne Werkzeuge; Chatten geht weiter.
+      }
+      toolSwitchList.replaceChildren(
+        ...mcpServers.map((server) => {
+          const label = document.createElement("label");
+          label.className = "tool-switch";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.name = "mcp_servers";
+          input.value = String(server.id);
+          input.checked = server.default_enabled !== false;
+          const text = document.createElement("span");
+          text.textContent = String(server.name ?? "");
+          label.append(input, text);
+          return label;
+        }),
+      );
+      updateToolSwitches();
+    }
+
+    // Auswahl für den Request; null = Schlüssel weglassen (Voreinstellung des Servers).
+    function selectedMcpServers() {
+      if (!toolFieldset || toolFieldset.hidden) {
+        return null;
+      }
+      return Array.from(toolSwitchList.querySelectorAll("input:checked"), (i) => Number(i.value));
+    }
+
+    function withTools(payload) {
+      const servers = selectedMcpServers();
+      return servers ? { ...payload, mcp_servers: servers } : payload;
     }
 
     // --- Senden und Streamen ---
@@ -500,8 +946,9 @@
       }
     }
 
-    // Führt einen Stream aus. opts: userEl/restoreText (neue Nachricht) oder
-    // replaced (alte Antwort beim Neu erzeugen, erst bei "start" entfernt).
+    // Führt einen Stream aus. opts: userEl/restoreText (neue Nachricht),
+    // replaced (alte Antwort beim Neu erzeugen, erst bei "start" entfernt) oder
+    // url + continuation (Fortsetzung derselben Antwort nach einer Rückfrage).
     async function runStream(payload, assistantEl, opts) {
       const ctrl = new AbortController();
       controller = ctrl;
@@ -511,11 +958,15 @@
       contentEl.dataset.markdown = "true";
       let stick = true;
       const renderer = markdown
-        ? markdown.streamRenderer(contentEl, () => {
-            if (stick) {
-              scrollToBottom();
-            }
-          })
+        ? markdown.streamRenderer(
+            contentEl,
+            () => {
+              if (stick) {
+                scrollToBottom();
+              }
+            },
+            opts.continuation ? markdown.sourceOf(contentEl) : "",
+          )
         : null;
       const textNode = document.createTextNode("");
       if (!renderer) {
@@ -531,6 +982,17 @@
       const undo = (message) => {
         // Server hat nichts gespeichert: Anzeige zurücksetzen.
         rejected = true;
+        if (opts.continuation) {
+          // Rückfrage bleibt offen; Knöpfe wieder freigeben.
+          renderer?.finish();
+          setConfirmDisabled(assistantEl, false);
+          for (const button of assistantEl.querySelectorAll("[data-tool-decision]")) {
+            button.setAttribute("aria-pressed", "false");
+          }
+          delete assistantEl.dataset.streaming;
+          setStatus(message, true);
+          return;
+        }
         assistantEl.remove();
         if (opts.userEl) {
           opts.userEl.remove();
@@ -559,7 +1021,7 @@
           markSidebar(currentConversation(), opts.restoreText);
         }
         const response = await postJson(
-          fillTemplate(urls.messagesTemplate, conversationId),
+          opts.url || fillTemplate(urls.messagesTemplate, conversationId),
           payload,
           ctrl.signal,
           "text/event-stream",
@@ -583,6 +1045,22 @@
               assistantEl.dataset.messageId = String(data.assistant_message_id);
             }
             opts.replaced?.remove();
+            expireConfirmations(assistantEl);
+            if (opts.continuation) {
+              assistantEl.querySelector(".tool-confirm")?.remove();
+              assistantEl.dataset.status = "streaming";
+            }
+          } else if (event === "tool_call") {
+            upsertToolCall(assistantEl, data);
+            refreshConfirmBox(assistantEl);
+            if (stick) {
+              scrollToBottom();
+            }
+          } else if (event === "tool_result") {
+            applyToolResult(assistantEl, data);
+          } else if (event === "confirmation_required") {
+            const ids = Array.isArray(data.tool_call_ids) ? data.tool_call_ids : [];
+            showConfirmation(assistantEl, ids);
           } else if (event === "delta") {
             stick = isNearBottom();
             const chunk = typeof data.text === "string" ? data.text : "";
@@ -633,7 +1111,14 @@
             errorText = "Unbekannter Fehler.";
           }
           setMessageStatus(assistantEl, status, errorText);
-          if (status === "aborted") {
+          if (status !== "awaiting_confirmation") {
+            interruptRunningTools(assistantEl);
+            assistantEl.querySelector(".tool-confirm")?.remove();
+          }
+          if (status === "awaiting_confirmation") {
+            setConfirmDisabled(assistantEl, false);
+            setStatus("Bestätigung nötig: Bitte Werkzeugaufrufe ausführen oder ablehnen.");
+          } else if (status === "aborted") {
             setStatus(errorText ? `Antwort abgebrochen: ${errorText}` : "Antwort abgebrochen.");
           } else if (status === "error") {
             setStatus(`Fehler: ${errorText}`, true);
@@ -642,7 +1127,13 @@
           }
         }
         setStreaming(false);
-        returnFocus();
+        if (!rejected && status === "awaiting_confirmation") {
+          // Ohne Scrollen: sonst verschiebt sich das ganze Layout statt des Verlaufs.
+          assistantEl.querySelector("[data-tool-decision]")?.focus({ preventScroll: true });
+          revealConfirmation(assistantEl);
+        } else {
+          returnFocus();
+        }
       }
     }
 
@@ -667,7 +1158,7 @@
       textarea.value = "";
       autosize();
       scrollToBottom();
-      await runStream({ content: text, model: model.id }, assistantEl, {
+      await runStream(withTools({ content: text, model: model.id }), assistantEl, {
         userEl,
         restoreText: text,
       });
@@ -687,7 +1178,9 @@
       const assistantEl = appendMessage("assistant", model.name, "");
       scrollToBottom();
       sendButton.focus();
-      await runStream({ regenerate: true, model: model.id }, assistantEl, { replaced: last });
+      await runStream(withTools({ regenerate: true, model: model.id }), assistantEl, {
+        replaced: last,
+      });
     }
 
     function autosize() {
@@ -783,10 +1276,19 @@
       if (modelSelect.value) {
         storageSet(STORAGE_KEY, modelSelect.value);
       }
+      updateToolSwitches();
     });
 
     setStreaming(false);
+    for (const article of log.querySelectorAll(".chat-message")) {
+      refreshConfirmBox(article);
+    }
+    const waiting = log.querySelectorAll('.chat-message[data-status="awaiting_confirmation"]');
+    if (waiting.length) {
+      revealConfirmation(waiting[waiting.length - 1]);
+    }
     loadModels();
+    loadMcpServers();
     textarea.focus();
   });
 })();

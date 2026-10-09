@@ -1,5 +1,7 @@
 """Modellfeld für verschlüsselte Geheimnisse (API-Keys, MCP-Zugangsdaten)."""
 
+import json
+
 from django.db import models
 
 from .crypto import decrypt, encrypt
@@ -39,3 +41,16 @@ def mask_secret(value: str | None, visible: int = 4) -> str:
     if len(value) < 8:
         return "••••"
     return "••••" + value[-visible:]
+
+
+class UnicodeJSONEncoder(json.JSONEncoder):
+    """JSON ohne ``\\uXXXX``-Escapes für Nicht-ASCII-Zeichen.
+
+    PostgreSQL wandelt ``\\u``-Escapes in jsonb in die Server-Kodierung um und
+    scheitert damit an Datenbanken mit ``SQL_ASCII`` (so angelegte
+    Entwicklungs-Cluster) bei Umlauten. UTF-8 direkt geht in beiden Fällen.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs["ensure_ascii"] = False
+        super().__init__(*args, **kwargs)
