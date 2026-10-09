@@ -1,13 +1,63 @@
 #!/bin/sh
 set -e
 
-# Debian-Konvention: Beim purge verschwindet die Konfiguration. Daten in
-# /var/lib/multi-gpt (Medien) und der Systemnutzer multi-gpt bleiben erhalten,
-# ebenso die PostgreSQL-Datenbank.
-if [ "$1" = "purge" ]; then
-    rm -f /etc/multi-gpt/.env /etc/multi-gpt/.env.dpkg-new
-    rmdir --ignore-fail-on-non-empty /etc/multi-gpt 2>/dev/null || true
-fi
+NGINX_DIR=/etc/nginx
+NGINX_SITE=multi-gpt
+NGINX_GEN_DIR=/etc/multi-gpt/nginx
+DEFAULT_SITE_MARK=/var/lib/multi-gpt/nginx-default-site-disabled
+
+multi_gpt_nginx_reload() {
+    command -v nginx >/dev/null || return 0
+    if ! nginx -t >/dev/null 2>&1; then
+        echo "multi-gpt: nginx -t schlägt fehl – nginx wird nicht neu geladen." >&2
+        return 0
+    fi
+    if [ -d /run/systemd/system ] && systemctl is-active --quiet nginx.service 2>/dev/null; then
+        deb-systemd-invoke reload nginx.service || true
+    fi
+}
+
+# Site deaktivieren (die Datei in sites-available ist ein conffile: dpkg
+# behält sie bei "remove" und löscht sie bei "purge"). Hat das postinst die
+# unveränderte Debian-Site "default" deaktiviert, kommt sie zurück – außer
+# nginx -t scheitert damit (z. B. weil inzwischen eine andere Site
+# default_server ist).
+multi_gpt_remove_site() {
+    _link="$NGINX_DIR/sites-enabled/$NGINX_SITE"
+    if [ -L "$_link" ]; then
+        rm -f "$_link"
+        echo "multi-gpt: nginx-Site $NGINX_SITE deaktiviert."
+    fi
+    if [ -e "$DEFAULT_SITE_MARK" ]; then
+        rm -f "$DEFAULT_SITE_MARK"
+        _default="$NGINX_DIR/sites-enabled/default"
+        if [ ! -e "$_default" ] && [ ! -L "$_default" ] && [ -f "$NGINX_DIR/sites-available/default" ]; then
+            ln -s "$NGINX_DIR/sites-available/default" "$_default"
+            if command -v nginx >/dev/null && ! nginx -t >/dev/null 2>&1; then
+                rm -f "$_default"
+                echo "multi-gpt: nginx-Site 'default' NICHT wiederhergestellt (nginx -t schlägt damit fehl)." >&2
+            else
+                echo "multi-gpt: nginx-Site 'default' wieder aktiviert."
+            fi
+        fi
+    fi
+    multi_gpt_nginx_reload
+}
+
+case "$1" in
+    remove)
+        multi_gpt_remove_site
+        ;;
+    purge)
+        # Debian-Konvention: Beim purge verschwindet die Konfiguration. Daten in
+        # /var/lib/multi-gpt (Medien) und der Systemnutzer multi-gpt bleiben
+        # erhalten, ebenso die PostgreSQL-Datenbank.
+        multi_gpt_remove_site
+        rm -rf "$NGINX_GEN_DIR"
+        rm -f /etc/multi-gpt/.env /etc/multi-gpt/.env.dpkg-new
+        rmdir --ignore-fail-on-non-empty /etc/multi-gpt 2>/dev/null || true
+        ;;
+esac
 
 #DEBHELPER#
 

@@ -10,6 +10,10 @@ Wird verwendet von
   MULTI_GPT_WORKERS  Anzahl Worker-Prozesse, Standard 2
   MULTI_GPT_THREADS  Threads je Worker (gthread), Standard 8
   MULTI_GPT_TIMEOUT  Sekunden bis ein hängender Worker neu gestartet wird, Standard 300
+  MULTI_GPT_FORWARDED_ALLOW_IPS  Proxys, deren X-Forwarded-Proto gunicorn glaubt,
+                     Standard 127.0.0.1,::1 (nginx auf demselben Rechner)
+
+Im Debian-Paket lauscht gunicorn nur auf 127.0.0.1; davor steht nginx mit TLS.
 
 gthread, weil Antworten per SSE gestreamt werden (lange offene Requests).
 """
@@ -30,6 +34,11 @@ threads = _int("MULTI_GPT_THREADS", 8)
 timeout = _int("MULTI_GPT_TIMEOUT", 300)
 graceful_timeout = 30
 keepalive = 5
+
+# Nur der lokale nginx darf wsgi.url_scheme per X-Forwarded-Proto setzen
+# (Django wertet den Header zusätzlich über SECURE_PROXY_SSL_HEADER aus).
+# Docker hinter einem Proxy in einem anderen Container: Variable setzen.
+forwarded_allow_ips = os.environ.get("MULTI_GPT_FORWARDED_ALLOW_IPS", "").strip() or "127.0.0.1,::1"
 
 # Heartbeat-Datei der Worker im RAM statt auf der Platte (siehe Gunicorn-Doku
 # "blocking os.fchmod"); fällt auf das Standard-Tempverzeichnis zurück.

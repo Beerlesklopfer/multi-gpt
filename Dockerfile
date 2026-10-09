@@ -39,9 +39,11 @@ COPY --from=builder /build/multi-gpt_*.deb /tmp/
 # Das postinst legt Nutzer und Verzeichnisse an und erzeugt
 # /etc/multi-gpt/.env mit Schlüsseln. Die Datei wird sofort gelöscht:
 # keine Secrets im Image. Im Container kommt die Konfiguration aus der
-# Umgebung (compose.yaml: env_file .env).
+# Umgebung (compose.yaml: env_file .env). nginx kommt als Abhängigkeit des
+# Pakets mit, wird im Container aber nicht benutzt (MULTI_GPT_SKIP_NGINX=1:
+# Site nicht aktivieren); gunicorn lauscht hier über MULTI_GPT_BIND auf 0.0.0.0.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends /tmp/multi-gpt_*.deb \
+    && MULTI_GPT_SKIP_NGINX=1 apt-get install -y --no-install-recommends /tmp/multi-gpt_*.deb \
     && rm -rf /var/lib/apt/lists/* /tmp/*.deb \
     && rm -f /etc/multi-gpt/.env \
     && install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt /var/lib/multi-gpt/media

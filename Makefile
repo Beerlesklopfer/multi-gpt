@@ -19,7 +19,7 @@ GH      ?= $(or $(shell command -v gh 2>/dev/null),$(HOME)/go/bin/gh)
 REMOTE  ?= origin
 
 .DEFAULT_GOAL := help
-.PHONY: help install migrate user dev run static sync-models worker reindex test lint fmt deb release website website-serve deploy db-create clean
+.PHONY: help install migrate user dev run static sync-models worker reindex test test-packaging lint fmt deb release website website-serve deploy db-create clean
 
 help: ## Diese Hilfe anzeigen
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -74,6 +74,10 @@ reindex: ## Alle Dokumente neu indexieren (nach Wechsel des Embedding-Modells)
 
 test: ## Tests ausführen (pytest, braucht PostgreSQL)
 	$(BIN)/pytest
+
+test-packaging: ## Paket-Skripte (postinst/postrm/config, nginx) mit Stubs prüfen
+	bash tests/packaging/cases.sh
+	bash tests/packaging/config_cases.sh
 
 lint: ## Code prüfen (ruff check + Formatprüfung)
 	$(BIN)/ruff check .

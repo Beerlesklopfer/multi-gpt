@@ -1,0 +1,99 @@
+# nginx-Site für MultiGPT (Debian-Paket multi-gpt).
+#
+# Diese Datei ist ein conffile des Pakets: Eigene Änderungen bleiben bei
+# Aktualisierungen erhalten (dpkg fragt nach, wenn sich auch die Paketversion
+# geändert hat). Die rechnerspezifischen Werte stehen NICHT hier, sondern in
+# den eingebundenen Dateien unter /etc/multi-gpt/nginx/. Diese erzeugt das
+# postinst bei jeder Konfiguration neu aus den debconf-Antworten und aus
+# /etc/multi-gpt/.env (Handänderungen dort gehen verloren):
+#
+#   upstream.conf    upstream multi_gpt_app (127.0.0.1:<Port aus MULTI_GPT_BIND>)
+#   http.conf        listen 80 [default_server], server_name
+#   https.conf       listen 443 [default_server], server_name, Zertifikat und
+#                    Schlüssel, client_max_body_size (DOCUMENT_MAX_UPLOAD_MB
+#                    + 10 MB), interne location für X-Accel-Redirect
+#                    (/_protected/media/ -> MEDIA_ROOT)
+#   headers.conf     Sicherheits-Header (HSTS nur mit eigenem Zertifikat)
+#
+# Ändern: sudo dpkg-reconfigure multi-gpt
+# Eigene Ergänzungen im HTTPS-Server: Dateien /etc/multi-gpt/nginx/local/*.conf
+# (werden nie überschrieben), danach: sudo nginx -t && sudo systemctl reload nginx
+#
+# TLS nach Mozilla Server Side TLS, Profil "intermediate", Guidelines 6.0
+# (https://ssl-config.mozilla.org/guidelines/6.0.json).
+
+include /etc/multi-gpt/nginx/upstream.conf;
+
+# HTTP: nur Weiterleitung auf HTTPS.
+server {
+    include /etc/multi-gpt/nginx/http.conf;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    include /etc/multi-gpt/nginx/https.conf;
+    http2 on;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:MultiGPT_TLS:10m;
+    ssl_session_tickets off;
+
+    include /etc/multi-gpt/nginx/headers.conf;
+
+    # Weiterleitung an gunicorn (gilt für alle locations mit proxy_pass).
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_redirect off;
+    # Mindestens so lang wie der gunicorn-Timeout (MULTI_GPT_TIMEOUT, 300 s).
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    # Django setzt diese Header selbst; nginx setzt sie für alle Antworten
+    # (headers.conf), deshalb hier nicht doppelt durchreichen.
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header Referrer-Policy;
+
+    # Statische Dateien direkt aus dem Paket (collectstatic beim Paketbau,
+    # Manifest-Storage mit vorkomprimierten .gz-Dateien).
+    location ^~ /static/ {
+        alias /usr/share/python/multi-gpt/static/;
+        gzip_static on;
+        access_log off;
+        include /etc/multi-gpt/nginx/headers.conf;
+        add_header Cache-Control "public, max-age=3600" always;
+
+        # Gehashte Namen (name.0123456789ab.css) ändern sich mit dem Inhalt.
+        location ~ "\.[0-9a-f]{12}\.[A-Za-z0-9]+$" {
+            gzip_static on;
+            access_log off;
+            include /etc/multi-gpt/nginx/headers.conf;
+            add_header Cache-Control "public, max-age=31536000, immutable" always;
+        }
+    }
+
+    # Antworten als Server-Sent Events: ohne Puffer, lange offen.
+    # (Django setzt zusätzlich X-Accel-Buffering: no.)
+    location ~ ^/api/conversations/[0-9]+/(messages|tool-calls/confirm)/$ {
+        proxy_pass http://multi_gpt_app;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+
+    location / {
+        proxy_pass http://multi_gpt_app;
+    }
+
+    include /etc/multi-gpt/nginx/local/*.conf;
+}

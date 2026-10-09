@@ -18,15 +18,18 @@ Depends: ${misc:Depends},
          ${venv:Depends},
          python3 (>= 3.12),
          adduser,
+         nginx (>= 1.25.1),
+         ssl-cert,
          poppler-utils,
          tesseract-ocr,
          tesseract-ocr-deu,
          tesseract-ocr-eng
 Suggests: postgresql (>= 17),
-          postgresql-17-pgvector | postgresql-pgvector,
-          nginx
+          postgresql-17-pgvector | postgresql-pgvector
 Description: MultiGPT - local multi-AI chat system for the family
  Django web application (served by gunicorn) to chat with several AI
  providers, shipped as a self-contained virtualenv in
- /usr/share/python/multi-gpt. Needs PostgreSQL with the pgvector
+ /usr/share/python/multi-gpt. gunicorn listens on localhost only; the
+ package ships an nginx site (/etc/nginx/sites-available/multi-gpt) that
+ terminates TLS in front of it. Needs PostgreSQL with the pgvector
  extension (local or remote). Administration via mgpt-ctl.

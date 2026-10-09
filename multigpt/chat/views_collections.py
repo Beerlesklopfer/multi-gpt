@@ -13,8 +13,9 @@ from pathlib import PurePath
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET
 
 from multigpt.accounts.permissions import Action, can
@@ -118,6 +119,26 @@ def download_filename(document: Document) -> str:
     return title
 
 
+def download_content_type(document: Document) -> str:
+    suffix = PurePath(stored_name(document)).suffix.lower()
+    return DOWNLOAD_TYPES.get(suffix, "application/octet-stream")
+
+
+# Vom Server vergebene Upload-Namen (documents/<id>/<hex>.<endung>); alles
+# andere liefert Django selbst aus.
+_ACCEL_SAFE_NAME = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*(\.[A-Za-z0-9]+)?")
+
+
+def x_accel_path(name: str) -> str | None:
+    """Interner nginx-Pfad für eine Datei unter MEDIA_ROOT, wenn
+    ``USE_X_ACCEL_REDIRECT`` aktiv ist und der Name unbedenklich ist."""
+    if not getattr(settings, "USE_X_ACCEL_REDIRECT", False):
+        return None
+    if not name or not _ACCEL_SAFE_NAME.fullmatch(name):
+        return None
+    return settings.X_ACCEL_REDIRECT_PREFIX + name
+
+
 @require_GET
 @login_required
 def document_download(request, pk):
@@ -135,17 +156,26 @@ def document_download(request, pk):
             raise Http404 from exc
     elif not document.file:
         raise Http404
+    elif accel_path := x_accel_path(document.file.name):
+        # nginx liefert die Datei aus (interne location auf MEDIA_ROOT).
+        response = HttpResponse(content_type=download_content_type(document))
+        response["Content-Disposition"] = content_disposition_header(
+            True, download_filename(document)
+        )
+        response["X-Accel-Redirect"] = accel_path
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
     else:
         try:
             handle = document.file.open("rb")
         except OSError as exc:
             raise Http404 from exc
-    suffix = PurePath(stored_name(document)).suffix.lower()
     response = FileResponse(
         handle,
         as_attachment=True,
         filename=download_filename(document),
-        content_type=DOWNLOAD_TYPES.get(suffix, "application/octet-stream"),
+        content_type=download_content_type(document),
     )
     response["Cache-Control"] = "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"

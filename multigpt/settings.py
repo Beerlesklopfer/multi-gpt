@@ -140,13 +140,25 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
 
+# Downloads hochgeladener Dokumente über nginx (X-Accel-Redirect) statt über
+# gunicorn. Nur einschalten, wenn nginx davor steht, die interne location
+# X_ACCEL_REDIRECT_PREFIX auf MEDIA_ROOT zeigt und der nginx-Nutzer (www-data)
+# MEDIA_ROOT lesen darf. Dateien aus Verzeichnisquellen liefert weiterhin Django.
+USE_X_ACCEL_REDIRECT = env.bool("USE_X_ACCEL_REDIRECT", default=False)
+X_ACCEL_REDIRECT_PREFIX = "/_protected/media/"
+
 # Login-Drosselung (django-axes): Sperre je Kombination aus Nutzername und IP.
 AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=5)
 AXES_COOLOFF_TIME = env.float("AXES_COOLOFF_HOURS", default=0.25)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_TEMPLATE = "registration/locked.html"
-AXES_IPWARE_PROXY_COUNT = env.int("AXES_PROXY_COUNT", default=0)
+# Anzahl Reverse Proxys vor gunicorn (Umgebung: AXES_PROXY_COUNT; Debian-Paket mit
+# nginx: 1). Ausgewertet von multigpt.accounts.client_ip, da django-ipware nicht
+# installiert ist. Der Setting-Name ist nicht AXES_PROXY_COUNT, weil axes diesen
+# veralteten Namen mit axes.W004 anmahnt.
+REVERSE_PROXY_COUNT = env.int("AXES_PROXY_COUNT", default=0)
+AXES_CLIENT_IP_CALLABLE = "multigpt.accounts.client_ip.client_ip"
 
 # Logging nach stdout (journald bzw. Docker). Keine Nachrichteninhalte, keine Keys.
 LOGGING = {

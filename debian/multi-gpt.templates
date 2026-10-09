@@ -1,25 +1,32 @@
-Template: multi-gpt/bind_address
+Template: multi-gpt/server_name
 Type: string
 Default:
-Description: Adresse und Port, auf denen MultiGPT lauscht:
- gunicorn nimmt Verbindungen auf dieser Adresse an (Form ADRESSE:PORT).
+Description: Hostname(n), unter denen MultiGPT aufgerufen wird:
+ nginx nimmt Anfragen für diese Namen an (server_name). Mehrere Namen mit
+ Leerzeichen trennen, z. B. "nas.intranet.example nas". Platzhalter wie
+ *.example.org sind erlaubt.
  .
- 127.0.0.1:8000, wenn ein nginx auf diesem Rechner davorsteht. Die
- LAN-Adresse (z. B. 192.168.24.250:8000), wenn MultiGPT direkt aus dem
- Intranet oder von einem nginx auf einem anderen Rechner erreichbar sein soll.
+ Die MultiGPT-Site ist der Standard-Server (default_server) für die Ports 80
+ und 443, solange keine andere nginx-Site das bereits ist. Sie antwortet dann
+ auch auf Aufrufe per IP-Adresse. Die IP-Adressen dieses Rechners werden
+ automatisch zugelassen; ALLOWED_HOSTS und CSRF_TRUSTED_ORIGINS
+ (https://<name>) werden aus den Namen und Adressen abgeleitet.
 
-Template: multi-gpt/allowed_hosts
+Template: multi-gpt/tls_certificate
 Type: string
 Default:
-Description: Hostnamen und Adressen, unter denen MultiGPT aufgerufen wird:
- Kommagetrennte Liste für Djangos ALLOWED_HOSTS, z. B.
- localhost,127.0.0.1,192.168.24.250,multigpt.intern. Anfragen an andere
- Namen werden abgewiesen.
+Description: Pfad zum TLS-Zertifikat (PEM, mit Zwischenzertifikaten):
+ nginx liefert MultiGPT nur über HTTPS aus; Browser geben das Mikrofon nur
+ über HTTPS frei. Das Zertifikat sollte auf die oben genannten Hostnamen
+ ausgestellt sein, z. B. /etc/ssl/certs/multigpt.pem.
+ .
+ Leer lassen: Das selbstsignierte Zertifikat des Pakets ssl-cert
+ (/etc/ssl/certs/ssl-cert-snakeoil.pem) wird verwendet. Browser warnen dann
+ vor der Verbindung, das Mikrofon ist ggf. eingeschränkt, und HSTS bleibt aus.
 
-Template: multi-gpt/public_url
+Template: multi-gpt/tls_key
 Type: string
 Default:
-Description: Adresse(n), die im Browser aufgerufen werden:
- Kommagetrennte Liste mit Schema für CSRF_TRUSTED_ORIGINS, z. B.
- https://multigpt.intern oder http://192.168.24.250:8000. Ohne passenden
- Eintrag schlägt die Anmeldung über diese Adresse fehl.
+Description: Pfad zum privaten Schlüssel des TLS-Zertifikats:
+ PEM-Datei, nur für root lesbar, z. B. /etc/ssl/private/multigpt.key.
+ nginx liest sie beim Start als root.

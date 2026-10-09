@@ -2,10 +2,20 @@
 set -e
 
 MGPT_CTL=/usr/bin/mgpt-ctl
+ENV_FILE=/etc/multi-gpt/.env
+NGINX_DIR=/etc/nginx
+NGINX_GEN_DIR=/etc/multi-gpt/nginx
+NGINX_SITE=multi-gpt
+# Vermerk: Die unveränderte Debian-Site "default" wurde von multi-gpt deaktiviert
+# (postrm stellt sie bei remove/purge wieder her).
+DEFAULT_SITE_MARK=/var/lib/multi-gpt/nginx-default-site-disabled
+SNAKEOIL_CERT=/etc/ssl/certs/ssl-cert-snakeoil.pem
+SNAKEOIL_KEY=/etc/ssl/private/ssl-cert-snakeoil.key
 
 multi_gpt_setup_hint() {
     cat <<'EOF'
   Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
+  Hostname und TLS-Zertifikat für nginx: sudo dpkg-reconfigure multi-gpt
   Lokale PostgreSQL-Datenbank: legt das preinst automatisch an, wenn hier
   ein PostgreSQL läuft. Sonst einmalig von Hand (mit pgvector):
     sudo -u postgres createuser multi-gpt
@@ -82,47 +92,444 @@ multi_gpt_migrate() {
     return 0
 }
 
-# debconf-Antworten in /etc/multi-gpt/.env übernehmen: ersetzt die Zeilen
-# MULTI_GPT_BIND, ALLOWED_HOSTS und CSRF_TRUSTED_ORIGINS (oder hängt sie an).
-# Werte mit Leerraum, Anführungszeichen oder anderen unerwarteten Zeichen
-# werden verworfen, damit die Datei für systemd und die Settings lesbar bleibt.
-multi_gpt_apply_answers() {
-    MULTI_GPT_BIND_ANSWER="${MULTI_GPT_BIND_ANSWER:-}" \
-    ALLOWED_HOSTS_ANSWER="${ALLOWED_HOSTS_ANSWER:-}" \
-    CSRF_ORIGINS_ANSWER="${CSRF_ORIGINS_ANSWER:-}" \
-    python3 - /etc/multi-gpt/.env <<'PY' || echo "multi-gpt: WARNUNG: debconf-Antworten nicht übernommen." >&2
-import os, re, sys
 
-path = sys.argv[1]
-answers = {
-    "MULTI_GPT_BIND": (os.environ["MULTI_GPT_BIND_ANSWER"], r"[A-Za-z0-9.:\[\]_-]+:[0-9]{1,5}"),
-    "ALLOWED_HOSTS": (os.environ["ALLOWED_HOSTS_ANSWER"], r"[A-Za-z0-9.:\[\]*_,-]+"),
-    "CSRF_TRUSTED_ORIGINS": (os.environ["CSRF_ORIGINS_ANSWER"], r"(https?://[A-Za-z0-9.:\[\]*_-]+,?)*"),
+# --- nginx (Pflicht: gunicorn lauscht nur auf 127.0.0.1) ---------------------
+#
+# Die Site /etc/nginx/sites-available/multi-gpt ist ein conffile. Sie bindet
+# die rechnerspezifischen Teile aus $NGINX_GEN_DIR ein, die hier bei jedem
+# "configure" neu erzeugt werden (upstream.conf, http.conf, https.conf,
+# headers.conf). Eigene Ergänzungen: $NGINX_GEN_DIR/local/*.conf.
+NGINX_GEN_FILES="upstream.conf http.conf https.conf headers.conf"
+
+multi_gpt_warn() {
+    echo "multi-gpt: $*" >&2
 }
-with open(path, encoding="utf-8") as fh:
+
+multi_gpt_nginx_reload() {
+    if [ -d /run/systemd/system ] && systemctl is-active --quiet nginx.service 2>/dev/null; then
+        deb-systemd-invoke reload nginx.service \
+            || multi_gpt_warn "WARNUNG: nginx konnte nicht neu geladen werden (systemctl reload nginx)."
+    else
+        echo "multi-gpt: nginx läuft nicht – starten mit: sudo systemctl start nginx"
+    fi
+}
+
+# Debians Standard-Site "default" setzt ebenfalls default_server. Deaktiviert
+# wird sie nur, wenn sites-enabled/default auf die unveränderte Paketdatei
+# zeigt (md5 laut dpkg), und nur einmal: Hat der Verwalter sie danach wieder
+# aktiviert, bleibt es dabei. Die Datei selbst wird nie verändert.
+# Setzt MGPT_DEFAULT_DISABLED_NOW=1, wenn in diesem Lauf deaktiviert wurde.
+multi_gpt_disable_default_site() {
+    MGPT_DEFAULT_DISABLED_NOW=0
+    _link="$NGINX_DIR/sites-enabled/default"
+    _avail="$NGINX_DIR/sites-available/default"
+    [ ! -e "$DEFAULT_SITE_MARK" ] || return 0
+    [ -L "$_link" ] && [ -f "$_avail" ] || return 0
+    [ "$(readlink -f "$_link")" = "$(readlink -f "$_avail")" ] || return 0
+    _expected=$(dpkg-query -W -f='${Conffiles}\n' nginx-common nginx 2>/dev/null \
+        | awk -v f="$_avail" '$1 == f { print $2; exit }')
+    _actual=$(md5sum < "$_avail" | cut -d ' ' -f 1)
+    if [ -z "$_expected" ] || [ "$_expected" != "$_actual" ]; then
+        echo "multi-gpt: $_avail ist angepasst – die Site 'default' bleibt aktiv."
+        return 0
+    fi
+    rm -f "$_link"
+    : > "$DEFAULT_SITE_MARK"
+    MGPT_DEFAULT_DISABLED_NOW=1
+    echo "multi-gpt: nginx-Standard-Site 'default' deaktiviert (MultiGPT ist jetzt default_server)."
+    echo "  Rückgängig (MultiGPT ist danach nicht mehr default_server):"
+    echo "    sudo ln -s $_avail $_link && sudo dpkg-reconfigure multi-gpt"
+}
+
+multi_gpt_restore_default_site() {
+    rm -f "$DEFAULT_SITE_MARK"
+    [ ! -e "$NGINX_DIR/sites-enabled/default" ] && [ ! -L "$NGINX_DIR/sites-enabled/default" ] || return 0
+    [ -f "$NGINX_DIR/sites-available/default" ] || return 0
+    ln -s "$NGINX_DIR/sites-available/default" "$NGINX_DIR/sites-enabled/default"
+}
+
+# Erzeugt die eingebundenen Dateien in $1 und aktualisiert die .env
+# (MULTI_GPT_BIND, ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS; bei der ersten
+# nginx-Einrichtung zusätzlich SECURE_COOKIES und AXES_PROXY_COUNT).
+multi_gpt_generate() {
+    MGPT_STAGE_DIR="$1" \
+    MGPT_ENV_FILE="$ENV_FILE" \
+    MGPT_NGINX_DIR="$NGINX_DIR" \
+    MGPT_NGINX_SITE="$NGINX_SITE" \
+    MGPT_FIRST_SETUP="$MGPT_FIRST_SETUP" \
+    MGPT_SERVER_NAMES="${SERVER_NAME_ANSWER:-}" \
+    MGPT_FALLBACK_NAMES="$MGPT_FALLBACK_NAMES" \
+    MGPT_TLS_CERT="${TLS_CERT_ANSWER:-}" \
+    MGPT_TLS_KEY="${TLS_KEY_ANSWER:-}" \
+    MGPT_SNAKEOIL_CERT="$SNAKEOIL_CERT" \
+    MGPT_SNAKEOIL_KEY="$SNAKEOIL_KEY" \
+    MGPT_IPS="$MGPT_IPS" \
+    MGPT_IPV6="$MGPT_IPV6" \
+    python3 -I - <<'PY'
+import glob
+import ipaddress
+import os
+import re
+import sys
+
+E = os.environ
+stage = E["MGPT_STAGE_DIR"]
+env_file = E["MGPT_ENV_FILE"]
+nginx_dir = E["MGPT_NGINX_DIR"]
+site = E["MGPT_NGINX_SITE"]
+first = E.get("MGPT_FIRST_SETUP") == "1"
+ipv6 = E.get("MGPT_IPV6") == "1"
+
+
+def note(msg):
+    print(f"multi-gpt: {msg}")
+
+
+def warn(msg):
+    print(f"multi-gpt: {msg}", file=sys.stderr)
+
+
+LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+NAME_RE = re.compile(rf"(?:\*\.|\.)?{LABEL}(?:\.{LABEL})*")
+PATH_RE = re.compile(r"/[A-Za-z0-9._/+@-]+")
+
+with open(env_file, encoding="utf-8") as fh:
     lines = fh.read().splitlines()
-for key, (value, pattern) in answers.items():
-    value = value.strip().replace(" ", "")
-    if key != "CSRF_TRUSTED_ORIGINS" and not value:
+
+
+def get(key):
+    value = None
+    for line in lines:
+        if line.startswith(key + "="):
+            value = line[len(key) + 1 :].strip()
+    return value
+
+
+def put(key, value):
+    """Letzte aktive Zeile ersetzen, sonst die erste auskommentierte, sonst anhängen."""
+    new = f"{key}={value}"
+    active = [i for i, line in enumerate(lines) if line.startswith(key + "=")]
+    if active:
+        lines[active[-1]] = new
+        return
+    for i, line in enumerate(lines):
+        if re.match(rf"#\s*{re.escape(key)}=", line):
+            lines[i] = new
+            return
+    lines.append(new)
+
+
+# gunicorn: nur lokal, Port bleibt.
+bind = get("MULTI_GPT_BIND") or ""
+match = re.fullmatch(r"(?:[^:]*|\[[0-9A-Fa-f:.]*\]):([0-9]{1,5})", bind)
+port = int(match.group(1)) if match and not bind.startswith("unix:") else 8000
+if not 1 <= port <= 65535:
+    port = 8000
+new_bind = f"127.0.0.1:{port}"
+if bind != new_bind:
+    put("MULTI_GPT_BIND", new_bind)
+    if bind:
+        note(
+            f"MULTI_GPT_BIND {bind} -> {new_bind}: gunicorn lauscht nur noch lokal, "
+            "der Zugriff läuft über nginx (HTTPS)."
+        )
+
+# Hostnamen und Adressen
+names = []
+for name in E.get("MGPT_SERVER_NAMES", "").replace(",", " ").split():
+    if name == "_" or not NAME_RE.fullmatch(name):
+        warn(f"ungültiger Hostname ignoriert: {name!r}")
+    elif name not in names:
+        names.append(name)
+if not names:
+    names = [n for n in E.get("MGPT_FALLBACK_NAMES", "").split() if NAME_RE.fullmatch(n)]
+    names = names or ["localhost"]
+    warn(f"kein gültiger Hostname angegeben, verwende: {' '.join(names)}")
+
+ips = []
+for ip in E.get("MGPT_IPS", "").split():
+    try:
+        addr = ipaddress.IPv4Address(ip)
+    except ValueError:
         continue
-    if not re.fullmatch(pattern, value):
-        print(f"multi-gpt: ungültiger Wert für {key} ignoriert: {value!r}", file=sys.stderr)
-        continue
-    line = f"{key}={value}"
-    for i, old in enumerate(lines):
-        if old.startswith(f"{key}=") or old.startswith(f"#{key}="):
-            lines[i] = line
-            break
-    else:
-        lines.append(line)
-tmp = path + ".dpkg-new"
+    if not addr.is_loopback and str(addr) not in ips:
+        ips.append(str(addr))
+
+
+def unique(items):
+    return list(dict.fromkeys(items))
+
+
+def host_entry(name):
+    return name[1:] if name.startswith("*.") else name
+
+
+def origin(name):
+    if name.startswith("*."):
+        return "https://" + name
+    if name.startswith("."):
+        return "https://*" + name
+    return "https://" + name
+
+
+put("ALLOWED_HOSTS", ",".join(unique(["localhost", "127.0.0.1", *map(host_entry, names), *ips])))
+put("CSRF_TRUSTED_ORIGINS", ",".join(unique([origin(n) for n in [*names, *ips]])))
+
+if first:
+    secure = get("SECURE_COOKIES")
+    if secure is None or secure.lower() in {"", "false", "0", "no", "off"}:
+        put("SECURE_COOKIES", "True")
+    proxies = get("AXES_PROXY_COUNT")
+    if proxies is None or proxies in {"", "0"}:
+        put("AXES_PROXY_COUNT", "1")
+
+tmp = env_file + ".dpkg-new"
 with open(tmp, "w", encoding="utf-8") as fh:
     fh.write("\n".join(lines) + "\n")
-st = os.stat(path)
+st = os.stat(env_file)
 os.chown(tmp, st.st_uid, st.st_gid)
 os.chmod(tmp, 0o640)
-os.replace(tmp, path)
+os.replace(tmp, env_file)
+
+# TLS
+cert = E.get("MGPT_TLS_CERT", "").strip()
+key = E.get("MGPT_TLS_KEY", "").strip()
+own_cert = False
+if cert and cert != E["MGPT_SNAKEOIL_CERT"]:
+    problems = []
+    for label, path in (("Zertifikat", cert), ("Schlüssel", key)):
+        if not path:
+            problems.append(f"{label}: kein Pfad angegeben")
+        elif not PATH_RE.fullmatch(path):
+            problems.append(f"{label}: ungültiger Pfad {path!r}")
+        elif not os.path.isfile(path):
+            problems.append(f"{label}: {path} fehlt")
+    if problems:
+        for problem in problems:
+            warn(f"WARNUNG: {problem}")
+        warn("WARNUNG: Eigenes Zertifikat nicht verwendbar – nutze das snakeoil-Zertifikat.")
+    else:
+        own_cert = True
+if not own_cert:
+    cert, key = E["MGPT_SNAKEOIL_CERT"], E["MGPT_SNAKEOIL_KEY"]
+    print(file=sys.stderr)
+    warn("WARNUNG: nginx verwendet das selbstsignierte snakeoil-Zertifikat.")
+    warn("  Browser warnen vor der Verbindung, das Mikrofon ist ggf. eingeschränkt.")
+    warn("  Eigenes Zertifikat eintragen: sudo dpkg-reconfigure multi-gpt")
+    print(file=sys.stderr)
+
+# Upload-Grenze: Dokumente (DOCUMENT_MAX_UPLOAD_MB) plus Puffer für den Rest
+# des multipart-Requests.
+try:
+    upload_mb = max(int(get("DOCUMENT_MAX_UPLOAD_MB") or 25), 1)
+except ValueError:
+    upload_mb = 25
+media_root = (get("MEDIA_ROOT") or "/var/lib/multi-gpt/media").rstrip("/")
+if not PATH_RE.fullmatch(media_root):
+    warn(f"MEDIA_ROOT {media_root!r} ist für nginx ungeeignet – keine X-Accel-location.")
+    media_root = ""
+
+
+# Andere Sites mit default_server (Ports 80/443): dort setzt MultiGPT keins.
+def other_default_servers():
+    ours = {
+        os.path.realpath(os.path.join(nginx_dir, "sites-available", site)),
+        os.path.realpath(os.path.join(nginx_dir, "sites-enabled", site)),
+    }
+    found = {}
+    paths = [os.path.join(nginx_dir, "nginx.conf")]
+    paths += sorted(glob.glob(os.path.join(nginx_dir, "conf.d", "*.conf")))
+    paths += sorted(glob.glob(os.path.join(nginx_dir, "sites-enabled", "*")))
+    for path in paths:
+        if os.path.realpath(path) in ours or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = re.sub(r"#[^\n]*", "", fh.read())
+        except OSError:
+            continue
+        for m in re.finditer(r"(?:^|[\s{};])listen\s+([^;]*);", text):
+            args = m.group(1).split()
+            if not args or not ({"default_server", "default"} & set(args[1:])):
+                continue
+            addr = args[0]
+            if addr.startswith("unix:"):
+                continue
+            if addr.isdigit():
+                p = int(addr)
+            else:
+                pm = re.search(r":([0-9]+)$", addr)
+                p = int(pm.group(1)) if pm else 80
+            found.setdefault(p, path)
+    return found
+
+
+others = other_default_servers()
+
+
+def listen(port, extra=""):
+    flag = "" if port in others else " default_server"
+    if port in others:
+        warn(
+            f"HINWEIS: {others[port]} ist auf Port {port} bereits default_server – "
+            "die MultiGPT-Site setzt dort kein default_server. Aufrufe per IP-Adresse "
+            "oder unbekanntem Namen landen bei dieser anderen Site."
+        )
+    rows = [f"listen {port}{extra}{flag};"]
+    if ipv6:
+        rows.append(f"listen [::]:{port}{extra}{flag};")
+    return rows
+
+
+HEAD = [
+    "# Erzeugt vom postinst des Pakets multi-gpt – Änderungen gehen verloren.",
+    "# Ändern: sudo dpkg-reconfigure multi-gpt (bzw. /etc/multi-gpt/.env, danach",
+    "# erneut dpkg-reconfigure); Ergänzungen: /etc/multi-gpt/nginx/local/*.conf",
+]
+server_name = f"server_name {' '.join(names)};"
+files = {
+    "upstream.conf": [
+        *HEAD,
+        "upstream multi_gpt_app {",
+        f"    server 127.0.0.1:{port};",
+        "    keepalive 8;",
+        "    # kürzer als der keepalive von gunicorn (5 s)",
+        "    keepalive_timeout 4s;",
+        "}",
+    ],
+    "http.conf": [*HEAD, *listen(80), server_name],
+    "https.conf": [
+        *HEAD,
+        *listen(443, " ssl"),
+        server_name,
+        f"ssl_certificate {cert};",
+        f"ssl_certificate_key {key};",
+        f"client_max_body_size {upload_mb + 10}m;",
+    ],
+    "headers.conf": [
+        *HEAD,
+        (
+            'add_header Strict-Transport-Security "max-age=63072000" always;'
+            if own_cert
+            else "# kein HSTS: selbstsigniertes snakeoil-Zertifikat"
+        ),
+        'add_header X-Content-Type-Options "nosniff" always;',
+        'add_header Referrer-Policy "same-origin" always;',
+    ],
+}
+if media_root:
+    files["https.conf"] += [
+        "# Geschützte Medien: Django prüft die Rechte und antwortet mit",
+        "# X-Accel-Redirect (nur mit USE_X_ACCEL_REDIRECT=True in der .env).",
+        "location /_protected/media/ {",
+        "    internal;",
+        f"    alias {media_root}/;",
+        "}",
+    ]
+for name, rows in files.items():
+    with open(os.path.join(stage, name), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(rows) + "\n")
+    os.chmod(os.path.join(stage, name), 0o644)
+note(f"nginx: server_name {' '.join(names)}, Zertifikat {cert}")
 PY
+}
+
+# Neue Dateien an ihren Platz, alte als .dpkg-old für den Rückweg.
+multi_gpt_install_generated() {
+    for _f in $NGINX_GEN_FILES; do
+        rm -f "$NGINX_GEN_DIR/$_f.dpkg-old" "$NGINX_GEN_DIR/$_f.failed"
+        [ ! -e "$NGINX_GEN_DIR/$_f" ] || cp -p "$NGINX_GEN_DIR/$_f" "$NGINX_GEN_DIR/$_f.dpkg-old"
+        mv "$1/$_f" "$NGINX_GEN_DIR/$_f"
+    done
+}
+
+# Rückweg nach gescheitertem nginx -t: vorige Dateien wieder herstellen, die
+# fehlerhaften als .failed zur Ansicht behalten.
+multi_gpt_rollback_generated() {
+    for _f in $NGINX_GEN_FILES; do
+        mv -f "$NGINX_GEN_DIR/$_f" "$NGINX_GEN_DIR/$_f.failed"
+        [ ! -e "$NGINX_GEN_DIR/$_f.dpkg-old" ] || mv -f "$NGINX_GEN_DIR/$_f.dpkg-old" "$NGINX_GEN_DIR/$_f"
+    done
+}
+
+multi_gpt_setup_nginx() {
+    MGPT_FIRST_SETUP=0
+    [ -e "$NGINX_GEN_DIR/https.conf" ] || MGPT_FIRST_SETUP=1
+    install -d -m 0755 "$NGINX_GEN_DIR" "$NGINX_GEN_DIR/local"
+
+    MGPT_IPS=$(hostname -I 2>/dev/null || true)
+    MGPT_IPV6=0
+    [ ! -e /proc/net/if_inet6 ] || MGPT_IPV6=1
+    _fqdn=$(hostname -f 2>/dev/null || true)
+    _short=$(hostname 2>/dev/null || true)
+    MGPT_FALLBACK_NAMES="$_fqdn ${_short%%.*}"
+
+    if [ ! -e "$SNAKEOIL_CERT" ] && command -v make-ssl-cert >/dev/null; then
+        make-ssl-cert generate-default-snakeoil || true
+    fi
+
+    _skip=0
+    if [ "${MULTI_GPT_SKIP_NGINX:-}" = "1" ]; then
+        _skip=1
+        echo "multi-gpt: MULTI_GPT_SKIP_NGINX=1 – nginx-Site wird nicht aktiviert."
+    elif ! command -v nginx >/dev/null; then
+        _skip=1
+        multi_gpt_warn "WARNUNG: nginx ist nicht installiert – MultiGPT ist so nicht erreichbar."
+    fi
+    MGPT_DEFAULT_DISABLED_NOW=0
+    [ "$_skip" = 1 ] || multi_gpt_disable_default_site
+
+    _stage=$(mktemp -d "$NGINX_GEN_DIR/.new.XXXXXX")
+    if ! multi_gpt_generate "$_stage"; then
+        rm -rf "$_stage"
+        multi_gpt_warn "WARNUNG: nginx-Konfiguration und .env konnten nicht erzeugt werden."
+        if [ "$MGPT_DEFAULT_DISABLED_NOW" = 1 ]; then
+            multi_gpt_restore_default_site
+        fi
+        return 0
+    fi
+    multi_gpt_install_generated "$_stage"
+    rmdir "$_stage"
+    [ "$_skip" = 0 ] || return 0
+
+    _link="$NGINX_DIR/sites-enabled/$NGINX_SITE"
+    _created=0
+    if [ ! -e "$_link" ] && [ ! -L "$_link" ]; then
+        ln -s "../sites-available/$NGINX_SITE" "$_link"
+        _created=1
+    elif [ ! -L "$_link" ]; then
+        multi_gpt_warn "HINWEIS: $_link ist keine Verknüpfung und bleibt unverändert."
+    fi
+
+    if _out=$(nginx -t 2>&1); then
+        for _f in $NGINX_GEN_FILES; do rm -f "$NGINX_GEN_DIR/$_f.dpkg-old"; done
+        [ "$_created" = 0 ] || echo "multi-gpt: nginx-Site $NGINX_SITE aktiviert."
+        multi_gpt_nginx_reload
+        return 0
+    fi
+
+    multi_gpt_rollback_generated
+    [ "$_created" = 0 ] || rm -f "$_link"
+    [ "$MGPT_DEFAULT_DISABLED_NOW" = 0 ] || multi_gpt_restore_default_site
+    {
+        echo
+        echo "multi-gpt: FEHLER: nginx -t schlägt mit der neuen MultiGPT-Konfiguration fehl:"
+        printf '%s\n' "$_out" | sed 's/^/    /'
+        if [ "$_created" = 1 ]; then
+            echo "  Die Site $NGINX_SITE wurde NICHT aktiviert."
+        else
+            echo "  Die vorige Konfiguration wurde wiederhergestellt."
+        fi
+        echo "  Fehlerhafte Dateien zur Ansicht: $NGINX_GEN_DIR/*.failed"
+        if ! nginx -t >/dev/null 2>&1; then
+            echo "  nginx -t schlägt auch ohne diese Änderung fehl – die übrige"
+            echo "  nginx-Konfiguration ist fehlerhaft."
+        fi
+        echo "  MultiGPT ist erst über nginx erreichbar, wenn das behoben ist:"
+        echo "    sudo dpkg-reconfigure multi-gpt"
+        echo
+    } >&2
+    return 0
 }
 
 if [ "$1" = "configure" ]; then
@@ -130,9 +537,13 @@ if [ "$1" = "configure" ]; then
     # sofort db_stop: Solange debconf läuft, gehört stdout dem debconf-Protokoll,
     # und die Ausgaben von adduser und Migration würden es stören.
     . /usr/share/debconf/confmodule
-    db_get multi-gpt/bind_address && MULTI_GPT_BIND_ANSWER=$RET
-    db_get multi-gpt/allowed_hosts && ALLOWED_HOSTS_ANSWER=$RET
-    db_get multi-gpt/public_url && CSRF_ORIGINS_ANSWER=$RET
+    db_get multi-gpt/server_name && SERVER_NAME_ANSWER=$RET
+    db_get multi-gpt/tls_certificate && TLS_CERT_ANSWER=$RET
+    db_get multi-gpt/tls_key && TLS_KEY_ANSWER=$RET
+    # Fragen bis 0.1.0 (Bind-Adresse, ALLOWED_HOSTS, CSRF-Origins) entfallen.
+    for _q in multi-gpt/bind_address multi-gpt/allowed_hosts multi-gpt/public_url; do
+        db_unregister "$_q" >/dev/null 2>&1 || true
+    done
     db_stop
 
     if ! getent passwd multi-gpt >/dev/null; then
@@ -151,13 +562,13 @@ if [ "$1" = "configure" ]; then
     chmod 0750 /etc/multi-gpt
 
     # Env-Datei nur beim ersten Installieren erzeugen, nie überschreiben.
-    if [ ! -e /etc/multi-gpt/.env ]; then
+    if [ ! -e "$ENV_FILE" ]; then
         umask 027
-        python3 - > /etc/multi-gpt/.env.dpkg-new <<'PY'
+        python3 - > "$ENV_FILE.dpkg-new" <<'PY'
 import base64, secrets
-print("# multi-gpt configuration (generated on first install; MULTI_GPT_BIND,")
-print("# ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are managed via debconf:")
-print("# dpkg-reconfigure multi-gpt)")
+print("# multi-gpt configuration (generated on first install). MULTI_GPT_BIND,")
+print("# ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are rewritten on every")
+print("# configure from the debconf answers: dpkg-reconfigure multi-gpt")
 print(f"SECRET_KEY={secrets.token_urlsafe(50)}")
 print(f"FIELD_ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}")
 print("DEBUG=False")
@@ -166,24 +577,27 @@ print("CSRF_TRUSTED_ORIGINS=")
 print("# Unix socket + peer auth as system user multi-gpt")
 print("DATABASE_URL=postgres:///multi-gpt")
 print("MEDIA_ROOT=/var/lib/multi-gpt/media")
-print("# Set to True once nginx terminates TLS in front of gunicorn")
-print("SECURE_COOKIES=False")
+print("# nginx terminates TLS in front of gunicorn (one reverse proxy)")
+print("SECURE_COOKIES=True")
+print("AXES_PROXY_COUNT=1")
+print("# Serve document downloads via nginx (www-data needs read access to MEDIA_ROOT)")
+print("#USE_X_ACCEL_REDIRECT=True")
 print("LOG_LEVEL=INFO")
-print("#AXES_PROXY_COUNT=1")
 print("# Directory sources for collections (comma-separated absolute paths, read-only;")
 print("# below /home a systemd drop-in is needed, see multi-gpt-worker.service)")
 print("#RAG_SOURCE_ROOTS=/srv/nas/dokumente")
+print("# gunicorn listens on localhost only (nginx in front); the port may be changed")
 print("MULTI_GPT_BIND=127.0.0.1:8000")
 print("#MULTI_GPT_WORKERS=2")
 print("#MULTI_GPT_THREADS=8")
 print("#MULTI_GPT_TIMEOUT=300")
 PY
-        chown root:multi-gpt /etc/multi-gpt/.env.dpkg-new
-        chmod 0640 /etc/multi-gpt/.env.dpkg-new
-        mv /etc/multi-gpt/.env.dpkg-new /etc/multi-gpt/.env
+        chown root:multi-gpt "$ENV_FILE.dpkg-new"
+        chmod 0640 "$ENV_FILE.dpkg-new"
+        mv "$ENV_FILE.dpkg-new" "$ENV_FILE"
     fi
 
-    multi_gpt_apply_answers
+    multi_gpt_setup_nginx
 
     multi_gpt_migrate "$@"
 fi
