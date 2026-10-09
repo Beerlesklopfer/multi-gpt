@@ -1,6 +1,86 @@
 #!/bin/sh
 set -e
 
+MGPT_CTL=/usr/bin/mgpt-ctl
+
+multi_gpt_setup_hint() {
+    cat <<'EOF'
+  Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
+  Lokale PostgreSQL-Datenbank (einmalig, mit pgvector):
+    sudo -u postgres createuser multi-gpt
+    sudo -u postgres createdb -O multi-gpt multi-gpt
+    sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
+  Schema anlegen/aktualisieren:
+    sudo mgpt-ctl migrate
+  Ersten Verwalter anlegen:
+    sudo mgpt-ctl createsuperuser
+  Die automatische Migration bei Installation/Aktualisierung lässt sich mit
+  MULTI_GPT_SKIP_MIGRATE=1 (in der Umgebung von apt/dpkg) abschalten.
+
+EOF
+}
+
+# Schema automatisch migrieren, wenn die Datenbank erreichbar ist.
+#
+# - Nicht erreichbar (Server aus, Datenbank/Rolle noch nicht angelegt, falsche
+#   DATABASE_URL): nur ein Hinweis, die Paketinstallation läuft weiter.
+# - Erreichbar, aber "migrate" schlägt fehl (z. B. Extension vector fehlt und
+#   die Rolle darf sie nicht anlegen): Warnung, ebenfalls kein Abbruch. Ein
+#   Fehler im postinst ließe das Paket "half-configured" zurück; jeder weitere
+#   apt-Lauf würde erneut daran scheitern, bis die Datenbank repariert ist –
+#   auch bei Aktualisierungen ganz anderer Pakete. Die Migration ist
+#   idempotent und lässt sich jederzeit mit "sudo mgpt-ctl migrate" nachholen.
+# - MULTI_GPT_SKIP_MIGRATE=1 in der Umgebung von apt/dpkg: überspringen.
+#
+# Die Erreichbarkeit wird mit einem festen Python-Ausdruck (keine Variablen,
+# keine Eingaben) über "mgpt-ctl shell -c" geprüft. PGCONNECT_TIMEOUT
+# begrenzt den Verbindungsaufbau (libpq/psycopg berücksichtigen die Variable,
+# sofern DATABASE_URL kein eigenes connect_timeout setzt; runuser in mgpt-ctl
+# reicht sie durch); "timeout" ist das Sicherheitsnetz, falls trotzdem etwas
+# hängt. Die .env bleibt unverändert.
+multi_gpt_migrate() {
+    if [ "${MULTI_GPT_SKIP_MIGRATE:-}" = "1" ]; then
+        echo
+        echo "multi-gpt: MULTI_GPT_SKIP_MIGRATE=1 – automatische Migration übersprungen."
+        echo "  Schema später aktualisieren: sudo mgpt-ctl migrate"
+        echo
+        return 0
+    fi
+
+    if ! _mgpt_err=$(PGCONNECT_TIMEOUT=5 timeout -k 5 60 "$MGPT_CTL" shell --no-imports \
+            -c 'from django.db import connection; connection.ensure_connection()' \
+            </dev/null 2>&1); then
+        echo
+        echo "multi-gpt: Datenbank nicht erreichbar – Schema wurde NICHT migriert."
+        _mgpt_last=$(printf '%s\n' "$_mgpt_err" | grep -v '^[[:space:]]*$' | tail -n 1 || true)
+        [ -z "$_mgpt_last" ] || echo "  Grund: $_mgpt_last"
+        multi_gpt_setup_hint
+        return 0
+    fi
+
+    echo
+    echo "multi-gpt: Datenbank erreichbar – Schema wird migriert (mgpt-ctl migrate) ..."
+    if PGCONNECT_TIMEOUT=5 "$MGPT_CTL" migrate --noinput </dev/null; then
+        echo "multi-gpt: Migration abgeschlossen."
+        if [ -z "${2:-}" ]; then
+            # Erstinstallation (keine zuvor konfigurierte Version).
+            echo "  Ersten Verwalter anlegen: sudo mgpt-ctl createsuperuser"
+        fi
+        echo
+    else
+        {
+            echo
+            echo "multi-gpt: WARNUNG: Migration fehlgeschlagen (siehe Ausgabe oben)."
+            echo "  Die Installation wird trotzdem abgeschlossen; der Dienst läuft ggf."
+            echo "  mit unvollständigem Schema. Ursache beheben, dann:"
+            echo "    sudo mgpt-ctl migrate"
+            echo "    sudo systemctl restart multi-gpt"
+        } >&2
+        multi_gpt_setup_hint
+    fi
+    return 0
+}
+
 if [ "$1" = "configure" ]; then
     if ! getent passwd multi-gpt >/dev/null; then
         adduser --system --group --home /var/lib/multi-gpt --no-create-home \
@@ -54,21 +134,17 @@ PY
         mv /etc/multi-gpt/.env.dpkg-new /etc/multi-gpt/.env
     fi
 
-    cat <<'EOF'
-
-multi-gpt: Datenbank und Schema werden NICHT automatisch eingerichtet.
-  Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
-  Lokale PostgreSQL-Datenbank (einmalig, mit pgvector):
-    sudo -u postgres createuser multi-gpt
-    sudo -u postgres createdb -O multi-gpt multi-gpt
-    sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
-  Schema anlegen/aktualisieren (nach jeder Installation/Aktualisierung):
-    sudo mgpt-ctl migrate
-  Ersten Verwalter anlegen:
-    sudo mgpt-ctl createsuperuser
-
-EOF
+    multi_gpt_migrate "$@"
 fi
+
+# Die Migration muss vor #DEBHELPER# stehen: dort fügt dh_installsystemd
+# (compat 13, Vorgabe --restart-after-upgrade) den Start bzw. beim Upgrade den
+# Neustart des Dienstes ein ("deb-systemd-invoke restart multi-gpt.service").
+# Beim Upgrade wird der Dienst im prerm NICHT gestoppt (der prerm-Stopp
+# greift nur bei "remove"); der alte Code läuft also während des Entpackens
+# und der Migration weiter und wird erst danach mit dem neuen Code und dem
+# fertigen Schema neu gestartet. Migrationen sollten daher mit dem kurz
+# weiterlaufenden alten Code verträglich sein.
 
 #DEBHELPER#
 
