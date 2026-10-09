@@ -268,6 +268,7 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 | `make worker` | Worker für Indexierung im Vordergrund starten |
 | `make reindex` | Alle Dokumente neu einbetten (nach Wechsel des Embedding-Modells) |
 | `make deb` | Debian-Paket bauen (`dpkg-buildpackage`), statische Dateien werden dabei gesammelt |
+| `make release VERSION=x.y.z` | Neue Version vorbereiten: setzt die Version in `pyproject.toml`, stellt einen Eintrag in `debian/changelog` voran (Commits seit dem letzten Tag), committet und setzt das Tag `v<VERSION>`. Danach `make deb` und `git push origin main v<VERSION>`. Ohne neue Version installiert apt kein Update. |
 | `make website` / `make website-serve` | Projekt-Website (Hugo, `docs/website/`) bauen bzw. lokal mit Live-Reload anzeigen |
 | `make deploy` | Website auf GitHub Pages veröffentlichen: prüft Build sowie Commit- und Push-Stand und startet den Workflow `website.yml` (braucht `gh` und ein Git-Remote) |
 
