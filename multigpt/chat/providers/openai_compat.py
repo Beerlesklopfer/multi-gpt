@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
+from datetime import UTC, date, datetime
 from urllib.parse import urlsplit
 
 import httpx
@@ -103,6 +104,29 @@ def _error_code(body: bytes) -> str:
     return f"{err.get('type') or '-'}/{err.get('code') or '-'}"
 
 
+def _model_not_found(model_id: str) -> str:
+    return (
+        f"Das Modell „{model_id}“ ist beim Anbieter nicht (mehr) verfügbar – es wurde "
+        "abgekündigt oder für diesen Zugang nicht freigeschaltet. Bitte ein anderes "
+        "Modell wählen."
+    )
+
+
+def _is_shut_down(item: dict, today: date) -> bool:
+    """OpenAI führt abgekündigte Modelle mit ``shutdown_date`` weiter in ``/models``."""
+    value = item.get("shutdown_date")
+    if not value:
+        return False
+    try:
+        if isinstance(value, int | float):
+            shutdown = datetime.fromtimestamp(value, tz=UTC).date()
+        else:
+            shutdown = date.fromisoformat(str(value)[:10])
+    except (ValueError, OverflowError, OSError):
+        return False
+    return shutdown <= today
+
+
 class OpenAICompatAdapter(ProviderAdapter):
     @property
     def base_url(self) -> str:
@@ -132,7 +156,12 @@ class OpenAICompatAdapter(ProviderAdapter):
             raise ProviderHTTPError(message, response.status_code)
         try:
             data = response.json().get("data") or []
-            return [str(item["id"]) for item in data if isinstance(item, dict) and "id" in item]
+            today = datetime.now(UTC).date()
+            return [
+                str(item["id"])
+                for item in data
+                if isinstance(item, dict) and "id" in item and not _is_shut_down(item, today)
+            ]
         except (ValueError, AttributeError, TypeError) as exc:
             raise ProviderError(MSG_INVALID_MODEL_LIST) from exc
 
@@ -227,6 +256,8 @@ class OpenAICompatAdapter(ProviderAdapter):
                         detail = "-"
                     self._log(f"HTTP {response.status_code}", detail)
                     message, retryable = http_error_message(response.status_code)
+                    if response.status_code == 404 and detail.endswith("/model_not_found"):
+                        message = _model_not_found(model_id)
                     yield Error(message, retryable=retryable)
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))

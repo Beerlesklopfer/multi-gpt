@@ -491,3 +491,38 @@ def test_history_with_tool_calls_and_results(mock):
         {"role": "tool", "tool_call_id": "call_a", "content": "Sonne"},
         {"role": "tool", "tool_call_id": "call_b", "content": "Fehler: Dienst aus"},
     ]
+
+
+# --- Abgekündigte Modelle ------------------------------------------------------
+
+
+def test_model_not_found_names_the_model(mock):
+    body = {
+        "error": {
+            "message": "The model `gpt-old` has been deprecated",
+            "type": "invalid_request_error",
+            "code": "model_not_found",
+        }
+    }
+    mock.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(404, json=body))
+    events = list(make_adapter().stream("gpt-old", [ChatMessage("user", "Hallo")]))
+    (error,) = events
+    assert isinstance(error, Error)
+    assert "„gpt-old“" in error.message
+    assert "nicht (mehr) verfügbar" in error.message
+    assert error.retryable is False
+
+
+def test_list_models_skips_shut_down_models(mock):
+    models = {
+        "object": "list",
+        "data": [
+            {"id": "gpt-current"},
+            {"id": "gpt-retired", "shutdown_date": "2020-01-01"},
+            {"id": "gpt-retired-epoch", "shutdown_date": 1577836800},
+            {"id": "gpt-soon", "shutdown_date": "2999-12-31"},
+            {"id": "gpt-odd", "shutdown_date": "kein Datum"},
+        ],
+    }
+    mock.get(f"{BASE}/models").mock(return_value=httpx.Response(200, json=models))
+    assert make_adapter().list_models() == ["gpt-current", "gpt-soon", "gpt-odd"]
