@@ -34,7 +34,7 @@ and code highlighting. On top of that there are family accounts with roles, encr
 keys, an admin area for administrators and a Debian package that sets up the database and
 schema itself.
 
-So far this has been tested with simulated providers; tests with real API keys and on a fresh
+It already runs for real with OpenAI, the other providers have been tested with simulations; tests with further keys and on a fresh
 Debian installation are still pending. There are no release packages yet. MCP tools with
 confirmation are included as well. Budgets, your own documents, web search, images and voice follow – details
 in the [roadmap]({{< relref "roadmap" >}}).

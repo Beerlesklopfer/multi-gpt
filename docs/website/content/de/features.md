@@ -22,15 +22,19 @@ menus:
 
 {{< status "done" "3 / 4 / 5" >}}
 
-Bisher mit simulierten Anbietern getestet, Ende-zu-Ende im Browser. Ein Test mit echten
-API-Keys steht noch aus.
+Ende-zu-Ende im Browser getestet, erste echte Gespräche mit OpenAI laufen.
 
 - Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche.
 - Das Modell lässt sich **pro Nachricht** wählen. Antworten erscheinen gestreamt,
   ein Knopf bricht ab, eine Antwort lässt sich neu erzeugen.
 - Anbieter werden per API-Key angebunden: OpenAI und alle OpenAI-kompatiblen Dienste
   (z. B. OpenRouter und LM Studio), dazu Anthropic und Google Gemini.
-- Modelle werden in der Verwaltung gepflegt oder per `make sync-models` beim Anbieter abgefragt.
+- In der Verwaltung prüft „Verbindung jetzt prüfen“ einen Anbieter und nennt bei Problemen
+  die Ursache, etwa „Verbindung abgelehnt“, „API-Key prüfen“ oder „Basis-URL prüfen“. Die
+  Modelle des Anbieters lassen sich aus seiner Liste auswählen („Modelle auswählen“ bzw. eine
+  Auswahlliste am Feld Modell-ID). Abgekündigte Modelle werden nicht mehr angeboten.
+- **In Arbeit:** eigene Nachrichten bearbeiten wie in ChatGPT. Bearbeiten und „Neu erzeugen“
+  legen Versionen an, „‹ 1/2 ›“ schaltet zwischen ihnen um. Frühere Fassungen bleiben erhalten.
 - Markdown mit Code-Hervorhebung und Kopierknopf. Die Bibliotheken sind lokal eingebunden,
   die Ausgabe wird bereinigt.
 - Automatische Chattitel, System-Prompt pro Chat, Export als Markdown.

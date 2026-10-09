@@ -34,7 +34,7 @@ und LM Studio im Heimnetz, mit gestreamten Antworten, Modellwahl pro Nachricht, 
 Code-Hervorhebung. Dazu kommen Familienkonten mit Rollen, verschlüsselte API-Keys, eine
 Verwaltung für Verwalter und ein Debian-Paket, das Datenbank und Schema selbst einrichtet.
 
-Getestet ist das bisher mit simulierten Anbietern; Tests mit echten API-Keys und einer
+Mit OpenAI läuft es bereits echt, die übrigen Anbieter sind bisher simuliert getestet; Tests mit weiteren Keys und einer
 frischen Debian-Installation stehen noch aus. Fertige Release-Pakete gibt es noch nicht.
 MCP-Werkzeuge mit Rückfrage sind ebenfalls dabei. Budgets, eigene Dokumente, Websuche, Bilder und
 Sprache folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).

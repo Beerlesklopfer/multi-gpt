@@ -21,15 +21,19 @@ menus:
 
 {{< status "done" "3 / 4 / 5" >}}
 
-Tested with simulated providers so far, end to end in the browser. A test with real API keys
-is still pending.
+Tested end to end in the browser; the first real conversations with OpenAI work.
 
 - Chat list in the sidebar: new, rename, archive, delete, search.
 - The model can be chosen **per message**. Answers are streamed, a button stops them,
   and an answer can be regenerated.
 - Providers are connected via API key: OpenAI and all OpenAI-compatible services
   (e.g. OpenRouter and LM Studio), plus Anthropic and Google Gemini.
-- Models are maintained in the admin area or fetched from the provider with `make sync-models`.
+- In the admin area, “check connection now” tests a provider and names the cause of a
+  problem, e.g. “connection refused”, “check the API key” or “check the base URL”. Models can
+  be picked from the provider's own list (“select models”, or a drop-down on the model ID
+  field). Deprecated models are no longer offered.
+- **In progress:** editing your own messages as in ChatGPT. Editing and “regenerate” create
+  versions, and “‹ 1/2 ›” switches between them. Earlier versions are kept.
 - Markdown with code highlighting and a copy button. The libraries are bundled locally and
   the output is sanitised.
 - Automatic chat titles, a system prompt per chat, export as Markdown.

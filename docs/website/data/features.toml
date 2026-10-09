@@ -28,8 +28,8 @@
     de = "Ein Chat, viele Anbieter"
     en = "One chat, many providers"
   [items.text]
-    de = "OpenAI, Anthropic, Google Gemini, OpenRouter und andere OpenAI-kompatible Dienste über eigene API-Keys. Antworten kommen gestreamt, das Modell lässt sich pro Nachricht wechseln. Bisher mit simulierten Anbietern getestet."
-    en = "OpenAI, Anthropic, Google Gemini, OpenRouter and other OpenAI-compatible services via your own API keys. Answers are streamed, and the model can be switched per message. Tested with simulated providers so far."
+    de = "OpenAI, Anthropic, Google Gemini, OpenRouter und andere OpenAI-kompatible Dienste über eigene API-Keys. Antworten kommen gestreamt, das Modell lässt sich pro Nachricht wechseln. Mit OpenAI im echten Einsatz, die übrigen Anbieter bisher simuliert getestet."
+    en = "OpenAI, Anthropic, Google Gemini, OpenRouter and other OpenAI-compatible services via your own API keys. Answers are streamed, and the model can be switched per message. Running with OpenAI for real; the other providers have been tested with simulations so far."
 
 [[items]]
   status = "done"
