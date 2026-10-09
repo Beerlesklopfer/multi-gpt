@@ -70,6 +70,7 @@ from .base import (
     Usage,
     exception_to_error,
     http_error_message,
+    is_key_expired,
     is_unreachable,
     new_tool_call_id,
     normalize_tools,
@@ -198,9 +199,12 @@ class OpenAICompatAdapter(ProviderAdapter):
         with httpx.Client(timeout=timeout) as client:
             response = client.get(f"{self.base_url}/models", headers=self._headers())
         if response.status_code != 200:
-            message, _ = http_error_message(response.status_code)
+            message, _ = http_error_message(response.status_code, response.content)
             raise ProviderHTTPError(
-                message, response.status_code, code=provider_error_code(response.content)
+                message,
+                response.status_code,
+                code=provider_error_code(response.content),
+                expired=is_key_expired(response.status_code, response.content),
             )
         try:
             data = response.json().get("data") or []
@@ -261,10 +265,17 @@ class OpenAICompatAdapter(ProviderAdapter):
                     if response.status_code != 200:
                         detail = _error_code(response.content)
                         self._log(f"Embeddings HTTP {response.status_code}", detail)
-                        message, retryable = http_error_message(response.status_code)
+                        message, retryable = http_error_message(
+                            response.status_code, response.content
+                        )
                         if response.status_code == 404 and detail.endswith("/model_not_found"):
                             message = _model_not_found(model_id)
-                        raise ProviderHTTPError(message, response.status_code, retryable=retryable)
+                        raise ProviderHTTPError(
+                            message,
+                            response.status_code,
+                            retryable=retryable,
+                            expired=is_key_expired(response.status_code, response.content),
+                        )
                     try:
                         payload = response.json()
                     except ValueError as exc:
@@ -328,17 +339,20 @@ class OpenAICompatAdapter(ProviderAdapter):
         if response.status_code != 200:
             detail = _error_code(response.content)
             self._log(f"Bildanfrage HTTP {response.status_code}", detail)
-            message, retryable = http_error_message(response.status_code)
+            message, retryable = http_error_message(response.status_code, response.content)
+            expired = is_key_expired(response.status_code, response.content)
             if response.status_code == 404 and detail.endswith("/model_not_found"):
                 message = _model_not_found(model_id)
-            elif not (self.provider.api_key or "").strip():
+            elif not expired and not (self.provider.api_key or "").strip():
                 # Lokaler Anbieter ohne Key: dessen Text nennt die eigentliche Ursache
                 # (z. B. LM Studio „Failed to load model …“). Ladefehler sind vorübergehend.
                 text = _provider_text(response.content)
                 if text:
                     message = f"{message} LM Studio meldet: {text}"
                     retryable = retryable or "load" in text.lower()
-            raise ProviderHTTPError(message, response.status_code, retryable=retryable)
+            raise ProviderHTTPError(
+                message, response.status_code, retryable=retryable, expired=expired
+            )
         try:
             choice = response.json()["choices"][0]
             content = choice["message"]["content"]
@@ -421,11 +435,12 @@ class OpenAICompatAdapter(ProviderAdapter):
             ):
                 if response.status_code != 200:
                     try:
-                        detail = _error_code(response.read())
+                        error_body = response.read()
                     except Exception:
-                        detail = "-"
+                        error_body = b""
+                    detail = _error_code(error_body)
                     self._log(f"HTTP {response.status_code}", detail)
-                    message, retryable = http_error_message(response.status_code)
+                    message, retryable = http_error_message(response.status_code, error_body)
                     if response.status_code == 404 and detail.endswith("/model_not_found"):
                         message = _model_not_found(model_id)
                     yield Error(message, retryable=retryable)

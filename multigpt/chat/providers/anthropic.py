@@ -76,6 +76,7 @@ from .base import (
     exception_to_error,
     group_turns,
     http_error_message,
+    is_key_expired,
     normalize_tools,
     parse_tool_arguments,
     provider_error_code,
@@ -103,10 +104,10 @@ MSG_OVERLOADED = "Der Anbieter ist derzeit überlastet. Bitte später erneut ver
 _RETRYABLE_STREAM_ERRORS = {"overloaded_error", "api_error", "rate_limit_error", "timeout_error"}
 
 
-def _http_error(status: int) -> tuple[str, bool]:
+def _http_error(status: int, body: bytes = b"") -> tuple[str, bool]:
     if status == 529:
         return MSG_OVERLOADED, True
-    return http_error_message(status)
+    return http_error_message(status, body)
 
 
 def _error_type(body: bytes) -> str:
@@ -145,9 +146,12 @@ class AnthropicAdapter(ProviderAdapter):
                     f"{self.base_url}/models", params=query, headers=self._headers()
                 )
                 if response.status_code != 200:
-                    message, _ = _http_error(response.status_code)
+                    message, _ = _http_error(response.status_code, response.content)
                     raise ProviderHTTPError(
-                        message, response.status_code, code=provider_error_code(response.content)
+                        message,
+                        response.status_code,
+                        code=provider_error_code(response.content),
+                        expired=is_key_expired(response.status_code, response.content),
                     )
                 try:
                     page = response.json()
@@ -231,11 +235,12 @@ class AnthropicAdapter(ProviderAdapter):
             ):
                 if response.status_code != 200:
                     try:
-                        detail = _error_type(response.read())
+                        error_body = response.read()
                     except Exception:
-                        detail = "-"
+                        error_body = b""
+                    detail = _error_type(error_body)
                     self._log(f"HTTP {response.status_code}", detail)
-                    message, retryable = _http_error(response.status_code)
+                    message, retryable = _http_error(response.status_code, error_body)
                     yield Error(message, retryable=retryable)
                     return
                 parser = _EventParser(emit_tool_calls=bool(specs))

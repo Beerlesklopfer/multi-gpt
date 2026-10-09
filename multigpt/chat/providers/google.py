@@ -62,6 +62,7 @@ from .base import (
     FINISH_TOOL_CALLS,
     MSG_INTERRUPTED,
     MSG_INVALID_MODEL_LIST,
+    MSG_KEY_EXPIRED,
     MSG_STREAM_ERROR,
     MSG_TOOL_ARGUMENTS,
     ChatMessage,
@@ -79,6 +80,7 @@ from .base import (
     exception_to_error,
     group_turns,
     http_error_message,
+    is_key_expired,
     new_tool_call_id,
     normalize_tools,
     provider_error_code,
@@ -151,7 +153,10 @@ def _parse_error(body: bytes) -> tuple[str, str]:
     return str(err.get("status") or "-"), reason
 
 
-def _http_error(status: int, reason: str) -> tuple[str, bool]:
+def _http_error(status: int, reason: str, body: bytes = b"") -> tuple[str, bool]:
+    if is_key_expired(status, body):
+        # Abgelaufener Key: 400 mit ``API_KEY_INVALID`` und Text „API key expired“.
+        return MSG_KEY_EXPIRED, False
     if status == 400 and reason == "API_KEY_INVALID":
         # Gemini meldet einen falschen Key als 400, nicht 401.
         return http_error_message(401)
@@ -190,12 +195,15 @@ class GoogleAdapter(ProviderAdapter):
                 )
                 if response.status_code != 200:
                     _, reason = _parse_error(response.content)
-                    message, _ = _http_error(response.status_code, reason)
+                    message, _ = _http_error(response.status_code, reason, response.content)
                     status = response.status_code
                     if status == 400 and reason == "API_KEY_INVALID":
                         status = 401  # falscher Key, siehe _http_error
                     raise ProviderHTTPError(
-                        message, status, code=provider_error_code(response.content)
+                        message,
+                        status,
+                        code=provider_error_code(response.content),
+                        expired=is_key_expired(response.status_code, response.content),
                     )
                 try:
                     page = response.json()
@@ -294,11 +302,12 @@ class GoogleAdapter(ProviderAdapter):
             ):
                 if response.status_code != 200:
                     try:
-                        status, reason = _parse_error(response.read())
+                        error_body = response.read()
                     except Exception:
-                        status, reason = "-", "-"
+                        error_body = b""
+                    status, reason = _parse_error(error_body)
                     self._log(f"HTTP {response.status_code}", f"{status}/{reason}")
-                    message, retryable = _http_error(response.status_code, reason)
+                    message, retryable = _http_error(response.status_code, reason, error_body)
                     yield Error(message, retryable=retryable)
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))

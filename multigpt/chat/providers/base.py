@@ -339,8 +339,59 @@ MSG_UNEXPECTED = "Unerwarteter Fehler bei der Anfrage an den Anbieter."
 MSG_STREAM_ERROR = "Der Anbieter hat die Antwort mit einem Fehler abgebrochen."
 
 
-def http_error_message(status: int) -> tuple[str, bool]:
-    """Deutscher Text und ``retryable`` zu einem HTTP-Status des Anbieters."""
+MSG_KEY_EXPIRED = (
+    "Der API-Key ist abgelaufen. Bitte beim Anbieter einen neuen Key erzeugen und "
+    "im Admin beim Anbieter eintragen."
+)
+
+# Statuscodes, mit denen Anbieter einen abgelaufenen Key melden (Gemini: 400).
+_KEY_EXPIRED_STATUS = (400, 401, 403)
+
+
+def _error_strings(body: bytes) -> list[str]:
+    """Code-, Typ- und Textfelder einer JSON-Fehlerantwort (nur zur Auswertung)."""
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    err = data.get("error")
+    if isinstance(err, str):
+        return [err]
+    if not isinstance(err, dict):
+        return [str(data.get("message") or "")]
+    values = [err.get(key) for key in ("message", "code", "type", "status")]
+    for detail in err.get("details") or []:
+        if isinstance(detail, dict):
+            values.append(detail.get("reason"))
+    return [str(v) for v in values if v]
+
+
+def is_key_expired(status: int, body: bytes) -> bool:
+    """Meldet der Anbieter einen abgelaufenen Key bzw. Token?
+
+    Kein Anbieter hat dafür einen eigenen Status: Gemini schickt 400 mit
+    ``API_KEY_INVALID`` und dem Text „API key expired“, Anthropic (OAuth) 401
+    mit „token has expired“. Ausgewertet werden daher Codes und Text – der
+    Text wird nur geprüft, nie angezeigt.
+    """
+    if status not in _KEY_EXPIRED_STATUS:
+        return False
+    for value in _error_strings(body):
+        text = value.lower()
+        if "expired" in text and ("key" in text or "token" in text):
+            return True
+    return False
+
+
+def http_error_message(status: int, body: bytes = b"") -> tuple[str, bool]:
+    """Deutscher Text und ``retryable`` zu einem HTTP-Status des Anbieters.
+
+    ``body``: Fehlerantwort, um einen abgelaufenen Key zu erkennen.
+    """
+    if is_key_expired(status, body):
+        return MSG_KEY_EXPIRED, False
     if status in (401, 403):
         return "Der Anbieter hat den Zugang abgelehnt. Bitte den API-Key prüfen.", False
     if status == 402:
@@ -397,9 +448,18 @@ def is_unreachable(exc: BaseException) -> bool:
 class ProviderHTTPError(ProviderError):
     """``ProviderError`` mit dem HTTP-Status der Anbieterantwort (für ``check``)."""
 
-    def __init__(self, message: str, status: int, *, retryable: bool = False, code: str = ""):
+    def __init__(
+        self,
+        message: str,
+        status: int,
+        *,
+        retryable: bool = False,
+        code: str = "",
+        expired: bool = False,
+    ):
         super().__init__(message, retryable=retryable)
         self.status = status
+        self.expired = expired  # API-Key abgelaufen (siehe ``is_key_expired``)
         # Maschinenlesbarer Fehlercode des Anbieters (z. B. ``insufficient_permissions``),
         # nur für die Anzeige im Admin; nie der Fehlertext (kann Key-Teile enthalten).
         self.code = safe_error_code(code)
@@ -480,6 +540,10 @@ CHECK_READ_TIMEOUT = "Zeitüberschreitung: {endpoint} hat nicht rechtzeitig gean
 CHECK_INTERRUPTED = "Verbindung abgebrochen: {endpoint} hat die Verbindung unerwartet beendet."
 CHECK_BAD_URL = "Ungültige Basis-URL: Bitte die Adresse prüfen (z. B. http://rechner:1234/v1)."
 CHECK_AUTH = "Zugang abgelehnt (HTTP {status}): Bitte den API-Key prüfen."
+CHECK_KEY_EXPIRED = (
+    "API-Key abgelaufen (HTTP {status}): Bitte beim Anbieter einen neuen Key erzeugen "
+    "und hier eintragen."
+)
 CHECK_PAYMENT = "Kein Guthaben (HTTP 402): Beim Anbieter ist kein Guthaben mehr vorhanden."
 CHECK_NOT_FOUND = (
     "Adresse nicht gefunden (HTTP 404): Bitte die Basis-URL prüfen – fehlt z. B. „/v1“?"
@@ -561,6 +625,8 @@ def check_error_message(exc: BaseException, url: str) -> str:
     host, endpoint = endpoint_of(url)
     if isinstance(exc, ProviderHTTPError):
         status = exc.status
+        if exc.expired:
+            return CHECK_KEY_EXPIRED.format(status=status)
         if status in (401, 403):
             message = CHECK_AUTH.format(status=status)
             return f"{message} (Code des Anbieters: {exc.code})" if exc.code else message
