@@ -251,8 +251,16 @@ def parse_olmocr(raw: str) -> OlmOcrPage:
 # --- olmOCR über den Anbieter ---------------------------------------------------------
 
 
+MSG_NO_VISION = (
+    " – das Modell hat das Seitenbild abgelehnt; vermutlich kann es keine Bilder lesen "
+    "(kein Vision-Modell). Für OCR ein Vision-Modell wie allenai/olmocr-2-7b wählen."
+)
+
+
 def _provider_error(exc: ProviderError) -> OcrError:
     message = f"OCR-Modell: {exc or MSG_FAILED}"
+    if getattr(exc, "status", None) == 400:
+        message += MSG_NO_VISION
     if getattr(exc, "truncated", False):
         return OcrError(message, page_only=True)
     return OcrError(

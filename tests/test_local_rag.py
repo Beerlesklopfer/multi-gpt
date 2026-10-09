@@ -760,3 +760,14 @@ def test_overview_shows_ocr_and_dimension(admin_client, nomic, olmocr_model, lms
     assert "Vektordimension" in html and "768" in html
     assert "search_document:" in html
     assert "online" in html
+
+
+def test_ocr_http_400_hints_at_non_vision_model():
+    from multigpt.chat.providers.base import ProviderHTTPError
+    from multigpt.chat.rag.ocr import _provider_error
+
+    error = _provider_error(ProviderHTTPError("Anfrage abgelehnt (HTTP 400).", 400))
+    assert "kein Vision-Modell" in str(error)
+    assert "olmocr" in str(error)
+    other = _provider_error(ProviderHTTPError("Serverfehler (HTTP 500).", 500, retryable=True))
+    assert "Vision" not in str(other)
