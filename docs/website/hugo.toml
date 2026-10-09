@@ -4,7 +4,7 @@
 # PLATZHALTER: Die endgültige Adresse steht noch nicht fest. Beim Veröffentlichen
 # über GitHub Pages setzt der Workflow (.github/workflows/website.yml) die
 # baseURL per --baseURL; dieser Wert gilt nur für lokale Builds ohne Server.
-baseURL = "https://example.invalid/multi-gpt/"
+baseURL = "https://beerlesklopfer.github.io/multi-gpt/"
 
 title = "MultiGPT"
 
@@ -19,13 +19,8 @@ enableRobotsTXT = true
 disableHugoGeneratorInject = true
 
 [params]
-  # PLATZHALTER: URL des GitHub-Repositorys, z. B.
-  #   repoURL = "https://github.com/<konto>/multi-gpt"
-  # Solange leer, zeigt die Seite "Repository folgt" statt eines Links.
-  repoURL = ""
-  # PLATZHALTER: Lizenz ist noch nicht festgelegt. Erst eintragen, wenn im
-  # Repository eine LICENSE-Datei liegt (z. B. license = "MIT").
-  # Solange leer, zeigt die Seite "Lizenz: noch offen".
+  # GitHub-Repository und Lizenz (LICENSE im Repository).
+  repoURL = "https://github.com/Beerlesklopfer/multi-gpt"
   license = "AGPL-3.0-or-later"
 
 [languages]
