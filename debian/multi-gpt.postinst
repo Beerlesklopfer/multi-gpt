@@ -10,6 +10,40 @@ NGINX_SITE=multi-gpt
 # (postrm stellt sie bei remove/purge wieder her).
 DEFAULT_SITE_MARK=/var/lib/multi-gpt/nginx-default-site-disabled
 SNAKEOIL_CERT=/etc/ssl/certs/ssl-cert-snakeoil.pem
+
+# Fehlende oder leere Pflichtschlüssel in $ENV_FILE ergänzen (angehängt, mit
+# Kommentar). Geheimnisse werden zufällig erzeugt; vorhandene Werte bleiben.
+# Achtung: FIELD_ENCRYPTION_KEY wird nur gesetzt, wenn er ganz fehlt – ein
+# vorhandener Schlüssel darf nie ersetzt werden (sonst sind gespeicherte
+# API-Keys nicht mehr lesbar).
+multi_gpt_ensure_env_keys() {
+    _added=""
+    for _key in SECRET_KEY FIELD_ENCRYPTION_KEY DATABASE_URL MEDIA_ROOT; do
+        if grep -Eq "^${_key}=.+" "$ENV_FILE"; then
+            continue
+        fi
+        case "$_key" in
+            SECRET_KEY)
+                _value=$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))') ;;
+            FIELD_ENCRYPTION_KEY)
+                _value=$(python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())') ;;
+            DATABASE_URL)
+                _value=postgres:///multi-gpt ;;
+            MEDIA_ROOT)
+                _value=/var/lib/multi-gpt/media ;;
+        esac
+        if [ -z "$_added" ]; then
+            printf '\n# Ergänzt vom Paket multi-gpt (Pflichtschlüssel fehlten)\n' >> "$ENV_FILE"
+        fi
+        # Eine leere Zeile "KEY=" vorher entfernen, damit der Schlüssel eindeutig ist.
+        sed -i "/^${_key}=\$/d" "$ENV_FILE"
+        printf '%s=%s\n' "$_key" "$_value" >> "$ENV_FILE"
+        _added="$_added $_key"
+    done
+    if [ -n "$_added" ]; then
+        echo "multi-gpt: In $ENV_FILE fehlten Pflichtschlüssel, ergänzt:$_added"
+    fi
+}
 SNAKEOIL_KEY=/etc/ssl/private/ssl-cert-snakeoil.key
 
 multi_gpt_setup_hint() {
@@ -596,6 +630,13 @@ PY
         chmod 0640 "$ENV_FILE.dpkg-new"
         mv "$ENV_FILE.dpkg-new" "$ENV_FILE"
     fi
+
+    # Eine vorab von Hand angelegte .env (z. B. nur mit RAG_SOURCE_ROOTS) wird
+    # nicht überschrieben – aber fehlende Pflichtschlüssel werden ergänzt, sonst
+    # starten die Dienste nicht. Vorhandene Werte bleiben unangetastet.
+    multi_gpt_ensure_env_keys
+    chown root:multi-gpt "$ENV_FILE"
+    chmod 0640 "$ENV_FILE"
 
     multi_gpt_setup_nginx
 

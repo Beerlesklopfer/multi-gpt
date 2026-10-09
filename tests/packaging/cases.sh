@@ -161,6 +161,21 @@ check "Site nicht aktiviert" test ! -e "$R/etc/nginx/sites-enabled/multi-gpt"
 check "default unverändert" test -L "$R/etc/nginx/sites-enabled/default"
 check ".env trotzdem gesetzt" test "$(envv SECURE_COOKIES)" = True
 
+echo "L: vorab angelegte .env ohne Pflichtschlüssel (z. B. nur RAG_SOURCE_ROOTS)"
+new_root
+printf 'RAG_SOURCE_ROOTS="/srv/n8n"\nSECRET_KEY=\nFIELD_ENCRYPTION_KEY=vorhanden-bleibt=\n' > "$R/etc/multi-gpt/.env"
+dash -c '. "$1"; multi_gpt_ensure_env_keys' sh "$R/postinst.funcs" > "$R/out" 2>&1
+check "Lauf ohne Fehler" test $? -eq 0
+check "SECRET_KEY ergänzt" sh -c "grep -Eq '^SECRET_KEY=.{40,}' '$R/etc/multi-gpt/.env'"
+check "leere SECRET_KEY-Zeile entfernt" sh -c "[ \$(grep -c '^SECRET_KEY=' '$R/etc/multi-gpt/.env') -eq 1 ]"
+check "FIELD_ENCRYPTION_KEY unverändert" test "$(envv FIELD_ENCRYPTION_KEY)" = "vorhanden-bleibt="
+check "DATABASE_URL ergänzt" test "$(envv DATABASE_URL)" = "postgres:///multi-gpt"
+check "MEDIA_ROOT ergänzt" test "$(envv MEDIA_ROOT)" = "/var/lib/multi-gpt/media"
+check "RAG_SOURCE_ROOTS bleibt" grep -q '^RAG_SOURCE_ROOTS="/srv/n8n"' "$R/etc/multi-gpt/.env"
+check "Hinweis ausgegeben" grep -q "fehlten Pflichtschlüssel" "$R/out"
+dash -c '. "$1"; multi_gpt_ensure_env_keys' sh "$R/postinst.funcs" > "$R/out2" 2>&1
+check "zweiter Lauf ändert nichts" sh -c "! grep -q fehlten '$R/out2'"
+
 echo
 echo "Fehlschläge: $FAILS"
 rm -rf "$T"/root.* "$T/last-good-root"
