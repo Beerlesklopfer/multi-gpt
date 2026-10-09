@@ -1,4 +1,5 @@
 **MultiGPT-Wiki**
+- [Konfiguration (.env)](Konfiguration)
 
 - [Startseite](Home)
 

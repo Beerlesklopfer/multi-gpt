@@ -16,6 +16,7 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
     und Fehlersuche
   - [Verzeichnisquellen](RAG-Verzeichnisquellen): NAS-Ordner regelmäßig in eine Sammlung
     einlesen
+- [Konfiguration](Konfiguration): alle Schlüssel in `/etc/multi-gpt/.env` mit Standardwerten und Bedeutung
 - [SearXNG als Such-Backend](SearXNG): wozu MultiGPT eine Suchmaschine braucht, welche Variante
   passt, Test, Eintragen in MultiGPT und Fehlersuche
   - [Variante a) SearXNG mit Docker](SearXNG-Docker)

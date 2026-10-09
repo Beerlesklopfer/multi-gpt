@@ -75,6 +75,8 @@ und den Worker neu starten: `sudo systemctl restart multi-gpt-worker`.
 
 Alle Werte sind optional; ohne Eintrag gilt die Grundeinstellung.
 
+Die vollständige Liste **aller** Schlüssel (Datenbank, Netz, Login-Sperre, gunicorn, Entwicklung) steht auf der Seite [Konfiguration](Konfiguration). Hier nur die für Dokumente:
+
 | Variable | Grundeinstellung | Wirkung |
 |---|---|---|
 | `DOCUMENT_MAX_UPLOAD_MB` | `25` | Höchstgröße je hochgeladenem Dokument in MB |
