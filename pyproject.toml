@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,9 @@ name = "multi-gpt"
 version = "0.1.0"
 description = "Lokales Multi-KI-Chatsystem für die Familie"
 requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Joerg Bernau", email = "joerg@bernau.family" }]
 dependencies = [
     "django>=5.2,<5.3",
     "django-environ>=0.12",

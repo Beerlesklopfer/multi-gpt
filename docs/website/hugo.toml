@@ -26,7 +26,7 @@ disableHugoGeneratorInject = true
   # PLATZHALTER: Lizenz ist noch nicht festgelegt. Erst eintragen, wenn im
   # Repository eine LICENSE-Datei liegt (z. B. license = "MIT").
   # Solange leer, zeigt die Seite "Lizenz: noch offen".
-  license = ""
+  license = "AGPL-3.0-or-later"
 
 [languages]
   [languages.de]
