@@ -145,8 +145,8 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 - **M7-01** `Collection`, `Document`, Freigaben an Gruppen. Upload mit Prüfung von Dateityp und Größe, Dateinamen werden nicht übernommen.
 - **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
-- **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings. OCR nur, wenn Frage 4c es verlangt.
-- **M7-04** Migration für `Chunk` mit fester Vektordimension und HNSW-Index (Kosinus). `make reindex`.
+- **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings über OpenAI. **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
+- **M7-04** Migration für `Chunk` mit fester Vektordimension (aus dem gewählten OpenAI-Embedding-Modell) und HNSW-Index (Kosinus). `make reindex`.
 - **M7-05** Abfrage: Top 6 mit Zugriffsfilter **in der SQL-Abfrage selbst**, optional zusätzlich Volltextsuche. Quellen mit Seitenangabe unter der Antwort.
 - **M7-06** RAG-Suche zusätzlich als Werkzeug für werkzeugfähige Modelle.
 - **M7-07** Tests: Zerteilung, Trefferqualität, Zugriffsgrenzen (fremde private Sammlung ist nie im Ergebnis), Entzug einer Freigabe wirkt sofort, Worker-Wiederholung.
@@ -164,7 +164,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 *Abhängig von: M4a, Frage 4e.*
 
 - **M9-01** `generate_image` für den gewählten Anbieter. Modus "Bild" mit Formatwahl, Ergebnis als `Attachment`.
-- **M9-02** `edit_image`: Bereich auf einer Zeichenfläche markieren, Maske mitsenden, außerdem Varianten.
+- **M9-02** `edit_image` über OpenAI: Bereich auf einer Zeichenfläche markieren, Maske mitsenden, außerdem Varianten. Vorher in der aktuellen API-Dokumentation prüfen, welches Modell das kann.
 - **M9-03** MCP-Server `mcp_bildwerkzeuge` (Pillow, `stdio`): Zuschneiden, Skalieren, Drehen, Umwandeln, Füllen, Text, Collage. Er arbeitet nur im Arbeitsordner des jeweiligen Nutzers.
 - **M9-04** Geschützte Auslieferung der Medien nur nach Besitzprüfung, mit nginx über `X-Accel-Redirect`, ohne nginx über `FileResponse`.
 - **M9-05** Tests: jede Pillow-Funktion, kein Zugriff außerhalb des Arbeitsordners, das Original bleibt erhalten.
@@ -204,7 +204,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | Risiko | Auswirkung | Gegenmaßnahme |
 |---|---|---|
 | MCP-SDK ist async, die App läuft synchron | Hängende Threads, Verbindungslecks bei `stdio`-Servern, doppelt gestartete Server | Ein Loop-Thread je Prozess, Mutexe für Start und Verbindungsaufbau, Timeouts auf jedem `future.result()`, Aufräumen in `worker_exit` (M4a-01). Tests mit parallelen Aufrufen aus mehreren Threads |
-| Kaum Bild-APIs mit Masken-Inpainting | M9-02 nicht oder nur für einen Anbieter umsetzbar | Frage 4e früh klären. M9-02 notfalls nach v2 verschieben |
+| Inpainting nur bei einem Anbieter (OpenAI) | Fällt OpenAI aus oder ändert die API, fehlt Inpainting | Fähigkeit je Modell im Admin markieren, Adapter gekapselt. Ein zweiter Anbieter ist später nachrüstbar |
 | Gunicorn-Threads durch lange Streams belegt | Neue Anfragen warten | Thread-Zahl über Env konfigurierbar, Auslastung in M6 beobachten |
 | Anbieter-APIs ändern sich | Adapter brechen | Laut Plan vor jedem Adapter die aktuelle Dokumentation lesen, Tests mit aufgezeichneten Antworten |
 | Prompt-Injection über Webinhalte, Dokumente oder Werkzeugergebnisse | Unerwünschte Werkzeugaufrufe | Rückfragepflicht wird serverseitig erzwungen und hängt nie von Modellinhalten ab (Test in M4a-07) |
@@ -218,15 +218,15 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 1 – Welches NAS? | – | **Geklärt:** Debian/Ubuntu mit apt, das `.deb` ist der Betriebsweg |
 | 4 – PostgreSQL + pgvector vorhanden? | – | **Geklärt:** vorhanden, wird genutzt |
 | 5b – Eine Familie oder mehrere Haushalte? | – | **Geklärt:** eine Familie, keine Mandantentrennung |
-| 5 – Konten, Alter der Kinder | M2 (Startrollen) | Startrollen sind anpassbar, blockiert also nur schwach |
+| 5 – Konten, Alter der Kinder | – | **Geklärt:** 2 Erwachsene und Jugendliche, die vier Startrollen passen |
 | 3 – Anbieter zum Start | – | **Geklärt:** OpenRouter, OpenAI, Anthropic, Gemini |
 | 1a – LM-Studio-Rechner | M4 | |
 | 4d – MCP-Server zum Start | M4a (Abnahme) | Ein Testserver genügt |
 | 5a – Einsicht in Jugendlichen-Chats | – | **Geklärt:** Option je Konto, standardmäßig aus |
-| 4b – Anbieter für Embedding, STT, TTS, Bild | M7, M9, M10 | Das Embedding-Modell legt die Vektordimension fest |
-| 4c – Sprache der Dokumente, OCR? | M7 | |
+| 4b – Anbieter für Embedding, STT, TTS, Bild | – | **Geklärt:** OpenAI für alles. Das Modell wird in M7 festgelegt und bestimmt die Vektordimension |
+| 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans, OCR mit Tesseract in v1 |
 | 4a – SearXNG oder Such-API | – | **Geklärt:** beides, umschaltbar |
-| 4e – Inpainting-Anbieter | M9 | |
+| 4e – Inpainting-Anbieter | – | **Geklärt:** OpenAI |
 | 2 – Reverse Proxy, Hostname, TLS | M10, M11 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
 
 ---
@@ -246,4 +246,4 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 - **Nach M1 zu entscheiden:**
   - Automatische Migration im postinst? Derzeit nicht: `dh_installsystemd` startet den Dienst schon vor `mgpt-ctl migrate`.
   - `/healthz/` von der `ALLOWED_HOSTS`-Prüfung und vom ERROR-Logging bei 503 ausnehmen?
-- Die Fragen 1, 3, 4, 4a, 5a und 5b sind geklärt, Frage 2 teilweise. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.
+- Die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b sind geklärt, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.

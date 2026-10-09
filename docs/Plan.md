@@ -293,10 +293,10 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 3. ~~Anbieter zum Start?~~ **Geklärt (2026-10-09):** OpenRouter, OpenAI, Anthropic und Google Gemini. Damit sind alle drei Adapterarten (`openai_compat`, `anthropic`, `google`) zum Start im Einsatz.
 4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
 4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** Beides, umschaltbar in den Einstellungen.
-4b. Welche Anbieter für Embeddings, Spracherkennung, Sprachausgabe und Bilder? Nicht jeder Chat-Anbieter bietet alle vier.
-4c. Sind die Dokumente für RAG überwiegend deutsch, und gibt es gescannte PDFs (dann wird Texterkennung/OCR nötig)?
+4b. ~~Anbieter für Embeddings, Sprache, Bilder?~~ **Geklärt (2026-10-09):** OpenAI für alle vier: Embeddings, Spracherkennung, Sprachausgabe und Bilder. Das konkrete Embedding-Modell und damit die Vektordimension werden in M7 nach der aktuellen API-Dokumentation festgelegt.
+4c. ~~Sprache der Dokumente, OCR?~~ **Geklärt (2026-10-09):** Überwiegend deutsch, auch gescannte PDFs. OCR ist Teil von v1 (Tesseract mit deutschem Sprachpaket im Worker).
 4d. Welche MCP-Server sollen zum Start angebunden werden (außer den mitgelieferten), und laufen schon welche im Intranet?
-4e. Welcher Anbieter für Inpainting und Varianten? Das ist die Engstelle: nur wenige Bild-APIs unterstützen Masken.
-5. Wer gehört zur Familie (Anzahl Konten, Alter der Kinder)? Davon hängt ab, ob die vier Startrollen passen.
+4e. ~~Anbieter für Inpainting?~~ **Geklärt (2026-10-09):** OpenAI (Bildbearbeitung mit Maske). Vor M9 in der aktuellen API-Dokumentation prüfen, welches Modell Masken und Varianten unterstützt.
+5. ~~Wer gehört zur Familie?~~ **Geklärt (2026-10-09):** Zwei Erwachsene und Jugendliche. Die vier Startrollen (Verwalter, Erwachsener, Jugendlicher, Gast) passen.
 5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `einsicht_erlaubt` an `konten.User`).
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).
