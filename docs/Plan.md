@@ -74,8 +74,8 @@ multi-gpt/
 |---|---|---|
 | `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, online, last_checked, last_online, last_error, reported_models | Ein Anbieterzugang |
 | `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order, price_in / price_out (optional) | Ein auswählbares Modell |
-| `Conversation` | user, title, default_model, system_prompt, created, updated, archived | Ein Chat |
-| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `superseded` / `awaiting_confirmation`), error, tool_state (Zwischenrunden der Werkzeugschleife inkl. `provider_state`), created | Eine Nachricht. „Neu erzeugen“ markiert die alte Antwort als `superseded`: Sie ist unsichtbar, ihre Kosten zählen weiter |
+| `Conversation` | user, title, default_model, system_prompt, current_leaf (Ende des angezeigten Zweigs), created, updated, archived | Ein Chat, gespeichert als Baum von Nachrichten |
+| `Message` | conversation, parent (vorherige Nachricht, null für die erste), role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `awaiting_confirmation`; `superseded` nur noch für Altdaten), error, tool_state (Zwischenrunden der Werkzeugschleife inkl. `provider_state`), created | Eine Nachricht. Nachrichten mit gleichem `parent` sind Versionen (Geschwister): Bearbeiten einer eigenen Nachricht und „Neu erzeugen“ legen eine neue Version an, ältere bleiben erhalten und zählen im Verbrauch |
 | `Preset` (optional) | user, name, system_prompt | Wiederverwendbare Rollen |
 | `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
 | `Collection` | owner, name | Eine Wissenssammlung für RAG |
@@ -93,6 +93,7 @@ multi-gpt/
 Regeln:
 - Modell-IDs werden **nicht hart kodiert**, sondern im Admin gepflegt. Zusätzlich `make sync-models`, das die Modellliste beim Anbieter abfragt, soweit dessen API das anbietet.
 - Jeder Nutzer sieht nur seine eigenen Chats. Jede View filtert nach `request.user`.
+- Angezeigt, exportiert und an das Modell geschickt wird immer nur der Pfad von der ersten Nachricht bis `current_leaf`. Umschalten der Version setzt `current_leaf` auf das neueste Blatt des gewählten Zweigs.
 - Private Inhalte (Chats, Nachrichten, Dokumente, Anhänge) zeigt auch der Django-Admin nur als Metadaten an, ohne Inhalt. Sie lassen sich dort weder ändern noch löschen.
 - Ein Konto ohne ausdrücklich gewählte Rolle bekommt `guest`, ein Superuser `admin`. So führt eine vergessene Auswahl zu zu wenig Rechten, nie zu zu vielen.
 
@@ -123,7 +124,7 @@ Umsetzung mit `httpx` direkt gegen die HTTP-APIs (wenige Abhängigkeiten, einhei
 
 1. Login/Logout, Passwort ändern.
 2. Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche im Titel.
-3. Chatansicht: Modellauswahl pro Nachricht, gestreamte Antwort, Abbrechen-Knopf, Antwort neu erzeugen.
+3. Chatansicht: Modellauswahl pro Nachricht, gestreamte Antwort, Abbrechen-Knopf, Antwort neu erzeugen, eigene Nachricht bearbeiten (wie in ChatGPT). Bearbeiten und Neu erzeugen erzeugen Versionen; an jeder Nachricht mit mehreren Versionen schaltet „‹ 1/2 ›“ den Zweig um. Kopierknopf an Nachrichten.
 4. Markdown-Darstellung mit Code-Hervorhebung und Kopierknopf (Bibliotheken lokal eingebunden, Ausgabe bereinigt).
 5. System-Prompt pro Chat.
 6. Automatischer Chattitel aus der ersten Nachricht.

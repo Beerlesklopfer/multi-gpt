@@ -132,6 +132,11 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M5-02** Automatischer Titel, Umbenennen, Archivieren, Löschen, Suche im Titel.
 - **M5-03** System-Prompt pro Chat. Der feste Prompt der Rolle wird serverseitig vorangestellt. Test: Der Prompt landet in der Anfrage.
 - **M5-04** Export eines Chats als Markdown.
+- **M5-05** (Nutzerwunsch, nachgezogen) Eigene Nachrichten bearbeiten und Versionen wie in ChatGPT:
+  - `Message.parent` und `Conversation.current_leaf`, ein Chat wird zum Baum.
+  - Bearbeiten (`edit_of`) und Neu erzeugen legen Geschwister an. Der Status `superseded` wird nicht mehr vergeben, eine Datenmigration wandelt bestehende Chats in Ketten um.
+  - Versionsumschalter „‹ i/n ›“ (`POST /api/conversations/<pk>/branch/`), Stift „Bearbeiten“, Kopierknopf.
+  - Verlauf an das Modell, Export und Werkzeugschleife arbeiten nur auf dem angezeigten Pfad. Kosten zählen über alle Zweige.
 
 ### M6 – Vergleich, Verbrauch, Budgets, Familie
 *Abhängig von: M3, M2. Frage 5/5a.*
@@ -290,5 +295,6 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Prüfung beim Speichern.
   - Seite „Modelle auswählen“ mit Live-Liste des Anbieters.
 - **Datenbank-Kodierung:** Der Entwicklungs-Cluster ist SQL_ASCII. preinst und `make db-create` legen die MultiGPT-Datenbanken deshalb ausdrücklich als UTF-8 aus `template0` an. Die Test-Datenbanken nutzen die UTF-8-Vorlage `multigpt_template` (`DB_TEST_TEMPLATE`).
+- **M5-05 Bearbeiten und Versionen in Arbeit** (Agenten branches und editui).
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
