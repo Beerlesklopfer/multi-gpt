@@ -224,6 +224,9 @@ class Message(models.Model):
         COMPLETE = "complete", "vollständig"
         ABORTED = "aborted", "abgebrochen"
         ERROR = "error", "Fehler"
+        # Durch "Neu erzeugen" ersetzt: unsichtbar und nicht im Verlauf, zählt
+        # aber weiter für Verbrauch und Budget (M6).
+        SUPERSEDED = "superseded", "ersetzt"
 
     conversation = models.ForeignKey(
         Conversation, on_delete=models.CASCADE, related_name="messages", verbose_name="Chat"

@@ -1,0 +1,11 @@
+{# Eine Nachricht im Verlauf. Inhalt nur über Auto-Escaping, Markdown folgt in M5. #}
+<article class="chat-message chat-message-{{ msg.role }}" data-message-id="{{ msg.pk }}"
+         data-role="{{ msg.role }}" data-status="{{ msg.status }}">
+  <h2 class="chat-message-author">{% if msg.role == "user" %}Du{% else %}{{ msg.model.display_name|default:"Assistent" }}{% endif %}</h2>
+  <div class="chat-message-content">{{ msg.content }}</div>
+  {% if msg.status == "aborted" %}
+    <p class="chat-message-status chat-message-status-aborted">Abgebrochen</p>
+  {% elif msg.status == "error" %}
+    <p class="chat-message-status chat-message-status-error">Fehler{% if msg.error %}: {{ msg.error }}{% endif %}</p>
+  {% endif %}
+</article>

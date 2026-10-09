@@ -1,0 +1,14 @@
+{% if sidebar_conversations %}
+  <ul class="chat-list-items" id="chat-list-items">
+    {% for item in sidebar_conversations %}
+      <li>
+        <a href="{% url 'chat:conversation' item.pk %}"
+           class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
+           {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}</a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <ul class="chat-list-items" id="chat-list-items" hidden></ul>
+  <p class="hint" id="chat-list-empty">Noch keine Chats.</p>
+{% endif %}

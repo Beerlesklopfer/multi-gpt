@@ -7,5 +7,6 @@ app_name = "chat"
 # Seiten (Agent ui) hier, JSON/SSE-Endpunkte (Agent stream) in api_urls.py.
 urlpatterns = [
     path("", views.index, name="index"),
+    path("c/<int:pk>/", views.conversation, name="conversation"),
     path("api/", include("multigpt.chat.api_urls")),
 ]

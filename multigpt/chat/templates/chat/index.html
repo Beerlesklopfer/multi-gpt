@@ -1,17 +1,2 @@
-{% extends "base.html" %}
-{% block content %}
-  <section class="chat">
-    <div class="chat-history">
-      <div class="empty-state">
-        <h1>Noch keine Chats</h1>
-        <p>Die Chatfunktion folgt in Meilenstein 3.</p>
-      </div>
-    </div>
-    <form class="chat-input" aria-label="Nachricht senden">
-      <label for="message-input" class="sr-only">Nachricht</label>
-      <textarea id="message-input" name="message" rows="2" disabled
-                placeholder="Nachricht eingeben … (folgt in Meilenstein 3)"></textarea>
-      <button type="submit" class="button button-primary" disabled>Senden</button>
-    </form>
-  </section>
-{% endblock %}
+{% extends "chat/_chat.html" %}
+{% block title %}Neuer Chat – MultiGPT{% endblock %}

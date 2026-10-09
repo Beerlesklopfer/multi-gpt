@@ -7,6 +7,7 @@
   <title>{% block title %}MultiGPT{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'chat/app.css' %}">
   <script src="{% static 'chat/app.js' %}" defer></script>
+  {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}layout-app{% endblock %}">
 {% block layout %}
@@ -30,10 +31,11 @@
   <div class="frame">
     <aside class="sidebar" id="sidebar" aria-label="Chats">
       {% block sidebar %}
-        <button type="button" class="button button-primary" disabled
-                title="Folgt in Meilenstein 3">Neuer Chat</button>
+        {# Ohne JS führt der Link zur Startseite (neuer, noch leerer Chat). #}
+        <a href="{% url 'chat:index' %}" class="button button-primary" id="new-chat-button">Neuer Chat</a>
+        {# Platz für Suche im Titel und Archiv (M5). #}
         <nav class="chat-list" aria-label="Chatliste">
-          {% block chat_list %}<p class="hint">Noch keine Chats.</p>{% endblock %}
+          {% block chat_list %}<p class="hint"><a href="{% url 'chat:index' %}">Zu den Chats</a></p>{% endblock %}
         </nav>
       {% endblock %}
     </aside>

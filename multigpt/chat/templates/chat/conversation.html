@@ -1,0 +1,3 @@
+{% extends "chat/_chat.html" %}
+{% block title %}{{ active_conversation.title|default:"Neuer Chat" }} – MultiGPT{% endblock %}
+{% block chat_title %}{{ active_conversation.title|default:"Neuer Chat" }}{% endblock %}

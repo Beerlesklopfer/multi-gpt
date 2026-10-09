@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load static %}
+{# Gemeinsame Chatansicht für Startseite (ohne Chat) und /c/<pk>/. #}
+{% block extra_head %}<script src="{% static 'chat/chat.js' %}" defer></script>{% endblock %}
+{% block chat_list %}{% include "chat/_chat_list.html" %}{% endblock %}
+{% block content %}
+  <section class="chat" id="chat"
+           aria-labelledby="chat-title"
+           data-conversation-id="{{ active_conversation.pk|default_if_none:'' }}"
+           data-default-model="{{ active_conversation.default_model_id|default_if_none:'' }}"
+           data-conversation-url-template="{% url 'chat:conversation' 0 %}"
+           data-api-conversations="{% url 'chat:api_conversations' %}"
+           data-api-models="{% url 'chat:api_models' %}"
+           data-api-messages-template="{% url 'chat:api_messages' 0 %}">
+    <h1 class="sr-only" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
+    <div class="chat-history" id="chat-history" tabindex="-1">
+      <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Verlauf">
+        {% for msg in chat_messages %}{% include "chat/_message.html" %}{% endfor %}
+      </div>
+      {% if has_chat_model %}
+        <div class="empty-state" id="chat-empty"{% if chat_messages %} hidden{% endif %}>
+          <h2>Wie kann ich helfen?</h2>
+          <p>Modell wählen, Nachricht eingeben und mit Enter senden. Shift+Enter fügt einen Zeilenumbruch ein.</p>
+        </div>
+      {% elif not chat_messages %}
+        <div class="empty-state">
+          <h2>Keine Modelle freigegeben</h2>
+          <p>Für dein Konto ist noch kein KI-Modell freigeschaltet. Bitte wende dich an einen Verwalter, damit er dir Modelle freigibt.</p>
+        </div>
+      {% endif %}
+    </div>
+    <p class="chat-status" id="chat-status" role="status" aria-live="polite"></p>
+    {% if not has_chat_model %}
+      {% if chat_messages %}
+        <p class="chat-notice">Für dein Konto ist kein KI-Modell freigeschaltet. Ein Verwalter muss dir Modelle freigeben.</p>
+      {% endif %}
+    {% elif active_conversation and not can_write %}
+      <p class="chat-notice">Du kannst diesen Chat nur lesen.</p>
+    {% else %}
+      <form class="chat-input" id="chat-form" aria-label="Nachricht senden">
+        <div class="chat-input-model">
+          <label for="model-select">Modell</label>
+          <select id="model-select" name="model" disabled>
+            <option value="">Modelle werden geladen …</option>
+          </select>
+        </div>
+        <div class="chat-input-row">
+          <label for="message-input" class="sr-only">Nachricht</label>
+          <textarea id="message-input" name="content" rows="2"
+                    aria-describedby="message-input-hint"
+                    placeholder="Nachricht eingeben …"></textarea>
+          <button type="submit" class="button button-primary" id="send-button" disabled>Senden</button>
+        </div>
+        <p class="sr-only" id="message-input-hint">Enter sendet, Shift+Enter fügt einen Zeilenumbruch ein.</p>
+        <noscript><p class="chat-notice">Zum Senden wird JavaScript benötigt.</p></noscript>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
