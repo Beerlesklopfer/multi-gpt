@@ -259,5 +259,16 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
     - M7: `Job` braucht einen Fehlertext und einen späteren Startzeitpunkt (`run_after`).
     - M6: Budget in `budget_allows()`, Einsicht über `allow_supervision`.
   - Betrieb: Jugendliche und Gäste haben anfangs keine Modelle. Der Verwalter gibt sie im Admin unter Rolle → Erlaubte Modelle frei.
-- **M3–M5 in Arbeit** (freigegeben am 2026-10-09). Umsetzung im Verbund mehrerer Agenten, die sich über einen FIFO-Bus abstimmen.
+- **M3 umgesetzt** (Commit `e6c031e`, 297 Tests grün):
+  - Adapter `openai_compat`, gebaut nach der aktuellen Dokumentation von OpenAI, OpenRouter und LM Studio.
+  - SSE-Endpunkt mit Rechteprüfung vor dem ersten Byte. Abbruch speichert den Teiltext als `aborted`.
+  - Chatansicht, Ende-zu-Ende in headless Firefox getestet.
+  - Festlegungen:
+    - Eine laufende Antwort steht vorläufig als `aborted` in der DB und wird am Ende auf `complete` oder `error` gesetzt.
+    - Abgebrochene Antworten gehen in den Verlauf an das Modell ein, fehlerhafte nicht.
+    - „Neu erzeugen“ setzt die alte Antwort auf `superseded`.
+    - Der Titel kommt vorläufig aus der ersten Zeile der Nachricht.
+  - Offen für die Abnahme: eine gestreamte Antwort mit echtem API-Key.
+  - Bekannte Grenze: Einen Abbruch bemerkt der Server erst beim nächsten Textstück, bei einem hängenden Anbieter also erst nach dem Lese-Timeout von 300 s.
+- **M4, M4a und M5 in Arbeit.** Umsetzung im Verbund mehrerer Agenten über den FIFO-Bus.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.

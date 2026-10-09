@@ -75,7 +75,7 @@ multi-gpt/
 | `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, last_online | Ein Anbieterzugang |
 | `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order, price_in / price_out (optional) | Ein auswählbares Modell |
 | `Conversation` | user, title, default_model, system_prompt, created, updated, archived | Ein Chat |
-| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error`), error, created | Eine Nachricht |
+| `Message` | conversation, role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `superseded`), error, created | Eine Nachricht. „Neu erzeugen“ markiert die alte Antwort als `superseded`: Sie ist unsichtbar, ihre Kosten zählen weiter |
 | `Preset` (optional) | user, name, system_prompt | Wiederverwendbare Rollen |
 | `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
 | `Collection` | owner, name | Eine Wissenssammlung für RAG |
