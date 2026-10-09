@@ -24,6 +24,7 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 | MCP | Ein Loop-Thread je gunicorn-Prozess, Mutexe für Start und Verbindungsaufbau (Plan 8g, M4a-01). |
 | Docker | Ausweichweg: Das Image installiert dasselbe `.deb`. `compose.yaml` mit `db` (PostgreSQL + pgvector). |
 | Health-Check | `/healthz/` ohne Login, prüft die DB-Verbindung. |
+| Konten und Gruppen | App `konten`: `konten.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `konten.Gruppe` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
 | Login-Drosselung | django-axes, Sperre je Nutzername und IP nach 5 Fehlversuchen für 15 Minuten. |
 | Versionen | Python 3.13 (Debian 13), Django 5.2 LTS. Entwicklungs-DB: PostgreSQL 18 mit pgvector 0.8. |
 
@@ -38,8 +39,8 @@ Beim Ableiten der Arbeitspakete sind diese Punkte im Datenmodell (Plan Abschnitt
 1. **Fähigkeiten eines Modells:** `AIModel.faehigkeit` hat einen einzelnen Wert. Gebraucht werden aber zusätzliche Merkmale: Werkzeugunterstützung (7, 8g), Inpainting/Varianten (8e) und später Bild als Eingabe. Vorschlag: `faehigkeit` bleibt die Hauptart, dazu boolesche Felder `kann_werkzeuge`, `kann_bild_bearbeiten`.
 2. **Kosten je Nachricht:** Preise ändern sich. `Message` braucht `kosten` als Momentaufnahme zum Zeitpunkt der Antwort, sonst rechnen Verbrauchsübersicht und Budget rückwirkend falsch. Dasselbe gilt für `Attachment` bei Bildern, die pro Stück abgerechnet werden.
 3. **Geteilte Chats:** 8f erlaubt das Teilen einzelner Chats mit Gruppen (lesend oder schreibend). `Conversation` hat dafür kein Feld. Vorschlag: Zwischentabelle `Freigabe` (Objekt, Gruppe, Schreibrecht), die auch `Collection` nutzt.
-4. **Gruppen:** Eigenes Modell `Gruppe` oder Djangos `auth.Group`? Vorschlag: `auth.Group` wiederverwenden. Mitgliedschaft und Admin-Masken sind dann schon vorhanden.
-5. **Profil-Optionen:** Es fehlen `einsicht_erlaubt` (5a, Einsicht in Jugendlichen-Chats), `automatisch_vorlesen` (8c) und `gesperrt` (Seite "Familie").
+4. **Gruppen (entschieden):** `konten.Gruppe` erweitert Djangos `auth.Group` per Tabellenvererbung. Die Mitgliedschaft läuft über `User.groups`, Zusatzfelder liegen in `Gruppe`. Im Admin ersetzt `Gruppe` die Django-Gruppen.
+5. **Konten (entschieden):** Statt eines `Profil`-Modells erweitert `konten.User` Djangos `AbstractUser` (`AUTH_USER_MODEL = "konten.User"`, angelegt vor der ersten produktiven Migration). Die Felder `rolle`, `anzeigename`, `eigenes_monatsbudget`, `einsicht_erlaubt` (5a) und `automatisch_vorlesen` (8c) kommen in M2 dazu. Gesperrt wird über `is_active`.
 6. **Werkzeugaufrufe:** Die Status-Werte von `ToolCall` sind nicht festgelegt. Vorschlag: `wartet_auf_bestaetigung`, `abgelehnt`, `laeuft`, `ok`, `fehler`, `timeout`.
 7. **Nachrichtenstatus:** 8a verlangt die Markierung "abgebrochen". `Message` braucht ein Feld `status` (`vollstaendig`, `abgebrochen`, `fehler`) statt nur `fehler`.
 8. **Bildherkunft:** Nach 8e verweist jede Bearbeitung auf ihr Ausgangsbild. `Attachment` braucht dafür `ausgangsbild` (FK auf sich selbst).
@@ -76,8 +77,8 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 - **M2-01** Modelle aus Plan 6 einschließlich der Ergänzungen aus Abschnitt 2. `Chunk` kommt erst in M7.
 - **M2-02** Verschlüsseltes Feld mit Fernet für API-Keys und MCP-Zugangsdaten. Im Admin erscheinen nur die letzten 4 Zeichen.
-- **M2-03** Admin-Masken für `Provider`, `AIModel`, `Rolle`, Gruppen, `Profil` und `McpServer`.
-- **M2-04** Datenmigration mit den vier Startrollen und der Gruppe "Familie". Ein Signal legt beim Anlegen eines Nutzers automatisch das Profil an.
+- **M2-03** Admin-Masken für `Provider`, `AIModel`, `Rolle`, `McpServer` sowie die Zusatzfelder in den bestehenden Masken für Konten und Gruppen.
+- **M2-04** Datenmigration mit den vier Startrollen und der Gruppe "Familie". Neue Konten kommen automatisch in "Familie".
 - **M2-05** Zentrale Prüfung `darf(user, aktion, objekt=None)`, dazu Decorator und Mixin für die Views. Aktionen als Aufzählung festlegen.
 - **M2-06** `make user` als Management-Kommando mit Rollenwahl.
 
@@ -238,6 +239,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - `make run` startet gunicorn (`gthread`), `/healthz/` liefert 200, `/` leitet auf den Login um.
   - Der Paketbau ist ohne debhelper nachgestellt: `collectstatic` aus dem venv, `systemd-analyze verify`, `Type=notify` als User-Unit, postinst und postrm mit Stubs.
 - **Offen für die Abnahme von M1:**
+  - Entwicklungs-DB `multigpt` neu aufsetzen: Ihre Tabellen stammen noch vom Standard-`auth.User`. Mit `konten.User` lassen sich die bisherigen Migrationen nicht weiterführen.
   - Echter Paketbau mit `make deb` (braucht `dh-virtualenv` und `debhelper`).
   - Installation, `mgpt-ctl migrate` und `purge` auf Debian 13.
   - Login im Browser.

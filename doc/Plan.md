@@ -53,6 +53,7 @@ multi-gpt/
 ├── .env.example
 ├── manage.py
 ├── multigpt/            # settings, urls, wsgi, Projekt-Templates
+├── konten/              # User (erweitert AbstractUser), Gruppe (erweitert auth.Group), Rollen, darf()
 ├── chat/                # Modelle, Views, Templates, Static
 │   ├── providers/       # base.py, openai_compat.py, anthropic.py, google.py
 │   ├── mcp/             # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
@@ -78,8 +79,8 @@ multi-gpt/
 | `Rolle` | name, erlaubte_modelle, darf_websuche, darf_bilder, darf_sprache, darf_dokumente_hochladen, darf_teilen, erlaubte_mcp_server, monatsbudget, fester_system_prompt | Rechtepaket, im Admin änderbar |
 | `McpServer` | name, transport (`stdio` / `http`), befehl oder url, umgebung/zugangsdaten (verschlüsselt), aktiv, werkzeuge_mit_rueckfrage | Ein angebundener MCP-Server |
 | `ToolCall` | message, server, werkzeug, argumente, ergebnis, status, dauer | Protokoll jedes Werkzeugaufrufs |
-| `Gruppe` | name, mitglieder | Zum Teilen, z. B. "Familie", "Eltern" |
-| `Profil` | user (1:1), rolle, anzeigename, eigenes_monatsbudget (optional) | Verknüpft Konto und Rolle |
+| `User` (`konten.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): rolle, anzeigename, eigenes_monatsbudget (optional), einsicht_erlaubt, automatisch_vorlesen; Sperren über `is_active` | Ein Familienkonto mit Rolle |
+| `Gruppe` (`konten.Gruppe`) | erweitert Djangos `auth.Group` per Tabellenvererbung (name, Mitglieder über `User.groups`) plus eigene Zusatzfelder | Zum Teilen, z. B. "Familie", "Eltern" |
 | `Document` | collection, datei, titel, status (`wartend` / `indexiert` / `fehler`), fehlertext | Ein hochgeladenes Dokument |
 | `Chunk` | document, position, text, seite, embedding (`vector`) | Textabschnitt mit Vektor |
 | `Job` | art, nutzdaten, status, versuche, erstellt | Warteschlange für den Worker |
@@ -251,7 +252,7 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 ## 11. Meilensteine
 
 1. **Grundgerüst:** Projekt, Settings über `.env`, Makefile, Login mit Drosselung, leere Chatseite, gunicorn (`gthread`) startet, `/healthz/`, Debian-Paket und systemd-Unit. *Abnahme: `make install migrate user run`, Login im Browser funktioniert. `make deb` baut, das Paket installiert sich, die Unit startet.*
-2. **Datenmodell und Admin:** Modelle aus Abschnitt 6, Key-Verschlüsselung, Admin-Masken, Rollen, Gruppen, Profile und die zentrale Rechteprüfung `darf()`. *Abnahme: Anbieter und Modell anlegbar, Key in der DB nicht lesbar. Vier Startrollen vorhanden, ein Gast-Konto erreicht keine Verwaltungsseite.*
+2. **Datenmodell und Admin:** Modelle aus Abschnitt 6, Key-Verschlüsselung, Admin-Masken, Rollen, Konten und Gruppen (Erweiterungen von Djangos User und Group) und die zentrale Rechteprüfung `darf()`. *Abnahme: Anbieter und Modell anlegbar, Key in der DB nicht lesbar. Vier Startrollen vorhanden, ein Gast-Konto erreicht keine Verwaltungsseite.*
 3. **Erster Adapter und Streaming:** `openai_compat`, SSE-Endpunkt, Chatansicht mit Abbrechen. *Abnahme: gestreamte Antwort, Verlauf bleibt nach Neuladen erhalten.*
 4. **Weitere Adapter und LM Studio:** Anthropic, Google, `sync-models`, LM Studio mit Online-Anzeige. *Abnahme: Modellwechsel mitten im Chat funktioniert. LM Studio starten und beenden ändert die Anzeige innerhalb von 30 s, ohne die Seite neu zu laden.*
 4a. **MCP:** Werkzeugunterstützung in den Adaptern, MCP-Client, Werkzeugschleife, Rückfrage, Anzeige im Chat, Admin-Maske. *Abnahme: Ein Test-MCP-Server wird angebunden, ein Modell ruft dessen Werkzeug auf, der Aufruf ist im Chat sichtbar. Ein Konto ohne Freigabe bekommt das Werkzeug nicht.*
