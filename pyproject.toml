@@ -26,7 +26,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["multigpt*", "chat*"]
+include = ["multigpt*", "chat*", "konten*"]
 
 [tool.setuptools.package-data]
 "*" = ["templates/**/*", "static/**/*"]
@@ -43,3 +43,7 @@ extend-exclude = ["debian", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.per-file-ignores]
+# Von Django erzeugte Migrationen enthalten lange help_text-Zeilen.
+"*/migrations/*.py" = ["E501"]
