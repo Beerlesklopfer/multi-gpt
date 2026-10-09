@@ -59,4 +59,5 @@ debian/multi-gpt/
 debian/files
 debian/*.substvars
 debian/*.debhelper.log
+debian/*.debhelper
 debian/debhelper-build-stamp
