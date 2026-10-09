@@ -8,6 +8,7 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 
 ## 2. Rahmenbedingungen
 
+- **Lizenz:** AGPL-3.0-or-later (`LICENSE`).
 - **Stack:** Python 3.12+ (Debian 13: 3.13), Django 5.2 LTS, gunicorn, Makefile als Bedienoberfläche für die Entwicklung, `mgpt-ctl` für den Betrieb.
 - **Betrieb:** läuft dauerhaft (24/7) auf dem NAS, nur im Intranet, kein Zugriff aus dem Internet. Ausgehend nur HTTPS zu den KI-Anbietern sowie HTTP im Intranet zu LM Studio.
 - **Lokale Modelle:** LM Studio läuft auf einem anderen Rechner im Intranet und nur bei Bedarf. Die App muss damit umgehen, dass dieser Anbieter meistens offline ist.
@@ -52,11 +53,11 @@ multi-gpt/
 ├── pyproject.toml       # einzige Quelle der Abhängigkeiten
 ├── .env.example
 ├── manage.py
-├── multigpt/            # settings, urls, wsgi, Projekt-Templates
-├── konten/              # User (erweitert AbstractUser), Gruppe (erweitert auth.Group), Rollen, darf()
-├── chat/                # Modelle, Views, Templates, Static
-│   ├── providers/       # base.py, openai_compat.py, anthropic.py, google.py
-│   ├── mcp/             # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
+├── multigpt/            # Django-Projekt: settings, urls, wsgi, Projekt-Templates; alle Django-Apps liegen darunter
+│   ├── konten/          # App-Label konten: User (erweitert AbstractUser), Gruppe (erweitert auth.Group), Rollen, darf()
+│   └── chat/            # App-Label chat: Modelle, Views, Templates, Static
+│       ├── providers/   # base.py, openai_compat.py, anthropic.py, google.py
+│       └── mcp/         # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
 ├── mcp_bildwerkzeuge/   # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
 ├── tests/
 ├── deploy/              # gunicorn.conf.py, nginx.conf.example
@@ -284,13 +285,13 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 - Sprache und Bild: Adapteraufrufe gemockt, Dateien werden gespeichert und nur dem Besitzer ausgeliefert.
 - Statusprüfung: online, offline (Verbindung abgelehnt), Timeout, Cache greift, Abbruch mitten im Stream.
 
-## 13. Offene Fragen (vor Meilenstein 1 klären)
+## 13. Offene Fragen
 
-1. Welches NAS (Hersteller, Modell)? Hat es Debian/apt? Sonst läuft die App als Container (`Dockerfile`, `compose.yaml` liegen bereit).
+1. ~~Welches NAS?~~ **Geklärt (2026-10-09):** Das Zielsystem läuft mit Debian/Ubuntu und apt. Das Debian-Paket ist der Betriebsweg, Docker bleibt Ausweichweg.
 1a. Welche feste IP oder welchen Hostnamen hat der PC mit LM Studio, und ist dort die Freigabe des Servers im lokalen Netz aktiviert?
 2. Läuft im Intranet bereits ein nginx oder anderer Reverse Proxy, und gibt es einen internen Hostnamen samt TLS-Zertifikat?
 3. Welche Anbieter sollen zum Start angebunden werden (Einzel-Keys oder OpenRouter als Sammelzugang)?
-4. Gibt es schon ein PostgreSQL auf dem NAS, und lässt sich dort `pgvector` installieren? Sonst kommt PostgreSQL mit pgvector als eigener Container dazu. (Entwicklungsrechner: PostgreSQL 18 mit pgvector 0.8 vorhanden.)
+4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
 4a. Websuche: selbst gehostetes SearXNG auf dem NAS oder eine Such-API mit Key?
 4b. Welche Anbieter für Embeddings, Spracherkennung, Sprachausgabe und Bilder? Nicht jeder Chat-Anbieter bietet alle vier.
 4c. Sind die Dokumente für RAG überwiegend deutsch, und gibt es gescannte PDFs (dann wird Texterkennung/OCR nötig)?
@@ -298,4 +299,4 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 4e. Welcher Anbieter für Inpainting und Varianten? Das ist die Engstelle: nur wenige Bild-APIs unterstützen Masken.
 5. Wer gehört zur Familie (Anzahl Konten, Alter der Kinder)? Davon hängt ab, ob die vier Startrollen passen.
 5a. Sollen Eltern Chats von Jugendlichen-Konten einsehen können? Vorgesehen ist: nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar.
-5b. Reicht eine Familie pro Installation, oder sollen mehrere Haushalte (z. B. Großeltern, Geschwister) strikt getrennt auf demselben System laufen? Letzteres wäre echte Mandantentrennung und muss vor Meilenstein 2 entschieden sein, weil es das Datenmodell ändert.
+5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).

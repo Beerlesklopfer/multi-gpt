@@ -12,8 +12,8 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 
 | Thema | Festlegung |
 |---|---|
-| Namen | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete: `multigpt`, `chat`, `mcp_bildwerkzeuge`. |
-| Projektlayout | Flach nach Plan 5. Abhängigkeiten nur in `pyproject.toml`, keine `requirements.txt` (dh-virtualenv installiert sie nur, wenn vorhanden, danach immer `pip install .`). |
+| Namen | Paket, Systemnutzer, Unit, `/etc`- und `/var/lib`-Pfade heißen `multi-gpt`. Python-Pakete: `multigpt` mit allen Django-Apps darunter (`multigpt.chat`, `multigpt.konten`, App-Labels `chat` und `konten`), dazu der eigenständige MCP-Server `mcp_bildwerkzeuge`. |
+| Projektlayout | Nach Plan 5: Alle Django-Apps liegen unter `multigpt/`. Abhängigkeiten nur in `pyproject.toml`, keine `requirements.txt` (dh-virtualenv installiert sie nur, wenn vorhanden, danach immer `pip install .`). |
 | Installation | `.deb` mit dh-virtualenv nach `/usr/share/python/multi-gpt`, Unit `multi-gpt.service` über `dh_installsystemd`. Entwicklung mit `make install` in `.venv`. |
 | Konfiguration | `/etc/multi-gpt/.env` (`root:multi-gpt`, 0640) als `EnvironmentFile`, auch für Gunicorn-Variablen. Das postinst erzeugt sie einmalig mit generierten Schlüsseln, `purge` entfernt sie. Entwicklung: `.env` im Projektordner. Die Settings lesen zusätzlich die Datei aus `MULTI_GPT_ENV_FILE`. |
 | Verwaltung | `/usr/bin/mgpt-ctl`: Wrapper um `manage.py`, läuft als `multi-gpt` mit `/etc/multi-gpt/.env`. Keine automatische Migration im postinst, sondern `mgpt-ctl migrate` nach jeder Installation. |
@@ -24,11 +24,12 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 | MCP | Ein Loop-Thread je gunicorn-Prozess, Mutexe für Start und Verbindungsaufbau (Plan 8g, M4a-01). |
 | Docker | Ausweichweg: Das Image installiert dasselbe `.deb`. `compose.yaml` mit `db` (PostgreSQL + pgvector). |
 | Health-Check | `/healthz/` ohne Login, prüft die DB-Verbindung. |
-| Konten und Gruppen | App `konten`: `konten.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `konten.Gruppe` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
+| Konten und Gruppen | App `multigpt.konten`: `konten.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `konten.Gruppe` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
 | Login-Drosselung | django-axes, Sperre je Nutzername und IP nach 5 Fehlversuchen für 15 Minuten. |
+| Lizenz | AGPL-3.0-or-later: `LICENSE`, Metadaten in `pyproject.toml`, `debian/copyright`, Website. |
 | Versionen | Python 3.13 (Debian 13), Django 5.2 LTS. Entwicklungs-DB: PostgreSQL 18 mit pgvector 0.8. |
 
-**Wichtig:** Das `.deb` setzt voraus, dass das NAS Debian bzw. apt hat. Siehe offene Frage 1 in Abschnitt 6.
+Das Zielsystem hat Debian/apt und ein PostgreSQL mit pgvector (Fragen 1 und 4, geklärt am 2026-10-09).
 
 ---
 
@@ -55,7 +56,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M1 – Grundgerüst
 *Abhängig von: Frage 1 (NAS), Frage 4 (PostgreSQL).*
 
-- **M1-01** Django-5.2-Projekt `multigpt` und App `chat` im Layout nach Plan. `pyproject.toml` mit `django`, `django-environ`, `django-axes`, `gunicorn`, `psycopg[binary]`, `pgvector`, `whitenoise`, Extra `dev` mit `pytest`, `pytest-django`, `ruff`.
+- **M1-01** Django-5.2-Projekt `multigpt` mit der App `multigpt.chat` im Layout nach Plan. `pyproject.toml` mit `django`, `django-environ`, `django-axes`, `gunicorn`, `psycopg[binary]`, `pgvector`, `whitenoise`, Extra `dev` mit `pytest`, `pytest-django`, `ruff`.
 - **M1-02** Settings ausschließlich aus der Umgebung: `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, `MEDIA_ROOT`, `STATIC_ROOT`, `FIELD_ENCRYPTION_KEY`. Sprache `de`, Zeitzone `Europe/Berlin`. Logging ohne Nachrichteninhalte und Keys. `.env.example` anlegen.
 - **M1-03** PostgreSQL mit pgvector: Migration `CREATE EXTENSION IF NOT EXISTS vector`. Für die Entwicklung kommt der Dienst `db` (Image `pgvector/pgvector`) in `compose.yaml`.
 - **M1-04** Login, Logout und Passwort ändern mit den Django-Auth-Views und deutschen Templates unter `/konto/`. Login-Drosselung mit django-axes.
@@ -204,8 +205,6 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 |---|---|---|
 | MCP-SDK ist async, die App läuft synchron | Hängende Threads, Verbindungslecks bei `stdio`-Servern, doppelt gestartete Server | Ein Loop-Thread je Prozess, Mutexe für Start und Verbindungsaufbau, Timeouts auf jedem `future.result()`, Aufräumen in `worker_exit` (M4a-01). Tests mit parallelen Aufrufen aus mehreren Threads |
 | Kaum Bild-APIs mit Masken-Inpainting | M9-02 nicht oder nur für einen Anbieter umsetzbar | Frage 4e früh klären. M9-02 notfalls nach v2 verschieben |
-| NAS ohne Debian/apt | Das `.deb` ist dort nicht installierbar | Frage 1 klären. Docker-Weg als Ausweichlösung |
-| pgvector auf dem NAS nicht installierbar | M1 blockiert | PostgreSQL mit pgvector als Container (Frage 4) |
 | Gunicorn-Threads durch lange Streams belegt | Neue Anfragen warten | Thread-Zahl über Env konfigurierbar, Auslastung in M6 beobachten |
 | Anbieter-APIs ändern sich | Adapter brechen | Laut Plan vor jedem Adapter die aktuelle Dokumentation lesen, Tests mit aufgezeichneten Antworten |
 | Prompt-Injection über Webinhalte, Dokumente oder Werkzeugergebnisse | Unerwünschte Werkzeugaufrufe | Rückfragepflicht wird serverseitig erzwungen und hängt nie von Modellinhalten ab (Test in M4a-07) |
@@ -216,9 +215,9 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 
 | Frage (Plan 13) | Blockiert | Bemerkung |
 |---|---|---|
-| 1 – Welches NAS? | **M1** | Neu dazugekommen: Hat das NAS Debian/apt? Sonst wird Docker der Hauptweg. |
-| 4 – PostgreSQL + pgvector vorhanden? | **M1** | |
-| 5b – Eine Familie oder mehrere Haushalte? | **M2** | Ändert das Datenmodell |
+| 1 – Welches NAS? | – | **Geklärt:** Debian/Ubuntu mit apt, das `.deb` ist der Betriebsweg |
+| 4 – PostgreSQL + pgvector vorhanden? | – | **Geklärt:** vorhanden, wird genutzt |
+| 5b – Eine Familie oder mehrere Haushalte? | – | **Geklärt:** eine Familie, keine Mandantentrennung |
 | 5 – Konten, Alter der Kinder | M2 (Startrollen) | Startrollen sind anpassbar, blockiert also nur schwach |
 | 3 – Anbieter zum Start | M3 (Abnahme) | Ein Key genügt für M3 |
 | 1a – LM-Studio-Rechner | M4 | |
@@ -247,4 +246,4 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 - **Nach M1 zu entscheiden:**
   - Automatische Migration im postinst? Derzeit nicht: `dh_installsystemd` startet den Dienst schon vor `mgpt-ctl migrate`.
   - `/healthz/` von der `ALLOWED_HOSTS`-Prüfung und vom ERROR-Logging bei 503 ausnehmen?
-- Die Fragen 1 und 4 sind für die Entwicklung überbrückt, für das NAS weiter offen. Bis M2 müssen Frage 5b und die Lücken aus Abschnitt 2 geklärt sein.
+- Die Fragen 1, 4 und 5b sind geklärt. Bis M2 müssen noch die Lücken 1–3 und 6–9 aus Abschnitt 2 entschieden werden.
