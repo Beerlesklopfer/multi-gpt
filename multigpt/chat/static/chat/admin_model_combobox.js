@@ -3,7 +3,8 @@
  * Die zuletzt vom Anbieter gemeldeten Modelle kommen als JSON aus dem Element
  * #reported-model-choices ([{id, capability, exists}]). Jedes Feld *-model_id
  * bekommt einen Knopf ▾, der eine filterbare Liste öffnet. Die Auswahl setzt die
- * Modell-ID und füllt einen leeren Anzeigenamen sowie die Fähigkeit vor.
+ * Modell-ID, zieht den Anzeigenamen nach (wenn er leer ist oder noch der alten
+ * Modell-ID entspricht) und schlägt die Fähigkeit vor.
  */
 (function () {
   "use strict";
@@ -57,6 +58,18 @@
     wrapper.appendChild(list);
 
     var active = -1;
+    // Zuletzt übernommene Modell-ID: Solange der Anzeigename ihr gleicht (also nicht
+    // von Hand angepasst wurde), wandert er mit einer neuen Modell-ID mit.
+    var committed = input.value.trim();
+
+    function syncDisplayName(value) {
+      var displayName = fieldOf(input, "display_name");
+      if (displayName) {
+        var current = displayName.value.trim();
+        if (!current || current === committed) displayName.value = value;
+      }
+      committed = value;
+    }
 
     // Die Liste liegt fest über der Seite (position: fixed), damit sie nicht vom
     // Inline-Bereich abgeschnitten wird (Django setzt dort overflow: auto/scroll).
@@ -161,8 +174,7 @@
     function choose(item) {
       var value = item.dataset.value;
       input.value = value;
-      var displayName = fieldOf(input, "display_name");
-      if (displayName && !displayName.value.trim()) displayName.value = value;
+      syncDisplayName(value);
       var capability = fieldOf(input, "capability");
       if (capability && item.dataset.capability) capability.value = item.dataset.capability;
       setExpanded(false);
@@ -178,6 +190,12 @@
       } else {
         setExpanded(false);
       }
+    });
+
+    // Von Hand getippte ID (Feld verlassen): Anzeigename genauso nachziehen.
+    input.addEventListener("change", function () {
+      var value = input.value.trim();
+      if (value && value !== committed) syncDisplayName(value);
     });
 
     input.addEventListener("input", function () {
