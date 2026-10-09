@@ -27,7 +27,8 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    # Eigene AdminSite: Zugang nur über can(user, Action.ADMIN), nicht is_staff.
+    "multigpt.accounts.apps.FamilyAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -58,6 +59,8 @@ MIDDLEWARE = [
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
     "django.contrib.auth.backends.ModelBackend",
+    # Verwalterrolle -> alle Modellrechte im Admin (nur Rechte, keine Anmeldung).
+    "multigpt.accounts.backends.RoleAdminBackend",
 ]
 
 ROOT_URLCONF = "multigpt.urls"

@@ -44,8 +44,9 @@ install: $(PY) .env ## venv anlegen, Abhängigkeiten installieren, .env erzeugen
 migrate: ## Datenbankmigrationen ausführen
 	$(MANAGE) migrate
 
-user: ## Nutzer anlegen (vorerst Superuser; Rollenwahl ab M2)
-	$(MANAGE) createsuperuser
+# Rolle vorwählen: make user ROLE=adult (sonst interaktive Auswahl).
+user: ## Konto mit Rolle anlegen (Passwort wird verdeckt abgefragt)
+	$(MANAGE) create_account $(if $(ROLE),--role $(ROLE))
 
 dev: ## Entwicklungsserver starten
 	$(MANAGE) runserver
