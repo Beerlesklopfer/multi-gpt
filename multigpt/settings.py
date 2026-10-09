@@ -84,6 +84,11 @@ TEMPLATES = [
 DATABASES = {"default": env.db("DATABASE_URL")}
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+# Vorlage für die Test-DB (Entwicklung): UTF-8 mit pgvector, siehe make db-create.
+# Ohne Angabe nimmt PostgreSQL template1, das je nach Cluster SQL_ASCII ist.
+_test_template = env("DB_TEST_TEMPLATE", default="")
+if _test_template:
+    DATABASES["default"]["TEST"] = {"TEMPLATE": _test_template}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

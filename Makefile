@@ -8,6 +8,9 @@ PY      := $(BIN)/python
 MANAGE  := $(PY) manage.py
 DB_NAME ?= multigpt
 DB_USER ?= $(shell id -un)
+DB_TEMPLATE ?= multigpt_template
+# Immer UTF-8, unabhängig vom Standard des Clusters (der kann SQL_ASCII sein).
+DB_UTF8 := TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8'
 PSQL    := sudo -u postgres psql -v ON_ERROR_STOP=1 -X -q
 # Hugo: aus dem PATH, sonst aus ~/go/bin (go install github.com/gohugoio/hugo@<version>).
 HUGO    ?= $(or $(shell command -v hugo 2>/dev/null),$(HOME)/go/bin/hugo)
@@ -107,13 +110,17 @@ deploy: website ## Website auf GitHub Pages veröffentlichen (braucht gh und Rem
 #   auch die Test-DB, die Extension – und zusätzlich in $(DB_NAME), falls die DB
 #   schon existierte. Die Migration chat/0001_pgvector (IF NOT EXISTS) ist dann
 #   ein No-op.
-db-create: ## Entwicklungs-DB samt Rolle und pgvector anlegen (sudo)
-	$(PSQL) -d template1 -c 'CREATE EXTENSION IF NOT EXISTS vector'
+db-create: ## Entwicklungs-DB (UTF-8) samt Rolle, pgvector und Test-Vorlage anlegen (sudo)
 	$(PSQL) -tAc "SELECT 1 FROM pg_roles WHERE rolname = '$(DB_USER)'" | grep -q 1 \
 		|| $(PSQL) -c 'CREATE ROLE "$(DB_USER)" LOGIN CREATEDB'
 	$(PSQL) -tAc "SELECT 1 FROM pg_database WHERE datname = '$(DB_NAME)'" | grep -q 1 \
-		|| $(PSQL) -c 'CREATE DATABASE "$(DB_NAME)" OWNER "$(DB_USER)"'
+		|| $(PSQL) -c "CREATE DATABASE \"$(DB_NAME)\" OWNER \"$(DB_USER)\" $(DB_UTF8)"
 	$(PSQL) -d $(DB_NAME) -c 'CREATE EXTENSION IF NOT EXISTS vector'
+	$(PSQL) -tAc "SELECT 1 FROM pg_database WHERE datname = '$(DB_TEMPLATE)'" | grep -q 1 \
+		|| $(PSQL) -c "CREATE DATABASE \"$(DB_TEMPLATE)\" $(DB_UTF8)"
+	$(PSQL) -d $(DB_TEMPLATE) -c 'CREATE EXTENSION IF NOT EXISTS vector'
+	$(PSQL) -c "ALTER DATABASE \"$(DB_TEMPLATE)\" WITH IS_TEMPLATE true"
+	@echo "In .env: DB_TEST_TEMPLATE=$(DB_TEMPLATE)"
 
 clean: ## Caches und Build-Reste entfernen (.venv und .env bleiben)
 	find . -path ./$(VENV) -prune -o -type d -name __pycache__ -exec rm -rf {} +

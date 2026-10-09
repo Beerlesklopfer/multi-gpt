@@ -8,6 +8,8 @@ set -e
 #   psql vorhanden, Verbindung über den Unix-Socket klappt).
 # - Nur für die Standard-Datenbank: Zeigt DATABASE_URL in /etc/multi-gpt/.env
 #   auf etwas anderes (z. B. einen anderen Rechner), bleibt alles unberührt.
+# - Die Datenbank ist immer UTF-8 (aus template0), auch wenn der Cluster
+#   standardmäßig SQL_ASCII anlegt.
 # - Idempotent: Vorhandene Rolle, Datenbank und Extension bleiben, wie sie sind.
 # - Bricht nie ab: Ein Fehler im preinst würde die Installation verhindern.
 #   Stattdessen gibt es einen Hinweis; die Migration im postinst meldet dann,
@@ -66,7 +68,7 @@ multi_gpt_setup_database() {
 
     if ! multi_gpt_psql -d postgres -tAc \
             "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
-        if multi_gpt_psql -d postgres -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_ROLE\""; then
+        if multi_gpt_psql -d postgres -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_ROLE\" TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8'"; then
             echo "multi-gpt: PostgreSQL-Datenbank $DB_NAME angelegt."
         else
             multi_gpt_db_note "Datenbank $DB_NAME konnte nicht angelegt werden."
