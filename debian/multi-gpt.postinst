@@ -6,7 +6,8 @@ MGPT_CTL=/usr/bin/mgpt-ctl
 multi_gpt_setup_hint() {
     cat <<'EOF'
   Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
-  Lokale PostgreSQL-Datenbank (einmalig, mit pgvector):
+  Lokale PostgreSQL-Datenbank: legt das preinst automatisch an, wenn hier
+  ein PostgreSQL läuft. Sonst einmalig von Hand (mit pgvector):
     sudo -u postgres createuser multi-gpt
     sudo -u postgres createdb -O multi-gpt multi-gpt
     sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'

@@ -1,0 +1,92 @@
+#!/bin/sh
+set -e
+
+# Lokale PostgreSQL-Datenbank für multi-gpt vorbereiten: Rolle "multi-gpt",
+# Datenbank "multi-gpt" (Eigentümer multi-gpt) und die Extension vector.
+#
+# - Nur wenn auf diesem Rechner ein PostgreSQL läuft (Systemnutzer postgres,
+#   psql vorhanden, Verbindung über den Unix-Socket klappt).
+# - Nur für die Standard-Datenbank: Zeigt DATABASE_URL in /etc/multi-gpt/.env
+#   auf etwas anderes (z. B. einen anderen Rechner), bleibt alles unberührt.
+# - Idempotent: Vorhandene Rolle, Datenbank und Extension bleiben, wie sie sind.
+# - Bricht nie ab: Ein Fehler im preinst würde die Installation verhindern.
+#   Stattdessen gibt es einen Hinweis; die Migration im postinst meldet dann,
+#   dass die Datenbank nicht erreichbar ist.
+# - MULTI_GPT_SKIP_DB_SETUP=1 in der Umgebung von apt/dpkg: überspringen.
+#
+# Die Rolle authentifiziert sich per Peer-Auth über den Unix-Socket als
+# Systemnutzer multi-gpt (wird im postinst angelegt); ein Passwort gibt es
+# nicht. vector ist keine "trusted" Extension und muss deshalb hier vom
+# Superuser angelegt werden; die Migration chat.0001 ist danach ein No-op.
+
+DB_NAME=multi-gpt
+DB_ROLE=multi-gpt
+ENV_FILE=/etc/multi-gpt/.env
+
+multi_gpt_db_note() {
+    echo "multi-gpt: $1"
+    echo "  Datenbank bei Bedarf selbst anlegen (siehe Hinweis nach der Installation)."
+}
+
+multi_gpt_psql() {
+    (cd / && runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 "$@")
+}
+
+multi_gpt_setup_database() {
+    if [ "${MULTI_GPT_SKIP_DB_SETUP:-}" = "1" ]; then
+        echo "multi-gpt: MULTI_GPT_SKIP_DB_SETUP=1 – Datenbank wird nicht angelegt."
+        return 0
+    fi
+
+    if [ -r "$ENV_FILE" ] && grep -q '^DATABASE_URL=' "$ENV_FILE" \
+            && ! grep -Eq '^DATABASE_URL=postgres(ql)?:///multi-gpt/?$' "$ENV_FILE"; then
+        echo "multi-gpt: eigene DATABASE_URL in $ENV_FILE – lokale Datenbank wird nicht angelegt."
+        return 0
+    fi
+
+    if ! getent passwd postgres >/dev/null || ! command -v psql >/dev/null; then
+        multi_gpt_db_note "kein lokales PostgreSQL gefunden."
+        return 0
+    fi
+
+    if ! multi_gpt_psql -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+        multi_gpt_db_note "lokales PostgreSQL läuft nicht oder ist nicht erreichbar."
+        return 0
+    fi
+
+    if ! multi_gpt_psql -d postgres -tAc \
+            "SELECT 1 FROM pg_roles WHERE rolname = '$DB_ROLE'" | grep -q 1; then
+        if multi_gpt_psql -d postgres -c "CREATE ROLE \"$DB_ROLE\" LOGIN"; then
+            echo "multi-gpt: PostgreSQL-Rolle $DB_ROLE angelegt."
+        else
+            multi_gpt_db_note "Rolle $DB_ROLE konnte nicht angelegt werden."
+            return 0
+        fi
+    fi
+
+    if ! multi_gpt_psql -d postgres -tAc \
+            "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
+        if multi_gpt_psql -d postgres -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_ROLE\""; then
+            echo "multi-gpt: PostgreSQL-Datenbank $DB_NAME angelegt."
+        else
+            multi_gpt_db_note "Datenbank $DB_NAME konnte nicht angelegt werden."
+            return 0
+        fi
+    fi
+
+    if ! multi_gpt_psql -d "$DB_NAME" -c 'SET client_min_messages = warning' -c 'CREATE EXTENSION IF NOT EXISTS vector'; then
+        multi_gpt_db_note "Extension vector fehlt (Paket postgresql-<version>-pgvector installieren)."
+        return 0
+    fi
+    return 0
+}
+
+case "$1" in
+    install|upgrade)
+        multi_gpt_setup_database
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
