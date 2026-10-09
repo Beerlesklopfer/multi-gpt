@@ -176,7 +176,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 ## 8d. Websuche
 
 - **Ablauf:** Schalter "Websuche" im Eingabefeld. Ist er an: Suchanfrage aus der Nutzerfrage bilden → Such-Backend abfragen → die besten Treffer abrufen und auf Text reduzieren → als Kontext mit nummerierten Quellen an das Modell. Dieser Ablauf funktioniert mit jedem Modell, auch mit lokalen.
-- **Such-Backend:** hinter einer kleinen Schnittstelle `search(query) -> [Treffer]` austauschbar. Beide Umsetzungen werden gebaut: selbst gehostetes SearXNG im Intranet und eine Such-API mit Key. Welche aktiv ist, legt der Verwalter in den Einstellungen fest.
+- **Such-Backend:** hinter einer kleinen Schnittstelle `search(query) -> [Treffer]` austauschbar. Backend ist **SearXNG**, selbst gehostet im Intranet (Entscheidung vom 2026-10-09). Die Schnittstelle bleibt austauschbar, eine Such-API mit Key kann später folgen. Die Einstellungen (URL, Trefferzahl, Seitenabruf) legt der Verwalter im Admin unter „Sucheinstellungen“ fest. Die Einrichtung von SearXNG beschreibt das GitHub-Wiki in zwei Varianten: Docker und nativ.
 - **Quellen:** Unter der Antwort stehen Titel und Links der verwendeten Seiten.
 - **Sicherheit:** Abgerufene Seiteninhalte sind nicht vertrauenswürdig. Sie werden klar als Quellmaterial markiert an das Modell gegeben, nie als Anweisung. Der Abruf darf keine Intranet-Adressen ansprechen (Schutz gegen SSRF), hat Timeouts und Größenlimits.
 
@@ -297,7 +297,7 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 2. ~~Reverse Proxy und TLS?~~ **Geklärt (2026-10-09):** Im Intranet läuft bereits ein nginx. MultiGPT wird dort eingebunden, `deploy/nginx.conf.example` liefert den passenden `location`-Block (Stream ohne Puffer, `X-Accel-Redirect`). Offen sind nur noch Hostname und Zertifikat.
 3. ~~Anbieter zum Start?~~ **Geklärt (2026-10-09):** OpenRouter, OpenAI, Anthropic und Google Gemini. Damit sind alle drei Adapterarten (`openai_compat`, `anthropic`, `google`) zum Start im Einsatz.
 4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
-4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** Beides, umschaltbar in den Einstellungen.
+4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** SearXNG im Intranet. Eine Such-API bleibt als spätere Erweiterung möglich.
 4b. ~~Anbieter für Embeddings, Sprache, Bilder?~~ **Geklärt (2026-10-09):** OpenAI für alle vier: Embeddings, Spracherkennung, Sprachausgabe und Bilder. Das konkrete Embedding-Modell und damit die Vektordimension werden in M7 nach der aktuellen API-Dokumentation festgelegt.
 4c. ~~Sprache der Dokumente, OCR?~~ **Geklärt (2026-10-09):** Überwiegend deutsch, auch gescannte PDFs. OCR ist Teil von v1 (Tesseract mit deutschem Sprachpaket im Worker).
 4d. Welche MCP-Server sollen zum Start angebunden werden (außer den mitgelieferten), und laufen schon welche im Intranet?

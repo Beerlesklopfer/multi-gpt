@@ -161,7 +161,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M8 – Websuche
 *Abhängig von: M3, M4a (als Werkzeug), Frage 4a.*
 
-- **M8-01** Schnittstelle `search(query)` mit zwei Umsetzungen, SearXNG und eine Such-API. Welche aktiv ist, legt der Verwalter in den Einstellungen fest.
+- **M8-01** Schnittstelle `search(query)`, umgesetzt für SearXNG. `SearchSettings` im Admin mit Knopf „SearXNG testen“. Einrichtungsanleitung im GitHub-Wiki (`docs/wiki/`, Docker und nativ).
 - **M8-02** Seitenabruf mit SSRF-Schutz: DNS auflösen, private und lokale Adressbereiche sperren, Weiterleitungen erneut prüfen. Dazu Timeouts und Größenlimit.
 - **M8-03** Inhalte auf Text reduzieren und klar als Quellmaterial markiert mit nummerierten Quellen an das Modell geben.
 - **M8-04** Quellenanzeige unter der Antwort. Websuche zusätzlich als Werkzeug.
@@ -232,7 +232,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 5a – Einsicht in Jugendlichen-Chats | – | **Geklärt:** Option je Konto, standardmäßig aus |
 | 4b – Anbieter für Embedding, STT, TTS, Bild | – | **Geklärt:** OpenAI für alles. Das Modell wird in M7 festgelegt und bestimmt die Vektordimension |
 | 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans, OCR mit Tesseract in v1 |
-| 4a – SearXNG oder Such-API | – | **Geklärt:** beides, umschaltbar |
+| 4a – SearXNG oder Such-API | – | **Geklärt:** SearXNG, Such-API später optional |
 | 4e – Inpainting-Anbieter | – | **Geklärt:** OpenAI |
 | 2 – Reverse Proxy, Hostname, TLS | M10, M11 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
 
@@ -299,5 +299,6 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Bearbeiten mit Inline-Editor, Versionen „‹ i/n ›“, Kopierknopf, „Neu erzeugen“ an jeder Antwort.
   - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
   - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
+- **M8 (Websuche) vorgezogen und in Arbeit** (Nutzerwunsch): Agenten websearch, webui und wiki.
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
