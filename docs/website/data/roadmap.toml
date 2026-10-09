@@ -144,6 +144,16 @@
   id = "11"
   status = "planned"
   [milestones.title]
+    de = "Musik"
+    en = "Music"
+  [milestones.text]
+    de = "Neu eingeplant; der genaue Umfang wird gerade geklärt."
+    en = "Newly planned; the exact scope is still being defined."
+
+[[milestones]]
+  id = "12"
+  status = "planned"
+  [milestones.title]
     de = "Betrieb"
     en = "Operations"
   [milestones.text]

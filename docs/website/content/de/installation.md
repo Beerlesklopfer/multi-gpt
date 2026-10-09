@@ -9,7 +9,7 @@ menus:
 
 > **Stand:** `make deb` baut das Paket (`multi-gpt_0.1.0_amd64.deb`). Eine Testinstallation
 > auf einem frischen Debian 13 steht noch aus. Der Docker-Weg ist bisher ungetestet. Die
-> vollständige Installationsanleitung (mit nginx und TLS) folgt mit Meilenstein 11.
+> vollständige Installationsanleitung (mit nginx und TLS) folgt mit Meilenstein 12.
 
 ## Voraussetzungen
 

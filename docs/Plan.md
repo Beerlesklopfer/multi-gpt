@@ -286,7 +286,8 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 8. **Websuche:** Such-Schnittstelle, Abruf, Quellenanzeige. *Abnahme: Frage zu einem aktuellen Ereignis liefert Antwort mit Links.*
 9. **Bildgenerierung und Bildbearbeitung:** Erzeugung, Inpainting mit Maske, Varianten, MCP-Server `mcp_imagetools`. *Abnahme: Bild erscheint im Chat und bleibt nach Neuladen erhalten. Ein markierter Bereich wird ersetzt. "Schneide das Bild quadratisch zu" liefert per Werkzeug ein neues Bild, das Original bleibt.*
 10. **Sprache:** Aufnahme → Text, Antwort → Vorlesen. *Abnahme: funktioniert über HTTPS im Browser an PC und Handy.*
-11. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
+11. **Musik** (neu eingeplant am 2026-10-09, Umfang wird noch geklärt, siehe offene Frage 6).
+12. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
 
 Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 eingerichtet, TLS spätestens vor Meilenstein 10.
 
@@ -319,4 +320,5 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 4e. ~~Anbieter für Inpainting?~~ **Geklärt (2026-10-09):** OpenAI (Bildbearbeitung mit Maske). Vor M9 in der aktuellen API-Dokumentation prüfen, welches Modell Masken und Varianten unterstützt.
 5. ~~Wer gehört zur Familie?~~ **Geklärt (2026-10-09):** Zwei Erwachsene und Jugendliche. Die vier Startrollen (Verwalter, Erwachsener, Jugendlicher, Gast) passen.
 5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `allow_supervision` an `accounts.User`).
+6. **Musik (M11):** Was genau soll der Meilenstein leisten? Zum Beispiel Musik mit KI-Modellen erzeugen (welcher Anbieter?), eine Musiksammlung auf dem NAS durchsuchen und abspielen, Songtexte und Akkorde, Musik erkennen?
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).

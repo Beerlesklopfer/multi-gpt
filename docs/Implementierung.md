@@ -198,17 +198,20 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M9-05** Tests: jede Pillow-Funktion, kein Zugriff außerhalb des Arbeitsordners, das Original bleibt erhalten.
 
 ### M10 – Sprache
-*Abhängig von: TLS (aus M11 vorgezogen), Frage 2, Frage 4b.*
+*Abhängig von: TLS (aus M12 vorgezogen), Frage 2, Frage 4b.*
 
 - **M10-01** Aufnahme mit `MediaRecorder`, Spracherkennung über ein `stt`-Modell, der Text landet zum Korrigieren im Eingabefeld.
 - **M10-02** Vorlesen über ein `tts`-Modell, die Audiodatei wird als `Attachment` gespeichert. Option "automatisch vorlesen" je Nutzer.
 - **M10-03** Konfigurierbare Grenzen für Aufnahmelänge und Dateigröße.
 
-### M11 – Betrieb
-- **M11-01** `deploy/nginx.conf.example` als Baustein für den bestehenden nginx: `server`-/`location`-Block mit TLS, `proxy_buffering off` für den Stream-Endpunkt und `X-Accel-Redirect` für die Medien. Dazu `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1`. **Vor M10 umsetzen.**
-- **M11-02** `make backup`: `pg_dump`, Medienordner und `/etc/multi-gpt/.env` als datiertes Archiv.
-- **M11-03** README mit Installationsanleitung (Paket, PostgreSQL, `/etc/multi-gpt/.env`, nginx).
-- **M11-04** Prüfen, ob das Paket sauber aktualisiert und entfernt wird: `apt install` über eine ältere Version, `apt remove` und `apt purge`.
+### M11 – Musik
+*Umfang offen (Plan, offene Frage 6).* Arbeitspakete folgen, sobald geklärt ist, was der Meilenstein leisten soll.
+
+### M12 – Betrieb
+- **M12-01** `deploy/nginx.conf.example` als Baustein für den bestehenden nginx: `server`-/`location`-Block mit TLS, `proxy_buffering off` für den Stream-Endpunkt und `X-Accel-Redirect` für die Medien. Dazu `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1`. **Vor M10 umsetzen.**
+- **M12-02** `make backup`: `pg_dump`, Medienordner und `/etc/multi-gpt/.env` als datiertes Archiv.
+- **M12-03** README mit Installationsanleitung (Paket, PostgreSQL, `/etc/multi-gpt/.env`, nginx).
+- **M12-04** Prüfen, ob das Paket sauber aktualisiert und entfernt wird: `apt install` über eine ältere Version, `apt remove` und `apt purge`.
 
 ---
 
@@ -220,7 +223,7 @@ M1 ─> M2 ─> M3 ─┬─> M4 ─> M4a ─┬─> M7 (RAG)
                 │              └─> M9 (Bilder)
                 ├─> M5 (Komfort)            ┐
                 └─> M6 (Verbrauch/Budgets)  ├─ parallel möglich
-M11-01 (TLS/nginx) ─────────────> M10 (Sprache)
+M12-01 (TLS/nginx) ─────────────> M10 (Sprache)
 ```
 
 Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen (M7-06, M8-04, M9-03) setzt die MCP-Schleife voraus. M5 und M6 können vorgezogen werden, falls die Fragen zu M4/M4a noch offen sind.
@@ -255,7 +258,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans. OCR über olmOCR in LM Studio, Tesseract als Ersatz |
 | 4a – SearXNG oder Such-API | – | **Geklärt:** SearXNG, Such-API später optional |
 | 4e – Inpainting-Anbieter | – | **Geklärt:** OpenAI |
-| 2 – Reverse Proxy, Hostname, TLS | M10, M11 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
+| 2 – Reverse Proxy, Hostname, TLS | M10, M12 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
 
 ---
 
