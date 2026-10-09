@@ -1,7 +1,7 @@
 ---
 title: "Features"
 description: "What MultiGPT is meant to do: many providers, LM Studio, family accounts, budgets, your own documents, web search, images, voice and MCP tools."
-lead: "This page describes what MultiGPT version 1 is meant to do. Almost all of it is planned and not built yet – every section shows its status and the milestone it is scheduled for."
+lead: "This page describes what MultiGPT version 1 is meant to do. Chatting with many providers, LM Studio and family accounts are done, MCP tools partially; budgets, your own documents, web search, images and voice are still planned. Every section shows its status and milestone."
 menus:
   main:
     weight: 10
@@ -14,25 +14,29 @@ menus:
 - Log in, log out and change your password.
 - Login throttling: after five failed attempts, logging in with that user name from that
   address is blocked for 15 minutes.
-- No self-registration. An administrator creates accounts – today with
-  `mgpt-ctl createsuperuser` or `make user`, later also in the web interface.
+- No self-registration. An administrator creates accounts – with
+  `mgpt-ctl createsuperuser`, `make user` (with a choice of role) or in the admin area.
 
 ## Chatting with many providers
 
-{{< status "planned" "3" >}}
+{{< status "done" "3 / 4 / 5" >}}
 
-- Chat list in the sidebar: new, rename, archive, delete, search by title.
+Tested with simulated providers so far, end to end in the browser. A test with real API keys
+is still pending.
+
+- Chat list in the sidebar: new, rename, archive, delete, search.
 - The model can be chosen **per message**. Answers are streamed, a button stops them,
   and an answer can be regenerated.
 - Providers are connected via API key: OpenAI and all OpenAI-compatible services
-  (e.g. Mistral, Groq, OpenRouter), plus Anthropic and Google Gemini (milestone 4).
+  (e.g. OpenRouter and LM Studio), plus Anthropic and Google Gemini.
 - Models are maintained in the admin area or fetched from the provider with `make sync-models`.
-- Later (milestone 5): Markdown with code highlighting and a copy button, automatic chat
-  titles, a system prompt per chat, export as Markdown.
+- Markdown with code highlighting and a copy button. The libraries are bundled locally and
+  the output is sanitised.
+- Automatic chat titles, a system prompt per chat, export as Markdown.
 
 ## Local models with LM Studio
 
-{{< status "planned" "4" >}}
+{{< status "done" "4" >}}
 
 [LM Studio](https://lmstudio.ai/docs) runs on a PC in the home network and provides an
 OpenAI-compatible server. MultiGPT connects to it as a provider but does not start or wake it.
@@ -42,11 +46,16 @@ OpenAI-compatible server. MultiGPT connects to it as a provider but does not sta
 - When LM Studio is off, local models are greyed out. When it is on, the models that
   LM Studio actually reports are offered.
 - If LM Studio goes away in the middle of an answer, the text received so far is kept.
-- Local models cost € 0 and stay usable even when the budget is used up.
+- Local models cost € 0 and are meant to stay usable even when the budget is used up
+  (budgets come with milestone 6).
+- Tested with simulated providers; a test with LM Studio in a real home network is still pending.
 
 ## Roles, groups and budgets
 
-{{< status "planned" "2 / 6" >}}
+{{< status "partial" "2 / 6" >}}
+
+Roles, groups, accounts and the central permission check are done (milestone 2). Budgets,
+the usage overview and the "Family" page follow with milestone 6.
 
 Four default roles, adjustable in the admin area:
 
@@ -78,7 +87,11 @@ Ask two or three models the same question at the same time and read the answers 
 
 ## Tools via MCP
 
-{{< status "planned" "4a" >}}
+{{< status "partial" "4a" >}}
+
+Done: the tool format in all provider adapters and the MCP client (official Python SDK) with a
+connection test and tool classification in the admin area. In progress: the tool loop in the
+chat, the confirmation before sensitive calls and the display in the chat.
 
 MultiGPT becomes a client for the [Model Context Protocol](https://modelcontextprotocol.io/).
 Models that support tools can then call functions from connected MCP servers.

@@ -1,16 +1,15 @@
 ---
 title: "Installation"
 description: "MultiGPT als Debian-Paket, mit Docker oder für die Entwicklung mit make installieren."
-lead: "Es gibt noch keine fertigen Pakete zum Herunterladen. Wer MultiGPT ausprobieren will, baut es aus dem Quellcode. Nach der Installation gibt es derzeit nur die Anmeldung und eine leere Chatseite."
+lead: "Es gibt noch keine fertigen Pakete zum Herunterladen. Wer MultiGPT ausprobieren will, baut das Paket aus dem Quellcode mit `make deb`. Danach kann man mit eigenen API-Keys chatten."
 menus:
   main:
     weight: 30
 ---
 
-> **Stand Meilenstein 1:** Der Paketbau ist ohne debhelper nachgestellt und geprüft, eine
-> Testinstallation auf einem frischen Debian 13 steht aber noch aus. Der Docker-Weg ist
-> bisher ungetestet. Die vollständige Installationsanleitung (mit nginx und TLS) folgt mit
-> Meilenstein 11.
+> **Stand:** `make deb` baut das Paket (`multi-gpt_0.1.0_amd64.deb`). Eine Testinstallation
+> auf einem frischen Debian 13 steht noch aus. Der Docker-Weg ist bisher ungetestet. Die
+> vollständige Installationsanleitung (mit nginx und TLS) folgt mit Meilenstein 11.
 
 ## Voraussetzungen
 
@@ -39,10 +38,25 @@ Das `.deb` liegt danach im übergeordneten Ordner.
 sudo apt install ../multi-gpt_<version>_<arch>.deb
 ```
 
-Bei der ersten Installation entsteht `/etc/multi-gpt/.env` (Eigentümer `root:multi-gpt`,
-Rechte 0640) mit frisch erzeugten Schlüsseln. Die Datei wird bei Updates nie überschrieben.
+Bei der Installation passiert Folgendes:
 
-**3. Datenbank anlegen** (einmalig, bei lokalem PostgreSQL):
+- **Fragen per debconf:** Bind-Adresse (z. B. `127.0.0.1:8000` hinter einem nginx auf
+  demselben Rechner oder die LAN-Adresse), `ALLOWED_HOSTS` und die Adressen für
+  `CSRF_TRUSTED_ORIGINS`. Die Antworten landen in `/etc/multi-gpt/.env`; ändern lassen sie
+  sich später mit `sudo dpkg-reconfigure multi-gpt`.
+- **Konfiguration:** Bei der ersten Installation entsteht `/etc/multi-gpt/.env` (Eigentümer
+  `root:multi-gpt`, Rechte 0640) mit frisch erzeugten Schlüsseln. Updates überschreiben die
+  Datei nicht.
+- **Datenbank:** Läuft auf dem Rechner ein PostgreSQL, legt das Paket (preinst) die Rolle
+  `multi-gpt`, die gleichnamige Datenbank und die Erweiterung pgvector an. Vorhandenes
+  bleibt unverändert; zeigt `DATABASE_URL` auf einen anderen Rechner, passiert nichts.
+- **Migration:** Ist die Datenbank erreichbar, migriert das Paket (postinst) das Schema
+  automatisch, bevor der Dienst startet oder neu startet – bei der Installation und bei
+  jedem Update. Ist sie nicht erreichbar, gibt es nur einen Hinweis; die Installation läuft
+  trotzdem durch.
+
+**3. Datenbank von Hand anlegen** (nur nötig, wenn das Paket sie nicht anlegen konnte, etwa
+weil PostgreSQL bei der Installation nicht lief):
 
 ```
 sudo -u postgres createuser multi-gpt
@@ -50,11 +64,12 @@ sudo -u postgres createdb -O multi-gpt multi-gpt
 sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
 ```
 
-**4. Konfiguration prüfen:** In `/etc/multi-gpt/.env` vor allem `ALLOWED_HOSTS`,
-`DATABASE_URL` und – sobald nginx mit TLS davor steht – `CSRF_TRUSTED_ORIGINS` und
-`SECURE_COOKIES` anpassen. Danach `sudo systemctl restart multi-gpt`.
+**4. Konfiguration prüfen:** In `/etc/multi-gpt/.env` bei Bedarf `DATABASE_URL` und –
+sobald nginx mit TLS davor steht – `SECURE_COOKIES` anpassen. Danach
+`sudo systemctl restart multi-gpt`.
 
-**5. Schema anlegen und ersten Verwalter erstellen:**
+**5. Ersten Verwalter erstellen** (und das Schema nachziehen, falls die automatische
+Migration nicht lief):
 
 ```
 sudo mgpt-ctl migrate
@@ -62,11 +77,10 @@ sudo mgpt-ctl createsuperuser
 ```
 
 `mgpt-ctl` ist ein Wrapper um Djangos `manage.py`, der als Nutzer `multi-gpt` mit
-`/etc/multi-gpt/.env` läuft. `mgpt-ctl migrate` ist **nach jeder Installation und jedem
-Update** nötig; das Paket migriert nicht automatisch.
+`/etc/multi-gpt/.env` läuft. `mgpt-ctl migrate` lässt sich jederzeit gefahrlos wiederholen.
 
-Die App lauscht standardmäßig auf `127.0.0.1:8000`. Ob sie läuft, zeigt
-`curl http://127.0.0.1:8000/healthz/`.
+Die App lauscht auf der per debconf gewählten Adresse. Ob sie läuft, zeigt
+`curl http://<adresse>:<port>/healthz/`.
 
 ## Weg 2: Docker
 

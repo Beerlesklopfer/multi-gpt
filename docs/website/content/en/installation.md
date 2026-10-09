@@ -1,16 +1,15 @@
 ---
 title: "Installation"
 description: "Install MultiGPT as a Debian package, with Docker, or for development with make."
-lead: "There are no ready-made packages to download yet. If you want to try MultiGPT, you build it from source. After installation there is currently only the login and an empty chat page."
+lead: "There are no ready-made packages to download yet. If you want to try MultiGPT, you build the package from source with `make deb`. After that you can chat using your own API keys."
 menus:
   main:
     weight: 30
 ---
 
-> **Status at milestone 1:** the package build has been reproduced and checked without
-> debhelper, but a test installation on a fresh Debian 13 is still pending. The Docker
-> route is untested so far. The complete installation guide (with nginx and TLS) follows
-> with milestone 11.
+> **Status:** `make deb` builds the package (`multi-gpt_0.1.0_amd64.deb`). A test
+> installation on a fresh Debian 13 is still pending. The Docker route is untested so far.
+> The complete installation guide (with nginx and TLS) follows with milestone 11.
 
 ## Requirements
 
@@ -39,10 +38,23 @@ The `.deb` ends up in the parent folder.
 sudo apt install ../multi-gpt_<version>_<arch>.deb
 ```
 
-The first installation creates `/etc/multi-gpt/.env` (owner `root:multi-gpt`, mode 0640)
-with freshly generated keys. Updates never overwrite this file.
+During installation the following happens:
 
-**3. Create the database** (once, for a local PostgreSQL):
+- **debconf questions:** the bind address (e.g. `127.0.0.1:8000` behind an nginx on the
+  same machine, or the LAN address), `ALLOWED_HOSTS` and the addresses for
+  `CSRF_TRUSTED_ORIGINS`. The answers go into `/etc/multi-gpt/.env`; change them later with
+  `sudo dpkg-reconfigure multi-gpt`.
+- **Configuration:** the first installation creates `/etc/multi-gpt/.env` (owner
+  `root:multi-gpt`, mode 0640) with freshly generated keys. Updates do not overwrite it.
+- **Database:** if PostgreSQL runs on the machine, the package (preinst) creates the role
+  `multi-gpt`, the database of the same name and the pgvector extension. Anything that
+  already exists is left as it is; if `DATABASE_URL` points to another machine, nothing happens.
+- **Migration:** if the database is reachable, the package (postinst) migrates the schema
+  automatically before the service starts or restarts – on installation and on every
+  update. If it is not reachable, you only get a notice; the installation still completes.
+
+**3. Create the database by hand** (only needed if the package could not create it, e.g.
+because PostgreSQL was not running during installation):
 
 ```
 sudo -u postgres createuser multi-gpt
@@ -50,11 +62,12 @@ sudo -u postgres createdb -O multi-gpt multi-gpt
 sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
 ```
 
-**4. Check the configuration:** in `/etc/multi-gpt/.env`, adjust mainly `ALLOWED_HOSTS`,
-`DATABASE_URL` and – once nginx with TLS sits in front – `CSRF_TRUSTED_ORIGINS` and
-`SECURE_COOKIES`. Then run `sudo systemctl restart multi-gpt`.
+**4. Check the configuration:** in `/etc/multi-gpt/.env`, adjust `DATABASE_URL` if needed
+and – once nginx with TLS sits in front – `SECURE_COOKIES`. Then run
+`sudo systemctl restart multi-gpt`.
 
-**5. Create the schema and the first administrator:**
+**5. Create the first administrator** (and catch up on the schema if the automatic
+migration did not run):
 
 ```
 sudo mgpt-ctl migrate
@@ -62,10 +75,9 @@ sudo mgpt-ctl createsuperuser
 ```
 
 `mgpt-ctl` is a wrapper around Django's `manage.py` that runs as the `multi-gpt` user with
-`/etc/multi-gpt/.env`. `mgpt-ctl migrate` is required **after every installation and
-update**; the package does not migrate automatically.
+`/etc/multi-gpt/.env`. `mgpt-ctl migrate` can safely be run again at any time.
 
-By default the app listens on `127.0.0.1:8000`. `curl http://127.0.0.1:8000/healthz/`
+The app listens on the address chosen via debconf. `curl http://<address>:<port>/healthz/`
 shows whether it is running.
 
 ## Option 2: Docker

@@ -24,11 +24,12 @@ menus:
   die Vektoren der eigenen Dokumente. Kein SQLite.
 - **Worker (geplant):** ein zweiter Prozess aus derselben Codebasis, der Dokumente im
   Hintergrund indexiert. Er holt seine Aufträge aus einer Tabelle in PostgreSQL.
-- **Anbieter-Adapter (geplant):** eine gemeinsame Schnittstelle, darunter ein Adapter für
-  OpenAI-kompatible APIs (OpenAI, Mistral, Groq, OpenRouter, LM Studio), einer für
+- **Anbieter-Adapter:** eine gemeinsame Schnittstelle, darunter ein Adapter für
+  OpenAI-kompatible APIs (OpenAI, OpenRouter, LM Studio), einer für
   Anthropic und einer für Google Gemini. Umgesetzt mit `httpx` direkt gegen die HTTP-APIs.
-- **MCP-Client (geplant):** verbindet sich mit MCP-Servern und reicht deren Werkzeuge an
-  die Modelle weiter.
+- **MCP-Client (teilweise umgesetzt):** verbindet sich über das offizielle Python-SDK mit
+  MCP-Servern und reicht deren Werkzeuge an die Modelle weiter. Client und Verbindungstest
+  sind fertig, die Werkzeugschleife im Chat ist in Arbeit.
 
 ## Netz und Sicherheit
 
@@ -37,8 +38,7 @@ menus:
 - Alle Einstellungen kommen aus der Umgebung bzw. aus `/etc/multi-gpt/.env`, nie aus
   dem Repository.
 - API-Keys und Zugangsdaten von MCP-Servern werden mit Fernet verschlüsselt in der
-  Datenbank gespeichert und in der Verwaltung nur mit den letzten vier Zeichen angezeigt
-  (geplant ab Meilenstein 2).
+  Datenbank gespeichert und in der Verwaltung nur mit den letzten vier Zeichen angezeigt.
 - Keys und Nachrichteninhalte erscheinen nicht in Logs.
 - Der Dienst läuft unter einem eigenen Systemnutzer `multi-gpt` ohne Zugriff auf andere
   Freigaben des Servers.

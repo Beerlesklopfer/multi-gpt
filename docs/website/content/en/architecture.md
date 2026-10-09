@@ -23,10 +23,12 @@ menus:
   vectors of your own documents. No SQLite.
 - **Worker (planned):** a second process from the same code base that indexes documents in
   the background. It takes its jobs from a table in PostgreSQL.
-- **Provider adapters (planned):** one common interface with an adapter for
-  OpenAI-compatible APIs (OpenAI, Mistral, Groq, OpenRouter, LM Studio), one for Anthropic
+- **Provider adapters:** one common interface with an adapter for
+  OpenAI-compatible APIs (OpenAI, OpenRouter, LM Studio), one for Anthropic
   and one for Google Gemini. Implemented with `httpx` directly against the HTTP APIs.
-- **MCP client (planned):** connects to MCP servers and passes their tools on to the models.
+- **MCP client (partially done):** connects to MCP servers via the official Python SDK and
+  passes their tools on to the models. The client and connection test are done; the tool
+  loop in the chat is in progress.
 
 ## Network and security
 
@@ -36,7 +38,7 @@ menus:
 - All settings come from the environment or from `/etc/multi-gpt/.env`, never from the
   repository.
 - API keys and MCP server credentials are stored encrypted with Fernet in the database and
-  shown in the admin area only by their last four characters (planned from milestone 2).
+  shown in the admin area only by their last four characters.
 - Keys and message contents never appear in logs.
 - The service runs as its own system user `multi-gpt` without access to other shares on
   the server.

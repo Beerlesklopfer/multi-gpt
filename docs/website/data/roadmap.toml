@@ -10,61 +10,76 @@
     de = "Grundgerüst"
     en = "Project skeleton"
   [milestones.text]
-    de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, leere Chatseite, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien."
-    en = "Django project configured from the environment, Makefile, login with brute-force throttling, empty chat page, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files."
+    de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch und fragt Adresse und Hostnamen per debconf ab."
+    en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically and asks for address and host names via debconf."
   [milestones.note]
-    de = "Tests, Linter und gunicorn-Start sind grün. Noch offen für die Abnahme: echter Paketbau mit `make deb`, Installation auf einem frischen Debian 13 und der Docker-Build."
-    en = "Tests, linter and gunicorn start pass. Still open for acceptance: a real package build with `make deb`, installation on a fresh Debian 13 and the Docker build."
+    de = "Tests, Linter und `make deb` sind grün. Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass. Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
 
 [[milestones]]
   id = "2"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Datenmodell und Verwaltung"
     en = "Data model and admin"
   [milestones.text]
-    de = "Anbieter, Modelle, Rollen, Gruppen und Profile; verschlüsselte API-Keys; Admin-Masken; zentrale Rechteprüfung. Vier Startrollen: Verwalter, Erwachsener, Jugendlicher, Gast."
-    en = "Providers, models, roles, groups and profiles; encrypted API keys; admin screens; a central permission check. Four default roles: administrator, adult, teenager, guest."
+    de = "Anbieter, Modelle, Rollen und Gruppen; Konten erweitern Djangos User und Group. Verschlüsselte API-Keys (Fernet, die Verwaltung zeigt nur die letzten 4 Zeichen), zentrale Rechteprüfung, Verwaltung nur für Verwalter. Private Chats erscheinen auch dort nur als Metadaten. Vier Startrollen: Verwalter, Erwachsener, Jugendlicher, Gast."
+    en = "Providers, models, roles and groups; accounts extend Django's User and Group. Encrypted API keys (Fernet, the admin area shows only the last 4 characters), a central permission check, admin area for administrators only. Private chats appear there only as metadata. Four default roles: administrator, adult, teenager, guest."
+  [milestones.note]
+    de = "Abgeschlossen. Jugendliche und Gäste haben anfangs keine Modelle; der Verwalter gibt sie pro Rolle frei."
+    en = "Complete. Teenagers and guests start without models; the administrator enables them per role."
 
 [[milestones]]
   id = "3"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Erster Anbieter und Streaming"
     en = "First provider and streaming"
   [milestones.text]
-    de = "OpenAI-kompatibler Adapter, gestreamte Antworten mit Abbrechen-Knopf, Chatansicht mit gespeichertem Verlauf."
-    en = "OpenAI-compatible adapter, streamed answers with a stop button, chat view with saved history."
+    de = "OpenAI-kompatibler Adapter (OpenAI, OpenRouter, LM Studio), gestreamte Antworten mit Abbrechen-Knopf, Neu erzeugen, Modell pro Nachricht, Chatansicht mit gespeichertem Verlauf."
+    en = "OpenAI-compatible adapter (OpenAI, OpenRouter, LM Studio), streamed answers with a stop button, regenerate, model per message, chat view with saved history."
+  [milestones.note]
+    de = "Mit simulierten Anbietern getestet, Ende-zu-Ende im Browser. Noch offen für die Abnahme: ein Test mit echtem API-Key."
+    en = "Tested with simulated providers, end to end in the browser. Still open for acceptance: a test with a real API key."
 
 [[milestones]]
   id = "4"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Weitere Anbieter und LM Studio"
     en = "More providers and LM Studio"
   [milestones.text]
-    de = "Anthropic und Google Gemini, Modelllisten abrufen, LM Studio als lokaler Anbieter mit Online-Anzeige."
-    en = "Anthropic and Google Gemini, fetching model lists, LM Studio as a local provider with online indicator."
+    de = "Adapter für Anthropic und Google Gemini, Modelllisten abrufen mit `make sync-models`, LM Studio als lokaler Anbieter mit Online-Anzeige und automatisch angebotenen Modellen."
+    en = "Adapters for Anthropic and Google Gemini, fetching model lists with `make sync-models`, LM Studio as a local provider with online indicator and automatically offered models."
+  [milestones.note]
+    de = "Mit simulierten Anbietern getestet. Noch offen für die Abnahme: echte Aufrufe mit API-Keys und LM Studio im Heimnetz."
+    en = "Tested with simulated providers. Still open for acceptance: real calls with API keys and LM Studio in the home network."
 
 [[milestones]]
   id = "4a"
-  status = "planned"
+  status = "partial"
   [milestones.title]
     de = "MCP-Werkzeuge"
     en = "MCP tools"
   [milestones.text]
     de = "Modelle nutzen Werkzeuge aus angebundenen MCP-Servern – mit Rechteprüfung, Rückfrage vor heiklen Aufrufen und Anzeige im Chat."
     en = "Models use tools from connected MCP servers – with permission checks, confirmation before sensitive calls and display in the chat."
+  [milestones.note]
+    de = "Fertig: Werkzeugformat in allen drei Adaptern, MCP-Client (offizielles Python-SDK) mit Verbindungstest und Einstufung der Werkzeuge in der Verwaltung. In Arbeit: Werkzeugschleife im Chat, Rückfrage vor heiklen Aufrufen, Anzeige im Chat."
+    en = "Done: tool format in all three adapters, MCP client (official Python SDK) with connection test and tool classification in the admin area. In progress: tool loop in the chat, confirmation before sensitive calls, display in the chat."
 
 [[milestones]]
   id = "5"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Komfort"
     en = "Convenience"
   [milestones.text]
-    de = "Markdown mit Code-Hervorhebung, automatische Chattitel, Umbenennen, Archiv, Export als Markdown, System-Prompt pro Chat."
-    en = "Markdown with code highlighting, automatic chat titles, rename, archive, Markdown export, system prompt per chat."
+    de = "Markdown mit Code-Hervorhebung und Kopierknopf (Bibliotheken lokal eingebunden, Ausgabe bereinigt), automatische Chattitel, Umbenennen, Archiv, Löschen, Suche, Export als Markdown, System-Prompt pro Chat."
+    en = "Markdown with code highlighting and a copy button (libraries bundled locally, output sanitised), automatic chat titles, rename, archive, delete, search, Markdown export, system prompt per chat."
+  [milestones.note]
+    de = "Abgeschlossen."
+    en = "Complete."
 
 [[milestones]]
   id = "6"

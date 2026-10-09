@@ -1,7 +1,7 @@
 ---
 title: "Contributing"
 description: "How to get involved with MultiGPT."
-lead: "MultiGPT is a small project at an early stage. Feedback, questions and contributions are welcome."
+lead: "MultiGPT is a small project still in development. Feedback, questions and contributions are welcome."
 menus:
   main:
     weight: 50
@@ -11,8 +11,8 @@ menus:
 
 ## How you can help
 
-- **Try it and report back:** building the package, installing it on a fresh Debian 13
-  and the Docker route have not been tried in practice yet. Experience with them –
+- **Try it and report back:** installing on a fresh Debian 13, the Docker route and chats
+  with real API keys and LM Studio have not been tried in practice yet. Experience with them –
   especially on NAS systems – helps a lot.
 - **Questions and ideas** as an issue: what would you need to use it in your own household?
 - **Code:** the next steps are in the [roadmap]({{< relref "roadmap" >}}). Please open an
@@ -20,8 +20,8 @@ menus:
 
 ## How the project is organised
 
-- Planning and architecture are in `doc/Plan.md`, the work packages per milestone in
-  `doc/Implementierung.md`.
+- Planning and architecture are in `docs/Plan.md`, the work packages per milestone in
+  `docs/Implementierung.md`.
 - Development with `make`: `make install`, `make test` (pytest against PostgreSQL),
   `make lint` (ruff). Details under [installation]({{< relref "installation" >}}).
 - The interface stays free of a Node build step and of CDNs. Provider adapters are written

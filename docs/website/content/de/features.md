@@ -2,7 +2,7 @@
 title: "Funktionen"
 slug: "funktionen"
 description: "Was MultiGPT können soll: viele Anbieter, LM Studio, Familienkonten, Budgets, eigene Dokumente, Websuche, Bilder, Sprache und MCP-Werkzeuge."
-lead: "Hier steht, was MultiGPT in Version 1 können soll. Fast alles davon ist geplant und noch nicht umgesetzt – jeder Abschnitt trägt seinen Status und den Meilenstein, in dem er kommen soll."
+lead: "Hier steht, was MultiGPT in Version 1 können soll. Chatten mit vielen Anbietern, LM Studio und Familienkonten sind umgesetzt, MCP-Werkzeuge teilweise; Budgets, eigene Dokumente, Websuche, Bilder und Sprache sind noch geplant. Jeder Abschnitt trägt seinen Status und den Meilenstein."
 menus:
   main:
     weight: 10
@@ -15,25 +15,29 @@ menus:
 - Login, Logout und Passwort ändern.
 - Login-Drosselung: Nach fünf Fehlversuchen ist die Anmeldung für diesen Nutzernamen und
   diese Adresse 15 Minuten gesperrt.
-- Keine Selbstregistrierung. Konten legt ein Verwalter an – heute per
-  `mgpt-ctl createsuperuser` bzw. `make user`, später auch in der Oberfläche.
+- Keine Selbstregistrierung. Konten legt ein Verwalter an – per
+  `mgpt-ctl createsuperuser`, `make user` (mit Rollenwahl) oder in der Verwaltung.
 
 ## Chatten mit vielen Anbietern
 
-{{< status "planned" "3" >}}
+{{< status "done" "3 / 4 / 5" >}}
 
-- Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche im Titel.
+Bisher mit simulierten Anbietern getestet, Ende-zu-Ende im Browser. Ein Test mit echten
+API-Keys steht noch aus.
+
+- Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche.
 - Das Modell lässt sich **pro Nachricht** wählen. Antworten erscheinen gestreamt,
   ein Knopf bricht ab, eine Antwort lässt sich neu erzeugen.
 - Anbieter werden per API-Key angebunden: OpenAI und alle OpenAI-kompatiblen Dienste
-  (z. B. Mistral, Groq, OpenRouter), dazu Anthropic und Google Gemini (Meilenstein 4).
+  (z. B. OpenRouter und LM Studio), dazu Anthropic und Google Gemini.
 - Modelle werden in der Verwaltung gepflegt oder per `make sync-models` beim Anbieter abgefragt.
-- Später (Meilenstein 5): Markdown mit Code-Hervorhebung und Kopierknopf, automatische
-  Chattitel, System-Prompt pro Chat, Export als Markdown.
+- Markdown mit Code-Hervorhebung und Kopierknopf. Die Bibliotheken sind lokal eingebunden,
+  die Ausgabe wird bereinigt.
+- Automatische Chattitel, System-Prompt pro Chat, Export als Markdown.
 
 ## Lokale Modelle mit LM Studio
 
-{{< status "planned" "4" >}}
+{{< status "done" "4" >}}
 
 [LM Studio](https://lmstudio.ai/docs) läuft auf einem PC im Heimnetz und stellt einen
 OpenAI-kompatiblen Server bereit. MultiGPT bindet ihn als Anbieter an, startet oder weckt
@@ -44,11 +48,16 @@ ihn aber nicht.
 - Ist LM Studio aus, sind lokale Modelle ausgegraut. Ist es an, werden die Modelle
   angeboten, die LM Studio tatsächlich meldet.
 - Fällt LM Studio mitten in einer Antwort aus, bleibt der bisherige Text erhalten.
-- Lokale Modelle kosten 0 € und bleiben auch bei ausgeschöpftem Budget nutzbar.
+- Lokale Modelle kosten 0 € und sollen auch bei ausgeschöpftem Budget nutzbar bleiben
+  (Budgets kommen mit Meilenstein 6).
+- Mit simulierten Anbietern getestet; der Test mit LM Studio im echten Heimnetz steht noch aus.
 
 ## Rollen, Gruppen und Budgets
 
-{{< status "planned" "2 / 6" >}}
+{{< status "partial" "2 / 6" >}}
+
+Umgesetzt sind Rollen, Gruppen, Konten und die zentrale Rechteprüfung (Meilenstein 2).
+Budgets, Verbrauchsübersicht und die Seite „Familie“ folgen mit Meilenstein 6.
 
 Vier Startrollen, in der Verwaltung anpassbar:
 
@@ -81,7 +90,11 @@ nebeneinander lesen.
 
 ## Werkzeuge über MCP
 
-{{< status "planned" "4a" >}}
+{{< status "partial" "4a" >}}
+
+Fertig sind das Werkzeugformat in allen Anbieter-Adaptern und der MCP-Client (offizielles
+Python-SDK) mit Verbindungstest und Einstufung der Werkzeuge in der Verwaltung. In Arbeit
+sind die Werkzeugschleife im Chat, die Rückfrage vor heiklen Aufrufen und die Anzeige im Chat.
 
 MultiGPT wird Client für das [Model Context Protocol](https://modelcontextprotocol.io/).
 Modelle, die Werkzeuge unterstützen, können damit Funktionen aus angebundenen MCP-Servern

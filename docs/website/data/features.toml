@@ -22,27 +22,27 @@
     en = "A `.deb` with its own venv, a systemd unit and the `mgpt-ctl` admin command. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
 
 [[items]]
-  status = "planned"
-  milestone = "3"
+  status = "done"
+  milestone = "3 / 4"
   [items.title]
     de = "Ein Chat, viele Anbieter"
     en = "One chat, many providers"
   [items.text]
-    de = "OpenAI, Anthropic, Google, Mistral, OpenRouter und andere über API-Keys. Das Modell lässt sich pro Nachricht wechseln."
-    en = "OpenAI, Anthropic, Google, Mistral, OpenRouter and others via API keys. Switch the model per message."
+    de = "OpenAI, Anthropic, Google Gemini, OpenRouter und andere OpenAI-kompatible Dienste über eigene API-Keys. Antworten kommen gestreamt, das Modell lässt sich pro Nachricht wechseln. Bisher mit simulierten Anbietern getestet."
+    en = "OpenAI, Anthropic, Google Gemini, OpenRouter and other OpenAI-compatible services via your own API keys. Answers are streamed, and the model can be switched per message. Tested with simulated providers so far."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "4"
   [items.title]
     de = "Lokale Modelle mit LM Studio"
     en = "Local models with LM Studio"
   [items.text]
-    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft. Lokale Modelle kosten nichts."
-    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running. Local models cost nothing."
+    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden automatisch angeboten. Lokale Modelle kosten nichts. Der Test im echten Heimnetz steht noch aus."
+    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically. Local models cost nothing. A test in a real home network is still pending."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "2"
   [items.title]
     de = "Familienkonten mit Rollen"
@@ -72,14 +72,14 @@
     en = "Ask two or three models the same question at once and see the answers side by side."
 
 [[items]]
-  status = "planned"
+  status = "partial"
   milestone = "4a"
   [items.title]
     de = "Werkzeuge über MCP"
     en = "Tools via MCP"
   [items.text]
-    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Heikle Aufrufe brauchen eine Bestätigung im Chat."
-    en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat."
+    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Heikle Aufrufe brauchen eine Bestätigung im Chat. Fertig sind MCP-Client und Verwaltung; die Werkzeugschleife im Chat ist in Arbeit."
+    en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat. The MCP client and admin screens are done; the tool loop in the chat is in progress."
 
 [[items]]
   status = "planned"
