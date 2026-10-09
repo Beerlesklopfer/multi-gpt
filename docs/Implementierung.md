@@ -300,5 +300,11 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
   - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
 - **M8 (Websuche) vorgezogen und in Arbeit** (Nutzerwunsch): Agenten websearch, webui und wiki.
+- **M7 (RAG) in Arbeit**, parallel zu M8:
+  - **retrieval:** `Chunk` mit HNSW- und Volltextindex, `RagSettings`, `embed()`, Suche mit Zugriffsfilter in SQL, Chat-Einbindung, Werkzeug `search_documents`.
+  - **ingest:** Extraktion, OCR mit Tesseract, Zerteilung, Worker mit `SKIP LOCKED`, `multi-gpt-worker.service`.
+  - **ragui:** Seiten für Sammlungen, Upload, Teilen, Abschnittsansicht, Auswahl im Chat.
+- **LM Studio im Heimnetz läuft echt** (2026-10-09, `openai/gpt-oss-20b`).
+- **Vorschlag „Gedächtnis über Chats“** (Plan 8, Punkt 19): Die Freigabe durch den Nutzer steht aus.
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.

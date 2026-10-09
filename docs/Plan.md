@@ -143,7 +143,12 @@ Umsetzung mit `httpx` direkt gegen die HTTP-APIs (wenige Abhängigkeiten, einhei
 17. MCP-Anbindung: Modelle nutzen Werkzeuge aus angebundenen MCP-Servern (Abschnitt 8g).
 18. Bildbearbeitung: Inpainting, Varianten und klassische Bearbeitung (Abschnitt 8e).
 
-Später (v2): Bilder als Eingabe an Modelle, Presets, Volltextsuche über Nachrichten.
+19. **Gedächtnis über Chats** (Vorschlag vom 2026-10-09, noch nicht freigegeben). Das Modell selbst vergisst, MultiGPT hat aber alle Chats lokal:
+    - **Stufe 1:** Eingebaute Werkzeuge `search_chats` / `read_chat`, Volltextsuche nur über eigene und geteilte Chats.
+    - **Stufe 2:** Suche nach Bedeutung über pgvector. Offen ist, ob die Embeddings über OpenAI oder lokal über LM Studio entstehen.
+    - **Stufe 3:** „Erinnerungen“, die das Modell vorschlägt. Gespeichert wird erst nach Bestätigung, je Mitglied einsehbar und löschbar, für Rollen schaltbar.
+
+Später (v2): Bilder als Eingabe an Modelle, Presets.
 
 ## 8a. LM Studio und Online-Anzeige
 
