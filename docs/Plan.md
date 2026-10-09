@@ -14,7 +14,7 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 - **Betrieb:** läuft dauerhaft (24/7) auf dem NAS, nur im Intranet, kein Zugriff aus dem Internet. Ausgehend nur HTTPS zu den KI-Anbietern sowie HTTP im Intranet zu LM Studio.
 - **Lokale Modelle:** LM Studio läuft auf einem anderen Rechner im Intranet und nur bei Bedarf. Die App muss damit umgehen, dass dieser Anbieter meistens offline ist.
 - **Nutzer:** Familiensystem mit einer Handvoll Konten, keine Selbstregistrierung. Anlage durch einen Verwalter in der Oberfläche, im Django-Admin oder per `make user`.
-- **Installation als Debian-Paket:** `multi-gpt` (gebaut mit dh-virtualenv) bringt sein eigenes venv in `/usr/share/python/multi-gpt` mit und wird über systemd gestartet. Systemnutzer `multi-gpt`, Konfiguration in `/etc/multi-gpt/.env`, Daten in `/var/lib/multi-gpt`. Docker (`Dockerfile`, `compose.yaml`) ist der Ausweichweg für Systeme ohne apt.
+- **Installation als Debian-Paket:** `multi-gpt` (gebaut mit dh-virtualenv) bringt sein eigenes venv in `/usr/share/python/multi-gpt` mit und wird über systemd gestartet. Systemnutzer `multi-gpt`, Konfiguration in `/etc/multi-gpt/.env`, Daten in `/var/lib/multi-gpt`. Docker (`Dockerfile`, `compose.yaml`) ist der Ausweichweg für Systeme ohne apt. Im Paket lauscht gunicorn nur auf `127.0.0.1`. Davor steht verpflichtend nginx mit TLS, das Paket liefert die Site-Konfiguration mit.
 - **Kein Node-Buildschritt:** Frontend aus Django-Templates plus schlankem Vanilla-JS, alle Assets lokal (keine CDNs).
 - **Sprache der Oberfläche:** Deutsch.
 
