@@ -1,8 +1,8 @@
 # MultiGPT mit Docker (Nebenweg zum Debian-Paket) – PostgreSQL + pgvector und App.
 #
 # Konfiguration kommt aus .env im Projektordner (Pflicht). Mindestens nötig:
-#   SECRET_KEY, FIELD_ENCRYPTION_KEY, ALLOWED_HOSTS (muss 127.0.0.1 für den
-#   Health-Check enthalten), POSTGRES_PASSWORD (URL-sicher, z. B.
+#   SECRET_KEY, FIELD_ENCRYPTION_KEY, ALLOWED_HOSTS (der Health-Check braucht
+#   keinen Eintrag), POSTGRES_PASSWORD (URL-sicher, z. B.
 #   `openssl rand -hex 24`). Vorlage: .env.example (`make install` erzeugt .env).
 #   DATABASE_URL, STATIC_ROOT, MEDIA_ROOT, DEBUG und MULTI_GPT_BIND setzt diese
 #   Datei für den Container selbst; Werte aus .env werden dafür überschrieben.

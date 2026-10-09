@@ -1,10 +1,8 @@
-"""Tests für Meilenstein 1: Login, Logout, Passwort, Health-Check, pgvector."""
-
-from unittest import mock
+"""Tests für Meilenstein 1: Login, Logout, Passwort, pgvector (Health-Check: test_health.py)."""
 
 import pytest
 from django.conf import settings
-from django.db import OperationalError, connection
+from django.db import connection
 from django.urls import reverse
 
 pytestmark = pytest.mark.django_db
@@ -67,19 +65,6 @@ def test_password_change(client, user, password):
     assert response.url == reverse("password_change_done")
     user.refresh_from_db()
     assert user.check_password(new_password)
-
-
-def test_healthz_ok_without_login(client):
-    response = client.get(reverse("healthz"))
-    assert response.status_code == 200
-    assert response.content == b"ok"
-
-
-def test_healthz_503_without_db(client):
-    with mock.patch("multigpt.chat.views.connection") as conn:
-        conn.ensure_connection.side_effect = OperationalError("weg")
-        response = client.get(reverse("healthz"))
-    assert response.status_code == 503
 
 
 def test_pgvector_extension_present():
