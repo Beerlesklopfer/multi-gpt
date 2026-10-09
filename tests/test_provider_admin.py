@@ -4,6 +4,8 @@ HTTP wird mit respx gemockt; keine echten Anbieteraufrufe.
 """
 
 import errno
+import json
+import re
 import socket
 import ssl
 
@@ -461,3 +463,55 @@ def test_non_admin_gets_403(client, provider, mock, method):
         assert response.status_code == 403
     assert route.call_count == 0
     assert not AIModel.objects.exists()
+
+
+# --- Admin: Combobox für „Modell-ID“ ---------------------------------------------
+
+
+def _reported_choices(response):
+    html = response.content.decode()
+    match = re.search(
+        r'<script id="reported-model-choices" type="application/json">(.*?)</script>', html, re.S
+    )
+    assert match, "#reported-model-choices fehlt"
+    return json.loads(match.group(1))
+
+
+@pytest.mark.django_db
+def test_change_page_offers_reported_models(admin_client, provider):
+    AIModel.objects.create(provider=provider, model_id="gpt-4o", display_name="GPT-4o")
+    provider.reported_models = ["whisper-1", "gpt-4o", "text-embedding-3-small"]
+    provider.save(update_fields=["reported_models"])
+    response = admin_client.get(reverse("admin:chat_provider_change", args=[provider.pk]))
+    assert response.status_code == 200
+    assert _reported_choices(response) == [
+        {"id": "gpt-4o", "capability": "chat", "exists": True},
+        {"id": "text-embedding-3-small", "capability": "embedding", "exists": False},
+        {"id": "whisper-1", "capability": "stt", "exists": False},
+    ]
+    html = response.content.decode()
+    assert "chat/admin_model_combobox.js" in html
+    # Kein Inline-JS im Inhalt: jedes <script> lädt eine Datei oder trägt JSON-Daten.
+    body = html.split("</head>", 1)[1]
+    for tag in re.findall(r"<script\b[^>]*>", body):
+        assert "src=" in tag or 'type="application/json"' in tag, tag
+    assert "onclick" not in body
+
+
+@pytest.mark.django_db
+def test_change_page_without_reported_models(admin_client, provider):
+    provider.reported_models = []
+    provider.save(update_fields=["reported_models"])
+    response = admin_client.get(reverse("admin:chat_provider_change", args=[provider.pk]))
+    assert response.status_code == 200
+    assert _reported_choices(response) == []
+    assert "chat/admin_model_combobox.js" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_add_page_without_combobox(admin_client):
+    response = admin_client.get(reverse("admin:chat_provider_add"))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "reported-model-choices" not in html
+    assert "admin_model_combobox.js" not in html

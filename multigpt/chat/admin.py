@@ -268,6 +268,24 @@ class ProviderAdmin(admin.ModelAdmin):
         result = status.force_check(provider, timeout=SAVE_CHECK_TIMEOUT)
         self.message_user(request, *check_message(provider, result))
 
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        """Gemeldete Modelle für die Combobox am Feld „Modell-ID“ der Inline."""
+        from .management.commands.sync_models import guess_capability
+
+        extra_context = extra_context or {}
+        provider = self.get_object(request, object_id)
+        if provider is not None:
+            existing = set(provider.ai_models.values_list("model_id", flat=True))
+            extra_context["reported_model_choices"] = [
+                {
+                    "id": model_id,
+                    "capability": guess_capability(model_id),
+                    "exists": model_id in existing,
+                }
+                for model_id in sorted(provider.reported_models or [])
+            ]
+        return super().change_view(request, object_id, form_url, extra_context)
+
     def get_urls(self):
         view = self.admin_site.admin_view
         return [

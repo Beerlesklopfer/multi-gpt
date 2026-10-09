@@ -35,3 +35,48 @@
   font-size: 0.75rem;
 }
 .provider-models-count { color: var(--body-quiet-color); }
+
+/* Combobox für „Modell-ID“ in der Modell-Tabelle (admin_model_combobox.js). */
+.model-combobox { position: relative; display: inline-flex; align-items: stretch; }
+.model-combobox input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.model-combobox-toggle {
+  min-width: 2.2em;
+  padding: 0 0.5em;
+  border: 1px solid var(--border-color);
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  background: var(--darkened-bg);
+  color: var(--body-fg);
+  cursor: pointer;
+  font-size: 1rem;
+}
+.model-combobox-toggle:hover,
+.model-combobox-toggle:focus-visible { background: var(--selected-bg); }
+/* Position und Höhe setzt das Skript (fixed, damit overflow der Inline nicht abschneidet).
+   Spezifischer als „form .aligned ul“ aus dem Django-Admin (margin/padding). */
+.model-combobox ul.model-combobox-list {
+  position: fixed;
+  z-index: 50;
+  max-height: 20em;
+  overflow-y: auto;
+  scrollbar-color: var(--border-color) var(--body-bg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--body-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.model-combobox-list li { margin: 0; padding: 0.35em 0.7em; white-space: nowrap; list-style: none; }
+.model-combobox-option { cursor: pointer; }
+.model-combobox-option:hover,
+.model-combobox-option[aria-selected="true"] { background: var(--selected-bg); }
+.model-combobox-empty { color: var(--body-quiet-color); font-style: italic; }
+.model-combobox-badge {
+  font-size: 0.75em;
+  padding: 0 0.4em;
+  border-radius: 3px;
+  background: var(--darkened-bg);
+  color: var(--body-quiet-color);
+}

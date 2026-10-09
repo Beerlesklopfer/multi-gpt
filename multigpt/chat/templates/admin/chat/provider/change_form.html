@@ -4,6 +4,14 @@
 
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
 
+{% block admin_change_form_document_ready %}
+  {{ block.super }}
+  {% if change %}
+    {{ reported_model_choices|default_if_none:""|json_script:"reported-model-choices" }}
+    <script src="{% static 'chat/admin_model_combobox.js' %}" defer></script>
+  {% endif %}
+{% endblock %}
+
 {% block object-tools-items %}
   <li>
     <form method="post" action="{% url 'admin:chat_provider_check' original.pk|admin_urlquote %}" class="provider-check-form">
