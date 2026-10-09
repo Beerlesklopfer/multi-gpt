@@ -137,7 +137,7 @@ PY
     multi_gpt_migrate "$@"
 fi
 
-# Die Migration muss vor #DEBHELPER# stehen: dort fügt dh_installsystemd
+# Die Migration muss vor dem debhelper-Platzhalter (unten) stehen: dort fügt dh_installsystemd
 # (compat 13, Vorgabe --restart-after-upgrade) den Start bzw. beim Upgrade den
 # Neustart des Dienstes ein ("deb-systemd-invoke restart multi-gpt.service").
 # Beim Upgrade wird der Dienst im prerm NICHT gestoppt (der prerm-Stopp
