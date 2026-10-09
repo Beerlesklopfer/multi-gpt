@@ -234,15 +234,16 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 ## 7. Stand
 
 - **M1 umgesetzt** (2026-10-09). Nachgewiesen:
-  - `make test` (10 Tests gegen PostgreSQL 18 mit pgvector), `ruff`, `manage.py check` und `makemigrations --check` sind grün.
+  - `make test` (15 Tests gegen PostgreSQL 18 mit pgvector), `ruff`, `manage.py check` und `makemigrations --check` sind grün. Die Entwicklungs-DB ist mit `accounts.User` neu aufgesetzt und migriert.
   - `make run` startet gunicorn (`gthread`), `/healthz/` liefert 200, `/` leitet auf den Login um.
-  - Der Paketbau ist ohne debhelper nachgestellt: `collectstatic` aus dem venv, `systemd-analyze verify`, `Type=notify` als User-Unit, postinst und postrm mit Stubs.
+  - `make deb` baut `multi-gpt_0.1.0_amd64.deb`:
+    - Abhängigkeiten `python3.13, python3 (>= 3.12), adduser`.
+    - `collectstatic` im Paket.
+    - Im postinst läuft die Migration einmal und vor dem Start bzw. Neustart des Dienstes.
+  - Repository https://github.com/Beerlesklopfer/multi-gpt (öffentlich, AGPL-3.0-or-later). Website über GitHub Pages: https://beerlesklopfer.github.io/multi-gpt/
 - **Offen für die Abnahme von M1:**
-  - Entwicklungs-DB `multigpt` neu aufsetzen: Ihre Tabellen stammen noch vom Standard-`auth.User`. Mit `accounts.User` lassen sich die bisherigen Migrationen nicht weiterführen.
-  - Echter Paketbau mit `make deb` (braucht `dh-virtualenv` und `debhelper`).
-  - Installation, `mgpt-ctl migrate` und `purge` auf Debian 13.
+  - Installation, automatische Migration und `purge` des Pakets auf Debian 13.
   - Login im Browser.
   - Docker-Build (ungetestet, auf dem Entwicklungsrechner gibt es kein Docker).
-- **Entscheidungen nach M1:**
-  - Entschieden (2026-10-09): automatische Migration im postinst, `/healthz/` als Middleware. Beides wird gerade umgesetzt.
-- Die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b sind geklärt, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
+- **M2–M5 in Arbeit** (freigegeben am 2026-10-09). Umsetzung im Verbund mehrerer Agenten, die sich über einen FIFO-Bus abstimmen, Meilenstein für Meilenstein.
+- Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
