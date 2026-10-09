@@ -1,0 +1,7 @@
+{{- /* Repository-Hinweis aus params.repoURL (Platzhalter in hugo.toml). */ -}}
+{{- $de := site.Language.Lang | eq "de" }}
+{{- with site.Params.repoURL }}
+<p><a class="button" href="{{ . }}">{{ T "repo_link" }}</a></p>
+{{- else }}
+<p class="notice">{{ if $de }}Die öffentliche Adresse des Repositorys steht noch nicht fest und wird hier ergänzt, sobald es veröffentlicht ist.{{ else }}The public address of the repository has not been decided yet and will be added here once it is published.{{ end }}</p>
+{{- end }}

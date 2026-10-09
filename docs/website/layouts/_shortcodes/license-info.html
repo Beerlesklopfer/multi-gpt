@@ -1,0 +1,7 @@
+{{- /* Lizenzhinweis aus params.license (Platzhalter in hugo.toml). */ -}}
+{{- $de := site.Language.Lang | eq "de" }}
+{{- with site.Params.license }}
+<p>{{ if $de }}MultiGPT steht unter der Lizenz{{ else }}MultiGPT is licensed under{{ end }} {{ . }}.</p>
+{{- else }}
+<p>{{ if $de }}Die Lizenz ist noch nicht festgelegt. Bis dahin gilt für den Quellcode keine Open-Source-Lizenz; sie wird hier und im Repository ergänzt.{{ else }}The license has not been decided yet. Until then, no open-source license applies to the source code; it will be added here and in the repository.{{ end }}</p>
+{{- end }}

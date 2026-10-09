@@ -1,0 +1,4 @@
+{{- /* Statusmarke. Aufruf: partial "badge.html" "done" | "partial" | "planned" */ -}}
+{{- $key := printf "status_%s" . -}}
+<span class="badge badge-{{ . }}">{{ T $key }}</span>
+{{- /**/ -}}

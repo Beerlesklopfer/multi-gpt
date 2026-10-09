@@ -1,0 +1,81 @@
+# Baut die Projektseite (docs/website, Hugo) und veröffentlicht sie auf GitHub Pages.
+# Voraussetzung im Repository: Settings → Pages → Source = "GitHub Actions".
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/website/**"
+      - ".github/workflows/website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nur ein Deployment gleichzeitig; ein laufendes wird nicht abgebrochen.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Gleiche Version wie beim lokalen Bauen (docs/website/README.md).
+  # Normale (nicht "extended") Ausgabe; die Prüfsumme stammt aus
+  # hugo_<version>_checksums.txt des GitHub-Releases.
+  HUGO_VERSION: "0.165.0"
+  HUGO_SHA256: "5c3a37a5450b3e386e5b75a87a790fea2d04a796d75e171216c80ef48a32b432"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Hugo
+        run: |
+          archive="hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${archive}"
+          echo "${HUGO_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          mkdir -p "${RUNNER_TEMP}/hugo"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/hugo" hugo
+          echo "${RUNNER_TEMP}/hugo" >> "${GITHUB_PATH}"
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Build
+        env:
+          HUGO_ENVIRONMENT: production
+          TZ: Europe/Berlin
+        run: |
+          hugo version
+          hugo --source docs/website --minify --panicOnWarning \
+            --baseURL "${{ steps.pages.outputs.base_url }}/"
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/website/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -1,0 +1,127 @@
+# Meilensteine aus doc/Plan.md, Abschnitt 11.
+# status: "done" | "partial" | "planned"  (Texte dazu in i18n/*.toml)
+# Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
+# Roadmap lesen beide aus dieser Datei.
+
+[[milestones]]
+  id = "1"
+  status = "done"
+  [milestones.title]
+    de = "Grundgerüst"
+    en = "Project skeleton"
+  [milestones.text]
+    de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, leere Chatseite, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien."
+    en = "Django project configured from the environment, Makefile, login with brute-force throttling, empty chat page, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files."
+  [milestones.note]
+    de = "Tests, Linter und gunicorn-Start sind grün. Noch offen für die Abnahme: echter Paketbau mit `make deb`, Installation auf einem frischen Debian 13 und der Docker-Build."
+    en = "Tests, linter and gunicorn start pass. Still open for acceptance: a real package build with `make deb`, installation on a fresh Debian 13 and the Docker build."
+
+[[milestones]]
+  id = "2"
+  status = "planned"
+  [milestones.title]
+    de = "Datenmodell und Verwaltung"
+    en = "Data model and admin"
+  [milestones.text]
+    de = "Anbieter, Modelle, Rollen, Gruppen und Profile; verschlüsselte API-Keys; Admin-Masken; zentrale Rechteprüfung. Vier Startrollen: Verwalter, Erwachsener, Jugendlicher, Gast."
+    en = "Providers, models, roles, groups and profiles; encrypted API keys; admin screens; a central permission check. Four default roles: administrator, adult, teenager, guest."
+
+[[milestones]]
+  id = "3"
+  status = "planned"
+  [milestones.title]
+    de = "Erster Anbieter und Streaming"
+    en = "First provider and streaming"
+  [milestones.text]
+    de = "OpenAI-kompatibler Adapter, gestreamte Antworten mit Abbrechen-Knopf, Chatansicht mit gespeichertem Verlauf."
+    en = "OpenAI-compatible adapter, streamed answers with a stop button, chat view with saved history."
+
+[[milestones]]
+  id = "4"
+  status = "planned"
+  [milestones.title]
+    de = "Weitere Anbieter und LM Studio"
+    en = "More providers and LM Studio"
+  [milestones.text]
+    de = "Anthropic und Google Gemini, Modelllisten abrufen, LM Studio als lokaler Anbieter mit Online-Anzeige."
+    en = "Anthropic and Google Gemini, fetching model lists, LM Studio as a local provider with online indicator."
+
+[[milestones]]
+  id = "4a"
+  status = "planned"
+  [milestones.title]
+    de = "MCP-Werkzeuge"
+    en = "MCP tools"
+  [milestones.text]
+    de = "Modelle nutzen Werkzeuge aus angebundenen MCP-Servern – mit Rechteprüfung, Rückfrage vor heiklen Aufrufen und Anzeige im Chat."
+    en = "Models use tools from connected MCP servers – with permission checks, confirmation before sensitive calls and display in the chat."
+
+[[milestones]]
+  id = "5"
+  status = "planned"
+  [milestones.title]
+    de = "Komfort"
+    en = "Convenience"
+  [milestones.text]
+    de = "Markdown mit Code-Hervorhebung, automatische Chattitel, Umbenennen, Archiv, Export als Markdown, System-Prompt pro Chat."
+    en = "Markdown with code highlighting, automatic chat titles, rename, archive, Markdown export, system prompt per chat."
+
+[[milestones]]
+  id = "6"
+  status = "planned"
+  [milestones.title]
+    de = "Vergleich, Verbrauch, Budgets, Familie"
+    en = "Comparison, usage, budgets, family"
+  [milestones.text]
+    de = "Dieselbe Frage an mehrere Modelle, Verbrauchsübersicht, Monatsbudgets und die Verwaltungsseite „Familie“."
+    en = "The same question to several models, usage overview, monthly budgets and the “Family” admin page."
+
+[[milestones]]
+  id = "7"
+  status = "planned"
+  [milestones.title]
+    de = "Eigene Dokumente (RAG)"
+    en = "Your own documents (RAG)"
+  [milestones.text]
+    de = "Sammlungen, Upload, Indexierung im Hintergrund, Suche mit pgvector, Quellen mit Seitenangabe."
+    en = "Collections, upload, background indexing, search with pgvector, sources with page numbers."
+
+[[milestones]]
+  id = "8"
+  status = "planned"
+  [milestones.title]
+    de = "Websuche"
+    en = "Web search"
+  [milestones.text]
+    de = "Austauschbares Such-Backend (SearXNG oder Such-API), geschützter Seitenabruf, Quellen unter der Antwort."
+    en = "Swappable search backend (SearXNG or a search API), protected page fetching, sources below the answer."
+
+[[milestones]]
+  id = "9"
+  status = "planned"
+  [milestones.title]
+    de = "Bilder"
+    en = "Images"
+  [milestones.text]
+    de = "Bilderzeugung, Bereich ändern (Inpainting), Varianten und klassische Bearbeitung über einen mitgelieferten MCP-Server."
+    en = "Image generation, editing a marked area (inpainting), variations and classic editing via a bundled MCP server."
+
+[[milestones]]
+  id = "10"
+  status = "planned"
+  [milestones.title]
+    de = "Sprache"
+    en = "Voice"
+  [milestones.text]
+    de = "Spracheingabe (Aufnahme → Text) und Vorlesen der Antworten, über HTTPS im Browser an PC und Handy."
+    en = "Voice input (recording → text) and reading answers aloud, over HTTPS in the browser on PC and phone."
+
+[[milestones]]
+  id = "11"
+  status = "planned"
+  [milestones.title]
+    de = "Betrieb"
+    en = "Operations"
+  [milestones.text]
+    de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
+    en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."

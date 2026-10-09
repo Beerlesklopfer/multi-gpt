@@ -1,0 +1,51 @@
+{{ define "main" }}
+{{- $lang := site.Language.Lang }}
+<section class="hero">
+  <p class="eyebrow">{{ .Params.eyebrow }}</p>
+  <h1>{{ .Params.headline }}</h1>
+  <p class="lead">{{ .Params.lead }}</p>
+  <p class="actions">
+    {{- with site.GetPage "/installation" }}<a class="button" href="{{ .RelPermalink }}">{{ T "cta_install" }}</a>{{ end }}
+    {{- with site.GetPage "/roadmap" }}<a class="button button-secondary" href="{{ .RelPermalink }}">{{ T "cta_roadmap" }}</a>{{ end }}
+  </p>
+</section>
+
+{{ partial "early-stage.html" . }}
+
+<section class="pillars" aria-labelledby="versprechen">
+  <h2 id="versprechen">{{ .Params.pillarsTitle }}</h2>
+  {{- with .Params.pillarsLead }}<p class="muted">{{ . }}</p>{{ end }}
+  <ul class="card-grid card-grid-3">
+    {{- range .Params.pillars }}
+    <li class="card pillar">
+      <h3>{{ .title }}</h3>
+      <p>{{ .text | markdownify }}</p>
+    </li>
+    {{- end }}
+  </ul>
+</section>
+
+<section aria-labelledby="funktionen">
+  <h2 id="funktionen">{{ T "features_title" }}</h2>
+  <ul class="card-grid">
+    {{- range hugo.Data.features.items }}
+    <li class="card feature">
+      <h3>{{ index .title $lang }}</h3>
+      <p class="card-meta">{{ partial "badge.html" .status }} <span>{{ T "milestone" }} {{ .milestone }}</span></p>
+      <p>{{ index .text $lang | markdownify }}</p>
+    </li>
+    {{- end }}
+  </ul>
+  {{- with site.GetPage "/features" }}
+  <p><a href="{{ .RelPermalink }}">{{ T "features_more" }} →</a></p>
+  {{- end }}
+</section>
+
+<div class="placeholder">
+  <p>{{ T "screenshot_placeholder" }}</p>
+</div>
+
+<section class="prose">
+  {{ .Content }}
+</section>
+{{ end }}

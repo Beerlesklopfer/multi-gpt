@@ -1,0 +1,114 @@
+{{- /* Architekturdiagramm als reines HTML/CSS (barrierearm, responsiv, ohne Skript). */ -}}
+{{- $de := dict
+  "caption" "Aufbau von MultiGPT. Alles außer den Anbieter-APIs läuft im eigenen Heimnetz. Markierte Teile sind geplant."
+  "browser" "Browser" "browser_sub" "PC, Tablet, Handy im Heimnetz"
+  "e_https" "HTTPS im Intranet"
+  "nginx_sub" "optional · Intranet-Hostname und TLS"
+  "e_local" "HTTP auf localhost"
+  "django_sub" "gunicorn (gthread), Django 5.2"
+  "app_chat" "chat – Ansichten, Streaming (SSE)"
+  "app_providers" "providers – ein Adapter je Anbieter"
+  "app_mcp" "mcp – Werkzeugschleife"
+  "worker" "Worker-Prozess" "worker_sub" "indexiert Dokumente, gleiche Datenbank"
+  "db_sub" "Konten, Chats, Vektoren für RAG"
+  "e_sql" "SQL"
+  "api" "Anbieter-APIs" "api_sub" "OpenAI, Anthropic, Google, Mistral, OpenRouter …"
+  "e_internet" "HTTPS ins Internet"
+  "lm_sub" "PC im Heimnetz, nur zeitweise online"
+  "e_intranet" "HTTP im Intranet"
+  "mcp" "MCP-Server" "mcp_sub" "lokal (stdio) oder per Streamable HTTP"
+  "e_tools" "Werkzeugaufrufe"
+  "planned" "geplant"
+  "fan" "Django (und der Worker) verbinden sich mit:"
+  "example" "Beispielkonfiguration geplant"
+}}
+{{- $en := dict
+  "caption" "How MultiGPT is put together. Everything except the provider APIs runs in your own home network. Marked parts are planned."
+  "browser" "Browser" "browser_sub" "PC, tablet, phone on the home network"
+  "e_https" "HTTPS on the intranet"
+  "nginx_sub" "optional · intranet host name and TLS"
+  "e_local" "HTTP on localhost"
+  "django_sub" "gunicorn (gthread), Django 5.2"
+  "app_chat" "chat – views, streaming (SSE)"
+  "app_providers" "providers – one adapter per provider"
+  "app_mcp" "mcp – tool loop"
+  "worker" "Worker process" "worker_sub" "indexes documents, same database"
+  "db_sub" "accounts, chats, vectors for RAG"
+  "e_sql" "SQL"
+  "api" "Provider APIs" "api_sub" "OpenAI, Anthropic, Google, Mistral, OpenRouter …"
+  "e_internet" "HTTPS to the internet"
+  "lm_sub" "PC on the home network, only online at times"
+  "e_intranet" "HTTP on the intranet"
+  "mcp" "MCP servers" "mcp_sub" "local (stdio) or via Streamable HTTP"
+  "e_tools" "tool calls"
+  "planned" "planned"
+  "fan" "Django (and the worker) connect to:"
+  "example" "example config planned"
+}}
+{{- $t := cond (eq site.Language.Lang "de") $de $en }}
+<figure class="arch">
+  <div class="arch-flow">
+    <div class="arch-node">
+      <strong>{{ $t.browser }}</strong>
+      <span>{{ $t.browser_sub }}</span>
+    </div>
+    <div class="arch-edge"><span>{{ $t.e_https }}</span></div>
+    <div class="arch-node arch-optional">
+      <strong>nginx</strong>
+      <span>{{ $t.nginx_sub }}</span>
+      <em class="tag">{{ $t.example }} (M11)</em>
+    </div>
+    <div class="arch-edge"><span>{{ $t.e_local }}</span></div>
+    <div class="arch-row">
+      <div class="arch-node arch-core">
+        <strong>Django</strong>
+        <span>{{ $t.django_sub }}</span>
+        <ul>
+          <li>{{ $t.app_chat }}</li>
+          <li>{{ $t.app_providers }} <em class="tag">{{ $t.planned }} (M3–M4)</em></li>
+          <li>{{ $t.app_mcp }} <em class="tag">{{ $t.planned }} (M4a)</em></li>
+        </ul>
+      </div>
+      <div class="arch-node arch-side arch-planned">
+        <strong>{{ $t.worker }}</strong>
+        <span>{{ $t.worker_sub }}</span>
+        <em class="tag">{{ $t.planned }} (M7)</em>
+      </div>
+    </div>
+    <p class="arch-fan">{{ $t.fan }}</p>
+    <ul class="arch-targets">
+      <li>
+        <div class="arch-edge"><span>{{ $t.e_sql }}</span></div>
+        <div class="arch-node arch-store">
+          <strong>PostgreSQL + pgvector</strong>
+          <span>{{ $t.db_sub }}</span>
+        </div>
+      </li>
+      <li>
+        <div class="arch-edge"><span>{{ $t.e_internet }}</span></div>
+        <div class="arch-node arch-planned">
+          <strong>{{ $t.api }}</strong>
+          <span>{{ $t.api_sub }}</span>
+          <em class="tag">{{ $t.planned }} (M3–M4)</em>
+        </div>
+      </li>
+      <li>
+        <div class="arch-edge"><span>{{ $t.e_intranet }}</span></div>
+        <div class="arch-node arch-planned">
+          <strong>LM Studio</strong>
+          <span>{{ $t.lm_sub }}</span>
+          <em class="tag">{{ $t.planned }} (M4)</em>
+        </div>
+      </li>
+      <li>
+        <div class="arch-edge"><span>{{ $t.e_tools }}</span></div>
+        <div class="arch-node arch-planned">
+          <strong>{{ $t.mcp }}</strong>
+          <span>{{ $t.mcp_sub }}</span>
+          <em class="tag">{{ $t.planned }} (M4a)</em>
+        </div>
+      </li>
+    </ul>
+  </div>
+  <figcaption>{{ $t.caption }}</figcaption>
+</figure>

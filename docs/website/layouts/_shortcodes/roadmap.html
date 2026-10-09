@@ -1,0 +1,16 @@
+{{- /* Meilensteinliste aus data/roadmap.toml. */ -}}
+{{- $lang := site.Language.Lang }}
+<ol class="roadmap">
+  {{- range hugo.Data.roadmap.milestones }}
+  <li class="milestone milestone-{{ .status }}">
+    <div class="milestone-head">
+      <h2 id="m{{ .id }}"><span class="milestone-id">{{ T "milestone" }} {{ .id }}</span> {{ index .title $lang }}</h2>
+      {{ partial "badge.html" .status }}
+    </div>
+    <p>{{ index .text $lang | markdownify }}</p>
+    {{- with .note }}
+    <p class="milestone-note">{{ index . $lang | markdownify }}</p>
+    {{- end }}
+  </li>
+  {{- end }}
+</ol>

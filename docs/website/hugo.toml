@@ -1,0 +1,60 @@
+# Hugo-Konfiguration der Projektseite von MultiGPT.
+# Bauen: hugo --source docs/website --minify   (Hugo-Version: siehe README.md)
+
+# PLATZHALTER: Die endgültige Adresse steht noch nicht fest. Beim Veröffentlichen
+# über GitHub Pages setzt der Workflow (.github/workflows/website.yml) die
+# baseURL per --baseURL; dieser Wert gilt nur für lokale Builds ohne Server.
+baseURL = "https://example.invalid/multi-gpt/"
+
+title = "MultiGPT"
+
+defaultContentLanguage = "de"
+defaultContentLanguageInSubdir = false
+
+# Nur die Seiten, die wir wirklich brauchen: kein RSS, keine Taxonomien.
+disableKinds = ["rss", "taxonomy", "term"]
+
+enableRobotsTXT = true
+# Hugo soll keine eigenen Meta-Generator-Tags einfügen.
+disableHugoGeneratorInject = true
+
+[params]
+  # PLATZHALTER: URL des GitHub-Repositorys, z. B.
+  #   repoURL = "https://github.com/<konto>/multi-gpt"
+  # Solange leer, zeigt die Seite "Repository folgt" statt eines Links.
+  repoURL = ""
+  # PLATZHALTER: Lizenz ist noch nicht festgelegt. Erst eintragen, wenn im
+  # Repository eine LICENSE-Datei liegt (z. B. license = "MIT").
+  # Solange leer, zeigt die Seite "Lizenz: noch offen".
+  license = ""
+
+[languages]
+  [languages.de]
+    label = "Deutsch"
+    locale = "de-DE"
+    contentDir = "content/de"
+    weight = 1
+    [languages.de.params]
+      description = "Selbst gehostetes Multi-KI-Chatsystem für Familie und Haushalt: eigene Daten, viele Anbieter, ein Chat."
+  [languages.en]
+    label = "English"
+    locale = "en-US"
+    contentDir = "content/en"
+    weight = 2
+    [languages.en.params]
+      description = "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
+
+[markup]
+  [markup.goldmark.renderer]
+    # Kein rohes HTML aus Markdown; Inhalte bleiben reines Markdown.
+    unsafe = false
+  [markup.highlight]
+    # Keine Syntaxfarben: Codeblöcke als schlichtes <pre><code>, ohne Inline-Styles.
+    codeFences = false
+
+[minify]
+  [minify.tdewolff.html]
+    keepWhitespace = false
+
+[sitemap]
+  changeFreq = "monthly"

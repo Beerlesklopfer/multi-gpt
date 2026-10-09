@@ -1,0 +1,13 @@
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p>
+      {{- with site.Params.repoURL }}
+      <a href="{{ . }}">{{ T "repo_link" }}</a>
+      {{- else }}
+      {{ T "repo_pending" }}
+      {{- end }}
+      · {{ T "license_label" }}: {{ site.Params.license | default (T "license_pending") }}
+    </p>
+    <p class="muted">{{ T "footer_note" }}</p>
+  </div>
+</footer>

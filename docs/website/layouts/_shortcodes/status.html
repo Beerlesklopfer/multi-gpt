@@ -1,0 +1,3 @@
+{{- /* Statusmarke im Fließtext: {{< status "planned" "3" >}} – Status und optional Meilenstein. */ -}}
+<p class="card-meta">{{ partial "badge.html" (.Get 0) }}{{ with .Get 1 }} <span>{{ T "milestone" }} {{ . }}</span>{{ end }}</p>
+{{- /**/ -}}
