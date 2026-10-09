@@ -1,1 +1,2 @@
 deploy/gunicorn.conf.py etc/multi-gpt/
+debian/mgpt-ctl usr/bin/

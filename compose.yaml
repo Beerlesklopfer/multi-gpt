@@ -1,19 +1,68 @@
+# MultiGPT mit Docker (Nebenweg zum Debian-Paket) – PostgreSQL + pgvector und App.
+#
+# Konfiguration kommt aus .env im Projektordner (Pflicht). Mindestens nötig:
+#   SECRET_KEY, FIELD_ENCRYPTION_KEY, ALLOWED_HOSTS (muss 127.0.0.1 für den
+#   Health-Check enthalten), POSTGRES_PASSWORD (URL-sicher, z. B.
+#   `openssl rand -hex 24`). Vorlage: .env.example (`make install` erzeugt .env).
+#   DATABASE_URL, STATIC_ROOT, MEDIA_ROOT, DEBUG und MULTI_GPT_BIND setzt diese
+#   Datei für den Container selbst; Werte aus .env werden dafür überschrieben.
+#
+# Erster Start:
+#   docker compose build
+#   docker compose up -d db
+#   docker compose run --rm web mgpt-ctl migrate
+#   docker compose run --rm web mgpt-ctl createsuperuser
+#   docker compose up -d
+#
+# Nach einem Update: docker compose build && docker compose run --rm web mgpt-ctl migrate
+#   && docker compose up -d
+#
+# Nur die Datenbank für die Entwicklung (make dev mit lokaler .venv):
+#   docker compose up -d db
+#   DATABASE_URL=postgres://multi-gpt:<POSTGRES_PASSWORD>@localhost:5432/multi-gpt
+
 services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: multi-gpt
+      POSTGRES_USER: multi-gpt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - multi-gpt-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multi-gpt -d multi-gpt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   web:
     build:
       context: .
       target: runtime
     image: multi-gpt:latest
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
-    environment:
-      MULTI_GPT_WORKERS: "2"
     env_file:
       - path: .env
-        required: false
+        required: true
+    environment:
+      DATABASE_URL: postgres://multi-gpt:${POSTGRES_PASSWORD}@db:5432/multi-gpt
+      DEBUG: "False"
+      STATIC_ROOT: /usr/share/python/multi-gpt/static
+      MEDIA_ROOT: /var/lib/multi-gpt/media
+      MULTI_GPT_BIND: 0.0.0.0:8000
     volumes:
       - multi-gpt-data:/var/lib/multi-gpt
 
 volumes:
+  multi-gpt-db:
   multi-gpt-data:

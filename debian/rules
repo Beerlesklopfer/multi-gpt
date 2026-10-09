@@ -10,22 +10,21 @@ PY_VERSION := $(shell python3 -c 'import sys; print("%d.%d" % sys.version_info[:
 PYTHON := /usr/bin/python$(PY_VERSION)
 
 VENV_BUILD := $(CURDIR)/debian/multi-gpt$(DH_VIRTUALENV_INSTALL_ROOT)/multi-gpt
-VENV_INSTALLED := $(DH_VIRTUALENV_INSTALL_ROOT)/multi-gpt
 
 %:
 	dh $@ --with python-virtualenv
 
+# Nach dem Bau des venv: statische Dateien ins Paket sammeln
+# (WhiteNoise, Manifest-Storage, STATIC_ROOT im Paket).
+# -I: Quellbaum (cwd) und PYTHON*-Variablen ignorieren, damit das frisch
+#     installierte Paket aus dem venv importiert wird – so fällt fehlende
+#     package-data (Templates/Static) schon beim Bauen auf.
+# -B: keine zusätzlichen .pyc-Dateien schreiben.
+# MULTI_GPT_ENV_FILE=/dev/null: keine .env aus dem Quellbaum lesen.
+# Die DATABASE_URL ist ein Platzhalter, collectstatic verbindet sich nicht.
 override_dh_virtualenv:
 	dh_virtualenv --python $(PYTHON) --builtin-venv --upgrade-pip
-	# Statische Dateien ins Paket sammeln (WhiteNoise, Manifest-Storage).
-	# -I: Quellbaum (cwd) und PYTHON*-Variablen ignorieren, damit das frisch
-	#     installierte Paket aus dem venv importiert wird – so fällt fehlende
-	#     package-data (Templates/Static) schon beim Bauen auf.
-	# -B: keine zusätzlichen .pyc-Dateien schreiben.
-	# MULTI_GPT_ENV_FILE=/dev/null: keine .env aus dem Quellbaum lesen.
-	# Die DATABASE_URL ist ein Platzhalter, collectstatic verbindet sich nicht.
-	env -u DJANGO_SETTINGS_MODULE \
-	    DJANGO_SETTINGS_MODULE=multigpt.settings \
+	env DJANGO_SETTINGS_MODULE=multigpt.settings \
 	    MULTI_GPT_ENV_FILE=/dev/null \
 	    SECRET_KEY=build-only-not-secret \
 	    DATABASE_URL=postgres://build/build \

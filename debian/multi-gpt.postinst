@@ -7,26 +7,67 @@ if [ "$1" = "configure" ]; then
             --gecos "multi-gpt service" multi-gpt
     fi
 
+    # Daten (MEDIA_ROOT liegt standardmäßig darunter). Bestehende Verzeichnisse
+    # – z. B. ein Symlink auf eine NAS-Freigabe – werden nicht angefasst.
+    [ -d /var/lib/multi-gpt ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt
+    [ -d /var/lib/multi-gpt/media ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt/media
+
+    # Konfigurationsverzeichnis: nur root schreibt, der Dienst liest.
+    install -d /etc/multi-gpt
+    chown root:multi-gpt /etc/multi-gpt
+    chmod 0750 /etc/multi-gpt
+
+    # Env-Datei nur beim ersten Installieren erzeugen, nie überschreiben.
     if [ ! -e /etc/multi-gpt/.env ]; then
-        install -d -m 0750 -o root -g multi-gpt /etc/multi-gpt
         umask 027
-        python3 - > /etc/multi-gpt/.env <<'PY'
-import base64, secrets
-print("# multi-gpt configuration (generated on first install)")
+        python3 - > /etc/multi-gpt/.env.dpkg-new <<'PY'
+import base64, secrets, socket
+try:
+    fqdn = socket.getfqdn()
+except OSError:
+    fqdn = ""
+hosts = []
+for h in ("localhost", "127.0.0.1", fqdn.strip()):
+    if h and h not in hosts:
+        hosts.append(h)
+print("# multi-gpt configuration (generated on first install, never overwritten)")
 print(f"SECRET_KEY={secrets.token_urlsafe(50)}")
 print(f"FIELD_ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}")
 print("DEBUG=False")
-print("ALLOWED_HOSTS=localhost")
+print(f"ALLOWED_HOSTS={','.join(hosts)}")
+print("# e.g. https://multigpt.example.lan (required once served via nginx/TLS)")
 print("CSRF_TRUSTED_ORIGINS=")
-print("DATABASE_URL=postgres://multi-gpt@localhost/multi-gpt")
+print("# Unix socket + peer auth as system user multi-gpt")
+print("DATABASE_URL=postgres:///multi-gpt")
 print("MEDIA_ROOT=/var/lib/multi-gpt/media")
+print("# Set to True once nginx terminates TLS in front of gunicorn")
+print("SECURE_COOKIES=False")
+print("LOG_LEVEL=INFO")
+print("#AXES_PROXY_COUNT=1")
 print("#MULTI_GPT_BIND=127.0.0.1:8000")
 print("#MULTI_GPT_WORKERS=2")
+print("#MULTI_GPT_THREADS=8")
 print("#MULTI_GPT_TIMEOUT=300")
 PY
-        chown root:multi-gpt /etc/multi-gpt/.env
-        chmod 0640 /etc/multi-gpt/.env
+        chown root:multi-gpt /etc/multi-gpt/.env.dpkg-new
+        chmod 0640 /etc/multi-gpt/.env.dpkg-new
+        mv /etc/multi-gpt/.env.dpkg-new /etc/multi-gpt/.env
     fi
+
+    cat <<'EOF'
+
+multi-gpt: Datenbank und Schema werden NICHT automatisch eingerichtet.
+  Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
+  Lokale PostgreSQL-Datenbank (einmalig, mit pgvector):
+    sudo -u postgres createuser multi-gpt
+    sudo -u postgres createdb -O multi-gpt multi-gpt
+    sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
+  Schema anlegen/aktualisieren (nach jeder Installation/Aktualisierung):
+    sudo mgpt-ctl migrate
+  Ersten Verwalter anlegen:
+    sudo mgpt-ctl createsuperuser
+
+EOF
 fi
 
 #DEBHELPER#

@@ -1,30 +1,48 @@
 [Unit]
-Description=multi-gpt (gunicorn)
-After=network-online.target
+Description=MultiGPT (gunicorn)
+# Nur Reihenfolge: die Datenbank kann auch auf einem anderen Rechner laufen.
+After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
+# Gunicorn meldet sich per sd_notify (READY=1), sobald der Arbiter läuft.
 Type=notify
 User=multi-gpt
 Group=multi-gpt
 WorkingDirectory=/var/lib/multi-gpt
+Environment=DJANGO_SETTINGS_MODULE=multigpt.settings
+Environment=STATIC_ROOT=/usr/share/python/multi-gpt/static
 EnvironmentFile=/etc/multi-gpt/.env
-ExecStart=/usr/share/python/multi-gpt/bin/gunicorn --config /etc/multi-gpt/gunicorn.conf.py multi_gpt.wsgi:app
+ExecStart=/usr/share/python/multi-gpt/bin/gunicorn --config /etc/multi-gpt/gunicorn.conf.py multigpt.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed
-TimeoutStopSec=30
+# Länger als graceful_timeout (30 s) in gunicorn.conf.py.
+TimeoutStopSec=45
 Restart=on-failure
 RestartSec=5
+UMask=0027
 
 RuntimeDirectory=multi-gpt
 StateDirectory=multi-gpt
+StateDirectoryMode=0750
+# Liegt MEDIA_ROOT außerhalb von /var/lib/multi-gpt (z. B. NAS-Freigabe),
+# per Drop-in freigeben: systemctl edit multi-gpt -> ReadWritePaths=/pfad
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
 ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+# Debian-Konvention: Beim purge verschwindet die Konfiguration. Daten in
+# /var/lib/multi-gpt (Medien) und der Systemnutzer multi-gpt bleiben erhalten,
+# ebenso die PostgreSQL-Datenbank.
+if [ "$1" = "purge" ]; then
+    rm -f /etc/multi-gpt/.env /etc/multi-gpt/.env.dpkg-new
+    rmdir --ignore-fail-on-non-empty /etc/multi-gpt 2>/dev/null || true
+fi
+
+#DEBHELPER#
+
+exit 0

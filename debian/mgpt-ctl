@@ -1,0 +1,43 @@
+#!/bin/sh
+# mgpt-ctl – Django-Verwaltungsbefehle für MultiGPT (entspricht manage.py).
+#
+#   mgpt-ctl migrate
+#   mgpt-ctl createsuperuser
+#   mgpt-ctl check --deploy
+#
+# Läuft immer als Systemnutzer multi-gpt: als root wird per runuser
+# gewechselt, andere Nutzer werden abgewiesen. Liest /etc/multi-gpt/.env
+# (falls lesbar); bereits gesetzte Umgebungsvariablen haben Vorrang.
+set -eu
+
+APP_USER=multi-gpt
+VENV=/usr/share/python/multi-gpt
+ENV_FILE=/etc/multi-gpt/.env
+DATA_DIR=/var/lib/multi-gpt
+
+if [ "$(id -un)" != "$APP_USER" ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        exec runuser -u "$APP_USER" -- "$0" "$@"
+    fi
+    echo "mgpt-ctl: muss als root oder als Nutzer $APP_USER laufen (z. B. 'sudo mgpt-ctl ...')." >&2
+    exit 1
+fi
+
+export DJANGO_SETTINGS_MODULE=multigpt.settings
+export STATIC_ROOT="${STATIC_ROOT:-$VENV/static}"
+
+if [ -z "${MULTI_GPT_ENV_FILE:-}" ]; then
+    if [ -r "$ENV_FILE" ]; then
+        export MULTI_GPT_ENV_FILE="$ENV_FILE"
+    elif [ -e "$ENV_FILE" ]; then
+        echo "mgpt-ctl: $ENV_FILE ist nicht lesbar für $APP_USER." >&2
+        exit 1
+    fi
+    # Ohne Datei (z. B. im Docker-Container) kommt alles aus der Umgebung.
+fi
+
+umask 027
+cd "$DATA_DIR"
+
+# -P: das Arbeitsverzeichnis nicht in sys.path aufnehmen.
+exec "$VENV/bin/python" -P -m django "$@"

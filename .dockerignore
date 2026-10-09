@@ -27,6 +27,8 @@ staticfiles/
 htmlcov/
 .vscode/
 .idea/
+.claude/
+doc/
 
 debian/.debhelper/
 debian/multi-gpt/
@@ -34,3 +36,7 @@ debian/files
 debian/*.substvars
 debian/*.debhelper.log
 debian/debhelper-build-stamp
+debian/tmp/
+*.deb
+*.buildinfo
+*.changes

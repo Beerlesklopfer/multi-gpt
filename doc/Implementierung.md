@@ -233,5 +233,16 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 
 ## 7. Stand
 
-- **M1 in Arbeit** (2026-10-09). Die Fragen 1 und 4 sind für die Entwicklung überbrückt: Gebaut und getestet wird auf Debian 13 mit lokalem PostgreSQL 18 und pgvector. Für das NAS sind beide Fragen weiter offen.
-- Bis M2 müssen Frage 5b und die Lücken aus Abschnitt 2 geklärt sein.
+- **M1 umgesetzt** (2026-10-09). Nachgewiesen:
+  - `make test` (10 Tests gegen PostgreSQL 18 mit pgvector), `ruff`, `manage.py check` und `makemigrations --check` sind grün.
+  - `make run` startet gunicorn (`gthread`), `/healthz/` liefert 200, `/` leitet auf den Login um.
+  - Der Paketbau ist ohne debhelper nachgestellt: `collectstatic` aus dem venv, `systemd-analyze verify`, `Type=notify` als User-Unit, postinst und postrm mit Stubs.
+- **Offen für die Abnahme von M1:**
+  - Echter Paketbau mit `make deb` (braucht `dh-virtualenv` und `debhelper`).
+  - Installation, `mgpt-ctl migrate` und `purge` auf Debian 13.
+  - Login im Browser.
+  - Docker-Build (ungetestet, auf dem Entwicklungsrechner gibt es kein Docker).
+- **Nach M1 zu entscheiden:**
+  - Automatische Migration im postinst? Derzeit nicht: `dh_installsystemd` startet den Dienst schon vor `mgpt-ctl migrate`.
+  - `/healthz/` von der `ALLOWED_HOSTS`-Prüfung und vom ERROR-Logging bei 503 ausnehmen?
+- Die Fragen 1 und 4 sind für die Entwicklung überbrückt, für das NAS weiter offen. Bis M2 müssen Frage 5b und die Lücken aus Abschnitt 2 geklärt sein.
