@@ -1,0 +1,25 @@
+Template: multi-gpt/bind_address
+Type: string
+Default:
+Description: Adresse und Port, auf denen MultiGPT lauscht:
+ gunicorn nimmt Verbindungen auf dieser Adresse an (Form ADRESSE:PORT).
+ .
+ 127.0.0.1:8000, wenn ein nginx auf diesem Rechner davorsteht. Die
+ LAN-Adresse (z. B. 192.168.24.250:8000), wenn MultiGPT direkt aus dem
+ Intranet oder von einem nginx auf einem anderen Rechner erreichbar sein soll.
+
+Template: multi-gpt/allowed_hosts
+Type: string
+Default:
+Description: Hostnamen und Adressen, unter denen MultiGPT aufgerufen wird:
+ Kommagetrennte Liste für Djangos ALLOWED_HOSTS, z. B.
+ localhost,127.0.0.1,192.168.24.250,multigpt.intern. Anfragen an andere
+ Namen werden abgewiesen.
+
+Template: multi-gpt/public_url
+Type: string
+Default:
+Description: Adresse(n), die im Browser aufgerufen werden:
+ Kommagetrennte Liste mit Schema für CSRF_TRUSTED_ORIGINS, z. B.
+ https://multigpt.intern oder http://192.168.24.250:8000. Ohne passenden
+ Eintrag schlägt die Anmeldung über diese Adresse fehl.

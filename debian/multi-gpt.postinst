@@ -82,7 +82,59 @@ multi_gpt_migrate() {
     return 0
 }
 
+# debconf-Antworten in /etc/multi-gpt/.env übernehmen: ersetzt die Zeilen
+# MULTI_GPT_BIND, ALLOWED_HOSTS und CSRF_TRUSTED_ORIGINS (oder hängt sie an).
+# Werte mit Leerraum, Anführungszeichen oder anderen unerwarteten Zeichen
+# werden verworfen, damit die Datei für systemd und die Settings lesbar bleibt.
+multi_gpt_apply_answers() {
+    MULTI_GPT_BIND_ANSWER="${MULTI_GPT_BIND_ANSWER:-}" \
+    ALLOWED_HOSTS_ANSWER="${ALLOWED_HOSTS_ANSWER:-}" \
+    CSRF_ORIGINS_ANSWER="${CSRF_ORIGINS_ANSWER:-}" \
+    python3 - /etc/multi-gpt/.env <<'PY' || echo "multi-gpt: WARNUNG: debconf-Antworten nicht übernommen." >&2
+import os, re, sys
+
+path = sys.argv[1]
+answers = {
+    "MULTI_GPT_BIND": (os.environ["MULTI_GPT_BIND_ANSWER"], r"[A-Za-z0-9.:\[\]_-]+:[0-9]{1,5}"),
+    "ALLOWED_HOSTS": (os.environ["ALLOWED_HOSTS_ANSWER"], r"[A-Za-z0-9.:\[\]*_,-]+"),
+    "CSRF_TRUSTED_ORIGINS": (os.environ["CSRF_ORIGINS_ANSWER"], r"(https?://[A-Za-z0-9.:\[\]*_-]+,?)*"),
+}
+with open(path, encoding="utf-8") as fh:
+    lines = fh.read().splitlines()
+for key, (value, pattern) in answers.items():
+    value = value.strip().replace(" ", "")
+    if key != "CSRF_TRUSTED_ORIGINS" and not value:
+        continue
+    if not re.fullmatch(pattern, value):
+        print(f"multi-gpt: ungültiger Wert für {key} ignoriert: {value!r}", file=sys.stderr)
+        continue
+    line = f"{key}={value}"
+    for i, old in enumerate(lines):
+        if old.startswith(f"{key}=") or old.startswith(f"#{key}="):
+            lines[i] = line
+            break
+    else:
+        lines.append(line)
+tmp = path + ".dpkg-new"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write("\n".join(lines) + "\n")
+st = os.stat(path)
+os.chown(tmp, st.st_uid, st.st_gid)
+os.chmod(tmp, 0o640)
+os.replace(tmp, path)
+PY
+}
+
 if [ "$1" = "configure" ]; then
+    # Antworten aus debconf (Fragen stellt debian/multi-gpt.config). Danach
+    # sofort db_stop: Solange debconf läuft, gehört stdout dem debconf-Protokoll,
+    # und die Ausgaben von adduser und Migration würden es stören.
+    . /usr/share/debconf/confmodule
+    db_get multi-gpt/bind_address && MULTI_GPT_BIND_ANSWER=$RET
+    db_get multi-gpt/allowed_hosts && ALLOWED_HOSTS_ANSWER=$RET
+    db_get multi-gpt/public_url && CSRF_ORIGINS_ANSWER=$RET
+    db_stop
+
     if ! getent passwd multi-gpt >/dev/null; then
         adduser --system --group --home /var/lib/multi-gpt --no-create-home \
             --gecos "multi-gpt service" multi-gpt
@@ -102,21 +154,14 @@ if [ "$1" = "configure" ]; then
     if [ ! -e /etc/multi-gpt/.env ]; then
         umask 027
         python3 - > /etc/multi-gpt/.env.dpkg-new <<'PY'
-import base64, secrets, socket
-try:
-    fqdn = socket.getfqdn()
-except OSError:
-    fqdn = ""
-hosts = []
-for h in ("localhost", "127.0.0.1", fqdn.strip()):
-    if h and h not in hosts:
-        hosts.append(h)
-print("# multi-gpt configuration (generated on first install, never overwritten)")
+import base64, secrets
+print("# multi-gpt configuration (generated on first install; MULTI_GPT_BIND,")
+print("# ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are managed via debconf:")
+print("# dpkg-reconfigure multi-gpt)")
 print(f"SECRET_KEY={secrets.token_urlsafe(50)}")
 print(f"FIELD_ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}")
 print("DEBUG=False")
-print(f"ALLOWED_HOSTS={','.join(hosts)}")
-print("# e.g. https://multigpt.example.lan (required once served via nginx/TLS)")
+print("ALLOWED_HOSTS=localhost,127.0.0.1")
 print("CSRF_TRUSTED_ORIGINS=")
 print("# Unix socket + peer auth as system user multi-gpt")
 print("DATABASE_URL=postgres:///multi-gpt")
@@ -125,7 +170,7 @@ print("# Set to True once nginx terminates TLS in front of gunicorn")
 print("SECURE_COOKIES=False")
 print("LOG_LEVEL=INFO")
 print("#AXES_PROXY_COUNT=1")
-print("#MULTI_GPT_BIND=127.0.0.1:8000")
+print("MULTI_GPT_BIND=127.0.0.1:8000")
 print("#MULTI_GPT_WORKERS=2")
 print("#MULTI_GPT_THREADS=8")
 print("#MULTI_GPT_TIMEOUT=300")
@@ -134,6 +179,8 @@ PY
         chmod 0640 /etc/multi-gpt/.env.dpkg-new
         mv /etc/multi-gpt/.env.dpkg-new /etc/multi-gpt/.env
     fi
+
+    multi_gpt_apply_answers
 
     multi_gpt_migrate "$@"
 fi
