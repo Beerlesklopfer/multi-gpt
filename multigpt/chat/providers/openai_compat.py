@@ -132,6 +132,24 @@ def _error_code(body: bytes) -> str:
     return f"{err.get('type') or '-'}/{err.get('code') or '-'}"
 
 
+def _provider_text(body: bytes) -> str:
+    """Fehlertext aus der Antwort, gekürzt und ohne Steuerzeichen.
+
+    Nur für Anbieter ohne API-Key (z. B. LM Studio) verwenden – bei Cloud-Anbietern
+    kann der Text Teile des Keys enthalten.
+    """
+    try:
+        err = json.loads(body).get("error")
+    except (ValueError, AttributeError, TypeError):
+        return ""
+    if isinstance(err, dict):
+        err = err.get("message")
+    if not isinstance(err, str):
+        return ""
+    text = " ".join(err.split())
+    return text[:200] + ("…" if len(text) > 200 else "")
+
+
 def _model_not_found(model_id: str) -> str:
     return (
         f"Das Modell „{model_id}“ ist beim Anbieter nicht (mehr) verfügbar – es wurde "
@@ -313,6 +331,13 @@ class OpenAICompatAdapter(ProviderAdapter):
             message, retryable = http_error_message(response.status_code)
             if response.status_code == 404 and detail.endswith("/model_not_found"):
                 message = _model_not_found(model_id)
+            elif not (self.provider.api_key or "").strip():
+                # Lokaler Anbieter ohne Key: dessen Text nennt die eigentliche Ursache
+                # (z. B. LM Studio „Failed to load model …“). Ladefehler sind vorübergehend.
+                text = _provider_text(response.content)
+                if text:
+                    message = f"{message} LM Studio meldet: {text}"
+                    retryable = retryable or "load" in text.lower()
             raise ProviderHTTPError(message, response.status_code, retryable=retryable)
         try:
             choice = response.json()["choices"][0]

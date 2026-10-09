@@ -771,3 +771,27 @@ def test_ocr_http_400_hints_at_non_vision_model():
     assert "olmocr" in str(error)
     other = _provider_error(ProviderHTTPError("Serverfehler (HTTP 500).", 500, retryable=True))
     assert "Vision" not in str(other)
+
+
+def test_describe_image_shows_local_provider_error_text():
+    import httpx
+    import respx
+
+    from multigpt.chat.models import Provider
+    from multigpt.chat.providers.base import ProviderHTTPError
+    from multigpt.chat.providers.openai_compat import OpenAICompatAdapter
+
+    local = Provider(name="LM Studio", kind="openai_compat", base_url="http://lm.test:1234/v1")
+    cloud = Provider(name="Cloud", kind="openai_compat", base_url="http://lm.test:1234/v1")
+    cloud.api_key = "sk-geheim"
+    body = {"error": "Failed to load model 'allenai/olmocr-2-7b'. Error: out of memory"}
+    with respx.mock() as router:
+        router.post("http://lm.test:1234/v1/chat/completions").mock(
+            return_value=httpx.Response(400, json=body)
+        )
+        for provider, expect in ((local, True), (cloud, False)):
+            try:
+                OpenAICompatAdapter(provider).describe_image("m", b"\x89PNG", "Lies.")
+            except ProviderHTTPError as exc:
+                assert ("Failed to load model" in str(exc)) is expect
+                assert exc.retryable is expect
