@@ -39,7 +39,7 @@ package that sets up the database and schema itself.
 It already runs for real with OpenAI, the other cloud providers have been tested with
 simulations; real tests with Anthropic and Gemini keys and on a fresh Debian installation
 are still pending, and the Docker build is untested. There are no release packages yet.
-Images, voice and operations with an nginx/TLS template and backup follow – details in the
+Images, voice, music and backup follow – details in the
 [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence

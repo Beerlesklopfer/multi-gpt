@@ -13,11 +13,14 @@ menus:
 
 - **Browser:** the interface consists of Django templates and a little vanilla JavaScript.
   All files are served by your own server, without a CDN and without a Node build step.
-- **nginx (optional):** provides a host name in the home network and TLS. HTTPS is
-  required for the voice features, because browsers only allow the microphone over HTTPS.
-  Without nginx the app serves its static files itself (WhiteNoise).
-- **gunicorn and Django:** gunicorn with the `gthread` worker class (default: 2 processes
-  × 8 threads, 300-second timeout), so long streamed answers do not block other requests.
+- **nginx:** part of the Debian package and runs on the same machine. It provides the host
+  name in the home network and TLS, redirects HTTP to HTTPS, serves the static files directly
+  and passes streamed answers through unbuffered. HTTPS is required for the voice features,
+  because browsers only allow the microphone over HTTPS. In Docker and during development the
+  app serves its static files itself (WhiteNoise).
+- **gunicorn and Django:** gunicorn listens on localhost (`127.0.0.1`) only, with the
+  `gthread` worker class (default: 2 processes × 8 threads, 300-second timeout), so long
+  streamed answers do not block other requests.
   Answers are streamed via server-sent events.
 - **PostgreSQL with pgvector:** the only database – for accounts, chats and the vectors of
   your own documents. No SQLite.
@@ -51,6 +54,7 @@ menus:
 | Framework | Django 5.2 LTS |
 | App server | gunicorn (`gthread`) |
 | Database | PostgreSQL with pgvector |
-| Static files | WhiteNoise |
+| Web server and TLS | nginx (in the Debian package) |
+| Static files | nginx in the package, WhiteNoise in Docker and development |
 | Login throttling | django-axes |
 | Packaging | Debian package with dh-virtualenv, systemd; Docker as a fallback |

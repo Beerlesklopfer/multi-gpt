@@ -9,19 +9,22 @@ menus:
 
 > **Status:** `make deb` builds the package (`multi-gpt_0.1.0_amd64.deb`). A test
 > installation on a fresh Debian 13 is still pending. The Docker route is untested so far.
-> The complete installation guide (with nginx and TLS) follows with milestone 12.
+> The package already ships nginx with TLS; the complete operations guide (with backup)
+> follows with milestone 12.
 
 ## Requirements
 
 - Debian 13 (or another system with apt) with Python 3.12 or newer.
 - PostgreSQL with the pgvector extension – local or on another machine.
+- nginx (1.25.1 or newer) and `ssl-cert` – apt installs them as dependencies.
 - For building the package: `debhelper` and `dh-virtualenv`.
 
 ## Option 1: Debian package (recommended)
 
 The `multi-gpt` package ships its own Python environment in `/usr/share/python/multi-gpt`
 and is started via systemd. It creates the system user `multi-gpt`; data lives in
-`/var/lib/multi-gpt`.
+`/var/lib/multi-gpt`. nginx and TLS are part of the package: gunicorn listens on
+`127.0.0.1` only, with nginx in front of it on the same machine.
 
 **1. Build the package** (in the source folder):
 
@@ -32,18 +35,26 @@ make deb
 
 The `.deb` ends up in the parent folder.
 
-**2. Install:**
+**2. Install** (in the folder containing the `.deb`):
 
 ```
-sudo apt install ../multi-gpt_<version>_<arch>.deb
+sudo apt install ./multi-gpt_<version>_amd64.deb
 ```
 
 During installation the following happens:
 
-- **debconf questions:** the bind address (e.g. `127.0.0.1:8000` behind an nginx on the
-  same machine, or the LAN address), `ALLOWED_HOSTS` and the addresses for
-  `CSRF_TRUSTED_ORIGINS`. The answers go into `/etc/multi-gpt/.env`; change them later with
-  `sudo dpkg-reconfigure multi-gpt`.
+- **debconf questions:** the **host name(s)** under which MultiGPT is reached (suggested:
+  `hostname -f`) and the path to the **TLS certificate** and its key. If the certificate is
+  left empty, nginx uses the self-signed snakeoil certificate: browsers then show a warning,
+  and the microphone may be restricted. The package derives `ALLOWED_HOSTS` and
+  `CSRF_TRUSTED_ORIGINS` from the host names and the machine's IP addresses. Change all of
+  this later with `sudo dpkg-reconfigure multi-gpt`.
+- **nginx with TLS:** the package sets up the site `/etc/nginx/sites-available/multi-gpt`
+  (HTTPS, redirect from HTTP to HTTPS, unbuffered streamed answers, upload limit matching
+  `DOCUMENT_MAX_UPLOAD_MB`), checks it with `nginx -t` and enables it. Debian's unmodified
+  default site `default` is disabled for this. Details, your own certificate and
+  troubleshooting are in the
+  [wiki: nginx und TLS](https://github.com/Beerlesklopfer/multi-gpt/wiki/nginx-und-TLS) (German).
 - **Configuration:** the first installation creates `/etc/multi-gpt/.env` (owner
   `root:multi-gpt`, mode 0640) with freshly generated keys. Updates do not overwrite it.
 - **Database:** if PostgreSQL runs on the machine, the package (preinst) creates the role
@@ -70,9 +81,8 @@ sudo -u postgres createdb -O multi-gpt multi-gpt
 sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
 ```
 
-**4. Check the configuration:** in `/etc/multi-gpt/.env`, adjust `DATABASE_URL` if needed
-and – once nginx with TLS sits in front – `SECURE_COOKIES`. Then run
-`sudo systemctl restart multi-gpt`.
+**4. Check the configuration:** in `/etc/multi-gpt/.env`, adjust `DATABASE_URL` if needed.
+Then run `sudo systemctl restart multi-gpt`.
 
 **5. Create the first administrator** (and catch up on the schema if the automatic
 migration did not run):
@@ -85,8 +95,8 @@ sudo mgpt-ctl createsuperuser
 `mgpt-ctl` is a wrapper around Django's `manage.py` that runs as the `multi-gpt` user with
 `/etc/multi-gpt/.env`. `mgpt-ctl migrate` can safely be run again at any time.
 
-The app listens on the address chosen via debconf. `curl http://<address>:<port>/healthz/`
-shows whether it is running.
+MultiGPT is then reachable at `https://<hostname>/`. `curl -k https://<hostname>/healthz/`
+shows whether the app is running (`-k` only with the snakeoil certificate).
 
 **6. Set up document search (optional):** in the admin under “Dokumente (RAG)” →
 “Einstellungen”, choose an embedding model (locally e.g. nomic-embed-text via LM Studio)

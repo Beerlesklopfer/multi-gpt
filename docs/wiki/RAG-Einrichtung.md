@@ -85,8 +85,8 @@ Die vollständige Liste **aller** Schlüssel (Datenbank, Netz, Login-Sperre, gun
 | `RAG_SOURCE_ROOTS` | leer (aus) | erlaubte Wurzeln für [Verzeichnisquellen](RAG-Verzeichnisquellen) |
 | `RAG_SOURCE_MAX_FILES` | `5000` | Höchstzahl Dateien je Einlesevorgang einer Verzeichnisquelle |
 
-Steht nginx vor MultiGPT, muss `client_max_body_size` dort mindestens so groß sein wie
-`DOCUMENT_MAX_UPLOAD_MB`, sonst lehnt nginx große Uploads ab. Nach Änderungen an der `.env`:
+Die nginx-Site des Pakets setzt `client_max_body_size` automatisch auf `DOCUMENT_MAX_UPLOAD_MB` + 10 MB;
+nach einer Änderung des Werts `sudo dpkg-reconfigure multi-gpt` ausführen (siehe [nginx und TLS](nginx-und-TLS)). Nach Änderungen an der `.env`:
 
 ```sh
 sudo systemctl restart multi-gpt multi-gpt-worker

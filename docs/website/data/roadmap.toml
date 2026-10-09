@@ -10,8 +10,8 @@
     de = "Grundgerüst"
     en = "Project skeleton"
   [milestones.text]
-    de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch und fragt Adresse und Hostnamen per debconf ab."
-    en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically and asks for address and host names via debconf."
+    de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
+    en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
     de = "Tests, Linter und `make deb` sind grün. Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
     en = "Tests, linter and `make deb` pass. Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
@@ -160,5 +160,5 @@
     de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
     en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."
   [milestones.note]
-    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Offen: nginx-Vorlage mit TLS, Backup, vollständige Installationsanleitung sowie geprüftes Upgrade und Entfernen."
-    en = "The worker unit `multi-gpt-worker.service` already ships in the package. Still open: an nginx template with TLS, backup, a complete installation guide and verified upgrade and removal."
+    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist jetzt ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
+    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS now ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. Still open: backup, a complete guide and verified upgrade and removal."

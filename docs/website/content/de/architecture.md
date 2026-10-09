@@ -14,12 +14,14 @@ menus:
 
 - **Browser:** Die Oberfläche besteht aus Django-Templates und etwas Vanilla-JavaScript.
   Alle Dateien werden vom eigenen Server geladen, ohne CDN und ohne Node-Buildschritt.
-- **nginx (optional):** sorgt für einen Hostnamen im Heimnetz und TLS. Für die
-  Sprachfunktionen ist HTTPS Pflicht, weil Browser das Mikrofon sonst nicht freigeben.
-  Ohne nginx liefert die App ihre statischen Dateien selbst aus (WhiteNoise).
-- **gunicorn und Django:** gunicorn mit der Worker-Klasse `gthread` (Standard: 2 Prozesse
-  × 8 Threads, Timeout 300 Sekunden), damit lange gestreamte Antworten andere Anfragen
-  nicht blockieren. Antworten werden per Server-Sent Events gestreamt.
+- **nginx:** gehört zum Debian-Paket und läuft auf demselben Rechner. Es sorgt für den
+  Hostnamen im Heimnetz und TLS, leitet HTTP auf HTTPS um, liefert die statischen Dateien
+  direkt aus und reicht gestreamte Antworten ungepuffert weiter. Für die Sprachfunktionen ist
+  HTTPS Pflicht, weil Browser das Mikrofon sonst nicht freigeben. In Docker und in der
+  Entwicklung liefert die App ihre statischen Dateien selbst aus (WhiteNoise).
+- **gunicorn und Django:** gunicorn lauscht nur auf localhost (`127.0.0.1`), mit der
+  Worker-Klasse `gthread` (Standard: 2 Prozesse × 8 Threads, Timeout 300 Sekunden), damit
+  lange gestreamte Antworten andere Anfragen nicht blockieren. Antworten werden per Server-Sent Events gestreamt.
 - **PostgreSQL mit pgvector:** die einzige Datenbank – für Konten, Chats und die Vektoren
   der eigenen Dokumente. Kein SQLite.
 - **Worker:** ein zweiter Prozess aus derselben Codebasis, der Dokumente im
@@ -51,6 +53,7 @@ menus:
 | Framework | Django 5.2 LTS |
 | App-Server | gunicorn (`gthread`) |
 | Datenbank | PostgreSQL mit pgvector |
-| Statische Dateien | WhiteNoise |
+| Webserver und TLS | nginx (im Debian-Paket) |
+| Statische Dateien | nginx im Paket, WhiteNoise in Docker und Entwicklung |
 | Login-Drosselung | django-axes |
 | Paketierung | Debian-Paket mit dh-virtualenv, systemd; Docker als Ausweichweg |

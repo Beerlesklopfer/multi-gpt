@@ -14,7 +14,7 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 - **Betrieb:** läuft dauerhaft (24/7) auf dem NAS, nur im Intranet, kein Zugriff aus dem Internet. Ausgehend nur HTTPS zu den KI-Anbietern sowie HTTP im Intranet zu LM Studio.
 - **Lokale Modelle:** LM Studio läuft auf einem anderen Rechner im Intranet und nur bei Bedarf. Die App muss damit umgehen, dass dieser Anbieter meistens offline ist.
 - **Nutzer:** Familiensystem mit einer Handvoll Konten, keine Selbstregistrierung. Anlage durch einen Verwalter in der Oberfläche, im Django-Admin oder per `make user`.
-- **Installation als Debian-Paket:** `multi-gpt` (gebaut mit dh-virtualenv) bringt sein eigenes venv in `/usr/share/python/multi-gpt` mit und wird über systemd gestartet. Systemnutzer `multi-gpt`, Konfiguration in `/etc/multi-gpt/.env`, Daten in `/var/lib/multi-gpt`. Docker (`Dockerfile`, `compose.yaml`) ist der Ausweichweg für Systeme ohne apt. Im Paket lauscht gunicorn nur auf `127.0.0.1`. Davor steht verpflichtend nginx mit TLS, das Paket liefert die Site-Konfiguration mit.
+- **Installation als Debian-Paket:** `multi-gpt` (gebaut mit dh-virtualenv) bringt sein eigenes venv in `/usr/share/python/multi-gpt` mit und wird über systemd gestartet. Systemnutzer `multi-gpt`, Konfiguration in `/etc/multi-gpt/.env`, Daten in `/var/lib/multi-gpt`. Docker (`Dockerfile`, `compose.yaml`) ist der Ausweichweg für Systeme ohne apt. Im Paket lauscht gunicorn nur auf `127.0.0.1`. Davor steht verpflichtend nginx mit TLS auf demselben Rechner (`Depends: nginx`, `ssl-cert`). Das Paket liefert die Site-Konfiguration mit und fragt Hostname(n) und Zertifikat per debconf ab (ohne eigenes Zertifikat: snakeoil mit Warnung). Docker und die Entwicklung laufen ohne nginx.
 - **Kein Node-Buildschritt:** Frontend aus Django-Templates plus schlankem Vanilla-JS, alle Assets lokal (keine CDNs).
 - **Sprache der Oberfläche:** Deutsch.
 
@@ -28,8 +28,8 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 ## 4. Architektur
 
 ```
-Browser ──HTTP──> nginx (optional, Intranet-Hostname/TLS)
-                    └──> gunicorn (gthread) ──> Django
+Browser ──HTTPS──> nginx (im Paket Pflicht, Intranet-Hostname/TLS)
+                    └──HTTP 127.0.0.1──> gunicorn (gthread) ──> Django
                                                   ├── chat (Views, SSE-Streaming)
                                                   ├── providers (Adapter je Anbieter)
                                                   └── PostgreSQL + pgvector
@@ -40,11 +40,11 @@ Django ──HTTPS──> OpenAI / Anthropic / Google / Mistral / OpenRouter ...
 Django ──HTTP (Intranet)──> LM Studio auf dem PC (nur zeitweise online)
 ```
 
-- **Streaming:** Server-Sent Events über `StreamingHttpResponse`. gunicorn mit `--worker-class gthread`, z. B. 2 Worker × 8 Threads, `--timeout 300`. Bei nginx: `proxy_buffering off` für den Stream-Endpunkt.
+- **Streaming:** Server-Sent Events über `StreamingHttpResponse`. gunicorn mit `--worker-class gthread`, z. B. 2 Worker × 8 Threads, `--timeout 300`. nginx: `proxy_buffering off` für die Stream-Endpunkte.
 - **Datenbank:** PostgreSQL mit der Erweiterung `pgvector`, für alle Daten (Chats und RAG-Vektoren). Verbindung über `DATABASE_URL`. Kein SQLite.
 - **Hintergrundarbeit:** Dokumente werden von einem eigenen Worker-Prozess indexiert, der eine Job-Tabelle in PostgreSQL abarbeitet. Kein Redis, kein Celery.
 - **Dateien:** Hochgeladene Dokumente, erzeugte Bilder und Audiodateien liegen unter `MEDIA_ROOT` auf dem NAS und werden nur an angemeldete Besitzer ausgeliefert.
-- **Statische Dateien:** WhiteNoise, damit es auch ohne nginx läuft.
+- **Statische Dateien:** Im Debian-Paket liefert nginx sie direkt aus dem Paket aus. WhiteNoise bleibt für die Entwicklung und Docker, wo kein nginx davorsteht.
 
 ## 5. Projektstruktur
 
@@ -61,7 +61,7 @@ multi-gpt/
 │       └── mcp/         # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
 ├── mcp_imagetools/      # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
 ├── tests/
-├── deploy/              # gunicorn.conf.py, nginx.conf.example
+├── deploy/              # gunicorn.conf.py, nginx/multi-gpt (nginx-Site des Pakets)
 ├── debian/              # Paketierung: rules, control, multi-gpt.service, postinst, mgpt-ctl
 ├── Dockerfile, compose.yaml
 └── docs/                # Plan.md, Implementierung.md
@@ -311,7 +311,7 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 
 1. ~~Welches NAS?~~ **Geklärt (2026-10-09):** Das Zielsystem läuft mit Debian/Ubuntu und apt. Das Debian-Paket ist der Betriebsweg, Docker bleibt Ausweichweg.
 1a. Welche feste IP oder welchen Hostnamen hat der PC mit LM Studio, und ist dort die Freigabe des Servers im lokalen Netz aktiviert?
-2. ~~Reverse Proxy und TLS?~~ **Geklärt (2026-10-09):** Im Intranet läuft bereits ein nginx. MultiGPT wird dort eingebunden, `deploy/nginx.conf.example` liefert den passenden `location`-Block (Stream ohne Puffer, `X-Accel-Redirect`). Offen sind nur noch Hostname und Zertifikat.
+2. ~~Reverse Proxy und TLS?~~ **Geklärt (2026-10-09, umgesetzt in Commit `d9c76a9`):** nginx kommt mit dem Paket auf demselben Rechner (`Depends`), gunicorn lauscht nur auf `127.0.0.1`. Das Paket bringt die Site `/etc/nginx/sites-available/multi-gpt` mit (Stream ohne Puffer, `X-Accel-Redirect` vorbereitet). Den Hostnamen fragt debconf ab (Vorschlag: `hostname -f`). Zertifikat: ein eigenes (Pfad per debconf) oder das selbstsignierte snakeoil-Zertifikat aus `ssl-cert`.
 3. ~~Anbieter zum Start?~~ **Geklärt (2026-10-09):** OpenRouter, OpenAI, Anthropic und Google Gemini. Damit sind alle drei Adapterarten (`openai_compat`, `anthropic`, `google`) zum Start im Einsatz.
 4. ~~PostgreSQL mit pgvector?~~ **Geklärt (2026-10-09):** Auf dem Zielsystem ist PostgreSQL mit pgvector vorhanden und wird genutzt. Kein eigener Container.
 4a. ~~SearXNG oder Such-API?~~ **Geklärt (2026-10-09):** SearXNG im Intranet. Eine Such-API bleibt als spätere Erweiterung möglich.

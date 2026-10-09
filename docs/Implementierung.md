@@ -19,7 +19,7 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 | Netzwerk | **Entscheidung vom 2026-10-09:** Im Debian-Paket lauscht gunicorn ausschließlich auf `127.0.0.1:8000`. **nginx ist Pflicht** und hängt als `Depends` am Paket. Das Paket bringt die Site `/etc/nginx/sites-available/multi-gpt` mit (conffile, im postinst aktiviert, vorher `nginx -t`). Sie enthält TLS, die Weiterleitung von HTTP auf HTTPS, `proxy_buffering off` für SSE, `client_max_body_size` passend zum Upload-Limit, statische Dateien direkt aus dem Paket und geschützte Medien per `X-Accel-Redirect`. debconf fragt Hostname(n) und Zertifikat/Schlüssel ab. Ohne eigenes Zertifikat gilt vorerst das snakeoil-Zertifikat (`ssl-cert`), mit Warnung. `ALLOWED_HOSTS` und `CSRF_TRUSTED_ORIGINS` werden aus dem Hostnamen abgeleitet. `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1` werden gesetzt. Docker und die Entwicklung sind davon nicht betroffen. |
 | Datenbank | Das preinst legt bei lokal laufendem PostgreSQL die Rolle `multi-gpt`, die Datenbank `multi-gpt` und die Extension `vector` an. Das geht idempotent und nur, wenn `DATABASE_URL` auf die lokale Standard-Datenbank zeigt. Die Anmeldung läuft per Peer-Auth als Systemnutzer `multi-gpt`. Das preinst bricht nie ab, `MULTI_GPT_SKIP_DB_SETUP=1` überspringt es. |
 | Verwaltung | `/usr/bin/mgpt-ctl`: Wrapper um `manage.py`, läuft als `multi-gpt` mit `/etc/multi-gpt/.env`. Das postinst migriert bei Installation und Upgrade automatisch, bevor der Dienst (neu) startet, sofern die Datenbank erreichbar ist. Sonst gibt es einen Hinweis auf `sudo mgpt-ctl migrate`, die Installation scheitert daran nicht. `MULTI_GPT_SKIP_MIGRATE=1` überspringt die Migration. |
-| Statische Dateien | `collectstatic` beim Paketbau, `STATIC_ROOT=/usr/share/python/multi-gpt/static`, ausgeliefert über WhiteNoise. |
+| Statische Dateien | `collectstatic` beim Paketbau, `STATIC_ROOT=/usr/share/python/multi-gpt/static`, im Paket direkt von nginx ausgeliefert, in Entwicklung und Docker über WhiteNoise. |
 | Medien | `MEDIA_ROOT=/var/lib/multi-gpt/media`. Bei einem Pfad außerhalb von `/var/lib/multi-gpt` muss `ReadWritePaths=` in der Unit ergänzt werden. |
 | Gunicorn | `gthread`, 2 Worker × 8 Threads, Timeout 300, über `MULTI_GPT_*` änderbar. |
 | Worker-Prozess | Zweite Unit `multi-gpt-worker.service` im selben Paket, ab M7. |
@@ -209,6 +209,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 ### M12 – Betrieb
 - **M12-01** (vorgezogen, siehe Abschnitt 1 Netzwerk: nginx im Paket ist Pflicht) `deploy/nginx.conf.example` als Baustein für den bestehenden nginx: `server`-/`location`-Block mit TLS, `proxy_buffering off` für den Stream-Endpunkt und `X-Accel-Redirect` für die Medien. Dazu `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1`. **Vor M10 umsetzen.**
+  **Umgesetzt** (Commit `d9c76a9`) als nginx-Site im Paket statt als Beispieldatei: `deploy/nginx/multi-gpt` → `/etc/nginx/sites-available/multi-gpt` (conffile), rechnerspezifische Teile erzeugt das postinst unter `/etc/multi-gpt/nginx/`. Siehe Abschnitt 7.
 - **M12-02** `make backup`: `pg_dump`, Medienordner und `/etc/multi-gpt/.env` als datiertes Archiv.
 - **M12-03** README mit Installationsanleitung (Paket, PostgreSQL, `/etc/multi-gpt/.env`, nginx).
 - **M12-04** Prüfen, ob das Paket sauber aktualisiert und entfernt wird: `apt install` über eine ältere Version, `apt remove` und `apt purge`.
@@ -258,7 +259,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 4c – Sprache der Dokumente, OCR? | – | **Geklärt:** deutsch, mit Scans. OCR über olmOCR in LM Studio, Tesseract als Ersatz |
 | 4a – SearXNG oder Such-API | – | **Geklärt:** SearXNG, Such-API später optional |
 | 4e – Inpainting-Anbieter | – | **Geklärt:** OpenAI |
-| 2 – Reverse Proxy, Hostname, TLS | M10, M12 | **Teilweise geklärt:** nginx ist vorhanden. Offen: Hostname und Zertifikat |
+| 2 – Reverse Proxy, Hostname, TLS | – | **Geklärt:** nginx mit TLS kommt mit dem Paket (Commit `d9c76a9`), Hostname und Zertifikat per debconf; ohne eigenes Zertifikat snakeoil |
 
 ---
 
@@ -343,4 +344,14 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 - **LM Studio im Heimnetz läuft echt** (2026-10-09, `openai/gpt-oss-20b`).
 - **Vorschlag „Gedächtnis über Chats“** (Plan 8, Punkt 19): Die Freigabe durch den Nutzer steht aus.
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.
-- Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
+- Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 inzwischen ebenfalls (nginx im Paket). Offen sind noch 1a (beantwortet in der Praxis: LM Studio unter 192.168.24.127) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
+- **M12-01 umgesetzt** (Commit `d9c76a9`, 1184 Tests grün, `make test-packaging` ohne Fehlschlag):
+  - gunicorn lauscht im Paket fest auf `127.0.0.1` (Port aus `MULTI_GPT_BIND` bleibt, eine LAN-Bindung wird beim Upgrade umgestellt). `Depends: nginx (>= 1.25.1), ssl-cert`.
+  - debconf fragt Hostname(n) und Zertifikat/Schlüssel ab (die Fragen nach Bind-Adresse, `ALLOWED_HOSTS` und CSRF-Origins entfallen). `ALLOWED_HOSTS` und `CSRF_TRUSTED_ORIGINS` werden aus den Namen und den IPv4-Adressen des Rechners abgeleitet.
+  - Site `/etc/nginx/sites-available/multi-gpt` als conffile; `upstream.conf`, `http.conf`, `https.conf` und `headers.conf` erzeugt das postinst unter `/etc/multi-gpt/nginx/`, eigene Ergänzungen in `/etc/multi-gpt/nginx/local/*.conf`.
+  - TLS nach Mozilla „intermediate“, HTTP/2, 301 auf HTTPS, SSE ungepuffert, `client_max_body_size` = `DOCUMENT_MAX_UPLOAD_MB` + 10 MB, statische Dateien direkt. Ohne eigenes Zertifikat snakeoil mit Warnung, HSTS nur mit eigenem Zertifikat.
+  - Default-Server, außer eine andere Site ist es schon; Debians unveränderte Site `default` wird nur dann abgeschaltet und bei `remove`/`purge` wiederhergestellt. `nginx -t` vor dem Aktivieren, bei Fehler Rücknahme ohne Abbruch (`*.failed`).
+  - `SECURE_COOKIES=True` und `AXES_PROXY_COUNT=1` bei der ersten Einrichtung; axes nutzt die eigene Client-IP-Funktion `multigpt.accounts.client_ip` (Setting `REVERSE_PROXY_COUNT`).
+  - `MULTI_GPT_SKIP_NGINX=1` für Docker, `MULTI_GPT_FORWARDED_ALLOW_IPS` für gunicorn.
+  - Doku: Wiki-Seite `nginx-und-TLS`, Konfiguration, Website (Installation, Architektur, Roadmap).
+  - Offen: `USE_X_ACCEL_REDIRECT` ist vorbereitet, aber `www-data` darf `MEDIA_ROOT` (`0750 multi-gpt:multi-gpt`) nicht lesen. Testinstallation auf Debian 13.

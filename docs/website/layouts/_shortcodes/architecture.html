@@ -3,7 +3,7 @@
   "caption" "Aufbau von MultiGPT. Alles außer den Anbieter-APIs läuft im eigenen Heimnetz. Markierte Teile sind geplant."
   "browser" "Browser" "browser_sub" "PC, Tablet, Handy im Heimnetz"
   "e_https" "HTTPS im Intranet"
-  "nginx_sub" "optional · Intranet-Hostname und TLS"
+  "nginx_sub" "im Paket · Intranet-Hostname und TLS"
   "e_local" "HTTP auf localhost"
   "django_sub" "gunicorn (gthread), Django 5.2"
   "app_chat" "chat – Ansichten, Streaming (SSE)"
@@ -20,13 +20,12 @@
   "e_tools" "Werkzeugaufrufe"
   "planned" "geplant"
   "fan" "Django (und der Worker) verbinden sich mit:"
-  "example" "Beispielkonfiguration geplant"
 }}
 {{- $en := dict
   "caption" "How MultiGPT is put together. Everything except the provider APIs runs in your own home network. Marked parts are planned."
   "browser" "Browser" "browser_sub" "PC, tablet, phone on the home network"
   "e_https" "HTTPS on the intranet"
-  "nginx_sub" "optional · intranet host name and TLS"
+  "nginx_sub" "in the package · intranet host name and TLS"
   "e_local" "HTTP on localhost"
   "django_sub" "gunicorn (gthread), Django 5.2"
   "app_chat" "chat – views, streaming (SSE)"
@@ -43,7 +42,6 @@
   "e_tools" "tool calls"
   "planned" "planned"
   "fan" "Django (and the worker) connect to:"
-  "example" "example config planned"
 }}
 {{- $t := cond (eq site.Language.Lang "de") $de $en }}
 <figure class="arch">
@@ -53,10 +51,9 @@
       <span>{{ $t.browser_sub }}</span>
     </div>
     <div class="arch-edge"><span>{{ $t.e_https }}</span></div>
-    <div class="arch-node arch-optional">
+    <div class="arch-node">
       <strong>nginx</strong>
       <span>{{ $t.nginx_sub }}</span>
-      <em class="tag">{{ $t.example }} (M11)</em>
     </div>
     <div class="arch-edge"><span>{{ $t.e_local }}</span></div>
     <div class="arch-row">

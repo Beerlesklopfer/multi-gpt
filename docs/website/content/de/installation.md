@@ -8,20 +8,23 @@ menus:
 ---
 
 > **Stand:** `make deb` baut das Paket (`multi-gpt_0.1.0_amd64.deb`). Eine Testinstallation
-> auf einem frischen Debian 13 steht noch aus. Der Docker-Weg ist bisher ungetestet. Die
-> vollständige Installationsanleitung (mit nginx und TLS) folgt mit Meilenstein 12.
+> auf einem frischen Debian 13 steht noch aus. Der Docker-Weg ist bisher ungetestet. Das
+> Paket bringt nginx mit TLS bereits mit; die vollständige Betriebsanleitung (mit Backup) folgt
+> mit Meilenstein 12.
 
 ## Voraussetzungen
 
 - Debian 13 (oder ein anderes System mit apt) mit Python 3.12 oder neuer.
 - PostgreSQL mit der Erweiterung pgvector – lokal oder auf einem anderen Rechner.
+- nginx (ab 1.25.1) und `ssl-cert` – installiert apt als Abhängigkeiten mit.
 - Für den Paketbau: `debhelper` und `dh-virtualenv`.
 
 ## Weg 1: Debian-Paket (empfohlen)
 
 Das Paket `multi-gpt` bringt seine eigene Python-Umgebung in `/usr/share/python/multi-gpt`
 mit und wird über systemd gestartet. Es legt den Systemnutzer `multi-gpt` an, Daten liegen
-in `/var/lib/multi-gpt`.
+in `/var/lib/multi-gpt`. nginx und TLS sind Teil des Pakets: gunicorn lauscht nur auf
+`127.0.0.1`, davor steht nginx auf demselben Rechner.
 
 **1. Paket bauen** (im Quellcode-Ordner):
 
@@ -32,18 +35,26 @@ make deb
 
 Das `.deb` liegt danach im übergeordneten Ordner.
 
-**2. Installieren:**
+**2. Installieren** (im Ordner mit dem `.deb`):
 
 ```
-sudo apt install ../multi-gpt_<version>_<arch>.deb
+sudo apt install ./multi-gpt_<version>_amd64.deb
 ```
 
 Bei der Installation passiert Folgendes:
 
-- **Fragen per debconf:** Bind-Adresse (z. B. `127.0.0.1:8000` hinter einem nginx auf
-  demselben Rechner oder die LAN-Adresse), `ALLOWED_HOSTS` und die Adressen für
-  `CSRF_TRUSTED_ORIGINS`. Die Antworten landen in `/etc/multi-gpt/.env`; ändern lassen sie
-  sich später mit `sudo dpkg-reconfigure multi-gpt`.
+- **Fragen per debconf:** der oder die **Hostnamen**, unter denen MultiGPT aufgerufen wird
+  (Vorschlag: `hostname -f`), und der Pfad zum **TLS-Zertifikat** samt Schlüssel. Bleibt das
+  Zertifikat leer, nutzt nginx das selbstsignierte snakeoil-Zertifikat: Browser warnen dann,
+  und das Mikrofon ist ggf. eingeschränkt. `ALLOWED_HOSTS` und `CSRF_TRUSTED_ORIGINS` leitet
+  das Paket aus den Hostnamen und den IP-Adressen des Rechners ab. Ändern lässt sich alles
+  später mit `sudo dpkg-reconfigure multi-gpt`.
+- **nginx mit TLS:** Das Paket richtet die Site `/etc/nginx/sites-available/multi-gpt` ein
+  (HTTPS, Weiterleitung von HTTP auf HTTPS, gestreamte Antworten ohne Puffer, Upload-Grenze
+  passend zu `DOCUMENT_MAX_UPLOAD_MB`), prüft sie mit `nginx -t` und aktiviert sie. Debians
+  unveränderte Standard-Site `default` wird dafür abgeschaltet. Einzelheiten, eigenes
+  Zertifikat und Fehlersuche stehen im
+  [Wiki: nginx und TLS](https://github.com/Beerlesklopfer/multi-gpt/wiki/nginx-und-TLS).
 - **Konfiguration:** Bei der ersten Installation entsteht `/etc/multi-gpt/.env` (Eigentümer
   `root:multi-gpt`, Rechte 0640) mit frisch erzeugten Schlüsseln. Updates überschreiben die
   Datei nicht.
@@ -72,9 +83,8 @@ sudo -u postgres createdb -O multi-gpt multi-gpt
 sudo -u postgres psql -d multi-gpt -c 'CREATE EXTENSION IF NOT EXISTS vector'
 ```
 
-**4. Konfiguration prüfen:** In `/etc/multi-gpt/.env` bei Bedarf `DATABASE_URL` und –
-sobald nginx mit TLS davor steht – `SECURE_COOKIES` anpassen. Danach
-`sudo systemctl restart multi-gpt`.
+**4. Konfiguration prüfen:** In `/etc/multi-gpt/.env` bei Bedarf `DATABASE_URL` anpassen.
+Danach `sudo systemctl restart multi-gpt`.
 
 **5. Ersten Verwalter erstellen** (und das Schema nachziehen, falls die automatische
 Migration nicht lief):
@@ -87,8 +97,8 @@ sudo mgpt-ctl createsuperuser
 `mgpt-ctl` ist ein Wrapper um Djangos `manage.py`, der als Nutzer `multi-gpt` mit
 `/etc/multi-gpt/.env` läuft. `mgpt-ctl migrate` lässt sich jederzeit gefahrlos wiederholen.
 
-Die App lauscht auf der per debconf gewählten Adresse. Ob sie läuft, zeigt
-`curl http://<adresse>:<port>/healthz/`.
+MultiGPT ist danach unter `https://<hostname>/` erreichbar. Ob die App läuft, zeigt
+`curl -k https://<hostname>/healthz/` (`-k` nur mit dem snakeoil-Zertifikat).
 
 **6. Dokumentsuche einrichten (optional):** Im Admin unter „Dokumente (RAG)“ →
 „Einstellungen“ ein Embedding-Modell wählen (lokal z. B. nomic-embed-text über LM Studio)

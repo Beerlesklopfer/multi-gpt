@@ -40,7 +40,7 @@ Debian-Paket, das Datenbank und Schema selbst einrichtet.
 Mit OpenAI läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher simuliert getestet;
 echte Tests mit Anthropic- und Gemini-Keys und einer frischen Debian-Installation stehen
 noch aus, der Docker-Build ist ungetestet. Fertige Release-Pakete gibt es noch nicht.
-Bilder, Sprache und der Betrieb mit nginx/TLS-Vorlage und Backup folgen – Details in der
+Bilder, Sprache, Musik und Backup folgen – Details in der
 [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
