@@ -154,6 +154,11 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
 - **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings über OpenAI. **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
 - **M7-04** Migration für `Chunk` mit fester Vektordimension (aus dem gewählten OpenAI-Embedding-Modell) und HNSW-Index (Kosinus). `make reindex`.
+- **M7-10** (Nutzerwunsch) Verzeichnisquellen:
+  - Modell `DirectorySource` (App `rag`), dazu die Dokumentfelder `source`, `source_path`, `source_mtime`, `source_size` und `source_sha256`.
+  - Scan-Job im vorhandenen Worker, periodisch und ohne Dubletten. Abgleich über mtime und Größe, bei Änderung zusätzlich über SHA-256.
+  - Admin unter „Dokumente (RAG)“ → „Verzeichnisquellen“ mit „Jetzt einlesen“ und „Pausieren“.
+  - Sicherheit: Wurzeln aus `RAG_SOURCE_ROOTS`, `realpath`-Prüfung je Datei, keine Symlinks.
 - **M7-09** (Entscheidung 2026-10-09) Dokumentverarbeitung komplett lokal:
   - Embeddings über LM Studio (nomic-embed-text, Dimension 768 statt 1536). Dafür Migration der Vektorspalte und „Alles neu indexieren“.
   - Die Sperre von LM-Studio-Anbietern in `RagSettings.clean()` entfällt.

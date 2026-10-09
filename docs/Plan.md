@@ -170,6 +170,10 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 - **Abfrage:** Im Chat wählt der Nutzer eine oder mehrere Sammlungen. Die Frage wird eingebettet, die ähnlichsten Abschnitte (Kosinus-Abstand, HNSW-Index, Top 6) kommen als Kontext in die Anfrage. Optional zusätzlich PostgreSQL-Volltextsuche und Zusammenführung beider Trefferlisten.
 - **Quellen:** Unter der Antwort stehen die verwendeten Dokumente mit Seitenzahl, anklickbar zum Textabschnitt.
 - **Zugriff:** Abschnitte fremder privater Sammlungen dürfen nie in einer Abfrage landen. Dafür gibt es einen eigenen Test.
+- **Verzeichnisquellen (Verwalter):** Eine Sammlung kann einen Ordner auf dem Server bzw. NAS einlesen. Der Ordner wird periodisch gecrawlt: Neue und geänderte Dateien werden indexiert, gelöschte entfernt. Die Dateien bleiben am Ort und werden nicht kopiert. Dabei gilt:
+  - Erlaubt sind nur Pfade unterhalb der Wurzeln in `RAG_SOURCE_ROOTS`, geprüft per `realpath` bei der Anlage und bei jedem Lauf.
+  - Der Dienst liest nur. Für Pfade unter `/home` ist ein systemd-Drop-in nötig.
+  - Die Nutzer sehen die Dokumente, können sie aber nicht einzeln löschen.
 - **Verwaltung im Admin:** eigener Abschnitt „Dokumente (RAG)“, nur für Verwalter. Er umfasst:
   - die Übersicht: Konfiguration, Embedding-Test, Zahlen je Status, Speicherbedarf, Zustand des Workers und Warteschlange;
   - die Aktionen „Alles neu indexieren“ (z. B. nach einem Modellwechsel), „Fehlgeschlagene erneut versuchen“ und „Hängende Aufträge zurücksetzen“;
