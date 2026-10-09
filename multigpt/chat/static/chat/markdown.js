@@ -243,7 +243,7 @@
   }
 
   window.MultiGPT = window.MultiGPT || {};
-  window.MultiGPT.markdown = { ready, render, streamRenderer, renderAll, sourceOf };
+  window.MultiGPT.markdown = { ready, render, streamRenderer, renderAll, sourceOf, copyText };
 
   document.addEventListener("DOMContentLoaded", () => renderAll());
 })();

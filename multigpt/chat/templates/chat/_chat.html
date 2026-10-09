@@ -22,7 +22,9 @@
            data-api-messages-template="{% url 'chat:api_messages' 0 %}"
            data-api-detail-template="{% url 'chat:api_conversation_detail' 0 %}"
            data-api-mcp-servers="{% url 'chat:api_mcp_servers' %}"
-           data-api-tool-confirm-template="{% url 'chat:api_tool_confirm' 0 %}">
+           data-api-tool-confirm-template="{% url 'chat:api_tool_confirm' 0 %}"
+           data-api-branch-template="{% url 'chat:api_branch' 0 %}"
+           data-messages-fragment-template="{% url 'chat:conversation_messages' 0 %}">
     {% if active_conversation %}
       <header class="chat-header">
         <h1 class="chat-header-title" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
@@ -57,7 +59,7 @@
     {% include "chat/_system_prompt.html" %}
     <div class="chat-history" id="chat-history" tabindex="-1">
       <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Verlauf">
-        {% for msg in chat_messages %}{% include "chat/_message.html" %}{% endfor %}
+        {% include "chat/_messages.html" %}
       </div>
       {% if has_chat_model %}
         <div class="empty-state" id="chat-empty"{% if chat_messages %} hidden{% endif %}>

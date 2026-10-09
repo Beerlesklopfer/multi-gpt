@@ -470,14 +470,122 @@ input {
   color: var(--error);
 }
 
+/* Leiste unter einer Nachricht: Versionen, Kopieren, Bearbeiten, Neu erzeugen */
 .chat-message-actions {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0.4rem -0.4rem -0.35rem;
+  color: var(--text-muted);
 }
 
-.chat-message-actions .link-button {
+.chat-message-user .chat-message-actions {
+  justify-content: flex-end;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-button .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Kurzes Häkchen nach dem Kopieren */
+.icon-button.is-done {
+  color: var(--success);
+}
+
+.message-versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  margin-right: 0.25rem;
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.message-versions .icon-button {
+  min-width: 1.75rem;
+  font-size: 1.25rem;
+}
+
+.message-versions-label {
+  min-width: 2.2rem;
+  text-align: center;
+}
+
+/* Inline-Editor einer eigenen Nachricht */
+.chat-message.is-editing {
+  width: 100%;
+  max-width: 100%;
+}
+
+.message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.message-editor-input {
+  width: 100%;
+  min-height: 3rem;
+  max-height: 50vh;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.message-editor-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.message-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (pointer: coarse) {
+  .icon-button {
+    min-width: 2.5rem;
+    height: 2.5rem;
+  }
 }
 
 /* Chatliste in der Seitenleiste */

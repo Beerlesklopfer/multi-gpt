@@ -42,11 +42,25 @@ def index(request):
     return render(request, "chat/index.html", _page_context(request))
 
 
+def _path_with_versions(conv: Conversation) -> list[Message]:
+    """Angezeigter Pfad; je Nachricht Position (1-basiert) und die Nachbarn
+    unter ihren Geschwistern für den Versionsumschalter „‹ i/n ›“."""
+    chat_messages = list(services.visible_messages(conv))
+    for msg in chat_messages:
+        ids = list(getattr(msg, "sibling_ids", None) or [msg.pk])
+        index = ids.index(msg.pk) if msg.pk in ids else 0
+        msg.sibling_count = len(ids)
+        msg.sibling_position = index + 1
+        msg.prev_sibling_id = ids[index - 1] if index > 0 else None
+        msg.next_sibling_id = ids[index + 1] if index + 1 < len(ids) else None
+    return chat_messages
+
+
 @login_required
 def conversation(request, pk):
     """Chatansicht mit serverseitig gerendertem Verlauf. Ohne READ-Recht 404."""
     conv = _readable_conversation(request, pk)
-    chat_messages = services.visible_messages(conv)
+    chat_messages = _path_with_versions(conv)
     context = _page_context(request, conv)
     context.update(
         {
@@ -56,6 +70,21 @@ def conversation(request, pk):
         }
     )
     return render(request, "chat/conversation.html", context)
+
+
+@require_GET
+@login_required
+def conversation_messages(request, pk):
+    """HTML-Fragment des angezeigten Verlaufs (dieselben Templates wie die Seite);
+    chat.js ersetzt damit den Verlauf nach Umschalten, Bearbeiten und Streams."""
+    conv = _readable_conversation(request, pk)
+    context = {
+        "chat_messages": _path_with_versions(conv),
+        "can_write": can(request.user, Action.WRITE, conv),
+    }
+    response = render(request, "chat/_messages.html", context)
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 # --- Export (M5-04) -------------------------------------------------------------
@@ -79,7 +108,7 @@ def _status_note(msg: Message) -> str:
 
 def render_export(conversation: Conversation) -> str:
     """Sichtbarer Verlauf als Markdown. Ohne festen Rollen-Prompt (nur der
-    eigene System-Prompt des Chats), ohne ersetzte Antworten."""
+    eigene System-Prompt des Chats), nur der angezeigte Zweig (Versionen)."""
     title = " ".join((conversation.title or "Neuer Chat").split())
     now = timezone.localtime()
     lines = [f"# {title}", "", f"Exportiert aus MultiGPT am {now:%d.%m.%Y um %H:%M} Uhr.", ""]

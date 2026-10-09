@@ -7,6 +7,7 @@ from . import api, api_manage
 urlpatterns = [
     path("conversations/", api.conversation_create, name="api_conversations"),
     path("conversations/<int:pk>/messages/", api.messages, name="api_messages"),
+    path("conversations/<int:pk>/branch/", api.branch, name="api_branch"),
     path("models/", api.models_list, name="api_models"),
     path("mcp-servers/", api.mcp_servers_list, name="api_mcp_servers"),
     path(

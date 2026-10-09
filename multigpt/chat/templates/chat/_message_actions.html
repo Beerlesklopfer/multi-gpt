@@ -1,0 +1,36 @@
+{% comment %}Leiste unter einer Nachricht: Versionen „‹ i/n ›“, Kopieren, Bearbeiten (eigene
+Nachrichten), Neu erzeugen (Antworten). Die Knöpfe brauchen JavaScript: chat.js blendet die Leiste ein.{% endcomment %}
+<div class="chat-message-actions" data-message-actions hidden>
+  {% if msg.sibling_count > 1 %}
+    <div class="message-versions" role="group" aria-label="Versionen dieser Nachricht">
+      {% if can_write %}
+        <button type="button" class="icon-button" data-version-target="{{ msg.prev_sibling_id|default_if_none:'' }}"
+                aria-label="Vorherige Version" title="Vorherige Version"{% if not msg.prev_sibling_id %} disabled{% endif %}>
+          <span aria-hidden="true">‹</span></button>
+      {% endif %}
+      <span class="message-versions-label" aria-hidden="true">{{ msg.sibling_position }}/{{ msg.sibling_count }}</span>
+      <span class="sr-only">Version {{ msg.sibling_position }} von {{ msg.sibling_count }}</span>
+      {% if can_write %}
+        <button type="button" class="icon-button" data-version-target="{{ msg.next_sibling_id|default_if_none:'' }}"
+                aria-label="Nächste Version" title="Nächste Version"{% if not msg.next_sibling_id %} disabled{% endif %}>
+          <span aria-hidden="true">›</span></button>
+      {% endif %}
+    </div>
+  {% endif %}
+  <button type="button" class="icon-button" data-copy-message
+          aria-label="{% if msg.role == 'user' %}Nachricht kopieren{% else %}Antwort kopieren{% endif %}" title="Kopieren">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+  </button>
+  {% if can_write %}
+    {% if msg.role == "user" %}
+      <button type="button" class="icon-button" data-edit-message aria-label="Nachricht bearbeiten" title="Bearbeiten">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg>
+      </button>
+    {% elif msg.role == "assistant" %}
+      <button type="button" class="icon-button" data-regenerate-message hidden
+              aria-label="Antwort neu erzeugen" title="Neu erzeugen (mit dem gewählten Modell)">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+      </button>
+    {% endif %}
+  {% endif %}
+</div>

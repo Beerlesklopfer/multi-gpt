@@ -88,6 +88,10 @@ def _serialize_message(message: Message) -> dict:
         "status": message.status,
         "error": message.error,
         "created": message.created.isoformat(),
+        "parent_id": message.parent_id,
+        "sibling_ids": message.sibling_ids,
+        "sibling_index": message.sibling_index,
+        "sibling_count": message.sibling_count,
         "tool_calls": [_serialize_tool_call(tc) for tc in message.tool_calls.all()],
     }
 
@@ -193,9 +197,47 @@ def messages(request, pk: int):
     if conversation is None:
         return _error("Chat nicht gefunden.", 404)
     if request.method == "GET":
-        qs = services.visible_messages(conversation)
-        return JsonResponse([_serialize_message(m) for m in qs], safe=False)
+        return _path_response(conversation)
     return _stream(request, conversation)
+
+
+def _path_response(conversation: Conversation) -> JsonResponse:
+    path = services.visible_messages(conversation)
+    return JsonResponse([_serialize_message(m) for m in path], safe=False)
+
+
+def _optional_pk(data: dict, key: str) -> tuple[int | None, bool]:
+    """(Wert, gültig): fehlend/None -> (None, True); sonst nur echte Ganzzahlen."""
+    value = data.get(key)
+    if value is None:
+        return None, True
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None, False
+    return value, True
+
+
+@require_POST
+@api_login_required
+def branch(request, pk: int):
+    """Version umschalten: ``{"message_id": <pk>}`` -> current_leaf = neuestes
+    Blatt unter dieser Nachricht; Antwort wie GET messages. Ändert den
+    gemeinsamen Zustand des Chats, braucht also Schreibrecht."""
+    conversation = _get_conversation(request, pk)
+    if conversation is None:
+        return _error("Chat nicht gefunden.", 404)
+    if not can(request.user, Action.WRITE, conversation):
+        return _error("Du darfst in diesem Chat nicht schreiben.", 403)
+    data = _json_body(request)
+    if data is None:
+        return _error("Ungültige Anfrage.", 400)
+    message_id, valid = _optional_pk(data, "message_id")
+    if not valid or message_id is None:
+        return _error("Ungültige Anfrage.", 400)
+    try:
+        services.switch_branch(conversation, message_id)
+    except services.TurnError as exc:
+        return _error(exc.message, exc.status)
+    return _path_response(conversation)
 
 
 def _stream(request, conversation: Conversation):
@@ -218,6 +260,10 @@ def _stream(request, conversation: Conversation):
     content = data.get("content")
     if not regenerate and not isinstance(content, str):
         return _error("Die Nachricht ist leer.", 400)
+    edit_of, valid_edit = _optional_pk(data, "edit_of")
+    regenerate_of, valid_regen = _optional_pk(data, "message_id") if regenerate else (None, True)
+    if not (valid_edit and valid_regen) or (regenerate and edit_of is not None):
+        return _error("Ungültige Anfrage.", 400)
     mcp_servers = data.get("mcp_servers")
     if mcp_servers is not None and not (
         isinstance(mcp_servers, list)
@@ -232,6 +278,8 @@ def _stream(request, conversation: Conversation):
             content=content,
             regenerate=regenerate,
             mcp_servers=mcp_servers,
+            edit_of=edit_of,
+            regenerate_of=regenerate_of,
         )
     except services.TurnError as exc:
         return _error(exc.message, exc.status)

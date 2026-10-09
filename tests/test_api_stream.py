@@ -260,16 +260,12 @@ def test_fixed_role_prompt_comes_first(client, ai_model, fake):
 
 
 def test_history_sent_to_adapter(client, conversation, ai_model, fake):
-    Message.objects.create(conversation=conversation, role="user", content="A")
-    Message.objects.create(conversation=conversation, role="assistant", content="B")
-    Message.objects.create(conversation=conversation, role="user", content="C")
-    Message.objects.create(
-        conversation=conversation, role="assistant", content="D-teil", status="aborted"
-    )
-    Message.objects.create(conversation=conversation, role="user", content="E")
-    Message.objects.create(
-        conversation=conversation, role="assistant", content="kaputt", status="error"
-    )
+    services.append_message(conversation, role="user", content="A")
+    services.append_message(conversation, role="assistant", content="B")
+    services.append_message(conversation, role="user", content="C")
+    services.append_message(conversation, role="assistant", content="D-teil", status="aborted")
+    services.append_message(conversation, role="user", content="E")
+    services.append_message(conversation, role="assistant", content="kaputt", status="error")
     holder = fake(OK_EVENTS)
     parse_sse(post(client, conversation, content="F", model=ai_model.pk))
     msgs = holder["adapter"].calls[0]["messages"]
@@ -283,51 +279,7 @@ def test_history_sent_to_adapter(client, conversation, ai_model, fake):
     ]
 
 
-def test_regenerate_replaces_last_answer(client, conversation, ai_model, fake):
-    fake(OK_EVENTS)
-    first = parse_sse(post(client, conversation, content="Frage", model=ai_model.pk))
-    old_id = first[0][1]["assistant_message_id"]
-
-    holder = fake([Delta("Neu"), Done()])
-    events = parse_sse(post(client, conversation, regenerate=True, model=ai_model.pk))
-    start = events[0][1]
-    assert start["user_message_id"] is None
-    assert start["assistant_message_id"] != old_id
-    # Alte Antwort bleibt mit Tokens und Kosten erhalten (Verbrauch/Budget, M6).
-    old = Message.objects.get(pk=old_id)
-    assert old.status == Message.Status.SUPERSEDED
-    assert (old.content, old.tokens_in, old.tokens_out) == ("Hallo", 12, 3)
-    assert old.cost == Decimal("0.000060")
-    # ... taucht aber weder im Verlauf an das Modell noch in der API auf.
-    assert [(m.role, m.content) for m in holder["adapter"].calls[0]["messages"]] == [
-        ("user", "Frage")
-    ]
-    data = client.get(url(conversation)).json()
-    assert [(m["role"], m["content"]) for m in data] == [("user", "Frage"), ("assistant", "Neu")]
-    assert old_id not in [m["id"] for m in data]
-
-    # Zweites Neu-Erzeugen ersetzt die neue Antwort, nicht erneut die alte.
-    fake([Delta("Noch neuer"), Done()])
-    parse_sse(post(client, conversation, regenerate=True, model=ai_model.pk))
-    statuses = list(
-        conversation.messages.filter(role="assistant")
-        .order_by("id")
-        .values_list("status", flat=True)
-    )
-    assert statuses == ["superseded", "superseded", "complete"]
-    # Folgefrage: Verlauf enthält nur die aktuelle Antwort.
-    holder = fake(OK_EVENTS)
-    parse_sse(post(client, conversation, content="Weiter", model=ai_model.pk))
-    assert [m.content for m in holder["adapter"].calls[0]["messages"]] == [
-        "Frage",
-        "Noch neuer",
-        "Weiter",
-    ]
-    # Serverseitige Chatansicht zeigt die ersetzten Antworten nicht.
-    page = client.get(reverse("chat:conversation", args=[conversation.pk]))
-    assert page.status_code == 200
-    assert old_id not in [m.pk for m in page.context["chat_messages"]]
-    assert "Noch neuer" in page.content.decode()
+# Neu erzeugen und Bearbeiten (Versionen): tests/test_branches_api.py
 
 
 def test_regenerate_without_question(client, conversation, ai_model, fake):
@@ -367,7 +319,7 @@ def test_foreign_conversation_not_found(client, adult, ai_model, fake):
     holder = fake(OK_EVENTS)
     other = make_user("adult", "fremd")
     conv = Conversation.objects.create(user=other)
-    Message.objects.create(conversation=conv, role="user", content="privat")
+    services.append_message(conv, role="user", content="privat")
     response = client.get(url(conv))
     assert response.status_code == 404
     assert response.json() == {"error": "Chat nicht gefunden."}

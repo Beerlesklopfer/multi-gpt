@@ -127,7 +127,7 @@ def test_archive_and_restore(anna_client, conv):
 
 
 def test_delete(anna_client, conv):
-    Message.objects.create(conversation=conv, role="user", content="Hallo")
+    services.append_message(conv, role="user", content="Hallo")
     response = anna_client.delete(detail_url(conv.pk))
     assert response.status_code == 200
     assert response.json() == {"deleted": True, "id": conv.pk}
@@ -274,7 +274,7 @@ def test_fixed_role_prompt_invisible_but_sent(client, ai_model):
     role.save()
     teen = User.objects.create_user("tim", password=PASSWORD, role=role)
     conv = Conversation.objects.create(user=teen, title="Hausaufgaben", system_prompt="Eigener")
-    Message.objects.create(conversation=conv, role="user", content="Frage")
+    services.append_message(conv, role="user", content="Frage")
     client.force_login(teen)
 
     page = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
@@ -297,15 +297,14 @@ def test_fixed_role_prompt_invisible_but_sent(client, ai_model):
 def test_export(anna_client, conv, ai_model):
     conv.system_prompt = "Sei freundlich.\nUnd kurz."
     conv.save()
-    Message.objects.create(conversation=conv, role="user", content="Wohin im Mai?")
-    Message.objects.create(
-        conversation=conv, role="assistant", model=ai_model, content="Alt", status="superseded"
+    question = services.append_message(conv, role="user", content="Wohin im Mai?")
+    # Ältere Antwortversion (anderer Zweig) erscheint nicht im Export.
+    services.append_message(conv, role="assistant", model=ai_model, content="Alt")
+    services.append_message(
+        conv, parent=question, role="assistant", model=ai_model, content="**Nach Rom.**"
     )
-    Message.objects.create(
-        conversation=conv, role="assistant", model=ai_model, content="**Nach Rom.**"
-    )
-    Message.objects.create(
-        conversation=conv,
+    services.append_message(
+        conv,
         role="assistant",
         model=ai_model,
         content="Teil",
@@ -422,8 +421,8 @@ def test_vendor_readme_checksums_match():
 
 
 def test_chat_page_includes_local_vendor_scripts(anna_client, conv, ai_model):
-    Message.objects.create(conversation=conv, role="user", content="*Frage*")
-    Message.objects.create(conversation=conv, role="assistant", model=ai_model, content="*Ja*")
+    services.append_message(conv, role="user", content="*Frage*")
+    services.append_message(conv, role="assistant", model=ai_model, content="*Ja*")
     html = anna_client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
     for name in (
         "vendor/marked/marked.umd.js",

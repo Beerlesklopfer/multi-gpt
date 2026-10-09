@@ -1,5 +1,6 @@
 // MultiGPT – Chatansicht (M3-05): Modellauswahl, Senden, Streaming, Abbrechen,
-// Neu erzeugen, neuer Chat, Werkzeugaufrufe mit Rückfrage (M4a-06).
+// Neu erzeugen, neuer Chat, Werkzeugaufrufe mit Rückfrage (M4a-06), Bearbeiten,
+// Versionen „‹ i/n ›“ und Kopieren an den Nachrichten.
 // Kein Inline-JS, keine externen Ressourcen.
 //
 // Sicherheit (Plan 9): Nutzertext wird ausschließlich als Text eingesetzt
@@ -226,6 +227,8 @@
       conversationTemplate: chat.dataset.conversationUrlTemplate,
       mcpServers: chat.dataset.apiMcpServers,
       toolConfirmTemplate: chat.dataset.apiToolConfirmTemplate,
+      branchTemplate: chat.dataset.apiBranchTemplate,
+      fragmentTemplate: chat.dataset.messagesFragmentTemplate,
     };
     let conversationId = chat.dataset.conversationId || null;
     let controller = null; // AbortController des laufenden Streams
@@ -617,32 +620,26 @@
       });
     }
 
-    // "Neu erzeugen" nur an der letzten Antwort.
-    function updateRegenerateButton() {
-      for (const actions of log.querySelectorAll(".chat-message-actions")) {
-        actions.remove();
-      }
-      if (!form || controller) {
-        return;
-      }
-      const last = messageElements().at(-1);
-      if (!last || last.dataset.role !== "assistant" || last.dataset.status === "awaiting_confirmation") {
-        return;
-      }
-      const actions = document.createElement("div");
-      actions.className = "chat-message-actions";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "link-button";
-      button.textContent = "Neu erzeugen";
-      button.title = "Antwort mit dem gewählten Modell neu erzeugen";
-      button.disabled = !modelsReady;
-      button.addEventListener("click", regenerate);
-      actions.append(button);
-      const stick = isNearBottom();
-      last.append(actions);
-      if (stick) {
-        scrollToBottom();
+    // Leisten unter den Nachrichten (chat/_message_actions.html): Knöpfe je nach
+    // Zustand freigeben. Bearbeiten und Neu erzeugen brauchen das Eingabefeld
+    // (Schreibrecht und Modelle), Umschalten nur das Schreibrecht (Server).
+    function updateMessageActions() {
+      const busy = Boolean(controller);
+      for (const bar of log.querySelectorAll("[data-message-actions]")) {
+        const article = bar.closest(".chat-message");
+        bar.hidden = article.classList.contains("is-editing");
+        for (const button of bar.querySelectorAll("[data-version-target]")) {
+          button.disabled = busy || !button.dataset.versionTarget;
+        }
+        for (const button of bar.querySelectorAll("[data-edit-message]")) {
+          button.hidden = !form;
+          button.disabled = busy || !modelsReady;
+        }
+        for (const button of bar.querySelectorAll("[data-regenerate-message]")) {
+          button.hidden =
+            !form || !article.dataset.messageId || article.dataset.status === "awaiting_confirmation";
+          button.disabled = busy || !modelsReady;
+        }
       }
     }
 
@@ -663,7 +660,7 @@
       if (toolSwitches) {
         toolSwitches.disabled = active;
       }
-      updateRegenerateButton();
+      updateMessageActions();
     }
 
     function returnFocus() {
@@ -947,9 +944,12 @@
     }
 
     // Führt einen Stream aus. opts: userEl/restoreText (neue Nachricht),
-    // replaced (alte Antwort beim Neu erzeugen, erst bei "start" entfernt) oder
-    // url + continuation (Fortsetzung derselben Antwort nach einer Rückfrage).
+    // replaced (ausgeblendete Nachrichten, die der neue Zweig ersetzt – beim Neu
+    // erzeugen und Bearbeiten; erst bei "start" entfernt), onUndo (Server hat
+    // nichts gespeichert) oder url + continuation (Fortsetzung derselben Antwort
+    // nach einer Rückfrage). Danach wird der Verlauf vom Server neu geladen.
     async function runStream(payload, assistantEl, opts) {
+      const replaced = [].concat(opts.replaced || []);
       const ctrl = new AbortController();
       controller = ctrl;
       setStreaming(true);
@@ -996,18 +996,19 @@
         assistantEl.remove();
         if (opts.userEl) {
           opts.userEl.remove();
-          if (!textarea.value) {
+          if (!opts.onUndo && !textarea.value) {
             textarea.value = opts.restoreText;
             autosize();
           }
         }
-        if (opts.replaced) {
-          opts.replaced.hidden = false;
+        for (const el of replaced) {
+          el.hidden = false;
         }
         if (emptyState && !messageElements().length) {
           emptyState.hidden = false;
         }
         setStatus(message, true);
+        opts.onUndo?.();
       };
 
       try {
@@ -1044,7 +1045,9 @@
             if (data.assistant_message_id != null) {
               assistantEl.dataset.messageId = String(data.assistant_message_id);
             }
-            opts.replaced?.remove();
+            for (const el of replaced) {
+              el.remove();
+            }
             expireConfirmations(assistantEl);
             if (opts.continuation) {
               assistantEl.querySelector(".tool-confirm")?.remove();
@@ -1101,8 +1104,11 @@
         controller = null;
         if (!rejected) {
           if (!started) {
-            // Abbruch vor "start": Was der Server gespeichert hat, zeigt ein Neuladen.
-            opts.replaced?.remove();
+            // Abbruch vor "start": Was der Server gespeichert hat, zeigt das
+            // Neuladen des Verlaufs unten.
+            for (const el of replaced) {
+              el.remove();
+            }
           }
           delete assistantEl.dataset.streaming;
           stick = isNearBottom();
@@ -1127,10 +1133,15 @@
           }
         }
         setStreaming(false);
+        if (!rejected) {
+          // Serverstand übernehmen: Versionszähler, Bearbeiten-/Kopierknöpfe.
+          await refreshMessages(opts.userEl || assistantEl);
+        }
+        const shown = messageById(assistantEl.dataset.messageId) || assistantEl;
         if (!rejected && status === "awaiting_confirmation") {
           // Ohne Scrollen: sonst verschiebt sich das ganze Layout statt des Verlaufs.
-          assistantEl.querySelector("[data-tool-decision]")?.focus({ preventScroll: true });
-          revealConfirmation(assistantEl);
+          shown.querySelector("[data-tool-decision]")?.focus({ preventScroll: true });
+          revealConfirmation(shown);
         } else {
           returnFocus();
         }
@@ -1164,24 +1175,293 @@
       });
     }
 
-    async function regenerate() {
+    // Ausgeblendet werden die Nachricht und alles danach; der neue Zweig ersetzt sie.
+    function hideFrom(article) {
+      const all = Array.from(log.querySelectorAll(".chat-message"));
+      const hidden = all.slice(all.indexOf(article)).filter((el) => !el.hidden);
+      for (const el of hidden) {
+        el.hidden = true;
+      }
+      return hidden;
+    }
+
+    // Neue Version einer Antwort (Geschwister mit gleichem Vorgänger).
+    async function regenerate(article) {
       if (controller || !modelsReady) {
         return;
       }
-      const last = messageElements().at(-1);
       const model = selectedModel();
-      if (!last || last.dataset.role !== "assistant" || !model) {
+      if (!article || article.dataset.role !== "assistant" || !article.dataset.messageId || !model) {
         return;
       }
+      closeEditor(false);
       storageSet(STORAGE_KEY, String(model.id));
-      last.hidden = true;
+      const replaced = hideFrom(article);
       const assistantEl = appendMessage("assistant", model.name, "");
       scrollToBottom();
       sendButton.focus();
-      await runStream(withTools({ regenerate: true, model: model.id }), assistantEl, {
-        replaced: last,
-      });
+      await runStream(
+        withTools({ regenerate: true, model: model.id, message_id: Number(article.dataset.messageId) }),
+        assistantEl,
+        { replaced },
+      );
     }
+
+    // --- Verlauf vom Server (Fragment chat:conversation_messages) ---
+
+    function messageById(id) {
+      return id ? log.querySelector(`.chat-message[data-message-id="${CSS.escape(String(id))}"]`) : null;
+    }
+
+    // Ersetzt die Nachrichten ab fromEl durch den Stand des Servers (gleiche
+    // Templates wie beim Neuladen: Markdown, Werkzeugzeilen, Rückfrage-Knöpfe).
+    // Davor liegende Nachrichten bleiben stehen, soweit sie zum Pfad passen.
+    async function refreshMessages(fromEl) {
+      if (!conversationId || !urls.fragmentTemplate) {
+        return false;
+      }
+      let html;
+      try {
+        const response = await fetch(fillTemplate(urls.fragmentTemplate, conversationId), {
+          credentials: "same-origin",
+          headers: { Accept: "text/html" },
+        });
+        if (!response.ok) {
+          return false;
+        }
+        html = await response.text();
+      } catch {
+        return false;
+      }
+      if (controller) {
+        return false; // Inzwischen läuft ein neuer Stream; der lädt danach selbst.
+      }
+      // Eigenes, serverseitig escapetes Template; DOMParser führt nichts aus.
+      const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+      const fresh = Array.from(parsed.body.querySelectorAll(":scope > .chat-message"));
+      const current = Array.from(log.querySelectorAll(".chat-message"));
+      let index = Math.max(0, fromEl ? current.indexOf(fromEl) : 0);
+      while (
+        index > 0 &&
+        (current[index - 1].hidden ||
+          current[index - 1].dataset.messageId !== fresh[index - 1]?.dataset.messageId)
+      ) {
+        index -= 1;
+      }
+      const stick = isNearBottom();
+      for (const el of current.slice(index)) {
+        el.remove();
+      }
+      const added = fresh.slice(index).map((el) => document.adoptNode(el));
+      log.append(...added);
+      markdown?.renderAll(log);
+      for (const article of added) {
+        refreshConfirmBox(article);
+      }
+      if (editing && !editing.article.isConnected) {
+        editing = null;
+      }
+      if (emptyState) {
+        emptyState.hidden = Boolean(log.querySelector(".chat-message"));
+      }
+      updateMessageActions();
+      if (stick) {
+        scrollToBottom();
+      }
+      return true;
+    }
+
+    // --- Versionen umschalten (POST branch) ---
+
+    async function switchVersion(article, button) {
+      const target = button.dataset.versionTarget;
+      if (!target || !urls.branchTemplate || !conversationId) {
+        return;
+      }
+      const direction = button.getAttribute("aria-label");
+      const index = Array.from(log.querySelectorAll(".chat-message")).indexOf(article);
+      for (const other of article.querySelectorAll("[data-version-target]")) {
+        other.disabled = true;
+      }
+      closeEditor(false);
+      log.setAttribute("aria-busy", "true");
+      try {
+        const response = await postJson(fillTemplate(urls.branchTemplate, conversationId), {
+          message_id: Number(target),
+        });
+        if (!response.ok) {
+          throw new Error(await errorMessage(response));
+        }
+        if (!(await refreshMessages(article))) {
+          throw new Error("Der Verlauf konnte nicht geladen werden.");
+        }
+      } catch (err) {
+        setStatus(`Version konnte nicht gewechselt werden. ${err.message || ""}`.trim(), true);
+        updateMessageActions();
+        return;
+      } finally {
+        log.setAttribute("aria-busy", String(Boolean(controller)));
+      }
+      const shown = log.querySelectorAll(".chat-message")[index];
+      const label = shown?.querySelector(".message-versions .sr-only")?.textContent;
+      setStatus(label ? `${label} angezeigt.` : "");
+      const same = shown?.querySelector(`[data-version-target][aria-label="${direction}"]`);
+      const focusTarget =
+        same && !same.disabled ? same : shown?.querySelector("[data-version-target]:not(:disabled)");
+      focusTarget?.focus({ preventScroll: true });
+    }
+
+    // --- Kopieren ---
+
+    async function copyMessage(article, button) {
+      const content = article.querySelector(".chat-message-content");
+      const text =
+        article.dataset.role === "assistant" && markdown ? markdown.sourceOf(content) : content.textContent;
+      const isUser = article.dataset.role === "user";
+      try {
+        if (!markdown?.copyText) {
+          throw new Error("unavailable");
+        }
+        await markdown.copyText(text);
+        button.classList.add("is-done");
+        window.setTimeout(() => button.classList.remove("is-done"), 2000);
+        if (!controller) {
+          setStatus(isUser ? "Nachricht kopiert." : "Antwort kopiert.");
+        }
+      } catch {
+        setStatus("Kopieren ist fehlgeschlagen.", true);
+      }
+    }
+
+    // --- Bearbeiten (neuer Zweig ab einer eigenen Nachricht) ---
+
+    let editing = null; // {article, box}
+
+    function closeEditor(restoreFocus = true) {
+      if (!editing) {
+        return;
+      }
+      const { article, box } = editing;
+      editing = null;
+      box.remove();
+      article.classList.remove("is-editing");
+      article.querySelector(".chat-message-content").hidden = false;
+      updateMessageActions();
+      if (restoreFocus) {
+        article.querySelector("[data-edit-message]")?.focus();
+      }
+    }
+
+    function openEditor(article, text) {
+      closeEditor(false);
+      const content = article.querySelector(".chat-message-content");
+      const box = node("form", "message-editor");
+      box.setAttribute("aria-label", "Nachricht bearbeiten");
+      const area = node("textarea", "message-editor-input");
+      area.id = `message-edit-${article.dataset.messageId}`;
+      area.rows = 2;
+      area.value = text ?? content.textContent;
+      area.setAttribute("aria-describedby", "message-editor-hint");
+      const label = node("label", "sr-only", "Nachricht bearbeiten");
+      label.htmlFor = area.id;
+      const hint = node(
+        "p",
+        "message-editor-hint",
+        "Enter sendet, Shift+Enter fügt einen Zeilenumbruch ein, Escape bricht ab. " +
+          "Die bisherige Fassung bleibt als Version erhalten.",
+      );
+      hint.id = "message-editor-hint";
+      const actions = node("div", "message-editor-actions");
+      const cancel = node("button", "button button-small", "Abbrechen");
+      cancel.type = "button";
+      const submit = node("button", "button button-small button-primary", "Senden");
+      submit.type = "submit";
+      actions.append(cancel, submit);
+      box.append(label, area, hint, actions);
+      content.hidden = true;
+      content.after(box);
+      article.classList.add("is-editing");
+      editing = { article, box };
+      updateMessageActions();
+
+      const resize = () => {
+        area.style.height = "auto";
+        area.style.height = `${area.scrollHeight + 2}px`;
+      };
+      area.addEventListener("input", resize);
+      area.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closeEditor();
+        } else if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          box.requestSubmit();
+        }
+      });
+      cancel.addEventListener("click", () => closeEditor());
+      box.addEventListener("submit", (event) => {
+        event.preventDefault();
+        submitEdit(article, area);
+      });
+      resize();
+      area.focus();
+      area.setSelectionRange(area.value.length, area.value.length);
+    }
+
+    async function submitEdit(article, area) {
+      if (controller) {
+        setStatus("Bitte warte, bis die laufende Antwort fertig ist.", true);
+        return;
+      }
+      if (!modelsReady) {
+        return;
+      }
+      const text = area.value;
+      if (!text.trim()) {
+        area.focus();
+        return;
+      }
+      const model = selectedModel();
+      if (!model) {
+        setStatus("Bitte zuerst ein Modell wählen.", true);
+        modelSelect.focus();
+        return;
+      }
+      storageSet(STORAGE_KEY, String(model.id));
+      closeEditor(false);
+      const replaced = hideFrom(article);
+      const userEl = appendMessage("user", "Du", text);
+      const assistantEl = appendMessage("assistant", model.name, "");
+      scrollToBottom();
+      sendButton.focus();
+      await runStream(
+        withTools({ content: text, model: model.id, edit_of: Number(article.dataset.messageId) }),
+        assistantEl,
+        { userEl, replaced, onUndo: () => openEditor(article, text) },
+      );
+    }
+
+    log.addEventListener("click", (event) => {
+      const button = event.target.closest(
+        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-version-target]",
+      );
+      const article = button?.closest(".chat-message");
+      if (!button || !article || button.disabled) {
+        return;
+      }
+      if (button.hasAttribute("data-copy-message")) {
+        copyMessage(article, button);
+      } else if (controller) {
+        setStatus("Bitte warte, bis die laufende Antwort fertig ist.", true);
+      } else if (button.hasAttribute("data-edit-message")) {
+        openEditor(article);
+      } else if (button.hasAttribute("data-regenerate-message")) {
+        regenerate(article);
+      } else {
+        switchVersion(article, button);
+      }
+    });
 
     function autosize() {
       textarea.style.height = "auto";
@@ -1220,6 +1500,7 @@
     // --- Start ---
 
     scrollToBottom();
+    updateMessageActions();
     if (!form) {
       return;
     }

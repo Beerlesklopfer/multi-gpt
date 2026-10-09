@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from multigpt.accounts.models import Role, User, UserGroup
+from multigpt.chat import services
 from multigpt.chat.models import AIModel, Conversation, Message, Provider, Share
 
 pytestmark = pytest.mark.django_db
@@ -94,7 +95,7 @@ def test_shared_conversation_readable_but_read_only(client, anna, ben):
     group = UserGroup.objects.create(name="Eltern")
     ben.groups.add(group)
     conv = Conversation.objects.create(user=anna, title="Geteilt")
-    Message.objects.create(conversation=conv, role=Message.Role.USER, content="Hallo Familie")
+    services.append_message(conv, role=Message.Role.USER, content="Hallo Familie")
     Share.objects.create(conversation=conv, group=group, can_write=False)
     client.force_login(ben)
     response = client.get(reverse("chat:conversation", args=[conv.pk]))
@@ -132,11 +133,9 @@ def test_untitled_conversation_has_placeholder_title(anna_client, anna):
 
 def test_history_rendered_server_side_and_escaped(anna_client, anna, ai_model):
     conv = Conversation.objects.create(user=anna, title="<b>Titel</b>")
-    Message.objects.create(
-        conversation=conv, role=Message.Role.USER, content="<script>alert(1)</script>"
-    )
-    Message.objects.create(
-        conversation=conv,
+    services.append_message(conv, role=Message.Role.USER, content="<script>alert(1)</script>")
+    services.append_message(
+        conv,
         role=Message.Role.ASSISTANT,
         model=ai_model,
         content='Antwort mit <img src=x onerror="alert(2)">',
@@ -157,11 +156,9 @@ def test_history_rendered_server_side_and_escaped(anna_client, anna, ai_model):
 
 def test_message_status_shown(anna_client, anna, ai_model):
     conv = Conversation.objects.create(user=anna)
-    Message.objects.create(
-        conversation=conv, role=Message.Role.ASSISTANT, content="Halb", status="aborted"
-    )
-    Message.objects.create(
-        conversation=conv,
+    services.append_message(conv, role=Message.Role.ASSISTANT, content="Halb", status="aborted")
+    services.append_message(
+        conv,
         role=Message.Role.ASSISTANT,
         content="",
         status="error",

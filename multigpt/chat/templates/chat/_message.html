@@ -21,4 +21,5 @@
   {% elif msg.status == "error" %}
     <p class="chat-message-status chat-message-status-error">Fehler{% if msg.error %}: {{ msg.error }}{% endif %}</p>
   {% endif %}
+  {% include "chat/_message_actions.html" %}
 </article>

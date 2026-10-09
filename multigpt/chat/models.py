@@ -231,6 +231,17 @@ class Conversation(models.Model):
     created = models.DateTimeField("erstellt", auto_now_add=True)
     updated = models.DateTimeField("geändert", auto_now=True)
     archived = models.BooleanField("archiviert", default=False)
+    # Ende des angezeigten Zweigs (Nachrichten bearbeiten, Versionen): Der
+    # Verlauf ist der Pfad von der Wurzel bis hierher über ``Message.parent``.
+    current_leaf = models.ForeignKey(
+        "Message",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+        verbose_name="angezeigte Version",
+    )
 
     class Meta:
         ordering = ["-updated"]
@@ -257,14 +268,26 @@ class Message(models.Model):
         COMPLETE = "complete", "vollständig"
         ABORTED = "aborted", "abgebrochen"
         ERROR = "error", "Fehler"
-        # Durch "Neu erzeugen" ersetzt: unsichtbar und nicht im Verlauf, zählt
-        # aber weiter für Verbrauch und Budget (M6).
+        # Nur noch Altdaten: Früher markierte "Neu erzeugen" die alte Antwort
+        # so. Seit den Versionen (Message.parent) wird der Wert nicht mehr
+        # vergeben; Migration 0010 hat bestehende Werte umgewandelt.
         SUPERSEDED = "superseded", "ersetzt"
         # Werkzeugschleife pausiert, bis der Nutzer die Aufrufe bestätigt (M4a-05).
         AWAITING_CONFIRMATION = "awaiting_confirmation", "wartet auf Bestätigung"
 
     conversation = models.ForeignKey(
         Conversation, on_delete=models.CASCADE, related_name="messages", verbose_name="Chat"
+    )
+    # Vorgänger im Gesprächsbaum (null für die erste Nachricht). Nachrichten mit
+    # gleichem parent sind Versionen voneinander (Bearbeiten, Neu erzeugen).
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        editable=False,
+        verbose_name="Vorgänger",
     )
     role = models.CharField("Rolle", max_length=20, choices=Role.choices)
     content = models.TextField("Inhalt", blank=True)

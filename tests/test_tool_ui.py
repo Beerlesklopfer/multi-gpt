@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 
 from multigpt.accounts.models import Role, User, UserGroup
+from multigpt.chat import services
 from multigpt.chat.models import (
     AIModel,
     Conversation,
@@ -61,9 +62,9 @@ def anna_client(client, anna):
 
 
 def make_answer(conv, ai_model, status=Message.Status.COMPLETE, content="Fertig."):
-    Message.objects.create(conversation=conv, role=Message.Role.USER, content="Frage")
-    return Message.objects.create(
-        conversation=conv,
+    services.append_message(conv, role=Message.Role.USER, content="Frage")
+    return services.append_message(
+        conv,
         role=Message.Role.ASSISTANT,
         model=ai_model,
         content=content,

@@ -21,11 +21,20 @@ Entscheidungen:
   an das Modell. Abgebrochene Antworten hat der Nutzer gesehen; der weitere
   Chat bezieht sich darauf. Antworten mit ``error`` und leere Nachrichten
   bleiben draußen (sie enthalten keine verwertbare Antwort).
-- **regenerate:** Die letzte sichtbare Assistant-Nachricht bekommt den Status
-  ``superseded`` und wird für die letzte Nutzernachricht neu erzeugt. Sie
-  bleibt gespeichert, damit Tokens und Kosten für Verbrauch und Budget (M6)
-  zählen (sonst ließe sich das Budget durch Neu-Erzeugen umgehen), taucht aber
-  weder im Verlauf noch in der Oberfläche auf (``visible_messages``).
+- **Versionen (Gesprächsbaum):** Jede Nachricht hängt über ``parent`` an
+  ihrer Vorgängerin; ``Conversation.current_leaf`` ist das Ende des
+  angezeigten Zweigs. Oberfläche, Export und Verlauf an das Modell sehen nur
+  den Pfad Wurzel → current_leaf (``conversation_path``). Bearbeiten
+  (``edit_of``) legt eine Geschwister-Nutzernachricht an, Neu erzeugen eine
+  Geschwister-Antwort; die alten Zweige bleiben vollständig erhalten und
+  zählen weiter für Verbrauch und Budget (M6). Umschalten (``switch_branch``)
+  setzt current_leaf auf das neueste Blatt im Teilbaum der gewählten Version.
+  Der Baum wird mit einer schlanken Abfrage (pk, parent) des ganzen Chats in
+  Python berechnet, danach werden nur die Nachrichten des Pfads geladen.
+- **Titel beim Bearbeiten:** bleibt unverändert. Der Titel ist der Name des
+  Chats in der Seitenleiste (ggf. von Hand umbenannt); er soll nicht beim
+  Umschalten zwischen Versionen springen. Nur ein noch leerer Titel wird wie
+  bisher aus der (bearbeiteten) Nachricht gesetzt.
 - **Abriss mitten in der Antwort (M4-05):** Meldet der Adapter einen
   wiederholbaren Fehler (``retryable``, z. B. LM Studio beendet, Verbindung
   abgerissen), nachdem schon Text kam, wird die Antwort als ``aborted`` mit
@@ -101,15 +110,126 @@ def available_chat_models(user) -> list[AIModel]:
     return [m for m in qs if can(user, Action.USE_MODEL, m)]
 
 
-def visible_messages(conversation: Conversation):
-    """Nachrichten für Oberfläche und API: Nutzer/Assistent, ohne ersetzte."""
-    return (
-        conversation.messages.filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT])
-        .exclude(status=Message.Status.SUPERSEDED)
-        .select_related("model")
-        .prefetch_related("tool_calls__server", "tool_calls__attachments")
-        .order_by("created", "id")
+CHAT_ROLES = (Message.Role.USER, Message.Role.ASSISTANT)
+_UNSET = object()
+
+
+class Tree:
+    """Gesprächsbaum eines Chats aus (pk, parent_id) in der Reihenfolge (created, id)."""
+
+    def __init__(self, conversation: Conversation):
+        rows = list(
+            conversation.messages.filter(role__in=CHAT_ROLES)
+            .order_by("created", "id")
+            .values_list("pk", "parent_id")
+        )
+        self.order = {pk: i for i, (pk, _) in enumerate(rows)}
+        self.parent = dict(rows)
+        self.children: dict[int | None, list[int]] = {}
+        for pk, parent_id in rows:
+            self.children.setdefault(parent_id, []).append(pk)
+        self.newest = rows[-1][0] if rows else None
+
+    def __contains__(self, pk) -> bool:
+        return pk in self.parent
+
+    def path_to(self, leaf_id: int | None) -> list[int]:
+        """IDs von der Wurzel bis ``leaf_id`` (einschließlich)."""
+        path: list[int] = []
+        seen = set()
+        node = leaf_id
+        while node is not None and node in self.parent and node not in seen:
+            seen.add(node)
+            path.append(node)
+            node = self.parent[node]
+        path.reverse()
+        return path
+
+    def siblings(self, pk: int) -> list[int]:
+        return self.children.get(self.parent.get(pk), [])
+
+    def newest_leaf_below(self, pk: int) -> int:
+        """Zuletzt erzeugte Nachricht im Teilbaum von ``pk`` – immer ein Blatt,
+        weil Kinder nach ihren Eltern entstehen."""
+        best = pk
+        stack = [pk]
+        while stack:
+            node = stack.pop()
+            if self.order[node] > self.order[best]:
+                best = node
+            stack.extend(self.children.get(node, []))
+        return best
+
+
+def _current_leaf_id(conversation: Conversation, tree: Tree) -> int | None:
+    """current_leaf frisch aus der DB (die Instanz kann veraltet sein). Fehlt
+    er (Altdaten, gelöschte Nachricht), gilt die neueste Nachricht."""
+    leaf_id = (
+        Conversation.objects.filter(pk=conversation.pk)
+        .values_list("current_leaf_id", flat=True)
+        .first()
     )
+    conversation.current_leaf_id = leaf_id
+    return leaf_id if leaf_id in tree else tree.newest
+
+
+def _load_path(ids: list[int], tree: Tree, *, prefetch: bool) -> list[Message]:
+    qs = Message.objects.filter(pk__in=ids).select_related("model")
+    if prefetch:
+        qs = qs.prefetch_related("tool_calls__server", "tool_calls__attachments")
+    by_id = {m.pk: m for m in qs}
+    messages = [by_id[pk] for pk in ids if pk in by_id]
+    for m in messages:
+        m.sibling_ids = tree.siblings(m.pk)
+        m.sibling_index = m.sibling_ids.index(m.pk)
+        m.sibling_count = len(m.sibling_ids)
+    return messages
+
+
+def visible_messages(conversation: Conversation) -> list[Message]:
+    """Angezeigter Pfad (Wurzel → current_leaf) für Oberfläche, API und Export.
+
+    Jede Nachricht trägt zusätzlich ``sibling_ids`` (Versionen, sortiert nach
+    created/id, inkl. sich selbst), ``sibling_index`` (0-basiert) und
+    ``sibling_count``.
+    """
+    tree = Tree(conversation)
+    return _load_path(tree.path_to(_current_leaf_id(conversation, tree)), tree, prefetch=True)
+
+
+def append_message(conversation: Conversation, *, parent=_UNSET, **fields) -> Message:
+    """Neue Nachricht im Baum anlegen und als angezeigtes Ende setzen.
+
+    Ohne ``parent`` hängt sie an das Ende des angezeigten Pfads;
+    ``parent=None`` macht sie zur (weiteren) Wurzel, z. B. beim Bearbeiten der
+    ersten Nachricht.
+    """
+    if parent is _UNSET:
+        tree = Tree(conversation)
+        parent_id = _current_leaf_id(conversation, tree)
+    else:
+        parent_id = parent.pk if isinstance(parent, Message) else parent
+    message = Message.objects.create(conversation=conversation, parent_id=parent_id, **fields)
+    Conversation.objects.filter(pk=conversation.pk).update(current_leaf=message)
+    conversation.current_leaf = message
+    return message
+
+
+def switch_branch(conversation: Conversation, message_id) -> None:
+    """Version umschalten: current_leaf = neuestes Blatt unter ``message_id``.
+
+    Wechselt der angezeigte Zweig, werden offene Rückfragen geschlossen (wie
+    bei einer neuen Nachricht). ``updated`` bleibt, damit der Chat in der
+    Seitenleiste nicht nach oben springt.
+    """
+    tree = Tree(conversation)
+    if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id not in tree:
+        raise TurnError("Diese Nachricht gibt es in diesem Chat nicht.")
+    leaf_id = tree.newest_leaf_below(message_id)
+    if leaf_id != _current_leaf_id(conversation, tree):
+        close_pending(conversation)
+        Conversation.objects.filter(pk=conversation.pk).update(current_leaf_id=leaf_id)
+        conversation.current_leaf_id = leaf_id
 
 
 def build_system_prompt(user, conversation: Conversation) -> str | None:
@@ -129,25 +249,28 @@ def build_history(
     *,
     provider_id: int | None = None,
     with_tools: bool = False,
+    leaf: Message | int | None = None,
 ) -> list[ChatMessage]:
-    """Verlauf für das Modell (siehe Moduldoku zu complete/aborted).
+    """Verlauf für das Modell (siehe Moduldoku zu complete/aborted): nur der
+    Pfad bis ``leaf`` (Standard: angezeigter Zweig), ohne ``exclude_ids``.
 
     Antworten mit Werkzeugrunden werden mit ``with_tools`` vollständig
     (Aufrufe, Ergebnisse) übergeben, sonst nur als Text (ohne angebotene
     Werkzeuge darf kein tool_use im Verlauf stehen). ``provider_state`` geht
     nur an denselben Anbieter zurück (``provider_id``).
     """
-    qs = (
-        conversation.messages.filter(
-            role__in=[Message.Role.USER, Message.Role.ASSISTANT],
-            status__in=[Message.Status.COMPLETE, Message.Status.ABORTED],
-        )
-        .exclude(pk__in=list(exclude_ids))
-        .select_related("model")
-        .order_by("created", "id")
-    )
+    tree = Tree(conversation)
+    if leaf is None:
+        leaf_id = _current_leaf_id(conversation, tree)
+    else:
+        leaf_id = leaf.pk if isinstance(leaf, Message) else leaf
+    excluded = set(exclude_ids)
+    ids = [pk for pk in tree.path_to(leaf_id) if pk not in excluded]
+    usable = {Message.Status.COMPLETE, Message.Status.ABORTED}
     history: list[ChatMessage] = []
-    for m in qs:
+    for m in _load_path(ids, tree, prefetch=False):
+        if m.status not in usable:
+            continue
         if m.role == Message.Role.ASSISTANT:
             history += expand_assistant(m, provider_id=provider_id, with_tools=with_tools)
         elif m.content:
@@ -254,49 +377,94 @@ def prepare_turn(
     content: str | None = None,
     regenerate: bool = False,
     mcp_servers: list[int] | None = None,
+    edit_of: int | None = None,
+    regenerate_of: int | None = None,
 ) -> Turn:
     """Legt Nutzer- und (leere) Assistant-Nachricht an. Rechte prüft der Aufrufer.
 
-    ``mcp_servers``: eingeschaltete MCP-Server (None: Voreinstellung = alle
-    erlaubten). Nur bei Modellen mit ``supports_tools``. Offene Rückfragen
-    des Chats werden vorher geschlossen (``close_pending``).
+    - neue Nachricht: Kind des angezeigten Endes (current_leaf);
+    - ``edit_of`` (pk einer Nutzernachricht dieses Chats): neue Version davon,
+      also Geschwister mit gleichem parent;
+    - ``regenerate``: neue Version der Antwort ``regenerate_of`` (Standard:
+      letzte Antwort des Pfads); endet der Pfad mit einer Frage, wird sie
+      beantwortet.
+
+    Die neue Antwort wird das angezeigte Ende. ``mcp_servers``: eingeschaltete
+    MCP-Server (None: Voreinstellung = alle erlaubten). Nur bei Modellen mit
+    ``supports_tools``. Offene Rückfragen des Chats werden vorher geschlossen
+    (``close_pending``).
     """
-    user_message = None
-    close_pending(conversation)
-    if regenerate:
-        last = visible_messages(conversation).last()
-        if last is not None and last.role == Message.Role.ASSISTANT:
-            Message.objects.filter(pk=last.pk).update(status=Message.Status.SUPERSEDED)
-            last = visible_messages(conversation).last()
-        if last is None or last.role != Message.Role.USER:
-            raise TurnError("Es gibt keine Frage, zu der eine Antwort erzeugt werden kann.")
-    else:
+    if not regenerate:
         content = (content or "").strip()
         if not content:
             raise TurnError("Die Nachricht ist leer.")
         if len(content) > MAX_CONTENT_LENGTH:
             raise TurnError("Die Nachricht ist zu lang.")
-        user_message = Message.objects.create(
-            conversation=conversation, role=Message.Role.USER, content=content
+    servers = tooling.enabled_server_ids(user, mcp_servers) if ai_model.supports_tools else []
+
+    with transaction.atomic():
+        # Sperre gegen gleichzeitige Züge im selben Chat (gleicher current_leaf).
+        Conversation.objects.select_for_update().filter(pk=conversation.pk).first()
+        tree = Tree(conversation)
+        user_message = None
+        if regenerate:
+            question_id = _question_for_regenerate(conversation, tree, regenerate_of)
+        else:
+            if edit_of is not None:
+                original = conversation.messages.filter(pk=edit_of, role=Message.Role.USER).first()
+                if original is None:
+                    raise TurnError("Diese Nachricht kann nicht bearbeitet werden.")
+                parent_id = original.parent_id
+            else:
+                parent_id = _current_leaf_id(conversation, tree)
+            close_pending(conversation)
+            user_message = append_message(
+                conversation, parent=parent_id, role=Message.Role.USER, content=content
+            )
+            question_id = user_message.pk
+
+        assistant_message = append_message(
+            conversation,
+            parent=question_id,
+            role=Message.Role.ASSISTANT,
+            model=ai_model,
+            status=Message.Status.ABORTED,  # Platzhalter, siehe Moduldoku
+            tool_state={"servers": servers} if servers else {},
         )
 
-    servers = tooling.enabled_server_ids(user, mcp_servers) if ai_model.supports_tools else []
-    assistant_message = Message.objects.create(
-        conversation=conversation,
-        role=Message.Role.ASSISTANT,
-        model=ai_model,
-        status=Message.Status.ABORTED,  # Platzhalter, siehe Moduldoku
-        tool_state={"servers": servers} if servers else {},
-    )
-
-    fields = {"updated": timezone.now(), "default_model": ai_model}
-    if not conversation.title and user_message is not None:
-        fields["title"] = _title_from(content)
-    Conversation.objects.filter(pk=conversation.pk).update(**fields)
-    for key, value in fields.items():
-        setattr(conversation, key, value)
+        fields = {"updated": timezone.now(), "default_model": ai_model}
+        if not conversation.title and user_message is not None:
+            fields["title"] = _title_from(content)
+        Conversation.objects.filter(pk=conversation.pk).update(**fields)
+        for key, value in fields.items():
+            setattr(conversation, key, value)
 
     return Turn(user, conversation, ai_model, user_message, assistant_message)
+
+
+def _question_for_regenerate(conversation: Conversation, tree: Tree, regenerate_of) -> int:
+    """Frage (pk), zu der eine neue Antwortversion entsteht; schließt offene Rückfragen."""
+    no_question = "Es gibt keine Frage, zu der eine Antwort erzeugt werden kann."
+    if regenerate_of is not None:
+        target = conversation.messages.filter(pk=regenerate_of, role=Message.Role.ASSISTANT).first()
+        if target is None:
+            raise TurnError("Diese Antwort kann nicht neu erzeugt werden.")
+    else:
+        path = tree.path_to(_current_leaf_id(conversation, tree))
+        if not path:
+            raise TurnError(no_question)
+        target = Message.objects.only("pk", "role", "parent_id").get(pk=path[-1])
+    if target.role == Message.Role.USER:
+        question_id = target.pk  # Pfad endet mit einer unbeantworteten Frage
+    else:
+        question_id = target.parent_id
+    if (
+        question_id is None
+        or not conversation.messages.filter(pk=question_id, role=Message.Role.USER).exists()
+    ):
+        raise TurnError(no_question)
+    close_pending(conversation)
+    return question_id
 
 
 # --- Rückfrage (M4a-05) --------------------------------------------------------
@@ -323,7 +491,7 @@ def _unanswered_results(state: dict, text: str) -> None:
 
 def close_pending(conversation: Conversation) -> None:
     """Offene Rückfragen schließen, bevor der Chat weitergeht (neue Nachricht,
-    Neu erzeugen): wartende Aufrufe -> ``rejected``, Antwort -> ``aborted``.
+    Bearbeiten, Neu erzeugen, Umschalten): wartende Aufrufe -> ``rejected``, Antwort -> ``aborted``.
     So bleiben keine verwaisten Aufrufe zurück."""
     awaiting = Q(status=Message.Status.AWAITING_CONFIRMATION) | Q(
         tool_calls__status=ToolCall.Status.AWAITING_CONFIRMATION
@@ -646,6 +814,8 @@ class _Loop:
                 {
                     "user_message_id": turn.user_message.pk if turn.user_message else None,
                     "assistant_message_id": msg.pk,
+                    # parent der ersten neuen Nachricht (Nutzer- bzw. Antwortversion)
+                    "parent_id": (turn.user_message or msg).parent_id,
                 },
             )
             if turn.resume and self.state["rounds"]:
@@ -661,6 +831,7 @@ class _Loop:
                 exclude_ids=[msg.pk],
                 provider_id=provider_id,
                 with_tools=bool(specs),
+                leaf=msg,  # Pfad dieser Antwort, auch wenn inzwischen umgeschaltet wurde
             )
             if specs:
                 for rnd in self.state["rounds"]:

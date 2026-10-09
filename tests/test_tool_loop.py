@@ -439,7 +439,12 @@ def test_confirm_approve_resumes_with_provider_state(
     msg = Message.objects.get(role="assistant")
     events = events_of(confirm(client, conversation, {str(tool_call.pk): "approve"}))
     assert names(events) == ["start", "tool_call", "tool_result", "delta", "usage", "done"]
-    assert events[0][1] == {"user_message_id": None, "assistant_message_id": msg.pk}
+    assert events[0][1] == {
+        "user_message_id": None,
+        "assistant_message_id": msg.pk,
+        "parent_id": msg.parent_id,
+    }
+    assert msg.parent_id == Message.objects.get(role="user").pk
     assert events[1][1]["id"] == tool_call.pk and events[1][1]["status"] == "running"
     assert events[2][1]["status"] == "ok" and events[2][1]["result"] == "hallo"
     assert executed == [("echo", {"text": "hallo"})]
@@ -582,6 +587,47 @@ def test_new_message_closes_pending_confirmation(
     roles = [m.role for m in calls[0]["messages"]]
     assert roles == ["user", "assistant", "tool", "user"]
     assert calls[0]["messages"][2].content == tooling.MSG_UNANSWERED
+
+
+def test_edit_closes_pending_confirmation(
+    client, conversation, ai_model, server, scripted, executed
+):
+    _pause(client, conversation, ai_model, scripted, call("Test__echo", {"text": "a"}))
+    question = Message.objects.get(role="user")
+    calls = scripted([answer("Neu.")])
+    events = events_of(
+        send(client, conversation, model=ai_model.pk, content="Anders.", edit_of=question.pk)
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    assert ToolCall.objects.get().status == ToolCall.Status.REJECTED
+    assert executed == []
+    paused = Message.objects.filter(role="assistant").order_by("id").first()
+    assert paused.status == Message.Status.ABORTED
+    # Der neue Zweig enthält die alte Werkzeugrunde nicht.
+    assert [(m.role, m.content) for m in calls[0]["messages"]] == [("user", "Anders.")]
+    assert services.pending_message(conversation) is None
+
+
+def test_switch_branch_closes_pending_confirmation(
+    client, conversation, ai_model, server, scripted, executed
+):
+    scripted([answer("Erste.")])
+    events_of(send(client, conversation, model=ai_model.pk))
+    first = Message.objects.get(role="assistant")
+    # Neue Antwortversion, die auf eine Bestätigung wartet; dann zurück auf Version 1.
+    scripted([tool_round(call("Test__echo", {"text": "a"})), answer()])
+    events = events_of(send(client, conversation, model=ai_model.pk, regenerate=True))
+    assert events[-1] == ("done", {"status": "awaiting_confirmation"})
+    response = client.post(
+        reverse("chat:api_branch", args=[conversation.pk]),
+        {"message_id": first.pk},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    assert [m["content"] for m in response.json()] == ["Bitte rechnen.", "Erste."]
+    assert ToolCall.objects.get().status == ToolCall.Status.REJECTED
+    assert services.pending_message(conversation) is None
+    assert executed == []
 
 
 # --- Rechte je Rolle -------------------------------------------------------------------
