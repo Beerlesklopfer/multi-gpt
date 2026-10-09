@@ -1,7 +1,7 @@
 **MultiGPT-Wiki**
-- [Konfiguration (.env)](Konfiguration)
 
 - [Startseite](Home)
+- [Konfiguration (.env)](Konfiguration)
 
 **Dokumente (RAG)**
 
