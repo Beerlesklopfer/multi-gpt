@@ -310,6 +310,10 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
   - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
 - **M8 (Websuche) vorgezogen und in Arbeit** (Nutzerwunsch): Agenten websearch, webui und wiki.
+- **M6 in Arbeit** (parallel, unabhängig von M7-09):
+  - **budget:** Verbrauch, Monatsbudget mit Warnung ab 80 % und Sperre ab 100 %, Seite „Mein Verbrauch“.
+  - **family:** Seite „Familie“ mit Einsicht in Jugendlichen-Chats nur lesend und nur mit Option.
+  - **compare:** Vergleichsmodus. Die Antworten der Modelle sind Geschwister im Chat-Baum, nebeneinander angezeigt, „Mit dieser Antwort weiter“ setzt den Zweig.
 - **M7 (RAG) in Arbeit**, parallel zu M8 (retrieval, ingest und ragui sind fertig, ragadmin baut die RAG-Verwaltung im Admin):
   - **retrieval:** `Chunk` mit HNSW- und Volltextindex, `RagSettings`, `embed()`, Suche mit Zugriffsfilter in SQL, Chat-Einbindung, Werkzeug `search_documents`.
   - **ingest:** Extraktion, OCR mit Tesseract, Zerteilung, Worker mit `SKIP LOCKED`, `multi-gpt-worker.service`.
