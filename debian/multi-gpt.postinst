@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd multi-gpt >/dev/null; then
+        adduser --system --group --home /var/lib/multi-gpt --no-create-home \
+            --gecos "multi-gpt service" multi-gpt
+    fi
+
+    if [ ! -e /etc/multi-gpt/.env ]; then
+        install -d -m 0750 -o root -g multi-gpt /etc/multi-gpt
+        umask 027
+        python3 - > /etc/multi-gpt/.env <<'PY'
+import base64, secrets
+print("# multi-gpt configuration (generated on first install)")
+print(f"SECRET_KEY={secrets.token_urlsafe(50)}")
+print(f"FIELD_ENCRYPTION_KEY={base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}")
+print("DEBUG=False")
+print("ALLOWED_HOSTS=localhost")
+print("CSRF_TRUSTED_ORIGINS=")
+print("DATABASE_URL=postgres://multi-gpt@localhost/multi-gpt")
+print("MEDIA_ROOT=/var/lib/multi-gpt/media")
+print("#MULTI_GPT_BIND=127.0.0.1:8000")
+print("#MULTI_GPT_WORKERS=2")
+print("#MULTI_GPT_TIMEOUT=300")
+PY
+        chown root:multi-gpt /etc/multi-gpt/.env
+        chmod 0640 /etc/multi-gpt/.env
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

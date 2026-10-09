@@ -1,0 +1,19 @@
+Source: multi-gpt
+Section: python
+Priority: optional
+Maintainer: Joerg Bernau <Joerg.Bernau@onesimus.io>
+Build-Depends: debhelper-compat (= 13),
+               dh-virtualenv (>= 1.2),
+               python3,
+               python3-venv,
+               python3-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: multi-gpt
+Architecture: any
+Pre-Depends: dpkg (>= 1.16.1), ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}, python3 (>= 3.13), adduser
+Description: multi-gpt web application
+ Gunicorn-served multi-gpt application, shipped as a self-contained
+ virtualenv in /usr/share/python/multi-gpt.

@@ -1,0 +1,57 @@
+#!/usr/bin/make -f
+
+export DH_VIRTUALENV_INSTALL_ROOT = /usr/share/python
+
+# Das venv wird fest gegen die versionierte Interpreter-Binary gebaut
+# (bin/python -> /usr/bin/python3.X). Das Paket hängt über ${venv:Depends}
+# genau von dieser Version ab, damit ein Wechsel von /usr/bin/python3 auf eine
+# neue Minor-Version das venv (lib/python3.X/site-packages) nicht zerbricht.
+PY_VERSION := $(shell python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+PYTHON := /usr/bin/python$(PY_VERSION)
+
+VENV_BUILD := $(CURDIR)/debian/multi-gpt$(DH_VIRTUALENV_INSTALL_ROOT)/multi-gpt
+VENV_INSTALLED := $(DH_VIRTUALENV_INSTALL_ROOT)/multi-gpt
+
+%:
+	dh $@ --with python-virtualenv
+
+override_dh_virtualenv:
+	dh_virtualenv --python $(PYTHON) --builtin-venv --upgrade-pip
+	# Statische Dateien ins Paket sammeln (WhiteNoise, Manifest-Storage).
+	# -I: Quellbaum (cwd) und PYTHON*-Variablen ignorieren, damit das frisch
+	#     installierte Paket aus dem venv importiert wird – so fällt fehlende
+	#     package-data (Templates/Static) schon beim Bauen auf.
+	# -B: keine zusätzlichen .pyc-Dateien schreiben.
+	# MULTI_GPT_ENV_FILE=/dev/null: keine .env aus dem Quellbaum lesen.
+	# Die DATABASE_URL ist ein Platzhalter, collectstatic verbindet sich nicht.
+	env -u DJANGO_SETTINGS_MODULE \
+	    DJANGO_SETTINGS_MODULE=multigpt.settings \
+	    MULTI_GPT_ENV_FILE=/dev/null \
+	    SECRET_KEY=build-only-not-secret \
+	    DATABASE_URL=postgres://build/build \
+	    DEBUG=False \
+	    STATIC_ROOT=$(VENV_BUILD)/static \
+	    $(VENV_BUILD)/bin/python -I -B -m django collectstatic --noinput --verbosity 1
+	echo "venv:Depends=python$(PY_VERSION)" >> debian/multi-gpt.substvars
+
+# Die Tests brauchen eine laufende PostgreSQL-Datenbank und laufen deshalb
+# nicht im Paketbau, sondern über `make test`. (Die Sequenz python-virtualenv
+# entfernt dh_auto_test ohnehin; der Override hält das ausdrücklich fest.)
+override_dh_auto_test:
+
+# Binär-Wheels (z. B. psycopg-binary) bringen eigene, mit patchelf
+# angepasste Bibliotheken mit. Strippen kann diese beschädigen, und für die
+# gebündelten Bibliotheken gibt es keine shlibs-Information.
+override_dh_strip:
+	dh_strip --exclude=/site-packages/
+
+override_dh_dwz:
+	dh_dwz --exclude=/site-packages/
+
+override_dh_shlibdeps:
+	dh_shlibdeps --exclude=/site-packages/
+
+# dh_auto_clean ist durch die Sequenz entfernt; Reste des Wheel-Builds
+# (setuptools baut im Quellbaum) selbst wegräumen.
+execute_after_dh_clean:
+	rm -rf build

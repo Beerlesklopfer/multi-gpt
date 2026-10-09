@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block inhalt %}
+  <section class="chat">
+    <div class="chat-verlauf">
+      <div class="leer">
+        <h1>Noch keine Chats</h1>
+        <p>Die Chatfunktion folgt in Meilenstein 3.</p>
+      </div>
+    </div>
+    <form class="chat-eingabe" aria-label="Nachricht senden">
+      <label for="nachricht" class="nur-screenreader">Nachricht</label>
+      <textarea id="nachricht" name="nachricht" rows="2" disabled
+                placeholder="Nachricht eingeben … (folgt in Meilenstein 3)"></textarea>
+      <button type="submit" class="knopf knopf-primaer" disabled>Senden</button>
+    </form>
+  </section>
+{% endblock %}

@@ -1,0 +1,30 @@
+[Unit]
+Description=multi-gpt (gunicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=multi-gpt
+Group=multi-gpt
+WorkingDirectory=/var/lib/multi-gpt
+EnvironmentFile=/etc/multi-gpt/.env
+ExecStart=/usr/share/python/multi-gpt/bin/gunicorn --config /etc/multi-gpt/gunicorn.conf.py multi_gpt.wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+RuntimeDirectory=multi-gpt
+StateDirectory=multi-gpt
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

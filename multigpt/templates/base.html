@@ -1,0 +1,47 @@
+{% load static %}<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}MultiGPT{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'chat/app.css' %}">
+  <script src="{% static 'chat/app.js' %}" defer></script>
+</head>
+<body class="{% block body_class %}layout-app{% endblock %}">
+{% block layout %}
+  <header class="kopfzeile">
+    <button type="button" class="seitenleiste-umschalter" id="seitenleiste-umschalter"
+            aria-controls="seitenleiste" aria-expanded="false" aria-label="Seitenleiste ein- oder ausblenden">
+      <span aria-hidden="true">&#9776;</span>
+    </button>
+    <a class="app-name" href="{% url 'chat:index' %}">MultiGPT</a>
+    {% if user.is_authenticated %}
+      <nav class="konto" aria-label="Konto">
+        <span class="nutzer">{{ user.get_full_name|default:user.get_username }}</span>
+        <a href="{% url 'password_change' %}">Passwort ändern</a>
+        <form method="post" action="{% url 'logout' %}" class="abmelden">
+          {% csrf_token %}
+          <button type="submit" class="link-knopf">Abmelden</button>
+        </form>
+      </nav>
+    {% endif %}
+  </header>
+  <div class="rahmen">
+    <aside class="seitenleiste" id="seitenleiste" aria-label="Chats">
+      {% block seitenleiste %}
+        <button type="button" class="knopf knopf-primaer" disabled
+                title="Folgt in Meilenstein 3">Neuer Chat</button>
+        <nav class="chatliste" aria-label="Chatliste">
+          {% block chatliste %}<p class="hinweis">Noch keine Chats.</p>{% endblock %}
+        </nav>
+      {% endblock %}
+    </aside>
+    <main class="hauptbereich" id="inhalt">
+      {% include "_messages.html" %}
+      {% block inhalt %}{% endblock %}
+    </main>
+  </div>
+{% endblock %}
+</body>
+</html>

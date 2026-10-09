@@ -1,0 +1,19 @@
+services:
+  web:
+    build:
+      context: .
+      target: runtime
+    image: multi-gpt:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      MULTI_GPT_WORKERS: "2"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - multi-gpt-data:/var/lib/multi-gpt
+
+volumes:
+  multi-gpt-data:
