@@ -102,9 +102,9 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 - **M4-01** Adapter `anthropic` (Messages-API) und `google` (Gemini). Vorher jeweils die aktuelle Dokumentation lesen.
 - **M4-02** `make sync-models` als Management-Kommando.
-- **M4-03** `GET /api/providers/status/` mit 15-s-Cache. **Achtung:** Djangos Standard-Cache (`LocMemCache`) gilt nur je Prozess. Bei 2 Gunicorn-Workern daher den Datenbank-Cache verwenden, damit der Cache wirklich prozessübergreifend greift.
+- **M4-03** `GET /api/providers/status/` mit 15-s-Cache. Der Status liegt in der DB am `Provider` (`online`, `last_checked`, `reported_models`) und gilt damit für beide gunicorn-Worker. Ein bedingtes UPDATE auf `last_checked` sorgt dafür, dass nur ein Aufruf prüft. Die Netzprüfung läuft außerhalb jeder Transaktion.
 - **M4-04** Statusanzeige im Frontend: Polling alle 30 s nur bei sichtbarem Tab, Hinweis beim Wechsel zwischen online und offline, lokale Modelle bei offline ausgegraut.
-- **M4-05** Lokale Modelle kosten 0 €. Fällt LM Studio mitten im Stream aus, wird die Nachricht als abgebrochen markiert.
+- **M4-05** Lokale Modelle kosten 0 €. Ein Senden an ein lokales Modell, dessen Anbieter offline ist, wird vor dem Stream mit 503 abgewiesen. Reißt die Verbindung nach schon empfangenem Text ab (wiederholbarer Fehler, bei allen Anbietern), wird die Antwort mit Teiltext als `aborted` gespeichert. Von LM Studio gemeldete Modelle werden automatisch angelegt, Modelle mit `embed` in der ID als `embedding`.
 
 ### M4a – MCP
 *Abhängig von: M4, Frage 4d.*
@@ -270,5 +270,13 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
     - Der Titel kommt vorläufig aus der ersten Zeile der Nachricht.
   - Offen für die Abnahme: eine gestreamte Antwort mit echtem API-Key.
   - Bekannte Grenze: Einen Abbruch bemerkt der Server erst beim nächsten Textstück, bei einem hängenden Anbieter also erst nach dem Lese-Timeout von 300 s.
-- **M4, M4a und M5 in Arbeit.** Umsetzung im Verbund mehrerer Agenten über den FIFO-Bus.
+- **M4 und M5 umgesetzt, Backend von M4a fertig** (Commit `ceb8a35`, 548 Tests grün):
+  - Adapter `anthropic` und `google`, `make sync-models` (legt neue Modelle inaktiv an).
+  - LM-Studio-Status mit Anzeige.
+  - Markdown mit lokal eingebundenen Bibliotheken: marked 18.0.14, DOMPurify 3.4.16, highlight.js 11.12.0.
+  - Umbenennen, Archiv, Löschen, Suche, Export, System-Prompt je Chat.
+  - Werkzeuge in allen drei Adaptern (`provider_state` für Denk-Signaturen).
+  - MCP-Brücke und MCP-Client auf dem SDK `mcp` 2.3. Zugangsdaten sind ein JSON-Objekt mit `env`, `headers` und `bearer_token`.
+  - Offen für die Abnahme: echte Aufrufe mit Keys für Anthropic, Gemini und OpenRouter sowie LM Studio im LAN (Frage 1a).
+- **M4a in Arbeit:** Werkzeugschleife, Rückfrage und Anzeige im Chat.
 - Geklärt sind die Fragen 1, 3, 4, 4a–4c, 4e, 5, 5a und 5b, Frage 2 teilweise. Offen sind noch 1a, 2 (Hostname und Zertifikat) und 4d. Die Datenmodell-Lücken aus Abschnitt 2 sind entschieden.
