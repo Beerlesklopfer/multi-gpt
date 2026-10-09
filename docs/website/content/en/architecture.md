@@ -19,16 +19,16 @@ menus:
 - **gunicorn and Django:** gunicorn with the `gthread` worker class (default: 2 processes
   × 8 threads, 300-second timeout), so long streamed answers do not block other requests.
   Answers are streamed via server-sent events.
-- **PostgreSQL with pgvector:** the only database – for accounts, chats and later the
-  vectors of your own documents. No SQLite.
-- **Worker (planned):** a second process from the same code base that indexes documents in
+- **PostgreSQL with pgvector:** the only database – for accounts, chats and the vectors of
+  your own documents. No SQLite.
+- **Worker:** a second process from the same code base that indexes documents in
   the background. It takes its jobs from a table in PostgreSQL.
 - **Provider adapters:** one common interface with an adapter for
   OpenAI-compatible APIs (OpenAI, OpenRouter, LM Studio), one for Anthropic
   and one for Google Gemini. Implemented with `httpx` directly against the HTTP APIs.
 - **MCP client:** connects to MCP servers via the official Python SDK and
-  passes their tools on to the models. The client and connection test are done; the tool
-  loop in the chat is in progress.
+  passes their tools on to the models. The client, the connection test and the tool
+  loop in the chat are done.
 
 ## Network and security
 

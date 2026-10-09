@@ -38,8 +38,8 @@
     de = "Lokale Modelle mit LM Studio"
     en = "Local models with LM Studio"
   [items.text]
-    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden automatisch angeboten. Lokale Modelle kosten nichts. Der Test im echten Heimnetz steht noch aus."
-    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically. Local models cost nothing. A test in a real home network is still pending."
+    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden automatisch angeboten. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
+    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically. Local models cost nothing. In real use in a home network."
 
 [[items]]
   status = "done"
@@ -52,24 +52,24 @@
     en = "Administrators, adults, teenagers, guests – each role with its own models and permissions. Chats stay private."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "6"
   [items.title]
     de = "Budgets und Verbrauch"
     en = "Budgets and usage"
   [items.text]
-    de = "Monatsbudget je Rolle oder Person, Hinweis bei 80 %, Sperre kostenpflichtiger Modelle bei 100 %. Verbrauch nach Person, Modell und Monat."
-    en = "Monthly budget per role or person, a warning at 80 %, paid models blocked at 100 %. Usage by person, model and month."
+    de = "Monatsbudget je Rolle oder Person, Hinweis ab 80 %, ab 100 % Sperre kostenpflichtiger Modelle – kostenfreie wie LM Studio bleiben nutzbar. Seite „Mein Verbrauch“ und die Verwaltungsseite „Familie“ mit Konten, Rollen, Budgets und Gruppen."
+    en = "Monthly budget per role or person, a warning from 80 %, paid models blocked from 100 % – free ones such as LM Studio stay usable. A personal usage page and a “Family” admin page with accounts, roles, budgets and groups."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "6"
   [items.title]
     de = "Vergleichsmodus"
     en = "Comparison mode"
   [items.text]
-    de = "Dieselbe Frage an zwei oder drei Modelle gleichzeitig, Antworten nebeneinander."
-    en = "Ask two or three models the same question at once and see the answers side by side."
+    de = "Dieselbe Frage an zwei oder drei Modelle gleichzeitig, Antworten nebeneinander. Sie bleiben als Versionen im Chat erhalten."
+    en = "Ask two or three models the same question at once and see the answers side by side. They are kept as versions in the chat."
 
 [[items]]
   status = "done"
@@ -82,24 +82,24 @@
     en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat. Every call is visible in the chat as an expandable row."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "7"
   [items.title]
     de = "Fragen an eigene Dokumente"
     en = "Ask your own documents"
   [items.text]
-    de = "PDFs und Texte hochladen, Antworten mit Quellen und Seitenzahl. Suche mit PostgreSQL und pgvector."
-    en = "Upload PDFs and texts, get answers with sources and page numbers. Search with PostgreSQL and pgvector."
+    de = "Sammlungen mit PDFs, Word- und Textdateien, auch gescannte Seiten per OCR. Antworten mit Quellen und Seitenzahl, Suche mit PostgreSQL und pgvector. Embeddings und OCR laufen auf Wunsch komplett lokal über LM Studio, Ordner vom NAS werden periodisch eingelesen."
+    en = "Collections of PDFs, Word and text files, scanned pages included via OCR. Answers with sources and page numbers, search with PostgreSQL and pgvector. Embeddings and OCR can run fully locally via LM Studio, and folders from the NAS are read in periodically."
 
 [[items]]
-  status = "planned"
+  status = "done"
   milestone = "8"
   [items.title]
     de = "Websuche mit Quellen"
     en = "Web search with sources"
   [items.text]
-    de = "Aktuelle Informationen aus dem Netz, mit Links unter der Antwort – auch für lokale Modelle."
-    en = "Current information from the web, with links below the answer – for local models too."
+    de = "Aktuelle Informationen aus dem Netz über ein selbst gehostetes SearXNG, mit Links unter der Antwort – auch für lokale Modelle."
+    en = "Current information from the web via a self-hosted SearXNG, with links below the answer – for local models too."
 
 [[items]]
   status = "planned"

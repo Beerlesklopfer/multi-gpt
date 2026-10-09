@@ -141,7 +141,13 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M6 – Vergleich, Verbrauch, Budgets, Familie
 *Abhängig von: M3, M2. Frage 5/5a.*
 
-- **M6-01** Vergleichsmodus mit 2–3 parallelen Streams. Jeder Stream belegt einen Gunicorn-Thread: bei 2 × 8 Threads reicht das für etwa 5 gleichzeitige Vergleiche.
+- **M6-01** Vergleichsmodus mit 2–3 Modellen. Die Antworten sind Geschwister derselben Frage im Chat-Baum. Umsetzung:
+  - `POST messages` nimmt `compare: true`. Weitere Spalten (`regenerate`) setzen `current_leaf` und `default_model` nicht um, bis der Nutzer wählt.
+  - `POST branch` nimmt `adopt_model: true`. Bei der Wahl wird das Modell der Spalte zum Standardmodell des Chats.
+  - Das SSE-Event `usage` liefert zusätzlich `cost`.
+  - **Werkzeuge (MCP) sind im Vergleich aus.** Parallele Rückfragen würden sich gegenseitig schließen. Websuche und Sammlungen bleiben nutzbar.
+  - Jede Spalte prüft das Budget einzeln. Nach der Wahl schaltet sich der Vergleich wieder aus.
+  - Jede Spalte belegt einen gunicorn-Thread, bei 2 × 8 Threads reicht das für etwa 5 gleichzeitige Vergleiche.
 - **M6-02** Verbrauchsübersicht je Nutzer, Modell und Monat auf Basis von `Message.cost`.
 - **M6-03** Budgets: Hinweis bei 80 %, bei 100 % sind kostenpflichtige Modelle gesperrt, lokale bleiben nutzbar. Die Prüfung läuft vor jedem Anbieteraufruf.
 - **M6-04** Seite "Familie": Konten anlegen und sperren, Rolle zuweisen, Passwort zurücksetzen, Gruppen, Verbrauch.
@@ -152,8 +158,8 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 
 - **M7-01** `Collection`, `Document`, Freigaben an Gruppen über `Share`. Upload mit Prüfung von Dateityp und Größe, Dateinamen werden nicht übernommen.
 - **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
-- **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings über OpenAI. **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
-- **M7-04** Migration für `Chunk` mit fester Vektordimension (aus dem gewählten OpenAI-Embedding-Modell) und HNSW-Index (Kosinus). `make reindex`.
+- **M7-03** Textextraktion für PDF, DOCX, TXT und MD, Zerteilung in ca. 800 Tokens mit 100 Überlappung und Seitenzahl, Embeddings (ursprünglich über OpenAI, seit M7-09 lokal über LM Studio). **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
+- **M7-04** Migration für `Chunk` mit fester Vektordimension (zuerst 1536 für OpenAI, mit M7-09 auf 768 für nomic-embed-text) und HNSW-Index (Kosinus). `make reindex`.
 - **M7-10** (Nutzerwunsch) Verzeichnisquellen:
   - Modell `DirectorySource` (App `rag`), dazu die Dokumentfelder `source`, `source_path`, `source_mtime`, `source_size` und `source_sha256`.
   - Scan-Job im vorhandenen Worker, periodisch und ohne Dubletten. Abgleich über mtime und Größe, bei Änderung zusätzlich über SHA-256.
@@ -315,7 +321,8 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Datenmigration `chat.0010` wandelt bestehende Chats in Ketten um.
   - Der Titel bleibt beim Bearbeiten unverändert. Umschalten ändert die Reihenfolge in der Seitenleiste nicht.
 - **M8 (Websuche) vorgezogen und in Arbeit** (Nutzerwunsch): Agenten websearch, webui und wiki.
-- **M6 in Arbeit** (parallel, unabhängig von M7-09):
+- **M6, M7 und M8 umgesetzt** (Commit `b7e9a00`, 1165 Tests grün). Damit auch M7-08 (RAG-Verwaltung), M7-09 (lokal: nomic und olmOCR; OCR-Test gegen das echte LM Studio erfolgreich) und M7-10 (Verzeichnisquellen).
+- Ehemals „in Arbeit“, Zuständigkeit bei M6:
   - **budget:** Verbrauch, Monatsbudget mit Warnung ab 80 % und Sperre ab 100 %, Seite „Mein Verbrauch“.
   - **family:** Seite „Familie“ mit Einsicht in Jugendlichen-Chats nur lesend und nur mit Option.
   - **compare:** Vergleichsmodus. Die Antworten der Modelle sind Geschwister im Chat-Baum, nebeneinander angezeigt, „Mit dieser Antwort weiter“ setzt den Zweig.
@@ -323,6 +330,13 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - **retrieval:** `Chunk` mit HNSW- und Volltextindex, `RagSettings`, `embed()`, Suche mit Zugriffsfilter in SQL, Chat-Einbindung, Werkzeug `search_documents`.
   - **ingest:** Extraktion, OCR mit Tesseract, Zerteilung, Worker mit `SKIP LOCKED`, `multi-gpt-worker.service`.
   - **ragui:** Seiten für Sammlungen, Upload, Teilen, Abschnittsansicht, Auswahl im Chat.
+- **M7 umgesetzt** (Commit folgt):
+  - **retrieval:** `Chunk` (Vektor mit HNSW-Index, Kosinus; Volltext als von PostgreSQL berechnete Spalte mit GIN-Index), `RagSettings`, Embeddings mit klaren Fehlermeldungen, Suche mit Zugriffsfilter in SQL und optionaler Zusammenführung mit der Volltextsuche (RRF), fester Ablauf im Chat und Werkzeug `search_documents`, `SourceRef` mit Abschnitt und Seite, `make reindex`.
+  - **ingest:** Upload mit Typprüfung am Inhalt (PDF, DOCX, TXT, MD) und Größengrenze `DOCUMENT_MAX_UPLOAD_MB`, Extraktion, OCR mit Tesseract (`OCR_LANGUAGES`), Zerteilung mit Seitenzahl, Job-Tabelle mit `SKIP LOCKED`, Backoff bis `JOB_MAX_ATTEMPTS`, Lebenszeichen und Neueinreihen hängender Jobs, `make worker` und `multi-gpt-worker.service`. Das Paket hängt von `poppler-utils`, `tesseract-ocr`, `tesseract-ocr-deu` und `tesseract-ocr-eng` ab.
+  - **ragui:** Seiten „Sammlungen“ mit Upload, Status, Teilen, Download und Abschnittsansicht; Auswahl „Dokumente“ im Eingabefeld; Quellen mit Seitenzahl unter der Antwort.
+  - **ragadmin:** App `multigpt.rag` mit Admin-Abschnitt „Dokumente (RAG)“: RAG-Übersicht mit Warnung „Worker läuft nicht?“, „Embedding testen“, „Alles neu indexieren“, „Fehlgeschlagene erneut versuchen“, „Hängende Aufträge zurücksetzen“, Listen für Sammlungen, Dokumente und Indexierungsaufträge, nur Metadaten.
+  - **In Arbeit:** M7-09 (localrag: Embeddings und OCR lokal über LM Studio) und M7-10 (crawler: Verzeichnisquellen).
+  - Wiki-Seiten `RAG`, `RAG-Einrichtung` und `RAG-Verzeichnisquellen`.
 - **LM Studio im Heimnetz läuft echt** (2026-10-09, `openai/gpt-oss-20b`).
 - **Vorschlag „Gedächtnis über Chats“** (Plan 8, Punkt 19): Die Freigabe durch den Nutzer steht aus.
 - **Damit sind M2–M5 abgeschlossen.** Für die Abnahme offen: echte Anbieter und LM Studio im Heimnetz, Installation des Pakets auf Debian 13.

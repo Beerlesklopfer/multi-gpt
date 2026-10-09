@@ -1,7 +1,7 @@
 ---
 title: "Features"
 description: "What MultiGPT is meant to do: many providers, LM Studio, family accounts, budgets, your own documents, web search, images, voice and MCP tools."
-lead: "This page describes what MultiGPT version 1 is meant to do. Chatting with many providers, LM Studio and family accounts are done, MCP tools partially; budgets, your own documents, web search, images and voice are still planned. Every section shows its status and milestone."
+lead: "This page describes what MultiGPT version 1 is meant to do. Done: chatting with many providers, LM Studio, MCP tools, family accounts with budgets, comparison mode, your own documents and web search; images and voice are still planned. Every section shows its status and milestone."
 menus:
   main:
     weight: 10
@@ -51,16 +51,15 @@ OpenAI-compatible server. MultiGPT connects to it as a provider but does not sta
 - When LM Studio is off, local models are greyed out. When it is on, the models that
   LM Studio actually reports are offered.
 - If LM Studio goes away in the middle of an answer, the text received so far is kept.
-- Local models cost € 0 and are meant to stay usable even when the budget is used up
-  (budgets come with milestone 6).
-- Tested with simulated providers; a test with LM Studio in a real home network is still pending.
+- Local models cost € 0 and stay usable even when the budget is used up.
+- In real use in the home network: chat (e.g. gpt-oss-20b), embeddings (nomic-embed-text) and OCR (olmOCR) run through LM Studio.
 
 ## Roles, groups and budgets
 
-{{< status "partial" "2 / 6" >}}
+{{< status "done" "2 / 6" >}}
 
-Roles, groups, accounts and the central permission check are done (milestone 2). Budgets,
-the usage overview and the "Family" page follow with milestone 6.
+Roles, groups, accounts and the central permission check came with milestone 2; budgets,
+the usage overview and the "Family" page with milestone 6.
 
 Four default roles, adjustable in the admin area:
 
@@ -73,22 +72,33 @@ Four default roles, adjustable in the admin area:
 
 - Permissions are checked on the server, for every page and before every provider call –
   not just by hiding things in the interface.
-- **Budgets:** a monthly budget per role, overridable per person. A warning at 80 %; at
-  100 % paid models are blocked until the next month.
-- **Usage:** tokens and estimated costs per person, model and month.
+- **Budgets:** a monthly budget in euros per role, overridable per person. From 80 % a
+  warning appears; from 100 % paid models are blocked until the next month. Free models
+  (local providers such as LM Studio, or models without prices) stay usable.
+- **Usage:** on the "Mein Verbrauch" page (`/verbrauch/`) everyone sees this month's tokens
+  and estimated costs per model, the budget status and the last few months.
+  Administrators see everyone's usage.
 - **Privacy:** chats are private. Administrators do not see other people's chats either,
-  only usage figures. Whether parents may view chats of teenager accounts is still open;
-  at most it would be an option per account, off by default and visible to the member.
+  only usage figures. The one exception: teenager accounts have an option "Einsicht in Chats
+  erlaubt" (chat insight allowed), off by default. When it is on, administrators can read
+  that account's chats but not write in them, and the member permanently sees a notice.
 - **Groups:** collections and individual chats can be shared with groups, read-only or
   with write access.
-- A "Family" page for administrators: create and lock accounts, assign roles, reset
-  passwords, manage groups.
+- A "Familie" (family) page (`/familie/`) for administrators: create and lock accounts,
+  assign roles, reset passwords, set budgets, switch chat insight, manage groups and view
+  everyone's usage.
 
 ## Comparison mode
 
-{{< status "planned" "6" >}}
+{{< status "done" "6" >}}
 
 Ask two or three models the same question at the same time and read the answers side by side.
+
+- A switch in the input field opens the choice of two or three models.
+- The answers appear as columns and are stored in the chat tree as versions of the same
+  message. Later, "‹ 1/3 ›" switches between them.
+- Picking one answer makes its model the chat's default model.
+- MCP tools are off in comparison mode, so no confirmations pop up in several columns at once.
 
 ## Tools via MCP
 
@@ -111,22 +121,43 @@ Models that support tools can then call functions from connected MCP servers.
 
 ## Ask your own documents (RAG)
 
-{{< status "planned" "7" >}}
+{{< status "done" "7" >}}
 
-- Create collections and upload documents (PDF, DOCX, TXT, MD), private or shared with groups.
-- A background process splits the texts and computes embeddings; search uses PostgreSQL
-  and pgvector.
-- The documents used are listed below the answer, with page numbers.
-- Passages from other people's private collections never end up in a query.
+Collections, upload, background indexing with text recognition (OCR), search with sources
+in the chat, administration in the admin, fully local processing via LM Studio and
+directory sources are done.
+
+- Create collections and upload documents (PDF, DOCX, TXT, MD, up to 25 MB per file),
+  private or shared with groups – read-only or with write access.
+- A background service (worker) reads the text, recognises scanned pages via OCR, splits the text into passages and computes embeddings. Each document shows
+  its status and errors; temporary errors are retried automatically.
+- In the chat you pick collections. Search uses PostgreSQL and pgvector, optionally combined
+  with German full-text search. Models with tool support can also search on their own.
+- The documents used are listed below the answer with page numbers, linked to the passage.
+- Passages from other people's private collections never end up in a query; access is
+  checked inside the search query itself.
+- Administrators get a RAG overview in the admin (worker, queue, storage), can re-index and
+  retry failed items – seeing only metadata, never content.
+- **Fully local:** LM Studio in the home network computes the embeddings with
+  nomic-embed-text (768 dimensions, with the prefixes `search_document:` and
+  `search_query:`). Scanned pages are read by the olmOCR vision model via LM Studio, with
+  Tesseract on the server as an optional fallback. So no document content leaves the house.
+  The buttons "Speichern und Embedding testen" and "Speichern und OCR testen" (save and
+  test) check the settings right away.
+- **Directory sources:** an administrator can fill a collection from a folder on the server
+  or NAS that is read in again periodically. Only folders below the directories allowed in
+  `RAG_SOURCE_ROOTS` are accepted.
 
 ## Web search with sources
 
-{{< status "planned" "8" >}}
+{{< status "done" "8" >}}
 
 - A "web search" switch in the input field. Results go to the model as numbered sources,
   and the links are listed below the answer. This also works with local models.
-- The planned search backends are a self-hosted [SearXNG](https://docs.searxng.org/) or a
-  search API.
+  Models with tool support can also call the web search on their own.
+- The search backend is a self-hosted [SearXNG](https://docs.searxng.org/) in the home
+  network. The administrator enters its address in the admin and checks it with
+  "SearXNG testen". The interface is swappable; no search API is connected so far.
 - Fetched pages are treated as untrusted: they are marked as source material, never as
   instructions, and addresses in the home network are blocked.
 

@@ -54,6 +54,14 @@ Bei der Installation passiert Folgendes:
   automatisch, bevor der Dienst startet oder neu startet – bei der Installation und bei
   jedem Update. Ist sie nicht erreichbar, gibt es nur einen Hinweis; die Installation läuft
   trotzdem durch.
+- **Zusätzliche Pakete für Dokumente (RAG):** apt installiert als Abhängigkeiten
+  `poppler-utils` (PDF-Seiten als Bild) sowie `tesseract-ocr`, `tesseract-ocr-deu` und
+  `tesseract-ocr-eng` für die Texterkennung gescannter Seiten. Weitere Sprachen gibt es als
+  Pakete `tesseract-ocr-<sprache>` (dann `OCR_LANGUAGES` in `/etc/multi-gpt/.env` anpassen).
+- **Zwei Dienste:** `multi-gpt.service` (Weboberfläche) und `multi-gpt-worker.service`
+  (Worker, der hochgeladene Dokumente im Hintergrund indexiert). Beide werden aktiviert,
+  gestartet und bei Updates nach der Migration neu gestartet. Prüfen mit
+  `systemctl status multi-gpt multi-gpt-worker`.
 
 **3. Datenbank von Hand anlegen** (nur nötig, wenn das Paket sie nicht anlegen konnte, etwa
 weil PostgreSQL bei der Installation nicht lief):
@@ -81,6 +89,19 @@ sudo mgpt-ctl createsuperuser
 
 Die App lauscht auf der per debconf gewählten Adresse. Ob sie läuft, zeigt
 `curl http://<adresse>:<port>/healthz/`.
+
+**6. Dokumentsuche einrichten (optional):** Im Admin unter „Dokumente (RAG)“ →
+„Einstellungen“ ein Embedding-Modell wählen (lokal z. B. nomic-embed-text über LM Studio)
+und mit „Speichern und Embedding testen“ prüfen; für gescannte PDFs das OCR-Verfahren
+(olmOCR über LM Studio oder Tesseract) wählen und mit „Speichern und OCR testen“ prüfen.
+Die Anleitung dazu steht im [Wiki: RAG einrichten](https://github.com/Beerlesklopfer/multi-gpt/wiki/RAG-Einrichtung),
+Ordner vom Server oder NAS beschreibt
+[Wiki: Verzeichnisquellen](https://github.com/Beerlesklopfer/multi-gpt/wiki/RAG-Verzeichnisquellen)
+(dafür `RAG_SOURCE_ROOTS` in `/etc/multi-gpt/.env` setzen).
+
+**7. Websuche einrichten (optional):** Ein SearXNG im Heimnetz aufsetzen, im Admin die
+Adresse eintragen und mit „SearXNG testen“ prüfen, danach die Websuche einschalten. Die
+Anleitung steht im [Wiki: SearXNG](https://github.com/Beerlesklopfer/multi-gpt/wiki/SearXNG).
 
 ## Weg 2: Docker
 
@@ -111,5 +132,9 @@ make db-create install migrate user dev
 - `make db-create` legt einmalig per `sudo` Datenbank, Rolle und die Erweiterung `vector` an.
 - `make install` erzeugt `.venv` und eine `.env` mit generierten Schlüsseln (Rechte 600).
 - `make user` legt einen Nutzer an, `make dev` startet den Entwicklungsserver.
+- `make worker` startet den Worker für die Indexierung von Dokumenten im Vordergrund,
+  `make reindex` reiht alle Dokumente neu ein (nach einem Wechsel des Embedding-Modells).
+  Für OCR braucht der Entwicklungsrechner `poppler-utils`, `tesseract-ocr`,
+  `tesseract-ocr-deu` und `tesseract-ocr-eng`.
 - `make run` startet gunicorn, `make test` und `make lint` prüfen den Code,
   `make help` zeigt alle Ziele.

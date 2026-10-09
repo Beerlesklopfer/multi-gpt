@@ -31,13 +31,17 @@ erreichbar ist.
 
 Man kann mit eigenen API-Keys chatten: mit OpenAI, Anthropic, Google Gemini, OpenRouter
 und LM Studio im Heimnetz, mit gestreamten Antworten, Modellwahl pro Nachricht, Markdown und
-Code-Hervorhebung. Dazu kommen Familienkonten mit Rollen, verschlüsselte API-Keys, eine
-Verwaltung für Verwalter und ein Debian-Paket, das Datenbank und Schema selbst einrichtet.
+Code-Hervorhebung. Dazu kommen Familienkonten mit Rollen, Monatsbudgets und einer Seite
+„Familie“, ein Vergleichsmodus für zwei oder drei Modelle, MCP-Werkzeuge mit Rückfrage,
+Fragen an eigene Dokumente (auf Wunsch komplett lokal über LM Studio), die Websuche über ein
+selbst gehostetes SearXNG, verschlüsselte API-Keys, eine Verwaltung für Verwalter und ein
+Debian-Paket, das Datenbank und Schema selbst einrichtet.
 
-Mit OpenAI läuft es bereits echt, die übrigen Anbieter sind bisher simuliert getestet; Tests mit weiteren Keys und einer
-frischen Debian-Installation stehen noch aus. Fertige Release-Pakete gibt es noch nicht.
-MCP-Werkzeuge mit Rückfrage sind ebenfalls dabei. Budgets, eigene Dokumente, Websuche, Bilder und
-Sprache folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
+Mit OpenAI läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher simuliert getestet;
+echte Tests mit Anthropic- und Gemini-Keys und einer frischen Debian-Installation stehen
+noch aus, der Docker-Build ist ungetestet. Fertige Release-Pakete gibt es noch nicht.
+Bilder, Sprache und der Betrieb mit nginx/TLS-Vorlage und Backup folgen – Details in der
+[Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
 

@@ -30,14 +30,17 @@ home server with Debian – and that is reachable only from the home network.
 
 You can chat with your own API keys: with OpenAI, Anthropic, Google Gemini, OpenRouter and
 LM Studio in your home network, with streamed answers, a model choice per message, Markdown
-and code highlighting. On top of that there are family accounts with roles, encrypted API
-keys, an admin area for administrators and a Debian package that sets up the database and
-schema itself.
+and code highlighting. On top of that there are family accounts with roles, monthly budgets and
+a "Family" page, a comparison mode for two or three models, MCP tools with confirmation,
+questions to your own documents (fully local via LM Studio if you like), web search via a
+self-hosted SearXNG, encrypted API keys, an admin area for administrators and a Debian
+package that sets up the database and schema itself.
 
-It already runs for real with OpenAI, the other providers have been tested with simulations; tests with further keys and on a fresh
-Debian installation are still pending. There are no release packages yet. MCP tools with
-confirmation are included as well. Budgets, your own documents, web search, images and voice follow – details
-in the [roadmap]({{< relref "roadmap" >}}).
+It already runs for real with OpenAI, the other cloud providers have been tested with
+simulations; real tests with Anthropic and Gemini keys and on a fresh Debian installation
+are still pending, and the Docker build is untested. There are no release packages yet.
+Images, voice and operations with an nginx/TLS template and backup follow – details in the
+[roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence
 

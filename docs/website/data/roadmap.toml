@@ -52,8 +52,8 @@
     de = "Adapter für Anthropic und Google Gemini, Modelllisten abrufen mit `make sync-models`, LM Studio als lokaler Anbieter mit Online-Anzeige und automatisch angebotenen Modellen."
     en = "Adapters for Anthropic and Google Gemini, fetching model lists with `make sync-models`, LM Studio as a local provider with online indicator and automatically offered models."
   [milestones.note]
-    de = "Mit simulierten Anbietern getestet. Noch offen für die Abnahme: echte Aufrufe an Anthropic und Gemini sowie LM Studio im Heimnetz."
-    en = "Tested with simulated providers. Still open for acceptance: real calls to Anthropic and Gemini and LM Studio in the home network."
+    de = "LM Studio läuft im echten Heimnetz. Noch offen für die Abnahme: echte Aufrufe an Anthropic und Gemini."
+    en = "LM Studio runs in a real home network. Still open for acceptance: real calls to Anthropic and Gemini."
 
 [[milestones]]
   id = "4a"
@@ -83,33 +83,42 @@
 
 [[milestones]]
   id = "6"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Vergleich, Verbrauch, Budgets, Familie"
     en = "Comparison, usage, budgets, family"
   [milestones.text]
     de = "Dieselbe Frage an mehrere Modelle, Verbrauchsübersicht, Monatsbudgets und die Verwaltungsseite „Familie“."
     en = "The same question to several models, usage overview, monthly budgets and the “Family” admin page."
+  [milestones.note]
+    de = "Umgesetzt: Vergleichsmodus mit zwei oder drei Modellen, die Antworten als Versionen im Chat-Baum (Werkzeuge sind im Vergleich aus); Verbrauch und Monatsbudgets mit Hinweis ab 80 % und Sperre ab 100 % außer für kostenfreie Modelle; Seite „Mein Verbrauch“; Seite „Familie“ mit Konten, Rollen, Budgets und Gruppen sowie lesender Einsicht in Chats von Jugendlichen nur mit Option und dauerhaftem Hinweis."
+    en = "Implemented: comparison mode with two or three models, the answers stored as versions in the chat tree (tools are off in comparison); usage and monthly budgets with a warning from 80 % and a block from 100 % except for free models; a personal usage page; a “Family” page with accounts, roles, budgets and groups, plus read-only insight into teenagers' chats only with an option and a permanent notice."
 
 [[milestones]]
   id = "7"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Eigene Dokumente (RAG)"
     en = "Your own documents (RAG)"
   [milestones.text]
     de = "Sammlungen, Upload, Indexierung im Hintergrund, Suche mit pgvector, Quellen mit Seitenangabe."
     en = "Collections, upload, background indexing, search with pgvector, sources with page numbers."
+  [milestones.note]
+    de = "Umgesetzt: Sammlungen mit Freigaben, Upload (PDF, DOCX, TXT, MD), Worker mit Wiederholung und OCR (Tesseract), Suche mit Zugriffsfilter in SQL und Volltext, Quellen mit Seitenzahl, Werkzeug für die Dokumentsuche und eine eigene RAG-Verwaltung im Admin. Embeddings lokal über LM Studio (nomic-embed-text, 768 Dimensionen), OCR mit olmOCR über LM Studio und Tesseract als Ersatz, beides im Admin per Knopf testbar; Verzeichnisquellen vom Server oder NAS, beschränkt auf `RAG_SOURCE_ROOTS` und periodisch eingelesen."
+    en = "Implemented: collections with sharing, upload (PDF, DOCX, TXT, MD), a worker with retries and OCR (Tesseract), search with access filtering in SQL plus full text, sources with page numbers, a document search tool and a dedicated RAG section in the admin. Embeddings locally via LM Studio (nomic-embed-text, 768 dimensions), OCR with olmOCR via LM Studio and Tesseract as a fallback, both testable with a button in the admin; directory sources from the server or NAS, limited to `RAG_SOURCE_ROOTS` and read in periodically."
 
 [[milestones]]
   id = "8"
-  status = "planned"
+  status = "done"
   [milestones.title]
     de = "Websuche"
     en = "Web search"
   [milestones.text]
-    de = "Austauschbares Such-Backend (SearXNG oder Such-API), geschützter Seitenabruf, Quellen unter der Antwort."
-    en = "Swappable search backend (SearXNG or a search API), protected page fetching, sources below the answer."
+    de = "Austauschbares Such-Backend, geschützter Seitenabruf, Quellen unter der Antwort."
+    en = "Swappable search backend, protected page fetching, sources below the answer."
+  [milestones.note]
+    de = "Umgesetzt mit einem selbst gehosteten SearXNG: Schalter „Websuche“ im Chat und Werkzeug für Modelle, „SearXNG testen“ im Admin, Seitenabruf ohne Zugriff auf Adressen im Heimnetz, Webtext nur als markiertes Quellmaterial. Eine Such-API ist nicht angebunden."
+    en = "Implemented with a self-hosted SearXNG: a “web search” switch in the chat and a tool for models, “SearXNG testen” in the admin, page fetching without access to home-network addresses, web text only as marked source material. No search API is connected."
 
 [[milestones]]
   id = "9"
@@ -140,3 +149,6 @@
   [milestones.text]
     de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
     en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."
+  [milestones.note]
+    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Offen: nginx-Vorlage mit TLS, Backup, vollständige Installationsanleitung sowie geprüftes Upgrade und Entfernen."
+    en = "The worker unit `multi-gpt-worker.service` already ships in the package. Still open: an nginx template with TLS, backup, a complete installation guide and verified upgrade and removal."

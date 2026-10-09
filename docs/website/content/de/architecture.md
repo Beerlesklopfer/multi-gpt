@@ -20,16 +20,16 @@ menus:
 - **gunicorn und Django:** gunicorn mit der Worker-Klasse `gthread` (Standard: 2 Prozesse
   × 8 Threads, Timeout 300 Sekunden), damit lange gestreamte Antworten andere Anfragen
   nicht blockieren. Antworten werden per Server-Sent Events gestreamt.
-- **PostgreSQL mit pgvector:** die einzige Datenbank – für Konten, Chats und später
-  die Vektoren der eigenen Dokumente. Kein SQLite.
-- **Worker (geplant):** ein zweiter Prozess aus derselben Codebasis, der Dokumente im
+- **PostgreSQL mit pgvector:** die einzige Datenbank – für Konten, Chats und die Vektoren
+  der eigenen Dokumente. Kein SQLite.
+- **Worker:** ein zweiter Prozess aus derselben Codebasis, der Dokumente im
   Hintergrund indexiert. Er holt seine Aufträge aus einer Tabelle in PostgreSQL.
 - **Anbieter-Adapter:** eine gemeinsame Schnittstelle, darunter ein Adapter für
   OpenAI-kompatible APIs (OpenAI, OpenRouter, LM Studio), einer für
   Anthropic und einer für Google Gemini. Umgesetzt mit `httpx` direkt gegen die HTTP-APIs.
 - **MCP-Client:** verbindet sich über das offizielle Python-SDK mit
-  MCP-Servern und reicht deren Werkzeuge an die Modelle weiter. Client und Verbindungstest
-  sind fertig, die Werkzeugschleife im Chat ist in Arbeit.
+  MCP-Servern und reicht deren Werkzeuge an die Modelle weiter. Client, Verbindungstest
+  und die Werkzeugschleife im Chat sind umgesetzt.
 
 ## Netz und Sicherheit
 

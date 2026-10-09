@@ -2,6 +2,12 @@
 
 - [Startseite](Home)
 
+**Dokumente (RAG)**
+
+- [Fragen an eigene Dokumente](RAG)
+- [RAG einrichten](RAG-Einrichtung)
+- [Verzeichnisquellen](RAG-Verzeichnisquellen)
+
 **Websuche**
 
 - [SearXNG: Überblick](SearXNG)

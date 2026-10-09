@@ -10,6 +10,12 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
 
 ## Anleitungen
 
+- [Fragen an eigene Dokumente (RAG)](RAG): Sammlungen, Upload, Status, Auswahl im Chat, Quellen
+  und Datenschutz
+  - [RAG einrichten](RAG-Einrichtung): Embedding-Modell, LM Studio, OCR, Worker, Neu-Indexieren
+    und Fehlersuche
+  - [Verzeichnisquellen](RAG-Verzeichnisquellen): NAS-Ordner regelmäßig in eine Sammlung
+    einlesen
 - [SearXNG als Such-Backend](SearXNG): wozu MultiGPT eine Suchmaschine braucht, welche Variante
   passt, Test, Eintragen in MultiGPT und Fehlersuche
   - [Variante a) SearXNG mit Docker](SearXNG-Docker)
