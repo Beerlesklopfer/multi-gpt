@@ -40,3 +40,21 @@ def test_font_size_buttons_only_under_answers(page):
 def test_sidebar_toggle_present(page):
     assert 'id="sidebar-toggle"' in page
     assert 'aria-controls="sidebar"' in page
+
+
+def _css_rule(css: str, selector: str) -> str:
+    """Rumpf der ersten Regel, die genau mit ``selector`` beginnt."""
+    start = css.index("\n" + selector + " {")
+    return css[start : css.index("}", start)]
+
+
+def test_chat_history_is_containing_block():
+    """Absolut positionierte Elemente im Verlauf (.sr-only, KaTeX-MathML) müssen
+    im Scrollbereich des Verlaufs bleiben. Sonst ragen sie unter das Fenster,
+    .main-area wird scrollbar und das Eingabefeld rutscht nach oben."""
+    from pathlib import Path
+
+    css = (Path(__file__).parents[1] / "multigpt/chat/static/chat/app.css").read_text()
+    rule = _css_rule(css, ".chat-history")
+    assert "overflow-y: auto" in rule
+    assert "position: relative" in rule

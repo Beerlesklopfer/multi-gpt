@@ -198,6 +198,8 @@
         return result;
       },
       label: () => (toggle.checked ? modelName : ""),
+      // Modus einschalten, ohne zu senden (tool_text.js: Aufruf als Text).
+      activate: () => setActive(true),
     };
     setActive(false);
   });

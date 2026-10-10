@@ -1,0 +1,9 @@
+{% comment %}Werkzeugaufruf nur als Text (chat/text_calls.py), Variable ttc = {tool, argument}.
+Nichts wird ausgeführt: tool_text.js blendet „Ausführen“ ein, wenn Modus „Bild“ bzw. Websuche
+hier nutzbar sind, und belegt damit nur das Eingabefeld vor. Argument nur über Auto-Escaping.{% endcomment %}
+<div class="tool-text-hint" data-tool-text="{{ ttc.tool }}" data-tool-text-argument="{{ ttc.argument }}">
+  <p class="chat-message-status chat-message-status-warning">Das Modell hat den Werkzeugaufruf als Text geschrieben ({% if ttc.tool == "generate_image" %}Bild erzeugen{% else %}Websuche{% endif %}). Ausgeführt wurde nichts.</p>
+  <button type="button" class="button button-small" data-tool-text-run hidden
+          aria-describedby="tool-text-note-{{ msg.pk }}">Ausführen</button>
+  <span class="sr-only" id="tool-text-note-{{ msg.pk }}">{% if ttc.tool == "generate_image" %}Schaltet den Modus „Bild“ ein und setzt die Bildbeschreibung ins Eingabefeld{% else %}Schaltet die Websuche ein und setzt die Suchanfrage ins Eingabefeld{% endif %}; gesendet wird erst, wenn du sendest.</span>
+</div>

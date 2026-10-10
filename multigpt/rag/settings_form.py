@@ -50,6 +50,8 @@ RECOMMENDED = "Empfohlen"
 def _fits(purpose: str, capability: str) -> bool:
     if purpose == EMBEDDING:
         return capability == AIModel.Capability.EMBEDDING
+    if purpose == FIGURE and capability == AIModel.Capability.OCR:
+        return False  # olmOCR liest nur Text, beschreibt keine Abbildungen
     return capability not in NOT_FOR_OCR
 
 
@@ -190,9 +192,12 @@ def resolve_choice(purpose: str, value: str) -> AIModel | None:
         model = provider.ai_models.filter(model_id=model_id).first()
         if model is not None:  # inzwischen angelegt (z. B. Statusprüfung)
             return model
-        capability = (
-            AIModel.Capability.EMBEDDING if purpose == EMBEDDING else AIModel.Capability.CHAT
-        )
+        if purpose == EMBEDDING:
+            capability = AIModel.Capability.EMBEDDING
+        elif purpose == OCR and guess_capability(model_id) == AIModel.Capability.OCR:
+            capability = AIModel.Capability.OCR  # olmOCR: nie in die Chat-Auswahl
+        else:
+            capability = AIModel.Capability.CHAT
         # Embedding-Modelle aktiv; OCR-Modelle und Modelle für Abbildungen nur
         # dafür (für den Chat inaktiv).
         return AIModel(

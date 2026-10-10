@@ -188,16 +188,18 @@ def test_guess_tools(model_id, expected):
         ("models/gemini-3-pro-image-preview", "image"),
         ("lyria-002", "music"),
         ("text-embedding-3-large", "embedding"),
-        ("allenai/olmocr-7b-0725", "chat"),
+        ("allenai/olmocr-7b-0725", "ocr"),
+        ("allenai/olmOCR-2-7B-1025-FP8", "ocr"),
+        ("deepseek-ocr", "ocr"),
     ],
 )
 def test_guess_capability(model_id, expected):
     assert capabilities.guess_capability(model_id) == expected
 
 
-def test_guess_olmocr_chat_without_tools():
+def test_guess_olmocr_is_ocr_without_tools():
     detected = capabilities.guess("allenai/olmocr-7b-0725")
-    assert (detected.capability, detected.tools, detected.vision) == ("chat", False, True)
+    assert (detected.capability, detected.tools, detected.vision) == ("ocr", False, True)
 
 
 def test_from_lmstudio():

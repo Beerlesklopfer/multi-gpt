@@ -19,6 +19,7 @@
   <div class="chat-message-content"{% if msg.role == "assistant" %} data-markdown="true"{% endif %}>{{ msg.content }}</div>
   {% include "chat/_attachment_list.html" %}
   {% if msg.role == "assistant" %}
+    {% load tool_tags %}{% text_tool_call msg as ttc %}{% if ttc %}{% include "chat/_tool_text.html" %}{% endif %}
     {% if msg.web_search_notice %}<p class="chat-message-status chat-message-status-warning">{{ msg.web_search_notice }}</p>{% endif %}
     {% include "chat/_sources.html" %}
   {% endif %}

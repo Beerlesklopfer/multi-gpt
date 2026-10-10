@@ -88,8 +88,11 @@ def guess_tools(model_id: str) -> bool:
 # M10); Google: Gemini-Bildmodelle (gemini-*-image, „Nano Banana“) und das
 # abgekündigte imagen (Bild), Lyria (Musik, M11).
 CHAT, IMAGE, EMBEDDING, STT, TTS, MUSIC = "chat", "image", "embedding", "stt", "tts", "music"
+# Reine Texterkennung (olmOCR, *-ocr): nur für die OCR der Dokumentsuche, nicht im Chat.
+OCR = "ocr"
 _CAPABILITY_PATTERNS = [
     (re.compile(r"embed"), EMBEDDING),
+    (re.compile(r"olmocr|(^|[-_./])ocr([-_./\d]|$)"), OCR),
     (re.compile(r"(^|[-_./])tts([-_.]|$)"), TTS),
     (re.compile(r"whisper|transcribe"), STT),
     (
@@ -126,7 +129,7 @@ def guess(model_id: str) -> Detected:
     return Detected(
         capability=capability,
         tools=chat and guess_tools(model_id),
-        vision=chat and guess_vision(model_id),
+        vision=(chat and guess_vision(model_id)) or capability == OCR,
         source="heuristik",
     )
 
@@ -146,6 +149,11 @@ def from_lmstudio(item: dict) -> Detected | None:
         return None
     if kind == "embeddings":
         return Detected(capability=EMBEDDING, tools=False, vision=False, source="lmstudio")
+    if guess_capability(str(item.get("id") or "")) == OCR:
+        # LM Studio leitet ``tool_use`` aus dem Chat-Template ab; olmOCR (auf Basis
+        # von Qwen2.5-VL) kann so als werkzeugfähig gelten. Ein OCR-Modell ruft
+        # Werkzeuge aber nicht zuverlässig auf und gehört nicht in die Chat-Auswahl.
+        return Detected(capability=OCR, tools=False, vision=True, source="lmstudio")
     caps = item.get("capabilities")
     if isinstance(caps, list):
         tools = "tool_use" in caps

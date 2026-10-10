@@ -596,7 +596,7 @@ def test_selecting_reported_embedding_model_creates_it(admin_client, lmstudio):
     assert emb.capability == AIModel.Capability.EMBEDDING and emb.active
     assert cfg.document_prefix == "search_document: " and cfg.query_prefix == "search_query: "
     ocr_model = cfg.ocr_model
-    assert ocr_model.model_id == OLMOCR and ocr_model.capability == AIModel.Capability.CHAT
+    assert ocr_model.model_id == OLMOCR and ocr_model.capability == AIModel.Capability.OCR
     assert ocr_model.active is False  # nur für OCR, nicht im Chat
     assert cfg.ocr_backend == "olmocr"
     messages = " ".join(str(m) for m in response.context["messages"])

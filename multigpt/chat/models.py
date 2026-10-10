@@ -148,6 +148,8 @@ class AIModel(models.Model):
         STT = "stt", "Spracherkennung"  # M10-01
         TTS = "tts", "Sprachausgabe"  # M10-02
         MUSIC = "music", "Musik"  # M11
+        # Reine Texterkennung (olmOCR): nur für die OCR der Dokumentsuche, nie im Chat.
+        OCR = "ocr", "Texterkennung (OCR)"
 
     class McpAccess(models.TextChoices):
         # Welche MCP-Server das Modell nutzen darf, zusätzlich zur Rolle des

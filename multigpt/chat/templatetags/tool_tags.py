@@ -58,3 +58,13 @@ def tool_server(tool_call) -> str:
     from multigpt.chat.tooling import server_label
 
     return server_label(tool_call) or "Server entfernt"
+
+
+@register.simple_tag
+def text_tool_call(msg):
+    """Hat das Modell einen Werkzeugaufruf nur als Text geschrieben? (``text_calls``)"""
+    from multigpt.chat.text_calls import detect
+
+    if getattr(msg, "role", "") != "assistant" or getattr(msg, "status", "") != "complete":
+        return None
+    return detect(msg.content)

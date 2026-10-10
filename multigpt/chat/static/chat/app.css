@@ -313,6 +313,13 @@ input {
   flex: 1;
   overflow-y: auto;
   padding: 1.5rem;
+  /* Bezugsrahmen für absolut positionierte Elemente im Verlauf (.sr-only an
+     Quellen, Versionen, Anhängen; KaTeX-MathML). Ohne ihn wäre .chat der
+     Bezugsrahmen: Diese Elemente lägen dann außerhalb des Scrollbereichs an
+     ihrer Position im langen Verlauf, weit unter dem Fenster, und machten
+     .main-area scrollbar (je nach Browser trotz clip). Fokus oder Mausrad
+     schoben dann den ganzen Chat samt Eingabefeld nach oben. */
+  position: relative;
 }
 
 .empty-state {
@@ -1595,6 +1602,19 @@ span.message-source-link {
 
 .chat-message-status-warning {
   color: var(--warning);
+}
+
+/* Werkzeugaufruf nur als Text (chat/_tool_text.html, tool_text.js) */
+.tool-text-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.tool-text-hint .chat-message-status {
+  margin: 0;
 }
 
 /* Sammlungen und Dokumente (M7, RAG) */
