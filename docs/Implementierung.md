@@ -467,6 +467,37 @@ Im Scratchpad sammelt der Nutzer Material aus sehr unterschiedlichen Quellen. Da
 
 *Abnahme:* Aus einer Antwort, einem PDF-Abschnitt, einer Webquelle, einer Notiz und einem Bild entsteht ein zweiseitiges Dokument. Jede Sachaussage trägt einen Kurzbeleg im Stil des Kontos, jedes wörtliche Zitat ist geprüft, eine absichtlich unbelegte Aussage ist markiert. Export als DOCX und PDF mit Literaturverzeichnis, jede Quelle einmal. Ein nur lesend berechtigtes Projektmitglied sieht das Dokument, kann aber nichts ändern.
 
+### M14 – Runner
+*Abhängig von: M4a (MCP-Schleife, Einstufung, Rückfrage, MCP-Freigabe je Modell), M6-06 bis M6-10 (Kontenrahmen und Budgets), M12-01 (nginx mit TLS). Frage 8a–8f. Neu eingeplant am 2026-10-10 (Nutzerwunsch).*
+
+Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder Laptop im Heimnetz), nicht auf dem Server. Er gibt den Modellen eine Arbeitsumgebung mit Shell, Dateien, git und Python. Der MultiGPT-Webserver verwaltet ihn. Plan 8i beschreibt den Ablauf.
+
+**Festlegungen:**
+
+- **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.
+- **Kopplung per Token:** Das Konto erzeugt im Web einen Kopplungs-Token. Er wird einmal angezeigt und nur als Hash gespeichert (wie Passwörter, nie im Klartext in DB oder Logs). Jeder Token gehört zu genau einem Konto, ist widerrufbar und hat ein Ablaufdatum. Ein Widerruf trennt eine laufende Verbindung sofort.
+- **Verbindung nur ausgehend:** Der Runner baut eine WebSocket-Verbindung über TLS zu nginx auf (`wss://<host>/runner/`). Am Client gibt es keine offenen Ports. Bricht die Verbindung ab, verbindet er sich mit Backoff neu. Der Server spricht den Runner nur über diesen Rückkanal an.
+- **Runner als MCP-Server:** Für MultiGPT ist ein gekoppelter Runner ein MCP-Server mit dem neuen Transport `runner` (neben `stdio` und HTTP). Die MCP-Nachrichten laufen über den Rückkanal. Damit gelten Einstufung der Werkzeuge, Rückfrage im Chat, Rollenfreigabe und MCP-Freigabe je Modell wie bei jedem anderen MCP-Server.
+- **Werkzeuge** (zuerst nur diese, kein Coding-Agent im Container): Shell-Befehl, Dateien lesen, schreiben und auflisten, git und Python. Alles arbeitet nur in `/workspace` der Sitzung. Schreibende Werkzeuge und die Shell sind standardmäßig bestätigungspflichtig.
+- **Sitzung = eigenes Volume:** Jede Sitzung lebt in einem eigenen Volume, das als `/workspace` eingebunden wird. Container sind wegwerfbar, das Volume bleibt. Volumes werden im Web verwaltet: anlegen, Größe festlegen, sichern, löschen.
+- **Zeitkontingent:** neue Kontoart „Laufzeit“ im Kontenrahmen. Gezählt werden Container-Minuten je Rolle bzw. Person und Monat (Person vor Rolle, wie bei `AccountBudget`). Hinweis ab 80 %, bei 100 % stoppt der Runner den Container; das Volume bleibt erhalten.
+- **Rolle bestimmt die Grenzen:** Recht „Runner nutzen“, Höchstwerte für CPU und RAM, Netz an/aus. Netz ist standardmäßig aus (Container ohne Netz). Die Grenzen setzt der Server, der Runner übernimmt sie beim Start als Container-Optionen und meldet sie zurück; der Server prüft die Rückmeldung.
+- **Datenschutz:** Inhalte von `/workspace` bleiben auf dem Client. Zum Server gehen nur Werkzeugaufrufe und -ergebnisse (wie bei jedem MCP-Werkzeug), Status und Zeitverbrauch. Ergebnisse aus dem Runner gelten wie Webtext als nicht vertrauenswürdiges Material.
+
+- **M14-01** **Datenmodell** in einer neuen App `multigpt.runner`: `RunnerToken` (Konto, Name, Hash, erstellt, läuft ab, widerrufen, zuletzt genutzt), `Runner` (Token, Engine `podman`/`docker`, Version, Status, zuletzt gesehen), `RunnerVolume` (Konto, Name, Größe, Status, letzte Sicherung), `RunnerSession` (Volume, Runner, Start, Ende, Minuten, Grenzen), `RunnerAudit` (Sitzung, Zeit, Werkzeug, Befehl bzw. Argumente gekürzt, Exit-Code, Dauer, ausgelöst von Nachricht). Aktionen in `can()`: `USE_RUNNER`, `MANAGE_RUNNER`. Rollenfelder `can_use_runner`, `runner_max_cpus`, `runner_max_memory_mb`, `runner_network` (Standard aus).
+- **M14-02** **Kopplung:** Seite „Runner“ im Konto: Token erzeugen (einmalige Anzeige mit Startbefehl für Podman bzw. Docker), Liste mit Ablauf, „Widerrufen“. Speicherung nur als Hash (z. B. SHA-256 eines zufälligen 256-Bit-Tokens), Vergleich in konstanter Zeit, Ablauf Standard 90 Tage. Tests: falscher, abgelaufener und widerrufener Token werden abgewiesen, ein Widerruf trennt die Verbindung.
+- **M14-03** **Rückkanal auf dem Server:** WebSocket-Endpunkt `/runner/` hinter nginx (Upgrade-Header, lange Timeouts). gunicorn mit `gthread` kann kein WebSocket; vorher entscheiden (Frage 8a), ob ein eigener ASGI-Dienst (`multi-gpt-runner.service`) den Rückkanal hält oder ob es Long-Polling über HTTPS wird. Authentifizierung mit dem Token im ersten Frame, nicht in der URL (keine Tokens in nginx-Logs). Heartbeat, Status „online/offline“ am `Runner`.
+- **M14-04** **Runner-Agent** (Client): kleines Programm im eigenen Image, startet mit Podman rootless oder Docker, verbindet sich ausgehend, startet und stoppt Arbeitscontainer, bindet das Volume der Sitzung als `/workspace` ein, setzt CPU-, RAM- und Netzgrenzen (`--cpus`, `--memory`, `--network=none`), `--read-only` für das Wurzeldateisystem, keine zusätzlichen Capabilities, kein privilegierter Modus, kein Docker-Socket im Container. Anleitung für Linux, Windows (WSL2) und macOS im Wiki.
+- **M14-05** **MCP-Transport `runner`:** `McpServer.transport = "runner"` mit Verweis auf das Konto; der MCP-Client spricht über den Rückkanal. Ein Runner-Server ist nur für sein Konto sichtbar. Werkzeuge `shell`, `read_file`, `write_file`, `list_files`, `git`, `python`, alle auf `/workspace` beschränkt (Pfade auflösen, keine Symlinks hinaus). Einstufung: lesende Dateiwerkzeuge ohne Rückfrage, alle anderen mit Rückfrage; Verwalter kann umstufen. Zeitlimit und Ausgabegrenze je Aufruf.
+- **M14-06** **Volumes und Sitzungen:** im Web anlegen (Name, Größe), einer Sitzung zuordnen, sichern (Archiv auf dem Client bzw. zum Herunterladen), löschen (mit Bestätigung). Die Größe setzt der Runner als Quota bzw. prüft sie regelmäßig. Container werden nach jeder Sitzung bzw. bei „Zurücksetzen“ verworfen, das Volume bleibt.
+- **M14-07** **Zeitkontingent:** Kontoart „Laufzeit“ in `billing` (`BillingAccount.kind = "runtime"`), Kontingent in Container-Minuten je Rolle bzw. Person und Monat, Buchung je angefangene Minute aus den Heartbeats der Sitzung (`UsageEntry` mit Einheit `runtime:minute`). Hinweis ab 80 %, bei 100 % sendet der Server „Stopp“, der Runner beendet den Container, das Volume bleibt. Ohne Rückmeldung des Runners zählt der Server weiter bis zum Verbindungsende. „Mein Verbrauch“ zeigt die Minuten.
+- **M14-08** **Verwaltung im Web:** Status des Runners und der Sitzung, Starten, Stoppen, Zurücksetzen (Container neu, Volume bleibt), Logs des Containers (letzte Zeilen, gekürzt), Audit-Log aller Befehle je Sitzung. Verwalter sehen im Admin Runner, Status und Minuten als Metadaten, keine Inhalte aus `/workspace` und keine Befehlsausgaben fremder Konten.
+- **M14-09** **Sicherheit, Datenschutz, Doku:** Bedrohungsmodell (Prompt-Injection führt Befehle aus, Ausbruch aus dem Container, gestohlener Token, Missbrauch des Rückkanals) mit Gegenmaßnahmen in Abschnitt 5. Wiki-Seite „Runner“, Website (Funktionen, Roadmap).
+  
+  *Tests:* Token-Hash und Ablauf, Widerruf trennt sofort, fremdes Konto sieht den Runner nicht, Pfad außerhalb `/workspace` wird abgelehnt, Netz aus ist wirksam, Stopp bei 100 % mit erhaltenem Volume, Rückfrage vor `shell`, MCP-Freigabe „kein“ verhindert das Angebot.
+
+*Abnahme:* Ein Konto koppelt einen Runner unter Podman rootless per Token. Ein Modell mit Werkzeugen legt in `/workspace` ein git-Repository an, schreibt eine Python-Datei und führt sie aus; die Shell fragt vorher nach. Der Audit-Log zeigt alle Befehle. Nach Stopp und Neustart ist der Inhalt des Volumes noch da. Mit Netz aus schlägt `git clone` von außen fehl. Bei ausgeschöpftem Zeitkontingent stoppt der Container, das Volume bleibt. Ein widerrufener Token kann sich nicht mehr verbinden.
+
 ---
 
 ## 4. Reihenfolge und kritischer Pfad
@@ -481,6 +512,9 @@ M12-01 (TLS/nginx) ─────────────> M10 (Sprache)
 M7-13 + M8 + M5-06 ─┬─> M13-01/02 (Kontextmenü, Vorlagen; vorab lieferbar)
                     └─> M13-03 ─> M13-04 ─> M13-05 ─> M13-06 ─> M13-07 ─> M13-08 ─> M13-09 ─> M13-10 ─> M13-11
 M5-07 Projekte + Projektfreigabe ─────────────> M13-12
+M4a + M6-06 + M12-01 ─> M14-01 ─> M14-02 ─> M14-03 ─> M14-04 ─> M14-05 ─┬─> M14-06
+                                                                   ├─> M14-07
+                                                                   └─> M14-08 ─> M14-09
 ```
 
 Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen (M7-06, M8-04, M9-03) setzt die MCP-Schleife voraus. M5 und M6 können vorgezogen werden, falls die Fragen zu M4/M4a noch offen sind.
@@ -491,6 +525,11 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 - M13-03 (Zitieren) ist der Engpass für alles Weitere.
 - M13-04 legt `Scratchpad.project` gleich als nullbaren Fremdschlüssel an (`Project` steht seit M5-07).
 - M13-12 schließt an, wenn die Projektfreigabe steht.
+
+**M14 (Runner):**
+
+- M14-03 (Rückkanal) hängt an Frage 8a und ist der Engpass.
+- M14-05 nutzt die vorhandene MCP-Schleife; Einstufung, Rückfrage und Freigabe je Modell kommen ohne Änderung mit.
 
 ---
 
@@ -505,6 +544,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | Prompt-Injection über Webinhalte, Dokumente oder Werkzeugergebnisse | Unerwünschte Werkzeugaufrufe | Rückfragepflicht wird serverseitig erzwungen und hängt nie von Modellinhalten ab (Test in M4a-07) |
 | Vom Modell erzeugtes Markdown für PDFs (`create_pdf`) | Abruf interner Adressen (SSRF), Lesen von Server-Dateien, Überlast | `html=False`, Links ohne `href`, Bilder nur aus eigenen Anhängen; WeasyPrint im Kindprozess mit Fetcher nur für `data:image`, Zeit-, Speicher- und Seitengrenzen (M4a-11) |
 | Vom Modell erzeugter Python-Code (`run_python`) | Zugriff auf Server-Dateien, Netz oder Geheimnisse, Überlast | Nur in bubblewrap ohne Netz, ohne Server-Dateien und ohne Umgebung, mit seccomp und Grenzen für CPU, Speicher, Prozesse, Dateien und Ausgabe. Ohne Sandbox kein Werkzeug (M4a-10) |
+| Befehle im Runner (M14) | Prompt-Injection führt Befehle auf dem Rechner des Nutzers aus, Ausbruch aus dem Container, gestohlener Kopplungs-Token | Podman rootless, kein privilegierter Modus, keine zusätzlichen Capabilities, Netz standardmäßig aus, nur `/workspace`; Rückfrage vor Shell und schreibenden Werkzeugen, Audit-Log; Token nur gehasht, mit Ablauf und sofortigem Widerruf; Verbindung nur ausgehend |
 | Scratchpad: Modell erfindet Belege oder verändert Zitate (M13) | Falsche Aussagen mit scheinbarem Beleg im Gesamtdokument | Marker nur auf Einträge, Kurzbelege setzt der Server, Zitatprüfung gegen Eintrag und Snapshot, unbelegte Sätze markiert (M13-09) |
 | Scratchpad: Auswahl im Browser passt nicht zum Quelltext (gerendertes Markdown, Formeln, überlappende Chunks) | Zitat gilt fälschlich als ungeprüft, Fundstelle ungenau | Auswahl serverseitig gegen Nachricht bzw. Chunk normalisiert abgleichen, bei Unsicherheit `verified=False` statt raten (M13-05) |
 | Scratchpad: große Kontexte je Abschnitt | Kosten, Kontextgrenze lokaler Modelle | Je Abschnitt nur zugeordnete Einträge, Grenze je Aufruf, Hinweis vor dem Senden mit geschätzten Tokens |
@@ -544,6 +584,12 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 7j – Eigenes Kontextmenü standardmäßig an? | M13-01 | Empfehlung: ja, abschaltbar, Umschalt+Rechtsklick öffnet das Browsermenü |
 | 7k – Prompt-Vorlagen je Projekt teilen? | M13-02 | Empfehlung: ja über die Projektfreigabe (R nutzen, U bearbeiten) |
 | 7l – Crossref für manuell angelegte Quellen? | M13-03 | Empfehlung: ja, am vorhandenen Schalter `crossref_enabled` |
+| 8a – Rückkanal: eigener ASGI-Dienst mit WebSocket oder Long-Polling über gunicorn? | M14-03 | Empfehlung: eigener ASGI-Dienst `multi-gpt-runner.service` hinter nginx |
+| 8b – Wohin gehen Sicherungen der Volumes? | M14-06 | Empfehlung: Archiv auf dem Client, Download im Browser optional |
+| 8c – Welches Arbeits-Image? | M14-04 | Empfehlung: Debian slim mit Python, git, numpy und sympy; eigenes Image erst später |
+| 8d – Mehrere Runner je Konto? | M14-02 | Empfehlung: ja (z. B. PC und Laptop), je Sitzung genau einer |
+| 8e – Recht „Runner nutzen“ für Jugendliche und Gäste? | M14-01 | Empfehlung: aus für beide, Verwalter kann es je Rolle einschalten |
+| 8f – Kontingent leer = unbegrenzt? | M14-07 | Empfehlung: ja wie bei den übrigen Budgets, Startwert für Erwachsene 600 Minuten |
 
 ---
 

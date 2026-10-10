@@ -57,10 +57,12 @@ multi-gpt/
 ├── multigpt/            # Django-Projekt: settings, urls, wsgi, Projekt-Templates; alle Django-Apps liegen darunter
 │   ├── accounts/        # User (erweitert AbstractUser), UserGroup (erweitert auth.Group), Role, can()
 │   ├── scratchpad/      # Scratchpad und Gesamtdokument (M13, Abschnitt 8h)
+│   ├── runner/          # Runner: Kopplung, Rückkanal, Volumes, Audit (M14, Abschnitt 8i)
 │   └── chat/            # App-Label chat: Modelle, Views, Templates, Static
 │       ├── providers/   # base.py, openai_compat.py, anthropic.py, google.py
 │       └── mcp/         # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
 ├── mcp_imagetools/      # mitgelieferter MCP-Server für Bildbearbeitung (Pillow)
+├── runner/              # Runner-Agent und Arbeits-Image für den Client-Rechner (M14)
 ├── tests/
 ├── deploy/              # gunicorn.conf.py, nginx/multi-gpt (nginx-Site des Pakets)
 ├── debian/              # Paketierung: rules, control, multi-gpt.service, postinst, mgpt-ctl
@@ -162,6 +164,7 @@ Umsetzung mit `httpx` direkt gegen die HTTP-APIs (wenige Abhängigkeiten, einhei
     - **Stufe 2:** Suche nach Bedeutung über pgvector. Offen ist, ob die Embeddings über OpenAI oder lokal über LM Studio entstehen.
     - **Stufe 3:** „Erinnerungen“, die das Modell vorschlägt. Gespeichert wird erst nach Bestätigung, je Mitglied einsehbar und löschbar, für Rollen schaltbar.
 20. **Scratchpad** (M13, geplant am 2026-10-10): Material aus allen Quellen sammeln und daraus ein belegtes Gesamtdokument erzeugen, dazu ein Kontextmenü im Chat und Prompt-Vorlagen (Abschnitt 8h).
+21. **Runner** (M14, geplant am 2026-10-10): ein Container auf dem Rechner des Browsers als Arbeitsumgebung für Modelle (Shell, Dateien, git, Python), vom Server per Token verwaltet, mit Sitzungen in Volumes und Zeitkontingent (Abschnitt 8i).
 
 Später (v2): Bilder als Eingabe an Modelle, Presets.
 
@@ -282,6 +285,20 @@ Im Scratchpad sammelt der Nutzer Material aus Chats, eigenen Dokumenten, dem Web
 - **Projekte:** Je Projekt gibt es ein Scratchpad, das die Projektfreigabe (RWUD) erbt. Dazu hat jedes Konto ein persönliches Scratchpad.
 - **Datenschutz:** Die Inhalte gehören dem Nutzer, Verwalter sehen nur Metadaten. Quellmaterial gilt als nicht vertrauenswürdig: Es wird markiert und gelangt nie in den System-Prompt. Bilder werden ohne Metadaten gespeichert.
 
+## 8i. Runner
+
+Der Runner gibt Modellen eine Arbeitsumgebung, ohne den Server zu belasten oder zu gefährden. Arbeitspakete: Implementierung M14.
+
+- **Wo:** ein Container auf dem Rechner, an dem der Browser läuft. Bevorzugt Podman rootless, Docker als Alternative.
+- **Verwaltung:** durch den MultiGPT-Webserver per Kopplungs-Token. Token je Konto, nur gehasht gespeichert, widerrufbar, mit Ablauf.
+- **Verbindung:** nur ausgehend vom Runner, als WebSocket über TLS zu nginx. Am Client gibt es keine offenen Ports.
+- **Für MultiGPT** ist der Runner ein MCP-Server über diesen Rückkanal (Transport `runner`). Werkzeuge: Shell, Dateien, git und Python, nur in `/workspace`. Einstufung, Rückfrage und MCP-Freigabe je Modell gelten wie bei jedem MCP-Server.
+- **Sitzungen:** Jede Sitzung lebt in einem eigenen Volume. Container sind wegwerfbar. Volumes werden im Web verwaltet: anlegen, Größe, sichern, löschen.
+- **Zeitkontingent:** neue Kontoart „Laufzeit“ im Kontenrahmen, Container-Minuten je Rolle bzw. Person und Monat. Hinweis bei 80 %, bei 100 % stoppt der Runner, das Volume bleibt erhalten.
+- **Rolle:** bestimmt Höchstwerte für CPU und RAM sowie Netz an/aus. Netz ist standardmäßig aus.
+- **Web-Oberfläche:** Status, Starten, Stoppen, Zurücksetzen, Logs und ein Audit-Log aller Befehle.
+- **Abgrenzung:** zuerst nur Werkzeuge, kein Coding-Agent im Container.
+
 ## 9. Sicherheit
 
 - API-Keys mit Fernet (`cryptography`) verschlüsselt in der DB. Schlüssel aus `FIELD_ENCRYPTION_KEY` in `.env`. Keys werden im Admin nie im Klartext angezeigt, nur die letzten 4 Zeichen.
@@ -334,6 +351,7 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 11. **Musik** (neu eingeplant am 2026-10-09, Umfang wird noch geklärt, siehe offene Frage 6).
 12. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
 13. **Scratchpad** (neu eingeplant am 2026-10-10, Abschnitt 8h, offene Frage 7): Kontextmenü im Chat und Prompt-Vorlagen (vorab lieferbar), Zitieren für alle Quellenarten, Sammeln mit Herkunft, Gliederung, belegtes Gesamtdokument mit Versionen und Prüfung, Export als Markdown, DOCX und PDF, Andocken an Projekte. *Abnahme: Aus einer Antwort, einem PDF-Abschnitt, einer Webquelle, einer Notiz und einem Bild entsteht ein Dokument mit geprüften Zitaten, Kurzbelegen im Stil des Kontos und einem Literaturverzeichnis ohne doppelte Quellen; eine unbelegte Aussage ist markiert; DOCX und PDF lassen sich öffnen.*
+14. **Runner** (neu eingeplant am 2026-10-10, Abschnitt 8i, offene Frage 8): Container auf dem Rechner des Browsers (Podman rootless, Docker als Alternative), gekoppelt per Token, Verbindung nur ausgehend, als MCP-Server mit Shell, Dateien, git und Python in `/workspace`, Sitzungen in eigenen Volumes, Zeitkontingent als Kontoart „Laufzeit“, Grenzen für CPU, RAM und Netz je Rolle, Verwaltung und Audit-Log im Web. *Abnahme: Ein Runner unter Podman rootless wird per Token gekoppelt; ein Modell legt in `/workspace` ein git-Repository an und führt Python aus, die Shell fragt vorher nach; nach Neustart ist das Volume unverändert; bei ausgeschöpftem Kontingent stoppt der Container und das Volume bleibt; ein widerrufener Token verbindet sich nicht mehr.*
 
 Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 eingerichtet, TLS spätestens vor Meilenstein 10.
 
@@ -380,6 +398,15 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
    - 7j: eigenes Kontextmenü standardmäßig an? Empfehlung: ja, abschaltbar.
    - 7k: Prompt-Vorlagen je Projekt teilen? Empfehlung: ja.
    - 7l: Crossref für manuelle Quellen? Empfehlung: ja, am vorhandenen Schalter.
+   
+   Details: Implementierung Abschnitt 6.
+8. **Runner (M14)**, jeweils mit Empfehlung:
+   - 8a: Rückkanal als eigener ASGI-Dienst mit WebSocket oder Long-Polling? Empfehlung: ASGI-Dienst hinter nginx.
+   - 8b: Wohin gehen Sicherungen der Volumes? Empfehlung: Archiv auf dem Client, Download optional.
+   - 8c: Welches Arbeits-Image? Empfehlung: Debian slim mit Python, git, numpy und sympy.
+   - 8d: Mehrere Runner je Konto? Empfehlung: ja, je Sitzung genau einer.
+   - 8e: Recht „Runner nutzen“ für Jugendliche und Gäste? Empfehlung: aus.
+   - 8f: Kontingent leer = unbegrenzt? Empfehlung: ja, wie bei den übrigen Budgets.
    
    Details: Implementierung Abschnitt 6.
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).
