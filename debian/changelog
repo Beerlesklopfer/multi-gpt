@@ -1,3 +1,24 @@
+multi-gpt (0.3.2) unstable; urgency=medium
+
+  * LOP: C31 (parallele Indexierung mehrerer Dokumente)
+  * Kontextmenü mit Mehrfach-Zitaten, Mitscrollen, Werkzeuge nach Bedarf (find_tools), Kontextschutz, Modellverwaltung für LM Studio
+  * Website: Roadmap mit Arbeitspaketen je Meilenstein
+  * LM Studio: Werkzeug-Schemas grammatiktauglich (ohne pattern, ohne riesige Längen-/Anzahlgrenzen, ohne $schema)
+  * LOP: A1/A9 erledigt, C21 (chat-latest Bild-Eingabe)
+  * LOP: A18 (SSE-Grenzen 2/Key, 4/Prozess, 30 min) bestätigt
+  * MCP-Server: Legacy-Transport HTTP+SSE (/mcp/sse, /mcp/messages) für ältere Clients
+  * Versehentlich ins Hauptverzeichnis kopierte Wiki-Seiten entfernen (Quelle bleibt docs/wiki/)
+  * Wiki: API-Keys, n8n, MCP-Server (M15, erscheint mit 0.3.2)
+  * API-Keys: ein Eingabefeld (einfügen oder Erzeugen, Anpassen aufklappbar), Kopierknöpfe im Feld, widerrufene Keys löschbar (Audit bleibt)
+  * API-Keys: Eingabefeld für den Key (einfügen oder „Erzeugen“), JSON/Befehl live, Kopieren auch über http
+  * API-Keys: Knopf „Key erzeugen und einsetzen“ in der Verbindungsvorlage
+  * API-Keys: kopierfertige MCP-Konfiguration (mcpServers-JSON und claude mcp add) für Claude, Cursor, n8n
+  * Doku: Liste offener Punkte (docs/LOP.md)
+  * Version: M15 erscheint als 0.3.2 (nicht 0.4.0)
+  * M15 Knoten: MultiGPT als MCP-Server mit API-Keys je Konto, CLI für Indexierung, Chat-Werkzeuge, n8n-Anbindung
+
+ -- Joerg Bernau <joerg@bernau.family>  Sun, 11 Oct 2026 00:49:29 +0200
+
 multi-gpt (0.3.1) unstable; urgency=medium
 
   * Test: sympy-Sandboxlauf mit mehr CPU-Zeit (unter Last der Suite)
