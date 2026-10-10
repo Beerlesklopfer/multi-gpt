@@ -13,7 +13,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |
 | A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |
 | A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |
-| A18 | MCP-SSE | Grenzen 2 Streams je Key, 4 je Prozess, 30 Min. Laufzeit passend? (Jeder Stream belegt einen von 8 Threads je Prozess.) | ja; bei Bedarf `MULTI_GPT_THREADS` erhöhen statt die Grenze |
 | A7 | Sandbox | Standard-CPU-Zeit 10 s → 20–30 s? (sympy-Test scheitert unter Last) | ja, 30 s |
 | A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |
 | A9 | Dev-DB | `guess_capabilities --apply` ausführen (gpt-5.5, gpt-oss, qwen3 → Werkzeuge)? | ja |
