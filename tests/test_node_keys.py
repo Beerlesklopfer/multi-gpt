@@ -190,3 +190,28 @@ def test_admin_shows_metadata_only(client):
     # Nicht-Verwalter: kein Zugang
     client.force_login(user)
     assert client.get(reverse("admin:node_apikey_changelist")).status_code == 403
+
+
+def test_page_offers_copyable_mcp_config(client):
+    import json
+
+    user = make_user("anna")
+    client.force_login(user)
+    url = reverse("api_keys")
+    response = client.post(url, {"name": "claude", "scopes": [S.DOCS_READ], "expires": "30"})
+    secret = response.context["created"].secret
+    cfg = json.loads(response.context["connect_created"]["json"])
+    server = cfg["mcpServers"]["multigpt"]
+    assert server["type"] == "http"
+    assert server["url"] == "http://testserver/mcp/"
+    assert server["headers"]["Authorization"] == f"Bearer {secret}"
+    assert (
+        f'--header "Authorization: Bearer {secret}"'
+        in (response.context["connect_created"]["claude_code"])
+    )
+    assert b'data-copy-target="mcp-json-new"' in response.content
+    # Ohne frisch angelegten Key nur der Platzhalter, nie ein Key.
+    again = client.get(url)
+    assert b"&lt;DEIN_API_KEY&gt;" in again.content
+    assert secret.encode() not in again.content
+    assert again.context["connect_created"] is None

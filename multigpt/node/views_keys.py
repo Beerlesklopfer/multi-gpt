@@ -10,12 +10,14 @@ widerrufen.
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -69,8 +71,35 @@ class ApiKeyForm(forms.Form):
         return timezone.now() + timedelta(days=int(value))
 
 
+PLACEHOLDER = "<DEIN_API_KEY>"
+SERVER_NAME = "multigpt"
+
+
+def connect_configs(mcp_url: str, secret: str = PLACEHOLDER) -> dict[str, str]:
+    """Kopierfertige Verbindungsdaten für MCP-Clients.
+
+    ``json``: „mcpServers“-Format (Claude Desktop, Claude Code ``.mcp.json``,
+    Cursor, n8n-Import); ``claude_code``: Befehl für ``claude mcp add``.
+    """
+    config = {
+        "mcpServers": {
+            SERVER_NAME: {
+                "type": "http",
+                "url": mcp_url,
+                "headers": {"Authorization": f"Bearer {secret}"},
+            }
+        }
+    }
+    command = (
+        f"claude mcp add --transport http {SERVER_NAME} {mcp_url} "
+        f'--header "Authorization: Bearer {secret}"'
+    )
+    return {"json": json.dumps(config, indent=2, ensure_ascii=False), "claude_code": command}
+
+
 def _context(request, form, created=None):
     user = request.user
+    mcp_url = request.build_absolute_uri(reverse("mcp"))
     own = ApiKey.objects.filter(owner=user).prefetch_related("collections")
     calls = (
         ApiCall.objects.filter(key__owner=user)
@@ -82,6 +111,8 @@ def _context(request, form, created=None):
         "keys": own,
         "calls": calls,
         "created": created,
+        "connect": connect_configs(mcp_url),
+        "connect_created": connect_configs(mcp_url, created.secret) if created else None,
         "can_create": bool(keys.role_scopes(user)),
         "scope_labels": {key: label for key, (label, _) in api_scopes.SCOPES.items()},
     }

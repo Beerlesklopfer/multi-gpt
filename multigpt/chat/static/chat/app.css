@@ -3718,3 +3718,14 @@ span.message-source-link {
     animation-duration: 2.5s;
   }
 }
+
+/* API-Keys: kopierfertige MCP-Verbindungsdaten */
+.connect-block pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  font-size: 0.85rem;
+}
