@@ -603,15 +603,38 @@ def _anchor(pattern: str) -> str:
     return f"^.*(?:{pattern}).*$"
 
 
+# Grenzen, ab denen llama.cpp (LM Studio) die Grammatik zu groß entfaltet
+# („failed to parse grammar“, z. B. n8n-MCP mit maxLength 300000). Größere
+# Werte fallen weg – prüfen muss ohnehin der Server des Werkzeugs.
+_GRAMMAR_MAX_LENGTH = 1000
+_GRAMMAR_MAX_ITEMS = 100
+_GRAMMAR_LIMITS = {
+    "maxLength": _GRAMMAR_MAX_LENGTH,
+    "minLength": _GRAMMAR_MAX_LENGTH,
+    "maxItems": _GRAMMAR_MAX_ITEMS,
+    "minItems": _GRAMMAR_MAX_ITEMS,
+}
+
+
 def anchored_patterns(schema):
-    """Kopie des Schemas mit verankerten ``pattern``-Angaben (für lokale Anbieter)."""
+    """Kopie des Schemas, die llama.cpp (LM Studio) in eine Grammatik umsetzen kann:
+    ohne ``pattern``, ohne zu große Längen- bzw. Anzahlgrenzen und ohne ``$schema``.
+    Die Werte prüft ohnehin der Server des Werkzeugs."""
     if isinstance(schema, dict):
-        return {
-            key: _anchor(value)
-            if key == "pattern" and isinstance(value, str)
-            else anchored_patterns(value)
-            for key, value in schema.items()
-        }
+        result = {}
+        for key, value in schema.items():
+            if key == "$schema":
+                continue
+            limit = _GRAMMAR_LIMITS.get(key)
+            if limit is not None and isinstance(value, int) and value > limit:
+                continue
+            if key == "pattern" and isinstance(value, str):
+                # Der Regex-Parser von llama.cpp kennt nur einen Teil der Syntax
+                # (z. B. kein „\\=“, Alternativen mit „.*“ scheitern): Muster weglassen.
+                continue
+            else:
+                result[key] = anchored_patterns(value)
+        return result
     if isinstance(schema, list):
         return [anchored_patterns(item) for item in schema]
     return schema

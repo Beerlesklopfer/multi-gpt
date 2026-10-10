@@ -72,13 +72,33 @@ def _sent_tool_schema(api_key):
         route = mock.post(f"{BASE}/chat/completions").mock(return_value=sse())
         list(adapter.stream("m", MESSAGES, tools=[spec]))
     body = json.loads(route.calls[0].request.content)
-    return body["tools"][0]["function"]["parameters"]["properties"]["entity"]["pattern"]
+    return body["tools"][0]["function"]["parameters"]["properties"]["entity"].get("pattern")
 
 
-def test_local_provider_gets_anchored_patterns():
-    # llama.cpp (LM Studio) lehnt unverankerte Muster ab: „Pattern must start with '^'“.
-    assert _sent_tool_schema("") == "^.*(?:light\\..+).*$"
+def test_local_provider_gets_no_patterns():
+    # llama.cpp (LM Studio) versteht nur einen Teil der Regex-Syntax: Muster weglassen.
+    assert _sent_tool_schema("") is None
 
 
 def test_cloud_provider_keeps_patterns():
     assert _sent_tool_schema("sk-x") == "light\\..+"
+
+
+def test_grammar_safe_schema_drops_huge_limits():
+    from multigpt.chat.providers.openai_compat import anchored_patterns
+
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "code": {"type": "string", "maxLength": 300000, "minLength": 1},
+            "tags": {"type": "array", "maxItems": 5000, "minItems": 1},
+            "pattern": {"type": "string", "maxLength": 50},
+        },
+    }
+    safe = anchored_patterns(schema)
+    assert "$schema" not in safe
+    assert safe["properties"]["code"] == {"type": "string", "minLength": 1}
+    assert safe["properties"]["tags"] == {"type": "array", "minItems": 1}
+    # Ein Parameter namens „pattern“ bleibt (Wert ist ein Schema, kein Muster).
+    assert safe["properties"]["pattern"] == {"type": "string", "maxLength": 50}
