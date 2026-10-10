@@ -22,6 +22,11 @@ urlpatterns = [
         views_keys.api_key_revoke,
         name="api_key_revoke",
     ),
+    path(
+        "einstellungen/api-keys/<int:pk>/loeschen/",
+        views_keys.api_key_delete,
+        name="api_key_delete",
+    ),
     # Mit und ohne Schrägstrich: Clients posten an die eingetragene Adresse, eine
     # Weiterleitung (APPEND_SLASH) würde den POST verlieren.
     path("mcp/", node_views.mcp_endpoint, name="mcp"),

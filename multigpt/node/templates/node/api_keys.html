@@ -16,47 +16,34 @@
       und <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/n8n">„n8n“</a>.
     </p>
 
-    {% if created %}
-      <div class="module api-key-created" role="status">
-        <h2 class="section-title">Neuer Key „{{ created.key.name }}“</h2>
-        <p><strong>Der Key wird nur dieses eine Mal angezeigt.</strong> Bitte jetzt kopieren und
-           im Programm eintragen; MultiGPT speichert ihn nur als Hash.</p>
-        <p>
-          <code id="new-api-key" class="family-password">{{ created.secret }}</code>
-          <button type="button" class="button button-small" data-copy-target="new-api-key" hidden>Kopieren</button>
-          <span class="hint" data-copy-done hidden role="status">Kopiert</span>
-        </p>
-        <h3>Verbinden – mit diesem Key</h3>
-        {% include "node/_connect.html" with cfg=connect_created suffix="new" %}
-      </div>
-    {% endif %}
 
     <section class="module" aria-labelledby="api-connect-title">
-      <h2 class="section-title" id="api-connect-title">MultiGPT mit einem MCP-Client verbinden</h2>
-      <p>Für Claude Desktop, Claude Code, Cursor, n8n und andere MCP-Clients. Beim Anlegen eines
-         Keys erscheint die Konfiguration mit eingesetztem Key; sonst <code>&lt;DEIN_API_KEY&gt;</code> ersetzen.</p>
-      <div class="connect-key" data-connect data-placeholder="{{ placeholder }}"
-           {% if can_create %}data-quick-url="{% url 'api_key_quick' %}"{% endif %}>
+      <h2 class="section-title" id="api-connect-title">Key anlegen und MCP-Client verbinden</h2>
+      <p>Für Claude Desktop, Claude Code, Cursor, n8n und andere MCP-Clients: vorhandenen Key ins Feld
+         einfügen oder einen neuen erzeugen – JSON und Befehl darunter übernehmen ihn sofort.</p>
+      <form method="post" action="{% url 'api_keys' %}" class="form connect-key" data-connect
+            data-placeholder="{{ placeholder }}"{% if can_create %} data-quick-url="{% url 'api_key_quick' %}"{% endif %}>
+        {% csrf_token %}
+        {% if can_create %}
+          <details class="connect-options"{% if form.errors %} open{% endif %}>
+            <summary>Anpassen: Name, Rechte, Gültigkeit, Sammlungen</summary>
+            {{ form.as_div }}
+          </details>
+        {% endif %}
         <label for="connect-key-input">API-Key</label>
         <div class="connect-key-field">
           <input id="connect-key-input" type="text" autocomplete="off" spellcheck="false"
+                 value="{{ created.secret|default:'' }}"
                  placeholder="mgpt_… einfügen{% if can_create %} oder erzeugen{% endif %}">
-          {% if can_create %}<button type="button" class="button" data-generate-key hidden>Erzeugen</button>{% endif %}
+          {% if can_create %}<button type="submit" class="button button-primary" data-generate-key>Erzeugen</button>{% endif %}
         </div>
         <p class="hint" data-connect-status role="status" aria-live="polite">
-          {% if can_create %}„Erzeugen“ legt einen Key mit allen Rechten deiner Rolle an, 90 Tage gültig, jederzeit widerrufbar. Er ist nur jetzt sichtbar.{% endif %}
+          {% if created %}Key „{{ created.key.name }}“ erzeugt und eingesetzt – nur jetzt sichtbar, bitte kopieren.
+          {% elif can_create %}„Erzeugen“ legt einen Key an (Standard: alle Rechte deiner Rolle, 90 Tage gültig; anpassbar oben), jederzeit widerrufbar. Er ist nur einmal sichtbar.
+          {% else %}Deine Rolle erlaubt keine API-Keys. Ein Verwalter kann das Recht „API-Keys/MCP-Zugang“ für die Rolle einschalten.{% endif %}
         </p>
-        {% csrf_token %}
-      </div>
-      {% if can_create %}
-        <noscript>
-          <form method="post" action="{% url 'api_keys' %}">{% csrf_token %}
-            <input type="hidden" name="quick" value="1">
-            <button type="submit" class="button">Key erzeugen und einsetzen</button>
-          </form>
-        </noscript>
-      {% endif %}
-      {% include "node/_connect.html" with cfg=connect suffix="template" %}
+      </form>
+      {% include "node/_connect.html" with cfg=connect_shown tpl=connect suffix="template" %}
     </section>
 
     <h2 class="section-title" id="api-keys-list-title">Deine Keys</h2>
@@ -86,6 +73,11 @@
                       {% csrf_token %}
                       <button type="submit" class="button button-small button-danger">Widerrufen</button>
                     </form>
+                  {% else %}
+                    <form method="post" action="{% url 'api_key_delete' key.pk %}" data-confirm="Key „{{ key.name }}“ endgültig löschen? Seine Aufrufe bleiben im Protokoll.">
+                      {% csrf_token %}
+                      <button type="submit" class="button button-small">Löschen</button>
+                    </form>
                   {% endif %}
                 </td>
               </tr>
@@ -95,18 +87,6 @@
       </div>
     {% else %}
       <p>Noch keine Keys.</p>
-    {% endif %}
-
-    <h2 class="section-title">Neuen Key anlegen</h2>
-    {% if can_create %}
-      <form method="post" action="{% url 'api_keys' %}" class="form">
-        {% csrf_token %}
-        {{ form.as_div }}
-        <button type="submit" class="button button-primary">Key anlegen</button>
-      </form>
-    {% else %}
-      <p class="hint">Deine Rolle erlaubt keine API-Keys. Ein Verwalter kann das Recht
-        „API-Keys/MCP-Zugang“ für die Rolle einschalten.</p>
     {% endif %}
 
     <h2 class="section-title" id="api-calls-title">Letzte Aufrufe</h2>
@@ -122,7 +102,7 @@
             {% for call in calls %}
               <tr>
                 <td>{{ call.created|date:"d.m.Y H:i:s" }}</td>
-                <td>{{ call.key.name }}</td>
+                <td>{% if call.key %}{{ call.key.name }}{% else %}<em>gelöschter Key</em>{% endif %}</td>
                 <td><code>{{ call.method|default:"–" }}</code></td>
                 <td>{{ call.tool|default:"–" }}</td>
                 <td>{{ call.get_status_display }}</td>

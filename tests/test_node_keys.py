@@ -209,7 +209,8 @@ def test_page_offers_copyable_mcp_config(client):
         f'--header "Authorization: Bearer {secret}"'
         in (response.context["connect_created"]["claude_code"])
     )
-    assert b'data-copy-target="mcp-json-new"' in response.content
+    assert b'data-connect-copy="mcp-json-template"' in response.content
+    assert f'value="{secret}"'.encode() in response.content
     # Ohne frisch angelegten Key nur der Platzhalter, nie ein Key.
     again = client.get(url)
     assert b"&lt;DEIN_API_KEY&gt;" in again.content
@@ -223,8 +224,8 @@ def test_quick_button_creates_key_with_role_scopes(client):
     user = make_user("anna")
     client.force_login(user)
     url = reverse("api_keys")
-    assert b'name="quick"' in client.get(url).content
-    response = client.post(url, {"quick": "1"})
+    assert b'id="connect-key-input"' in client.get(url).content
+    response = client.post(url, {})  # „Erzeugen“ ohne Anpassungen
     key = ApiKey.objects.get()
     assert key.name.startswith("MCP-Client ")
     assert set(key.scopes) == set(keys.role_scopes(user))
@@ -237,7 +238,7 @@ def test_quick_button_creates_key_with_role_scopes(client):
 def test_quick_button_needs_role_right(client):
     user = make_user("gast", role_key="guest")
     client.force_login(user)
-    response = client.post(reverse("api_keys"), {"quick": "1"})
+    response = client.post(reverse("api_keys"), {})
     assert response.status_code == 302
     assert not ApiKey.objects.exists()
 
@@ -263,3 +264,28 @@ def test_generate_endpoint_requires_role_and_post(client):
     assert client.get(reverse("api_key_quick")).status_code == 405
     assert client.post(reverse("api_key_quick")).status_code == 403
     assert not ApiKey.objects.exists()
+
+
+def test_delete_only_after_revoke_keeps_audit(client):
+    user = make_user("anna")
+    client.force_login(user)
+    key, _secret = make_key(user)
+    ApiCall.objects.create(key=key, method="tools/list", status=ApiCall.Status.OK)
+    url = reverse("api_key_delete", args=[key.pk])
+    client.post(url)
+    assert ApiKey.objects.filter(pk=key.pk).exists()  # aktiv: erst widerrufen
+    client.post(reverse("api_key_revoke", args=[key.pk]))
+    client.post(url)
+    assert not ApiKey.objects.filter(pk=key.pk).exists()
+    call = ApiCall.objects.get()
+    assert call.key is None
+    # Aufrufe bleiben im Audit-Log (Verwalter); die Kontoliste filtert über den Key-Besitzer.
+
+
+def test_delete_foreign_key_404(client):
+    key, _ = make_key(make_user("anna"))
+    key.active = False
+    key.save()
+    client.force_login(make_user("ben"))
+    assert client.post(reverse("api_key_delete", args=[key.pk])).status_code == 404
+    assert ApiKey.objects.filter(pk=key.pk).exists()

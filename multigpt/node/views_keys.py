@@ -41,12 +41,19 @@ class ApiKeyForm(forms.Form):
     name = forms.CharField(
         label="Name",
         max_length=keys.MAX_NAME,
-        help_text="Wofür der Key ist, z. B. „n8n NAS-Ordner“.",
+        required=False,
+        help_text="Wofür der Key ist, z. B. „n8n NAS-Ordner“. Leer: „MCP-Client <Datum>“.",
     )
     scopes = forms.MultipleChoiceField(
-        label="Rechte", widget=forms.CheckboxSelectMultiple, choices=()
+        label="Rechte",
+        widget=forms.CheckboxSelectMultiple,
+        choices=(),
+        required=False,
+        help_text="Leer: alle Rechte deiner Rolle.",
     )
-    expires = forms.ChoiceField(label="Gültig", choices=EXPIRY_CHOICES, initial="90")
+    expires = forms.ChoiceField(
+        label="Gültig", choices=EXPIRY_CHOICES, initial="90", required=False
+    )
     collections = forms.ModelMultipleChoiceField(
         label="Nur diese Sammlungen",
         queryset=None,
@@ -64,9 +71,21 @@ class ApiKeyForm(forms.Form):
             if key in allowed
         ]
         self.fields["collections"].queryset = readable_collections(user).order_by("name", "pk")
+        self.fields["scopes"].initial = [key for key, _ in self.fields["scopes"].choices]
+
+    def create(self, user):
+        """Key nach den Formularangaben, mit Standards für leere Felder."""
+        data = self.cleaned_data
+        return keys.create_key(
+            user,
+            data["name"] or f"MCP-Client {timezone.localtime():%d.%m.%Y %H:%M}",
+            data["scopes"] or sorted(keys.role_scopes(user)),
+            expires_at=self.expires_at(),
+            collections=data["collections"],
+        )
 
     def expires_at(self):
-        value = self.cleaned_data["expires"]
+        value = self.cleaned_data["expires"] or str(QUICK_DAYS)
         if value == "never":
             return None
         return timezone.now() + timedelta(days=int(value))
@@ -116,6 +135,7 @@ def _context(request, form, created=None):
         "connect": connect_configs(mcp_url),
         "placeholder": PLACEHOLDER,
         "connect_created": connect_configs(mcp_url, created.secret) if created else None,
+        "connect_shown": connect_configs(mcp_url, created.secret if created else PLACEHOLDER),
         "can_create": bool(keys.role_scopes(user)),
         "scope_labels": {key: label for key, (label, _) in api_scopes.SCOPES.items()},
     }
@@ -125,26 +145,15 @@ def _context(request, form, created=None):
 @login_required
 def api_keys_page(request):
     user = request.user
-    form = ApiKeyForm(user, request.POST or None)
+    form = ApiKeyForm(user, request.POST if request.method == "POST" else None)
     created = None
     if request.method == "POST":
         if not keys.role_scopes(user):
             messages.error(request, "Dieses Konto darf keine API-Keys anlegen.")
             return redirect("api_keys")
-        if request.POST.get("quick"):
-            # Knopf „Key erzeugen“ in der Verbindungsvorlage: alle Rechte der Rolle,
-            # 90 Tage gültig, Name mit Datum – danach ohne Formular einsatzbereit.
-            form = ApiKeyForm(user)
-            created = _quick_key(user)
-        elif form.is_valid():
+        if form.is_valid():
             try:
-                created = keys.create_key(
-                    user,
-                    form.cleaned_data["name"],
-                    form.cleaned_data["scopes"],
-                    expires_at=form.expires_at(),
-                    collections=form.cleaned_data["collections"],
-                )
+                created = form.create(user)
             except ValueError as exc:
                 form.add_error(None, str(exc))
             else:
@@ -154,26 +163,38 @@ def api_keys_page(request):
     return response
 
 
-def _quick_key(user):
-    """Key mit allen Rechten der Rolle, 90 Tage gültig, Name mit Datum."""
-    return keys.create_key(
-        user,
-        f"MCP-Client {timezone.localtime():%d.%m.%Y %H:%M}",
-        sorted(keys.role_scopes(user)),
-        expires_at=timezone.now() + timedelta(days=QUICK_DAYS),
-    )
-
-
 @require_POST
 @login_required
 def api_key_quick(request):
     """Knopf „Erzeugen“ im Key-Eingabefeld (node_connect.js): Key als JSON, einmalig."""
     if not keys.role_scopes(request.user):
         return JsonResponse({"error": "Dieses Konto darf keine API-Keys anlegen."}, status=403)
-    created = _quick_key(request.user)
+    form = ApiKeyForm(request.user, request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"error": "Bitte die Angaben prüfen.", "fields": form.errors}, status=400
+        )
+    try:
+        created = form.create(request.user)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     response = JsonResponse({"secret": created.secret, "name": created.key.name}, status=201)
     response["Cache-Control"] = "no-store"
     return response
+
+
+@require_POST
+@login_required
+def api_key_delete(request, pk: int):
+    """Widerrufenen bzw. abgelaufenen Key entfernen; Aufrufe bleiben im Audit-Log."""
+    key = get_object_or_404(ApiKey, pk=pk, owner=request.user)
+    if key.active and not key.is_expired():
+        messages.error(request, "Bitte den Key zuerst widerrufen.")
+    else:
+        name = key.name
+        key.delete()
+        messages.success(request, f"Key „{name}“ gelöscht.")
+    return redirect("api_keys")
 
 
 @require_POST

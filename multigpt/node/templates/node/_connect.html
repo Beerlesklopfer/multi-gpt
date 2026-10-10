@@ -1,15 +1,22 @@
 {# Kopierfertige MCP-Verbindungsdaten (views_keys.connect_configs). Text nur über Auto-Escaping.
-   node_connect.js setzt den Key aus dem Eingabefeld ein (data-template) und kopiert. #}
+   node_connect.js setzt den Key aus dem Eingabefeld ein (data-template) und kopiert;
+   der Kopierknopf sitzt wie im Chat im Feld (oben rechts). #}
 <p><strong>JSON</strong> (<code>mcpServers</code> – Claude Desktop: <code>claude_desktop_config.json</code>,
    Claude Code: <code>.mcp.json</code>, Cursor, n8n „MCP-Server importieren“):</p>
 <div class="connect-block">
-  <pre id="mcp-json-{{ suffix }}" data-template="{{ cfg.json }}"><code>{{ cfg.json }}</code></pre>
-  <button type="button" class="button button-small" data-connect-copy="mcp-json-{{ suffix }}">JSON kopieren</button>
-  <span class="hint" data-copy-done hidden role="status"></span>
+  <pre id="mcp-json-{{ suffix }}" data-template="{{ tpl.json }}"><code>{{ cfg.json }}</code></pre>
+  <button type="button" class="icon-button connect-copy" data-connect-copy="mcp-json-{{ suffix }}"
+          aria-label="JSON kopieren" title="JSON kopieren">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+  </button>
+  <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
 </div>
 <p><strong>Claude Code</strong> (Terminal):</p>
 <div class="connect-block">
-  <pre id="mcp-cmd-{{ suffix }}" data-template="{{ cfg.claude_code }}"><code>{{ cfg.claude_code }}</code></pre>
-  <button type="button" class="button button-small" data-connect-copy="mcp-cmd-{{ suffix }}">Befehl kopieren</button>
-  <span class="hint" data-copy-done hidden role="status"></span>
+  <pre id="mcp-cmd-{{ suffix }}" data-template="{{ tpl.claude_code }}"><code>{{ cfg.claude_code }}</code></pre>
+  <button type="button" class="icon-button connect-copy" data-connect-copy="mcp-cmd-{{ suffix }}"
+          aria-label="Befehl kopieren" title="Befehl kopieren">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+  </button>
+  <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
 </div>

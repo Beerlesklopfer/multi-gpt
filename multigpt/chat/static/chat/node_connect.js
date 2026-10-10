@@ -54,23 +54,27 @@
     input.addEventListener("input", render);
     input.addEventListener("paste", () => window.setTimeout(render, 0));
 
-    const generate = box.querySelector("[data-generate-key]");
-    if (generate && box.dataset.quickUrl) {
-      generate.hidden = false;
-      generate.addEventListener("click", async () => {
+    // „Erzeugen“: Formular (Anpassen-Angaben) per fetch abschicken, Key ins Feld setzen.
+    // Ohne JavaScript schickt das Formular normal ab und die Seite setzt den Key ein.
+    if (box.dataset.quickUrl) {
+      const generate = box.querySelector("[data-generate-key]");
+      box.addEventListener("submit", async (event) => {
+        event.preventDefault();
         generate.disabled = true;
         try {
-          const token = box.querySelector("input[name=csrfmiddlewaretoken]").value;
+          const body = new FormData(box);
+          const token = body.get("csrfmiddlewaretoken");
           const response = await fetch(box.dataset.quickUrl, {
             method: "POST",
-            headers: { "X-CSRFToken": token, "Accept": "application/json" },
+            headers: { "X-CSRFToken": token, Accept: "application/json" },
             credentials: "same-origin",
+            body,
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "Fehler");
           input.value = data.secret;
           render();
-          status.textContent = `Key „${data.name}“ erzeugt und eingesetzt – nur jetzt sichtbar, bitte kopieren.`;
+          status.textContent = `Key „${data.name}“ erzeugt und eingesetzt – nur jetzt sichtbar, bitte kopieren. Die Liste „Deine Keys“ zeigt ihn nach dem Neuladen.`;
         } catch (e) {
           status.textContent = `Key konnte nicht erzeugt werden: ${e.message}`;
         } finally {
@@ -78,5 +82,6 @@
         }
       });
     }
+    if (input.value) render();
   });
 })();
