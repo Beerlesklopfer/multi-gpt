@@ -175,6 +175,11 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
     "loggers": {
         "django.db.backends": {"level": "WARNING"},
+        # httpx/httpcore loggen auf INFO jede Anfrage mit voller URL (Websuche,
+        # Seitenabruf, Anbieter) – Logs enthalten nie URLs, also erst ab WARNING.
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
+        "mcp": {"level": "WARNING"},
     },
 }
 
