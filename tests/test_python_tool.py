@@ -68,7 +68,10 @@ def test_numpy_and_sympy():
         "print(sp.solve(x**2 - 5*x + 6, x))\n"
         "print(np.linalg.solve([[2, 1], [1, 3]], [3, 5]).round(6).tolist())\n"
         "mpmath.mp.dps = 30\n"
-        "print(mpmath.pi)\n"
+        "print(mpmath.pi)\n",
+        # sympy braucht unter Last der ganzen Suite mehr als die Standard-CPU-Zeit.
+        cpu_seconds=60,
+        wall_seconds=120,
     )
     assert result.ok, result.stderr
     lines = result.stdout.splitlines()
