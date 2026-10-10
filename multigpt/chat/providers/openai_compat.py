@@ -223,6 +223,16 @@ class OpenAICompatAdapter(ProviderAdapter):
         # Nur Anbieter-ID und technische Kurzinfo, keine Keys oder Inhalte.
         logger.warning("Anbieter %s: %s (%s)", self.provider.pk, what, detail)
 
+    def _stream_error(self, parser: _ChunkParser) -> Error:
+        """Fehler mitten im Stream: bei Anbietern ohne Key (LM Studio) mit dessen Text."""
+        self._log("Fehler im Stream", parser.error_code)
+        text = parser.error_text
+        if (self.provider.api_key or "").strip() or not text:
+            return Error(MSG_STREAM_ERROR, retryable=True)
+        if _is_context_error(text):
+            return Error(f"{MSG_CONTEXT_TOO_SMALL} LM Studio meldet: {text}", retryable=False)
+        return Error(f"{MSG_STREAM_ERROR} LM Studio meldet: {text}", retryable=True)
+
     # --- Modellliste ---------------------------------------------------------
 
     def _fetch_models(self, timeout: httpx.Timeout | float) -> list[str]:
@@ -545,6 +555,8 @@ class OpenAICompatAdapter(ProviderAdapter):
                     for event in parser.feed(line):
                         if isinstance(event, Delta):
                             started = True
+                        elif isinstance(event, Error) and event.message == MSG_STREAM_ERROR:
+                            event = self._stream_error(parser)
                         yield event
                     if parser.finished:
                         return
@@ -552,6 +564,28 @@ class OpenAICompatAdapter(ProviderAdapter):
         except Exception as exc:
             self._log("Stream", type(exc).__name__)
             yield exception_to_error(exc, started=started)
+
+
+MSG_CONTEXT_TOO_SMALL = (
+    "Der Verlauf passt nicht in den Kontext des Modells (inklusive Werkzeugbeschreibungen). "
+    "In LM Studio das Modell mit größerer Kontextlänge laden (z. B. 16k oder 32k) oder "
+    "den Chat kürzen bzw. Werkzeuge abschalten."
+)
+_CONTEXT_WORDS = (
+    "context length",
+    "context window",
+    "context size",
+    "n_ctx",
+    "too many tokens",
+    "exceeds the context",
+    "context overflow",
+    "maximum context",
+)
+
+
+def _is_context_error(text: str) -> bool:
+    lower = text.lower()
+    return any(word in lower for word in _CONTEXT_WORDS)
 
 
 def _is_moderation(detail: str) -> bool:
@@ -749,6 +783,14 @@ class _ChunkParser:
         # Werkzeugaufrufe kommen in Stücken, je ``index`` (Reihenfolge des Eintreffens).
         self.tool_calls: list[dict] = []
         self._slots: dict[int, int] = {}
+        # Fehler mitten im Stream: Kurzcode fürs Log, Text nur für Anbieter ohne Key.
+        self.error_code = "-"
+        self.error_text = ""
+
+    def _remember_error(self, chunk: dict) -> None:
+        raw = json.dumps(chunk).encode()
+        self.error_code = _error_code(raw)
+        self.error_text = _provider_text(raw)
 
     def feed(self, line: str) -> Iterator[Event]:
         line = line.rstrip("\r")
@@ -770,6 +812,7 @@ class _ChunkParser:
             return
         if chunk.get("error"):
             self.finished = True
+            self._remember_error(chunk)
             yield Error(MSG_STREAM_ERROR, retryable=True)
             return
         usage = chunk.get("usage")
