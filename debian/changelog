@@ -1,3 +1,19 @@
+multi-gpt (0.3.1) unstable; urgency=medium
+
+  * Test: sympy-Sandboxlauf mit mehr CPU-Zeit (unter Last der Suite)
+  * Chat: fester Rollen-Prompt sichtbar, Denktiefe (reasoning effort) je Chat/Projekt/global
+  * Chat: Grundregeln im System-Prompt sichtbar, Kreativität (Temperatur) je Chat/Projekt/global, Standard 0,3
+  * Website: Stand 0.3.0/0.3.1
+  * Planung: M14 Runner
+  * Werkzeug create_pdf: Arbeitsblätter (Lineaturen, Mathe, Sachunterricht), Text-PDFs, PDF aus run_python
+  * Chat: Eingabefeld bleibt unten (sr-only im Scrollbereich), Hauptart OCR für olmOCR, Hinweis bei Werkzeugaufruf als Text
+  * LM Studio: pattern in Werkzeug-Schemas verankern (llama.cpp verlangt ^…$, sonst HTTP 400 bei MCP-Werkzeugen)
+  * Logs: httpx/httpcore/mcp erst ab WARNING (keine URLs von Websuche und Seitenabruf im Journal)
+  * LM Studio: Ursache bei Fehlern mitten im Stream anzeigen, eigener Hinweis bei zu kleinem Kontext
+  * Chat: drehender Kreis neben dem Modellnamen, solange die Antwort läuft
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 11:49:47 +0200
+
 multi-gpt (0.3.0) unstable; urgency=medium
 
   * Funktionen für 0.3.0
