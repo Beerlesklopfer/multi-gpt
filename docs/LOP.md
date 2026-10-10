@@ -7,7 +7,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 
 | Nr. | Thema | Frage | Empfehlung |
 |---|---|---|---|
-| A1 | Release | 0.3.2 (M15) bauen und pushen? | ja |
 | A2 | n8n „Pflicht“ | Zusätzlich Warnung in der Statusleiste für Verwalter, wenn n8n offline ist? | ja, als Warnung |
 | A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein |
 | A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |
@@ -15,7 +14,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |
 | A7 | Sandbox | Standard-CPU-Zeit 10 s → 20–30 s? (sympy-Test scheitert unter Last) | ja, 30 s |
 | A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |
-| A9 | Dev-DB | `guess_capabilities --apply` ausführen (gpt-5.5, gpt-oss, qwen3 → Werkzeuge)? | ja |
 | A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update |
 | A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf |
 | A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden |
@@ -58,6 +56,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C18 | MCP-SSE: Der SDK-Client liest SSE-Events nur bis 1 MB; `get_file` mit großen Dateien (base64) scheitert dort über SSE – dann Streamable HTTP nutzen. |
 | C19 | MCP-SSE: Ein Client-Abbruch während eines laufenden `tools/call` (z. B. `ask`) bricht das Werkzeug nicht ab (der POST-Thread merkt die Trennung des Streams nicht). |
 | C20 | MCP-SSE: Trennt der Client, merkt der Server das erst beim nächsten Keepalive (bis 15 s); bis dahin zählt der Stream gegen die Grenzen. |
+| C21 | Erkennungsliste: `chat-latest` (gpt-5-chat) gilt als ohne Bild-Eingabe; laut OpenAI versteht es Bilder (auf der Dev-DB von Hand korrigiert). |
 
 ## D. Geplante Meilensteine
 
