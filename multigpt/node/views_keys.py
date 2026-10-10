@@ -72,6 +72,7 @@ class ApiKeyForm(forms.Form):
 
 
 PLACEHOLDER = "<DEIN_API_KEY>"
+QUICK_DAYS = 90
 SERVER_NAME = "multigpt"
 
 
@@ -128,7 +129,17 @@ def api_keys_page(request):
         if not keys.role_scopes(user):
             messages.error(request, "Dieses Konto darf keine API-Keys anlegen.")
             return redirect("api_keys")
-        if form.is_valid():
+        if request.POST.get("quick"):
+            # Knopf „Key erzeugen“ in der Verbindungsvorlage: alle Rechte der Rolle,
+            # 90 Tage gültig, Name mit Datum – danach ohne Formular einsatzbereit.
+            form = ApiKeyForm(user)
+            created = keys.create_key(
+                user,
+                f"MCP-Client {timezone.localtime():%d.%m.%Y %H:%M}",
+                sorted(keys.role_scopes(user)),
+                expires_at=timezone.now() + timedelta(days=QUICK_DAYS),
+            )
+        elif form.is_valid():
             try:
                 created = keys.create_key(
                     user,

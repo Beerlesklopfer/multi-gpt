@@ -215,3 +215,28 @@ def test_page_offers_copyable_mcp_config(client):
     assert b"&lt;DEIN_API_KEY&gt;" in again.content
     assert secret.encode() not in again.content
     assert again.context["connect_created"] is None
+
+
+def test_quick_button_creates_key_with_role_scopes(client):
+    import json
+
+    user = make_user("anna")
+    client.force_login(user)
+    url = reverse("api_keys")
+    assert b'name="quick"' in client.get(url).content
+    response = client.post(url, {"quick": "1"})
+    key = ApiKey.objects.get()
+    assert key.name.startswith("MCP-Client ")
+    assert set(key.scopes) == set(keys.role_scopes(user))
+    assert key.expires_at > timezone.now() + dt.timedelta(days=89)
+    secret = response.context["created"].secret
+    cfg = json.loads(response.context["connect_created"]["json"])
+    assert cfg["mcpServers"]["multigpt"]["headers"]["Authorization"] == f"Bearer {secret}"
+
+
+def test_quick_button_needs_role_right(client):
+    user = make_user("gast", role_key="guest")
+    client.force_login(user)
+    response = client.post(reverse("api_keys"), {"quick": "1"})
+    assert response.status_code == 302
+    assert not ApiKey.objects.exists()

@@ -35,6 +35,14 @@
       <h2 class="section-title" id="api-connect-title">MultiGPT mit einem MCP-Client verbinden</h2>
       <p>Für Claude Desktop, Claude Code, Cursor, n8n und andere MCP-Clients. Beim Anlegen eines
          Keys erscheint die Konfiguration mit eingesetztem Key; sonst <code>&lt;DEIN_API_KEY&gt;</code> ersetzen.</p>
+      {% if can_create %}
+        <form method="post" action="{% url 'api_keys' %}" class="connect-quick">
+          {% csrf_token %}
+          <input type="hidden" name="quick" value="1">
+          <button type="submit" class="button button-primary">Key erzeugen und einsetzen</button>
+          <span class="hint">Alle Rechte deiner Rolle, 90 Tage gültig; jederzeit widerrufbar.</span>
+        </form>
+      {% endif %}
       {% include "node/_connect.html" with cfg=connect suffix="template" %}
     </section>
 
