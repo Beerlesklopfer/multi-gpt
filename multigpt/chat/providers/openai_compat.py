@@ -502,7 +502,11 @@ class OpenAICompatAdapter(ProviderAdapter):
                     "function": {
                         "name": t.name,
                         "description": t.description,
-                        "parameters": tool_schema(t),
+                        "parameters": (
+                            anchored_patterns(tool_schema(t))
+                            if not (self.provider.api_key or "").strip()
+                            else tool_schema(t)
+                        ),
                     },
                 }
                 for t in tools
@@ -581,6 +585,34 @@ _CONTEXT_WORDS = (
     "context overflow",
     "maximum context",
 )
+
+
+def _anchor(pattern: str) -> str:
+    """JSON-Schema-``pattern`` gilt unverankert (Suche). llama.cpp (LM Studio) wandelt
+    Schemas in eine Grammatik und verlangt ``^…$`` – gleichbedeutend verankern."""
+    start = pattern.startswith("^")
+    end = pattern.endswith("$") and not pattern.endswith("\\$")
+    if start and end:
+        return pattern
+    if start:
+        return f"{pattern}.*$"
+    if end:
+        return f"^.*{pattern}"
+    return f"^.*(?:{pattern}).*$"
+
+
+def anchored_patterns(schema):
+    """Kopie des Schemas mit verankerten ``pattern``-Angaben (für lokale Anbieter)."""
+    if isinstance(schema, dict):
+        return {
+            key: _anchor(value)
+            if key == "pattern" and isinstance(value, str)
+            else anchored_patterns(value)
+            for key, value in schema.items()
+        }
+    if isinstance(schema, list):
+        return [anchored_patterns(item) for item in schema]
+    return schema
 
 
 def _is_context_error(text: str) -> bool:

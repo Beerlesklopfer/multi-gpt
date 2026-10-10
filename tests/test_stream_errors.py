@@ -55,3 +55,30 @@ def test_local_other_error_shows_text():
 def test_provider_with_key_stays_generic(message):
     (error,) = run("sk-geheim", message)
     assert error.message == MSG_STREAM_ERROR
+
+
+def _sent_tool_schema(api_key):
+    from multigpt.chat.providers.base import ToolSpec
+
+    spec = ToolSpec(
+        "set_light",
+        "Licht schalten",
+        {"type": "object", "properties": {"entity": {"type": "string", "pattern": "light\\..+"}}},
+    )
+    adapter = OpenAICompatAdapter(
+        Provider(name="P", kind="openai_compat", base_url=BASE, api_key=api_key)
+    )
+    with respx.mock() as mock:
+        route = mock.post(f"{BASE}/chat/completions").mock(return_value=sse())
+        list(adapter.stream("m", MESSAGES, tools=[spec]))
+    body = json.loads(route.calls[0].request.content)
+    return body["tools"][0]["function"]["parameters"]["properties"]["entity"]["pattern"]
+
+
+def test_local_provider_gets_anchored_patterns():
+    # llama.cpp (LM Studio) lehnt unverankerte Muster ab: „Pattern must start with '^'“.
+    assert _sent_tool_schema("") == "^.*(?:light\\..+).*$"
+
+
+def test_cloud_provider_keeps_patterns():
+    assert _sent_tool_schema("sk-x") == "light\\..+"
