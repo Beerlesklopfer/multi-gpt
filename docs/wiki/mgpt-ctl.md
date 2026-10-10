@@ -23,6 +23,57 @@ Das Paket migriert die Datenbank bei jedem Update selbst (postinst). Von Hand n�
 
 ## Befehle von MultiGPT
 
+### `index` – Indexierung beobachten und steuern
+
+Zeigt Läufe (Hochladen, Neu-Indexierung, Verzeichnis einlesen), die Warteschlange des Workers und
+steuert sie. Der Betrieb handelt dabei wie ein Verwalter; nur `upload` arbeitet im Namen eines
+Kontos und prüft dessen Rechte wie die Oberfläche.
+
+```bash
+sudo mgpt-ctl index status                    # offene und zuletzt beendete Läufe, Worker, Aufträge
+sudo mgpt-ctl index status --follow           # laufend aktualisieren wie top (Strg+C beendet)
+sudo mgpt-ctl index status --follow --run 12  # einen Lauf verfolgen, endet mit dem Lauf
+sudo mgpt-ctl index runs [--open] [--limit 50]
+sudo mgpt-ctl index cancel 12                 # Lauf abbrechen
+sudo mgpt-ctl index sources                   # Verzeichnisquellen mit ID
+sudo mgpt-ctl index scan 3                    # Verzeichnisquelle 3 jetzt einlesen (Crawler)
+sudo mgpt-ctl index upload Haus a.pdf b.docx --as anna   # Dateien in Annas Sammlung „Haus“
+sudo mgpt-ctl index reindex [--collection 3] [--document 42] [--errors-only]
+```
+
+| Unterbefehl / Option | Bedeutung |
+|---|---|
+| `status --follow` / `-f` | Anzeige alle `--interval` Sekunden (Standard 2) neu, bis Strg+C. |
+| `status --run <ID>` | Zähler eines Laufs (Dateien gefunden/geprüft/neu/geändert/entfernt, Dokumente eingereiht/fertig/Fehler/abgebrochen, Dauer). |
+| `runs --open` | Nur laufende bzw. abbrechende Läufe. |
+| `cancel <ID>` | Wartende Aufträge entfallen, laufende enden nach dem aktuellen Schritt; Indexiertes bleibt. |
+| `scan <ID>` | Wie „Jetzt einlesen“ im Admin. Läuft schon ein Lauf der Quelle, bleibt es bei diesem. |
+| `upload <Sammlung> <Dateien…> --as <Konto>` | Sammlung per ID oder Name (aus Sicht des Kontos); Typ- und Größenprüfung wie in der Oberfläche. |
+| `reindex` | Wie der Befehl `reindex`, die Aufträge hängen an einem Lauf. |
+
+Die Ausgabe enthält Namen von Sammlungen und Konten, aber keine Dateiinhalte und keine
+Serverpfade von Dokumenten.
+
+### `apikey` – API-Keys für den MCP-Server
+
+Keys, mit denen andere Programme (z. B. n8n) MultiGPT steuern; siehe [API-Keys](API-Keys).
+
+```bash
+sudo mgpt-ctl apikey create anna --name "n8n NAS" --scopes docs.read,docs.write,index.control
+sudo mgpt-ctl apikey create anna --name "Bericht" --scopes chat.ask,docs.read --expires 2027-06-30 --collection 3
+sudo mgpt-ctl apikey list [anna]
+sudo mgpt-ctl apikey revoke mgpt_ab12cd34ef     # oder die ID aus „list“
+```
+
+| Option | Bedeutung |
+|---|---|
+| `--scopes` | Kommagetrennt: `chat.ask`, `docs.read`, `docs.write`, `index.control`, `files.read`, `tools.run`, `usage.read` oder `all`. Höchstens, was die Rolle erlaubt. |
+| `--expires` | `90d` (Standard), Anzahl Tage, Datum `JJJJ-MM-TT` (bis Tagesende) oder `never`. |
+| `--collection <ID>` | Key nur für diese Sammlung(en), mehrfach möglich. |
+
+`create` gibt den Key **einmal** auf stdout aus (Hinweise auf stderr), z. B.
+`sudo mgpt-ctl apikey create … > key.txt`. Gespeichert wird nur ein Hash.
+
 ### `guess_capabilities` – Fähigkeiten der Modelle erkennen
 
 Erkennt je KI-Modell die Hauptart (Chat, Bilderzeugung, Embedding, Spracherkennung,
@@ -64,8 +115,10 @@ sudo mgpt-ctl sync_models --provider OpenAI
 
 ### `reindex` – Dokumente neu indexieren
 
-Legt Indexierungsaufträge an; der Worker (`multi-gpt-worker.service`) arbeitet sie ab.
-Laufende Läufe sind im Admin unter „Dokumente (RAG)“ → „Läufe“ zu sehen und abzubrechen.
+Legt Indexierungsaufträge an; der Worker (`multi-gpt-worker.service`) arbeitet sie ab. Seit 0.4
+hängen sie an einem Lauf: Die Ausgabe nennt dessen Nummer, `mgpt-ctl index status --follow --run
+<Nummer>` zeigt den Fortschritt. Laufende Läufe sind außerdem im Admin unter „Dokumente (RAG)“ →
+„Läufe“ zu sehen und abzubrechen.
 
 ```bash
 sudo mgpt-ctl reindex                       # alle Dokumente

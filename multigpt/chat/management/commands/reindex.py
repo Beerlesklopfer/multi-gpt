@@ -4,13 +4,13 @@ Nötig nach einem Wechsel des Embedding-Modells oder der Zerteilung (Plan 8b).
 Legt je Dokument einen Indexierungsjob an (``rag.jobs.enqueue_index``, ein
 schon wartender Job wird wiederverwendet); die Arbeit macht der Worker
 (``make worker``). Bis ein Dokument neu indexiert ist, bleiben seine alten
-Abschnitte durchsuchbar.
+Abschnitte durchsuchbar. Seit M15 hängen die Aufträge an einem Lauf, den
+``mgpt-ctl index status --follow`` beobachtet (gleich: ``mgpt-ctl index reindex``).
 """
 
 from django.core.management.base import BaseCommand
 
-from multigpt.chat.models import Document
-from multigpt.chat.rag.jobs import enqueue_index
+from multigpt.node.runs import reindex_selection
 
 
 class Command(BaseCommand):
@@ -28,22 +28,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        documents = Document.objects.order_by("pk")
-        if options["collection"]:
-            documents = documents.filter(collection_id__in=options["collection"])
-        if options["document"]:
-            documents = documents.filter(pk__in=options["document"])
-        if options["errors_only"]:
-            documents = documents.filter(status=Document.Status.ERROR)
-        count = 0
-        for document in documents.iterator():
-            enqueue_index(document)
-            count += 1
+        count, run = reindex_selection(
+            collections=options["collection"],
+            documents=options["document"],
+            errors_only=options["errors_only"],
+        )
         if count:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"{count} Dokument(e) zur Indexierung eingereiht. "
-                    "Der Worker (make worker) arbeitet sie ab."
+                    f"{count} Dokument(e) zur Indexierung eingereiht (Lauf #{run.pk}). "
+                    "Der Worker (make worker) arbeitet sie ab; Fortschritt: "
+                    f"mgpt-ctl index status --follow --run {run.pk}"
                 )
             )
         else:

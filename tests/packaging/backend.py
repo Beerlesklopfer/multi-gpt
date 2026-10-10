@@ -43,6 +43,19 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         self.rfile.read(n)
+        if self.path.rstrip("/") == "/mcp":
+            # MCP-Server (M15): Antwort als SSE mit Fortschritt
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            for i in range(3):
+                data = f"data: {i} {time.time():.3f}\n\n".encode()
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(data), data))
+                self.wfile.flush()
+                time.sleep(1)
+            self.wfile.write(b"0\r\n\r\n")
+            return
         body = f"got {n}".encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))

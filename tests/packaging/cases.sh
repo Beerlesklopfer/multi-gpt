@@ -15,6 +15,9 @@ check "snakeoil-Warnung" grep -q "selbstsignierte snakeoil" "$R/out"
 check "kein HSTS bei snakeoil" bash -c "! grep -q Strict-Transport '$R/etc/multi-gpt/nginx/headers.conf'"
 check "client_max_body_size 35m" grep -q "client_max_body_size 35m;" "$R/etc/multi-gpt/nginx/https.conf"
 check "X-Accel-location" grep -q "alias $R/media/;" "$R/etc/multi-gpt/nginx/https.conf"
+check "mcp.conf: base64-Upload 44m" grep -qx "client_max_body_size 44m;" "$R/etc/multi-gpt/nginx/mcp.conf"
+check "Site: /mcp/ ungepuffert" bash -c "grep -A6 'location ~ ^/mcp/' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_buffering off;'"
+check "Site bindet mcp.conf ein" grep -q "include $R/etc/multi-gpt/nginx/mcp.conf;" "$R/etc/nginx/sites-available/multi-gpt"
 check "ALLOWED_HOSTS" test "$(envv ALLOWED_HOSTS)" = "localhost,127.0.0.1,nas.intranet.example,nas,192.168.24.250,172.17.0.1"
 check "CSRF" test "$(envv CSRF_TRUSTED_ORIGINS)" = "https://nas.intranet.example,https://nas,https://192.168.24.250,https://172.17.0.1"
 check "SECURE_COOKIES True" test "$(envv SECURE_COOKIES)" = True
@@ -84,6 +87,7 @@ check "Bind lokal, Port behalten" test "$(envv MULTI_GPT_BIND)" = 127.0.0.1:8123
 check "Hinweis Bind" grep -q "MULTI_GPT_BIND 192.168.24.250:8123 -> 127.0.0.1:8123" "$R/out"
 check "upstream Port" grep -q "server 127.0.0.1:8123;" "$R/etc/multi-gpt/nginx/upstream.conf"
 check "client_max_body_size 60m" grep -q "client_max_body_size 60m;" "$R/etc/multi-gpt/nginx/https.conf"
+check "mcp.conf 77m (50 MB als base64)" grep -qx "client_max_body_size 77m;" "$R/etc/multi-gpt/nginx/mcp.conf"
 check "SECURE_COOKIES True" test "$(envv SECURE_COOKIES)" = True
 check "AXES aktiviert (statt Kommentar)" bash -c "grep -qx 'AXES_PROXY_COUNT=1' '$R/etc/multi-gpt/.env' && ! grep -q '^#AXES' '$R/etc/multi-gpt/.env'"
 check "CSRF https" test "$(envv CSRF_TRUSTED_ORIGINS)" = "https://nas.intranet.example,https://nas,https://multigpt.intern,https://192.168.24.250,https://172.17.0.1"
@@ -107,6 +111,7 @@ check "Site NICHT aktiviert" test ! -e "$R/etc/nginx/sites-enabled/multi-gpt"
 check "default wiederhergestellt" test -L "$R/etc/nginx/sites-enabled/default"
 check "Vermerk entfernt" test ! -e "$R/var/lib/multi-gpt/nginx-default-site-disabled"
 check ".failed vorhanden" test -e "$R/etc/multi-gpt/nginx/https.conf.failed"
+check "mcp.conf ebenfalls zurückgenommen" test -e "$R/etc/multi-gpt/nginx/mcp.conf.failed"
 check "kein https.conf" test ! -e "$R/etc/multi-gpt/nginx/https.conf"
 check "kein reload" bash -c "! grep -q reload '$R/calls' 2>/dev/null"
 check "nginx -t ok (alter Zustand)" nginx_ok
@@ -118,6 +123,7 @@ echo "kein pem" > "$R/bad.pem"; echo "kein key" > "$R/bad.key"
 run_setup "nas" "$R/bad.pem" "$R/bad.key"
 check "Site bleibt aktiv" test -L "$R/etc/nginx/sites-enabled/multi-gpt"
 check "https.conf wie vorher" cmp -s "$R/https.before" "$R/etc/multi-gpt/nginx/https.conf"
+check "mcp.conf wiederhergestellt" test -e "$R/etc/multi-gpt/nginx/mcp.conf"
 check "Hinweis wiederhergestellt" grep -q "vorige Konfiguration wurde wiederhergestellt" "$R/out"
 check "nginx -t ok" nginx_ok
 

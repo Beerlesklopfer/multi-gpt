@@ -6,8 +6,9 @@ laufender Job wird an der nächsten Prüfstelle (zwischen PDF-Seiten bzw.
 Embedding-Paketen) unterbrochen und wieder eingereiht.
 
 Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
-(je Quelle höchstens ein offener Scan-Job) und prüft fällige MCP-Server
-(``chat/mcp/status.py``) – ein eigener Timer ist nicht nötig.
+(je Quelle höchstens ein offener Scan-Job), prüft fällige MCP-Server
+(``chat/mcp/status.py``) und löscht alte Einträge im Audit-Log der API
+(``node/audit.py``) – ein eigener Timer ist nicht nötig.
 """
 
 import logging
@@ -21,6 +22,7 @@ from django.db import DatabaseError, close_old_connections, connection
 from multigpt.chat import attachments as chat_attachments
 from multigpt.chat.mcp import status as mcp_status
 from multigpt.chat.rag import jobs
+from multigpt.node import audit as api_audit
 from multigpt.rag import crawl
 
 logger = logging.getLogger("multigpt.worker")
@@ -69,6 +71,8 @@ class Command(BaseCommand):
                         # MCP-Server: Status und Werkzeugliste (online alle 5 Min.,
                         # offline jede Minute; Anspruch gegen Doppelprüfung).
                         mcp_status.check_due()
+                        # Audit-Log der API-Aufrufe (M15): alte Einträge löschen.
+                        api_audit.cleanup()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:

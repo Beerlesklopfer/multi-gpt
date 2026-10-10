@@ -7,6 +7,10 @@ Einstufung erst nach einer Rückfrage im Chat.
 
 Alles auf dieser Seite erledigt der Verwalter im Admin unter **Chat › MCP-Server**.
 
+Umgekehrt ist MultiGPT seit 0.4 auch selbst **MCP-Server** unter `https://<hostname>/mcp/`: Andere
+Programme steuern es mit dem API-Key eines Kontos – siehe [API-Keys](API-Keys) und, für beide
+Richtungen mit n8n, [n8n](n8n).
+
 ## Server anlegen
 
 Zwei Transporte gibt es:
@@ -120,6 +124,28 @@ Welche KI-Modelle einen Server nutzen dürfen, legt die Spalte **MCP** bei den K
 Zusätzlich gelten die Rechte der Rolle (Schnittmenge). Auf der Seite des Servers zeigt der
 Abschnitt **„Modelle“**, welche Modelle ihn nutzen dürfen. Das Modell braucht außerdem das
 Häkchen „Werkzeuge“.
+
+## Eingebaute Werkzeuge für die Indexierung
+
+Unabhängig von MCP-Servern bekommen werkzeugfähige Modelle für Konten mit passenden Rechten
+eingebaute Werkzeuge, um die Indexierung im Chat zu steuern („Lies den NAS-Ordner neu ein und
+sag mir, wann er fertig ist“):
+
+| Werkzeug | Wirkung | Rückfrage | Angeboten, wenn |
+|---|---|---|---|
+| `index_status` | Läufe mit Fortschritt (für Verwalter auch Warteschlange und Verzeichnisquellen) | nein | das Konto eine Sammlung schreiben darf oder Verwalter ist |
+| `start_reindex` | Sammlung bzw. Dokument neu indexieren | **immer** | das Konto eine Sammlung schreiben darf |
+| `start_scan` | Verzeichnisquelle jetzt einlesen | **immer** | Verwalter, Verzeichnisquellen eingerichtet |
+| `cancel_run` | Lauf abbrechen | **immer** | wie `index_status` (abbrechen nur eigene bzw. schreibbare; Verwalter alle) |
+
+Die Rechte entsprechen dem Admin bzw. den Sammlungen und werden vor jedem Aufruf neu geprüft. Die
+Rückfrage hängt nur an der Registrierung, nicht an Text aus Dokumenten oder Webseiten.
+
+## MultiGPT als MCP-Server
+
+Siehe [API-Keys](API-Keys): Adresse `/mcp/`, Rechte (Scopes) je Key, Werkzeuge (`ask`,
+Dokumente hochladen und durchsuchen, Läufe starten, überwachen und abbrechen, Dateien abholen,
+`create_pdf` u. a.), Sicherheit, Audit-Log. Beispiel-Workflows: [n8n](n8n).
 
 ## Fehlersuche
 

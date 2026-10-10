@@ -8,6 +8,8 @@
 - [Chats teilen](Chats-teilen)
 - [Anbieter und Modelle](Anbieter-und-Modelle)
 - [MCP-Server](MCP)
+- [API-Keys (MultiGPT als MCP-Server)](API-Keys)
+- [n8n](n8n)
 - [Bilder erzeugen](Bilder)
 - [Berechnungen](Berechnungen)
 - [Blätter und Dokumente (PDF)](Dokumente-erzeugen)

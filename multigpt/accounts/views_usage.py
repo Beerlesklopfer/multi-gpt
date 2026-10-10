@@ -62,47 +62,50 @@ def usage_api(request):
     user = request.user
     if not user.is_authenticated or not user.is_active:
         return JsonResponse({"error": "Nicht angemeldet."}, status=403)
+    return JsonResponse(usage_payload(user))
+
+
+def usage_payload(user) -> dict:
+    """Eigener Verbrauch im laufenden Monat (auch für das MCP-Werkzeug ``usage``)."""
     state = usage.budget_state(user)
     start, end = usage.month_bounds()
-    return JsonResponse(
-        {
-            "month": start.strftime("%Y-%m"),
-            "month_label": usage.month_label(start),
-            "period_start": start.isoformat(),
-            "period_end": end.isoformat(),
-            "spent": _money(state.spent),
-            "budget": _money(state.budget),
-            "remaining": _money(state.remaining),
-            "percent": state.percent,
-            "level": state.level,
-            "message": usage.warning_text(state),
-            # Budgets je Abrechnungskonto (EUR bzw. Tokens).
-            "accounts": [
-                {
-                    "account": a.name,
-                    "unit": a.unit,
-                    "spent": _money(a.spent),
-                    "limit": _money(a.limit),
-                    "percent": a.percent,
-                    "level": a.level,
-                    "message": a.warning_text(),
-                }
-                for a in usage.account_states(user)
-            ],
-            "models": [
-                {
-                    "model_id": row["model_id"],
-                    "model": row["model"],
-                    "provider": row["provider"],
-                    "account": row["account"],
-                    "is_local": row["is_local"],
-                    "answers": row["answers"],
-                    "tokens_in": row["tokens_in"],
-                    "tokens_out": row["tokens_out"],
-                    "files": row["files"],
-                    "cost": _money(row["cost"]),
-                }
-                for row in usage.usage_by_model(user, start, end)
-            ],
-        }
-    )
+    return {
+        "month": start.strftime("%Y-%m"),
+        "month_label": usage.month_label(start),
+        "period_start": start.isoformat(),
+        "period_end": end.isoformat(),
+        "spent": _money(state.spent),
+        "budget": _money(state.budget),
+        "remaining": _money(state.remaining),
+        "percent": state.percent,
+        "level": state.level,
+        "message": usage.warning_text(state),
+        # Budgets je Abrechnungskonto (EUR bzw. Tokens).
+        "accounts": [
+            {
+                "account": a.name,
+                "unit": a.unit,
+                "spent": _money(a.spent),
+                "limit": _money(a.limit),
+                "percent": a.percent,
+                "level": a.level,
+                "message": a.warning_text(),
+            }
+            for a in usage.account_states(user)
+        ],
+        "models": [
+            {
+                "model_id": row["model_id"],
+                "model": row["model"],
+                "provider": row["provider"],
+                "account": row["account"],
+                "is_local": row["is_local"],
+                "answers": row["answers"],
+                "tokens_in": row["tokens_in"],
+                "tokens_out": row["tokens_out"],
+                "files": row["files"],
+                "cost": _money(row["cost"]),
+            }
+            for row in usage.usage_by_model(user, start, end)
+        ],
+    }

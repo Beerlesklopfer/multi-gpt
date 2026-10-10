@@ -5,6 +5,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from multigpt.chat import citations
+from multigpt.node import scopes as api_scopes
 
 
 class Role(models.Model):
@@ -74,6 +75,20 @@ class Role(models.Model):
         help_text="Modelle dürfen Blätter zum Ausdrucken als PDF erzeugen (Arbeitsblätter, "
         "Lineaturen, Briefe, Tabellen).",
     )
+    # Knoten (M15): API-Keys und MCP-Zugang von außen (n8n, Claude Desktop, Agenten).
+    can_use_api = models.BooleanField(
+        "API-Keys/MCP-Zugang",
+        default=False,
+        help_text="Mitglieder dürfen API-Keys anlegen, mit denen andere Programme MultiGPT "
+        "über den MCP-Server steuern. Ein Key kann nie mehr als Rolle und Konto.",
+    )
+    api_scopes = models.JSONField(
+        "Erlaubte API-Rechte",
+        default=list,
+        blank=True,
+        help_text="Höchstmenge der Rechte, die ein API-Key dieser Rolle haben kann. "
+        "Wirksam ist die Schnittmenge mit den Rechten des Keys und den übrigen Rollenrechten.",
+    )
     all_mcp_servers = models.BooleanField(
         "Alle aktiven MCP-Server",
         default=False,
@@ -110,6 +125,10 @@ class Role(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        self.api_scopes = api_scopes.clean(self.api_scopes)
 
 
 class User(AbstractUser):

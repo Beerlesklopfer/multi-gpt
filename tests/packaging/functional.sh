@@ -59,12 +59,25 @@ for line in sys.stdin:
         lags.append(time.time() - float(line.split()[2]))
 print(max(lags))")
 check "SSE ungepuffert (max. Verzögerung je Event ${lag}s)" python3 -c "assert $lag < 0.5"
+# MCP-Server (/mcp/): SSE ebenfalls ungepuffert, auch ohne Schrägstrich
+for path in /mcp/ /mcp; do
+  lag=$($C -N -X POST -H 'Content-Type: application/json' --data '{}' "$U$path" | python3 -c "
+import sys, time
+lags = []
+for line in sys.stdin:
+    if line.startswith('data:'):
+        lags.append(time.time() - float(line.split()[2]))
+print(max(lags))")
+  check "MCP $path SSE ungepuffert (max. ${lag}s)" python3 -c "assert $lag < 0.5"
+done
 dd if=/dev/zero of="$R/30m" bs=1M count=30 status=none
 r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/30m" -H 'Content-Type: application/octet-stream' $U/api/upload)
 check "30 MB Upload erlaubt ($r)" test "$r" = 200
 dd if=/dev/zero of="$R/40m" bs=1M count=40 status=none
 r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Content-Type: application/octet-stream' $U/api/upload)
 check "40 MB Upload abgewiesen ($r)" test "$r" = 413
+r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Content-Type: application/json' $U/mcp/)
+check "40 MB an /mcp/ erlaubt (base64-Grenze 44m) ($r)" test "$r" = 200
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example -tls1_1 2>&1 | grep -c "Cipher is (NONE)\|alert\|no protocols")
 check "TLS 1.1 abgelehnt" test "$tls" -ge 1
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example 2>/dev/null | grep -E "^(New|Negotiated|Server Temp Key)|Protocol" | head -3)

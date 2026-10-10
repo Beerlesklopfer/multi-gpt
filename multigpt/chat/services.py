@@ -1196,7 +1196,9 @@ class _Loop:
             if not turn.resume:
                 yield from self._run_context_providers()
                 yield from self._budget_status()
-            if turn.ai_model.supports_tools:
+            # ``no_tools`` (Aufgabe über einen API-Key ohne Werkzeuge, M15): weder
+            # MCP- noch eingebaute Werkzeuge.
+            if turn.ai_model.supports_tools and not turn.options.get("no_tools"):
                 # MCP-Werkzeuge der eingeschalteten Server plus eingebaute
                 # Werkzeuge (web_search) nach Recht und Einstellung.
                 if self.servers:

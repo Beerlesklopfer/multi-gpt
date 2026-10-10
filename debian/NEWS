@@ -1,3 +1,35 @@
+multi-gpt (0.4.0) unstable; urgency=medium
+
+  MultiGPT ist jetzt auch MCP-Server: Unter https://<hostname>/mcp/ steuern
+  andere Programme (n8n, Claude Desktop, eigene Agenten) MultiGPT mit dem
+  API-Key eines Kontos – Modelle fragen, Dokumente hochladen und
+  durchsuchen, Indexierung starten, überwachen und abbrechen,
+  Verzeichnisquellen einlesen, erzeugte Dateien abholen. Ein Key kann nie
+  mehr als sein Konto. Keys legt jedes Mitglied unter Einstellungen →
+  API-Keys an oder der Betrieb mit
+
+    sudo mgpt-ctl apikey create <konto> --name … --scopes …
+
+  Neues Rollenrecht „API-Keys/MCP-Zugang“ mit Höchstmenge der Rechte je
+  Rolle: an für Verwalter und Erwachsene, aus für Jugendliche und Gäste.
+
+  Die nginx-Site bekommt eine location für /mcp/ (ohne Puffer, eigene
+  Upload-Grenze aus /etc/multi-gpt/nginx/mcp.conf). Wer die Site von Hand
+  geändert hat, übernimmt beim Update die neue Fassung oder den Block
+  „location ~ ^/mcp/?$“ daraus; ohne ihn funktioniert /mcp/, aber ohne
+  ungepufferten Fortschritt und mit der normalen Upload-Grenze.
+
+  Indexierung auf der Konsole beobachten:
+
+    sudo mgpt-ctl index status --follow
+
+  (dazu index runs/cancel/scan/upload/reindex). reindex legt seine Aufträge
+  jetzt als Lauf an. Admin: neuer Abschnitt „Knoten“ mit API-Keys,
+  API-Aufrufen (nur Metadaten) und der Übersicht „Integrationen“ (n8n).
+  Anleitung: Wiki-Seiten „API-Keys“ und „n8n“.
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 12:00:00 +0200
+
 multi-gpt (0.3.1) unstable; urgency=medium
 
   Blätter als PDF: Modelle mit Werkzeugen erzeugen Arbeitsblätter,

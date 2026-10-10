@@ -14,6 +14,8 @@
 #                    + 10 MB), interne location für X-Accel-Redirect
 #                    (/_protected/media/ -> MEDIA_ROOT)
 #   headers.conf     Sicherheits-Header (HSTS nur mit eigenem Zertifikat)
+#   mcp.conf         client_max_body_size für /mcp/ (Uploads als base64:
+#                    4/3 von DOCUMENT_MAX_UPLOAD_MB + 10 MB)
 #
 # Ändern: sudo dpkg-reconfigure multi-gpt
 # Eigene Ergänzungen im HTTPS-Server: Dateien /etc/multi-gpt/nginx/local/*.conf
@@ -89,6 +91,21 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 300s;
+    }
+
+    # MCP-Server (/mcp/ und /mcp): Streamable HTTP, Antworten als JSON oder
+    # SSE (Fortschritt). Ohne Puffer, damit Fortschritt sofort ankommt; der
+    # Server sendet beim Streamen regelmäßig Daten, eine reine JSON-Antwort darf
+    # so lange dauern wie der gunicorn-Timeout. Authentifizierung per
+    # Authorization-Header (steht nicht im Zugriffsprotokoll).
+    location ~ ^/mcp/?$ {
+        proxy_pass http://multi_gpt_app;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering on;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        include /etc/multi-gpt/nginx/mcp.conf;
     }
 
     location / {

@@ -71,6 +71,18 @@ Embedding-Modell, Präfixe und OCR-Verfahren stehen **nicht** in der `.env`, son
 „Dokumente (RAG)“ → „Einstellungen“ (siehe [RAG-Einrichtung](RAG-Einrichtung)). Die Websuche
 (SearXNG-URL usw.) steht im Admin unter „Chat“ → „Sucheinstellungen“ (siehe [SearXNG](SearXNG)).
 
+## MCP-Server und API-Keys
+
+MultiGPT ist unter `/mcp/` selbst MCP-Server (siehe [API-Keys](API-Keys) und [n8n](n8n)).
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `API_FAILURE_LIMIT` | `10` | Ungültige Keys je IP-Adresse, ab denen `/mcp/` diese Adresse sperrt (HTTP 429). |
+| `API_FAILURE_WINDOW_MINUTES` | `15` | Zeitfenster bzw. Sperrdauer für `API_FAILURE_LIMIT`. |
+| `API_RATE_LIMIT_PER_MINUTE` | `120` | Höchstzahl Aufrufe je Key und Minute. |
+| `API_FILE_MAX_MB` | `20` | Höchstgröße einer Datei für das Werkzeug `get_file`. |
+| `API_AUDIT_DAYS` | `90` | Aufbewahrung des Audit-Logs der API-Aufrufe (nur Metadaten). |
+
 ## Kosten
 
 | Schlüssel | Standard | Bedeutung |

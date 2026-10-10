@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "multigpt.rag",
     # Kontenrahmen, Preise, Kurse, Buchungen und Budgets je Konto (M6).
     "multigpt.billing",
+    # Knoten (M15): API-Keys je Konto, MCP-Server unter /mcp/, Audit-Log.
+    "multigpt.node",
 ]
 
 MIDDLEWARE = [
@@ -215,3 +217,13 @@ JOB_MAX_ATTEMPTS = env.int("JOB_MAX_ATTEMPTS", default=5)
 RAG_SOURCE_ROOTS = [p for p in env.list("RAG_SOURCE_ROOTS", default=[]) if p.strip()]
 # Grenze je Einlesevorgang (weitere Dateien kommen beim nächsten Lauf dran).
 RAG_SOURCE_MAX_FILES = env.int("RAG_SOURCE_MAX_FILES", default=5000)
+
+# Knoten (M15): MultiGPT als MCP-Server unter /mcp/ mit API-Keys je Konto.
+# Drosselung: ab API_FAILURE_LIMIT ungültigen Keys je IP in API_FAILURE_WINDOW_MINUTES
+# antwortet /mcp/ dieser IP mit 429; je Key höchstens API_RATE_LIMIT_PER_MINUTE Aufrufe.
+API_FAILURE_LIMIT = env.int("API_FAILURE_LIMIT", default=10)
+API_FAILURE_WINDOW_MINUTES = env.int("API_FAILURE_WINDOW_MINUTES", default=15)
+API_RATE_LIMIT_PER_MINUTE = env.int("API_RATE_LIMIT_PER_MINUTE", default=120)
+# Höchstgröße für get_file (MB); Audit-Log der Aufrufe wird nach API_AUDIT_DAYS gelöscht.
+API_FILE_MAX_MB = env.int("API_FILE_MAX_MB", default=20)
+API_AUDIT_DAYS = env.int("API_AUDIT_DAYS", default=90)

@@ -86,6 +86,20 @@ def upload_document(request, collection: Collection) -> tuple[Document | None, J
     if upload.size == 0:
         return None, _error("Die Datei ist leer.", 400)
 
+    return store_upload(request.user, collection, upload)
+
+
+def store_upload(
+    user, collection: Collection, upload
+) -> tuple[Document | None, JsonResponse | None]:
+    """Geprüfte Größe vorausgesetzt: Typ am Inhalt prüfen, Dokument anlegen, Lauf
+    „Hochladen“ starten. ``upload`` ist eine Django-Datei mit ``name``. Auch für
+    den MCP-Server (``upload_document``) und ``mgpt-ctl index upload``; Rechte
+    prüft der Aufrufer (``check_upload_permission``).
+
+    Rückgabe ``(dokument, None)`` bzw. ``(None, Fehlerantwort)``; der Lauf hängt
+    als ``document.index_run`` am Dokument.
+    """
     try:
         extract.detect_kind(upload, upload.name)
     except extract.UnsupportedFile as exc:
@@ -105,13 +119,14 @@ def upload_document(request, collection: Collection) -> tuple[Document | None, J
             document.file.save(upload.name, upload, save=False)
             document.save()
             run = IndexRun.objects.create(
-                kind=IndexRun.Kind.UPLOAD, collection=collection, started_by=request.user
+                kind=IndexRun.Kind.UPLOAD, collection=collection, started_by=user
             )
             jobs.enqueue_index(document, run)
     except Exception:
         if document.file.name:
             document.file.delete(save=False)
         raise
+    document.index_run = run
     logger.info(
         "Dokument %s hochgeladen (Sammlung %s, %d Bytes)", document.pk, collection.pk, upload.size
     )

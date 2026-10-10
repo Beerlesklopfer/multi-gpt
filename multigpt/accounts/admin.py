@@ -4,6 +4,8 @@ from django.contrib.auth.admin import GroupAdmin, UserAdmin
 from django.contrib.auth.forms import AdminUserCreationForm
 from django.contrib.auth.models import Group
 
+from multigpt.node import scopes as api_scopes
+
 from .models import Role, User, UserGroup
 
 admin.site.unregister(Group)
@@ -11,8 +13,28 @@ admin.site.unregister(Group)
 START_ROLE_KEYS = {Role.ADMIN, Role.ADULT, Role.TEEN, Role.GUEST}
 
 
+class RoleForm(forms.ModelForm):
+    """Rechte für API-Keys als Kästchen statt JSON."""
+
+    api_scopes = forms.MultipleChoiceField(
+        label="Erlaubte API-Rechte",
+        choices=api_scopes.SCOPE_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Höchstmenge für API-Keys dieser Rolle (nur mit „API-Keys/MCP-Zugang“). "
+        "Verwalterrechte gibt es über Keys nie; Verzeichnisquellen einlesen dürfen nur "
+        "Verwalter.",
+    )
+
+    # Kein Meta: Modell und Felder setzt der RoleAdmin (fieldsets).
+
+    def clean_api_scopes(self):
+        return api_scopes.clean(self.cleaned_data.get("api_scopes"))
+
+
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
+    form = RoleForm
     list_display = (
         "name",
         "key",
@@ -25,6 +47,7 @@ class RoleAdmin(admin.ModelAdmin):
         "can_share",
         "can_compute",
         "can_create_documents",
+        "can_use_api",
         "monthly_budget",
     )
     search_fields = ("name", "key")
@@ -47,6 +70,7 @@ class RoleAdmin(admin.ModelAdmin):
             },
         ),
         ("MCP-Server", {"fields": ("all_mcp_servers", "allowed_mcp_servers")}),
+        ("API-Keys und MCP-Zugang (Knoten)", {"fields": ("can_use_api", "api_scopes")}),
         ("Budget und System-Prompt", {"fields": ("monthly_budget", "fixed_system_prompt")}),
     )
 

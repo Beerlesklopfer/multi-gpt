@@ -132,8 +132,8 @@ multi_gpt_migrate() {
 # Die Site /etc/nginx/sites-available/multi-gpt ist ein conffile. Sie bindet
 # die rechnerspezifischen Teile aus $NGINX_GEN_DIR ein, die hier bei jedem
 # "configure" neu erzeugt werden (upstream.conf, http.conf, https.conf,
-# headers.conf). Eigene Ergänzungen: $NGINX_GEN_DIR/local/*.conf.
-NGINX_GEN_FILES="upstream.conf http.conf https.conf headers.conf"
+# headers.conf, mcp.conf). Eigene Ergänzungen: $NGINX_GEN_DIR/local/*.conf.
+NGINX_GEN_FILES="upstream.conf http.conf https.conf headers.conf mcp.conf"
 
 multi_gpt_warn() {
     echo "multi-gpt: $*" >&2
@@ -202,6 +202,7 @@ multi_gpt_generate() {
     python3 -I - <<'PY'
 import glob
 import ipaddress
+import math
 import os
 import re
 import sys
@@ -439,6 +440,11 @@ files = {
         f"ssl_certificate {cert};",
         f"ssl_certificate_key {key};",
         f"client_max_body_size {upload_mb + 10}m;",
+    ],
+    # MCP-Server (/mcp/): Uploads kommen base64-kodiert im JSON (4/3 der Datei).
+    "mcp.conf": [
+        *HEAD,
+        f"client_max_body_size {math.ceil(upload_mb * 4 / 3) + 10}m;",
     ],
     "headers.conf": [
         *HEAD,

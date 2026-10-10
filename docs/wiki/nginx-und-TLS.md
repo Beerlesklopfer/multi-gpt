@@ -28,6 +28,7 @@ Browser ──HTTPS (443)──> nginx ──HTTP──> gunicorn auf 127.0.0.1:
 | **HTTPS (Port 443)** | TLS 1.2/1.3 nach Mozilla „intermediate“, HTTP/2, Weiterleitung an gunicorn |
 | **Statische Dateien** | liefert nginx direkt aus `/usr/share/python/multi-gpt/static/` (mit vorkomprimierten `.gz`-Dateien, gehashte Namen ein Jahr im Cache) |
 | **Gestreamte Antworten (SSE)** | ohne Puffer, bis 300 s offen (passend zu `MULTI_GPT_TIMEOUT`) |
+| **MCP-Server `/mcp/`** | ohne Puffer (Fortschritt als SSE), 300 s, eigene Upload-Grenze für base64 (siehe [API-Keys](API-Keys)) |
 | **Uploads** | `client_max_body_size` = `DOCUMENT_MAX_UPLOAD_MB` + 10 MB |
 | **Sicherheits-Header** | `X-Content-Type-Options`, `Referrer-Policy`; HSTS nur mit eigenem Zertifikat |
 
@@ -57,6 +58,7 @@ Diese Dateien erzeugt das postinst bei **jeder** Konfiguration (Installation, Up
 | `http.conf` | `listen 80` (ggf. mit `default_server`), `server_name` |
 | `https.conf` | `listen 443 ssl` (ggf. mit `default_server`), `server_name`, Zertifikat und Schlüssel, `client_max_body_size`, interne `location /_protected/media/` für X-Accel-Redirect |
 | `headers.conf` | Sicherheits-Header; `Strict-Transport-Security` (HSTS, 2 Jahre) nur mit eigenem Zertifikat |
+| `mcp.conf` | `client_max_body_size` für `/mcp/`: Dateien kommen dort base64-kodiert im JSON (4/3 der Größe), also ⌈`DOCUMENT_MAX_UPLOAD_MB` × 4/3⌉ + 10 MB (bei 25 MB: 44 MB) |
 
 ### Eigene Ergänzungen: `/etc/multi-gpt/nginx/local/*.conf`
 
@@ -184,7 +186,13 @@ Formulars). Nach einer Änderung von `DOCUMENT_MAX_UPLOAD_MB` in `/etc/multi-gpt
 sudo dpkg-reconfigure multi-gpt
 ```
 
-Das setzt `client_max_body_size` neu und startet die Dienste neu.
+Das setzt `client_max_body_size` (auch für `/mcp/` in `mcp.conf`) neu und startet die Dienste neu.
+
+Hat jemand die Site `/etc/nginx/sites-available/multi-gpt` von Hand geändert und beim Update auf
+0.4 die alte Fassung behalten, fehlt dort die `location` für `/mcp/`. Der MCP-Server funktioniert
+dann trotzdem, aber Fortschrittsmeldungen kommen gepuffert an und Uploads über `/mcp/` sind auf
+die normale Grenze beschränkt. Abhilfe: die neue Fassung (`multi-gpt.dpkg-dist`) übernehmen
+oder den Block `location ~ ^/mcp/?$ { … }` daraus übertragen.
 
 ## Fehlersuche
 

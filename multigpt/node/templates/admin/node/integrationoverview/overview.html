@@ -1,0 +1,49 @@
+{% extends "admin/base_site.html" %}
+{# Integrationen (M15): n8n als MCP-Server für MultiGPT und MultiGPT als MCP-Server für n8n. Nur Metadaten. #}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='node' %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; Integrationen
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <div class="module">
+    <h2>n8n → MultiGPT nutzt n8n (MCP-Client)</h2>
+    {% if servers %}
+      <table>
+        <thead><tr><th>MCP-Server</th><th>aktiv</th><th>Status</th><th>zuletzt geprüft</th></tr></thead>
+        <tbody>
+          {% for server in servers %}
+            <tr>
+              <td><a href="{% url 'admin:chat_mcpserver_change' server.pk %}">{{ server.name }}</a></td>
+              <td>{{ server.active|yesno:"ja,nein" }}</td>
+              <td>{% if not server.active %}deaktiviert{% elif server.online %}online{% elif server.last_checked %}offline{% if server.last_error %} – {{ server.last_error }}{% endif %}{% else %}ungeprüft{% endif %}</td>
+              <td>{{ server.last_checked|date:"d.m.Y H:i"|default:"–" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not n8n_online %}<p class="errornote">Kein n8n-MCP-Server ist online.</p>{% endif %}
+    {% else %}
+      <p class="errornote">Kein n8n-MCP-Server eingerichtet. In n8n einen Workflow mit „MCP Server Trigger“
+        anlegen und die Adresse unter <a href="{% url 'admin:chat_mcpserver_changelist' %}">MCP-Server</a>
+        eintragen bzw. per „Aus JSON importieren“ übernehmen (Wiki „n8n“).</p>
+    {% endif %}
+  </div>
+
+  <div class="module">
+    <h2>MultiGPT → n8n nutzt MultiGPT (MCP-Server)</h2>
+    <table>
+      <tr><th scope="row">Adresse</th><td><code>{{ mcp_url }}</code> (Header <code>Authorization: Bearer &lt;Key&gt;</code>)</td></tr>
+      <tr><th scope="row">Aktive API-Keys</th><td>{{ keys_active }} (von {{ key_owners }} Konto/Konten), in den letzten 7 Tagen benutzt: {{ keys_used_week }}</td></tr>
+      <tr><th scope="row">Aufrufe (24 h)</th><td>{{ calls.total }} gesamt, {{ calls.ok }} erfolgreich, {{ calls.unauthorized }} mit ungültigem Key, {{ calls.limited }} gedrosselt</td></tr>
+    </table>
+    {% if not keys_active %}<p class="errornote">Es gibt keinen aktiven API-Key. Mitglieder legen Keys unter „Einstellungen → API-Keys“ an (Rollenrecht „API-Keys/MCP-Zugang“).</p>{% endif %}
+    <p><a href="{% url 'admin:node_apikey_changelist' %}">API-Keys</a> · <a href="{% url 'admin:node_apicall_changelist' %}">API-Aufrufe</a></p>
+  </div>
+</div>
+{% endblock %}

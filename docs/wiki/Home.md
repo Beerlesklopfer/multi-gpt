@@ -21,6 +21,11 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
   automatische Erkennung, welche Modelle MCP-Server nutzen dürfen
 - [MCP-Server](MCP): Server anlegen oder aus JSON importieren, Online-Status und Ursachen,
   Werkzeuge einstufen (mit/ohne Rückfrage), Freigabe je Modell
+- [API-Keys](API-Keys): MultiGPT als MCP-Server unter `/mcp/` – Keys je Konto mit Rechten
+  (Scopes), Werkzeuge (`ask`, Dokumente hochladen und durchsuchen, Indexierung starten und
+  überwachen, Dateien abholen), Sicherheit und Audit-Log
+- [n8n](n8n): beide Richtungen – MultiGPT nutzt n8n-Workflows als Werkzeuge, n8n steuert MultiGPT;
+  Schritt für Schritt mit Beispiel-Workflows
 - [Bilder erzeugen](Bilder): Bildmodell einrichten (z. B. OpenAI `gpt-image-1`), Werkzeug
   `generate_image`, Modus „Bild“, Hinweis bei Modellen ohne Werkzeuge, Kosten je Bild
 - [Berechnungen](Berechnungen): Werkzeug `run_python` (numpy, sympy, mpmath, Diagramme mit
@@ -38,7 +43,8 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
   - [Zitieren](Zitieren): Zitierstile, Fundstelle (Abschnitt, Seite, Absatz),
     Literaturangaben pflegen, Normen und Verlagstexte
 - [Konfiguration](Konfiguration): alle Schlüssel in `/etc/multi-gpt/.env` mit Standardwerten und Bedeutung
-- [mgpt-ctl](mgpt-ctl): alle Verwaltungsbefehle; **nach dem Update auf 0.3 einmalig** `sudo mgpt-ctl guess_capabilities --apply`
+- [mgpt-ctl](mgpt-ctl): alle Verwaltungsbefehle, darunter `index status --follow` (Indexierung
+  live beobachten) und `apikey`; **nach dem Update auf 0.3 einmalig** `sudo mgpt-ctl guess_capabilities --apply`
 - [nginx und TLS](nginx-und-TLS): was das Paket für nginx einrichtet, Hostname und Zertifikat
   ändern, Standard-Server, Upload-Grenze und Fehlersuche
 - [SearXNG als Such-Backend](SearXNG): wozu MultiGPT eine Suchmaschine braucht, welche Variante

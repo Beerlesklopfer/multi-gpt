@@ -1691,6 +1691,8 @@ class IndexRun(models.Model):
         DIRECTORY_SCAN = "directory_scan", "Verzeichnis einlesen"
         REINDEX_ALL = "reindex_all", "Alles neu indexieren"
         REINDEX_COLLECTION = "reindex_collection", "Sammlung neu indexieren"
+        # Einzelne Dokumente (API-Key bzw. Werkzeug start_reindex, M15).
+        REINDEX_DOCUMENTS = "reindex_documents", "Dokumente neu indexieren"
         UPLOAD = "upload", "Hochladen"
 
     class Status(models.TextChoices):

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static %}
+{# Einstellungen → API-Keys (M15). Ein neuer Key steht nur in dieser Antwort (no-store). #}
+{% block title %}API-Keys – Einstellungen – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="api-keys-title">
+    <p class="breadcrumb"><a href="{% url 'settings' %}">Einstellungen</a> › API-Keys</p>
+    <h1 id="api-keys-title">API-Keys (MCP-Zugang)</h1>
+    <p class="page-intro">
+      Mit einem API-Key steuern andere Programme – z. B. n8n, Claude Desktop oder eigene
+      Agenten – MultiGPT über den MCP-Server unter <code>{{ request.scheme }}://{{ request.get_host }}/mcp/</code>
+      (Header <code>Authorization: Bearer &lt;Key&gt;</code>). Ein Key kann nie mehr als dein Konto:
+      Es gelten deine Rolle, Freigaben und Budgets; Kosten gehen auf dein Konto.
+      Anleitung: <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/API-Keys">Wiki „API-Keys“</a>
+      und <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/n8n">„n8n“</a>.
+    </p>
+
+    {% if created %}
+      <div class="module api-key-created" role="status">
+        <h2 class="section-title">Neuer Key „{{ created.key.name }}“</h2>
+        <p><strong>Der Key wird nur dieses eine Mal angezeigt.</strong> Bitte jetzt kopieren und
+           im Programm eintragen; MultiGPT speichert ihn nur als Hash.</p>
+        <p>
+          <code id="new-api-key" class="family-password">{{ created.secret }}</code>
+          <button type="button" class="button button-small" data-copy-target="new-api-key" hidden>Kopieren</button>
+          <span class="hint" data-copy-done hidden role="status">Kopiert</span>
+        </p>
+      </div>
+    {% endif %}
+
+    <h2 class="section-title" id="api-keys-list-title">Deine Keys</h2>
+    {% if keys %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="api-keys-list-title">
+          <thead>
+            <tr>
+              <th scope="col">Name</th><th scope="col">Key</th><th scope="col">Rechte</th>
+              <th scope="col">Sammlungen</th><th scope="col">gültig bis</th>
+              <th scope="col">zuletzt benutzt</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key in keys %}
+              <tr>
+                <th scope="row">{{ key.name }}</th>
+                <td><code>{{ key.display_prefix }}</code></td>
+                <td>{% for scope in key.scopes %}<span title="{{ scope }}">{{ scope }}</span>{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>
+                <td>{% for c in key.collections.all %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% empty %}alle{% endfor %}</td>
+                <td>{% if key.expires_at %}{{ key.expires_at|date:"d.m.Y H:i" }}{% else %}kein Ablauf{% endif %}</td>
+                <td>{% if key.last_used_at %}{{ key.last_used_at|date:"d.m.Y H:i" }}{% if key.last_used_ip %} von {{ key.last_used_ip }}{% endif %}{% else %}nie{% endif %}</td>
+                <td>{{ key.state_label }}</td>
+                <td>
+                  {% if key.active %}
+                    <form method="post" action="{% url 'api_key_revoke' key.pk %}" data-confirm="Key „{{ key.name }}“ widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugang.">
+                      {% csrf_token %}
+                      <button type="submit" class="button button-small button-danger">Widerrufen</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Noch keine Keys.</p>
+    {% endif %}
+
+    <h2 class="section-title">Neuen Key anlegen</h2>
+    {% if can_create %}
+      <form method="post" action="{% url 'api_keys' %}" class="form">
+        {% csrf_token %}
+        {{ form.as_div }}
+        <button type="submit" class="button button-primary">Key anlegen</button>
+      </form>
+    {% else %}
+      <p class="hint">Deine Rolle erlaubt keine API-Keys. Ein Verwalter kann das Recht
+        „API-Keys/MCP-Zugang“ für die Rolle einschalten.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="api-calls-title">Letzte Aufrufe</h2>
+    <p class="hint">Nur Metadaten, keine Inhalte. Es werden höchstens die letzten 50 gezeigt.</p>
+    {% if calls %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="api-calls-title">
+          <thead>
+            <tr><th scope="col">Zeit</th><th scope="col">Key</th><th scope="col">Methode</th><th scope="col">Werkzeug</th>
+                <th scope="col">Status</th><th scope="col">Dauer</th><th scope="col">Größe</th><th scope="col">IP</th></tr>
+          </thead>
+          <tbody>
+            {% for call in calls %}
+              <tr>
+                <td>{{ call.created|date:"d.m.Y H:i:s" }}</td>
+                <td>{{ call.key.name }}</td>
+                <td><code>{{ call.method|default:"–" }}</code></td>
+                <td>{{ call.tool|default:"–" }}</td>
+                <td>{{ call.get_status_display }}</td>
+                <td>{{ call.duration_ms }} ms</td>
+                <td>{{ call.request_bytes|filesizeformat }} / {{ call.response_bytes|filesizeformat }}</td>
+                <td>{{ call.ip|default:"–" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Noch keine Aufrufe.</p>
+    {% endif %}
+  </section>
+{% endblock %}
