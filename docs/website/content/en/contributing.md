@@ -11,9 +11,9 @@ menus:
 
 ## How you can help
 
-- **Try it and report back:** installing on a fresh Debian 13, the Docker route and chats
-  with real API keys and LM Studio have not been tried in practice yet. Experience with them –
-  especially on NAS systems – helps a lot.
+- **Try it and report back:** installing on a fresh Debian 13, the Docker route, the update
+  from 0.2 to 0.3 and chats with real Anthropic and Gemini keys have hardly been tried in
+  practice yet. Experience with them – especially on NAS systems – helps a lot.
 - **Questions and ideas** as an issue: what would you need to use it in your own household?
 - **Code:** the next steps are in the [roadmap]({{< relref "roadmap" >}}). Please open an
   issue before larger changes so we can coordinate.

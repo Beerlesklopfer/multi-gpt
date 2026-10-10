@@ -13,8 +13,9 @@ menus:
 ## Wie du helfen kannst
 
 - **Ausprobieren und berichten:** Die Installation auf einem frischen Debian 13, der
-  Docker-Weg sowie Chats mit echten API-Keys und LM Studio sind noch nicht in der Praxis
-  erprobt. Erfahrungen damit – gerade auf NAS-Systemen – helfen sehr.
+  Docker-Weg, das Update von 0.2 auf 0.3 sowie Chats mit echten Keys für Anthropic und Gemini
+  sind noch kaum in der Praxis erprobt. Erfahrungen damit – gerade auf NAS-Systemen – helfen
+  sehr.
 - **Fragen und Ideen** als Issue: Was fehlt dir für den Einsatz im eigenen Haushalt?
 - **Code:** Die nächsten Schritte stehen in der [Roadmap]({{< relref "roadmap" >}}). Bitte
   vor größeren Änderungen ein Issue aufmachen, damit wir uns abstimmen können.

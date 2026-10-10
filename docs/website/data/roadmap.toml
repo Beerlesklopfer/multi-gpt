@@ -1,7 +1,7 @@
 # Meilensteine aus doc/Plan.md, Abschnitt 11.
 # status: "done" | "partial" | "planned"  (Texte dazu in i18n/*.toml)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei.
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.1.
 
 [[milestones]]
   id = "1"
@@ -13,8 +13,8 @@
     de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
     en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
-    de = "Tests, Linter und `make deb` sind grün. Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
-    en = "Tests, linter and `make deb` pass. Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.1). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.1). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
 
 [[milestones]]
   id = "2"
@@ -52,8 +52,8 @@
     de = "Adapter für Anthropic und Google Gemini, Modelllisten abrufen mit `make sync-models`, LM Studio als lokaler Anbieter mit Online-Anzeige und automatisch angebotenen Modellen."
     en = "Adapters for Anthropic and Google Gemini, fetching model lists with `make sync-models`, LM Studio as a local provider with online indicator and automatically offered models."
   [milestones.note]
-    de = "LM Studio läuft im echten Heimnetz. Noch offen für die Abnahme: echte Aufrufe an Anthropic und Gemini."
-    en = "LM Studio runs in a real home network. Still open for acceptance: real calls to Anthropic and Gemini."
+    de = "LM Studio läuft im echten Heimnetz. Seit 0.3.0 bekommen neue Modelle ihre Fähigkeiten automatisch (bei LM Studio aus dessen Modellliste), dazu die Fähigkeiten-Matrix im Admin, ausgegraute Offline-Anbieter und eine eigene Meldung für abgelaufene API-Keys. Noch offen für die Abnahme: echte Aufrufe an Anthropic und Gemini."
+    en = "LM Studio runs in a real home network. Since 0.3.0 new models get their capabilities automatically (for LM Studio from its model list), plus the capability matrix in the admin, greyed-out offline providers and a dedicated message for expired API keys. Still open for acceptance: real calls to Anthropic and Gemini."
 
 [[milestones]]
   id = "4a"
@@ -62,11 +62,11 @@
     de = "MCP-Werkzeuge"
     en = "MCP tools"
   [milestones.text]
-    de = "Modelle nutzen Werkzeuge aus angebundenen MCP-Servern – mit Rechteprüfung, Rückfrage vor heiklen Aufrufen und Anzeige im Chat."
-    en = "Models use tools from connected MCP servers – with permission checks, confirmation before sensitive calls and display in the chat."
+    de = "Modelle nutzen Werkzeuge aus angebundenen MCP-Servern – mit Rechteprüfung, Rückfrage vor heiklen Aufrufen und Anzeige im Chat. Dazu eingebaute Werkzeuge für Berechnungen und PDF-Blätter."
+    en = "Models use tools from connected MCP servers – with permission checks, confirmation before sensitive calls and display in the chat. Plus built-in tools for calculations and PDF sheets."
   [milestones.note]
-    de = "Werkzeugschleife mit höchstens 10 Runden, Rückfrage vor nicht freigegebenen Werkzeugen (auch nach Neuladen), Anzeige jedes Aufrufs im Chat, Schalter je MCP-Server. Mit einem MCP-Testserver und simulierten Anbietern getestet, Ende-zu-Ende im Browser. Noch offen: Test mit echten Modellen."
-    en = "Tool loop with at most 10 rounds, confirmation before unapproved tools (also after a reload), every call shown in the chat, a switch per MCP server. Tested with an MCP test server and simulated providers, end-to-end in the browser. Still open: a test with real models."
+    de = "Werkzeugschleife mit höchstens 10 Runden, Rückfrage vor nicht freigegebenen Werkzeugen (auch nach Neuladen), Anzeige jedes Aufrufs im Chat. Seit 0.3.0: Import aus „mcpServers“-JSON, Online-Status je Server, Werkzeugtabelle mit Einstufung im Admin, MCP-Freigabe je Modell (kein, alle, ausgewählte; serverseitig geprüft) und das Werkzeug `run_python` in einer bubblewrap-Sandbox. Seit 0.3.1 das Werkzeug `create_pdf` für Arbeitsblätter, Briefe und Tabellen. MCP-Werkzeuge laufen auch mit lokalen Modellen über LM Studio."
+    en = "Tool loop with at most 10 rounds, confirmation before unapproved tools (also after a reload), every call shown in the chat. Since 0.3.0: import from “mcpServers” JSON, online status per server, a tool table with classification in the admin, MCP access per model (none, all, selected; checked on the server) and the `run_python` tool in a bubblewrap sandbox. Since 0.3.1 the `create_pdf` tool for worksheets, letters and tables. MCP tools also work with local models via LM Studio."
 
 [[milestones]]
   id = "5"
@@ -75,11 +75,11 @@
     de = "Komfort"
     en = "Convenience"
   [milestones.text]
-    de = "Markdown mit Code-Hervorhebung und Kopierknopf (Bibliotheken lokal eingebunden, Ausgabe bereinigt), automatische Chattitel, Umbenennen, Archiv, Löschen, Suche, Export als Markdown, System-Prompt pro Chat."
-    en = "Markdown with code highlighting and a copy button (libraries bundled locally, output sanitised), automatic chat titles, rename, archive, delete, search, Markdown export, system prompt per chat."
+    de = "Markdown mit Code-Hervorhebung und Kopierknopf (Bibliotheken lokal eingebunden, Ausgabe bereinigt), Formeln mit KaTeX, SVG-Vorschau, automatische Chattitel, Umbenennen, Archiv, Löschen, Suche, Export als Markdown, System-Prompt pro Chat. Dazu Anhänge, Projekte und geteilte Chats."
+    en = "Markdown with code highlighting and a copy button (libraries bundled locally, output sanitised), formulas with KaTeX, SVG preview, automatic chat titles, rename, archive, delete, search, Markdown export, system prompt per chat. Plus attachments, projects and shared chats."
   [milestones.note]
-    de = "Abgeschlossen, nachgezogen: eigene Nachrichten bearbeiten mit Versionen („‹ 1/2 ›“) wie in ChatGPT und Kopierknopf."
-    en = "Complete, with a follow-up: editing your own messages with versions (“‹ 1/2 ›”) as in ChatGPT and a copy button."
+    de = "Abgeschlossen. Nachgezogen: eigene Nachrichten bearbeiten mit Versionen („‹ 1/2 ›“) und Kopierknopf. In 0.3.0 kamen Anhänge mit Bild-Eingabe (EXIF entfernt), Projekte mit Anweisungen, Standardmodell und Sammlungen, Chats teilen mit RWUD-Rechten sowie eine überarbeitete Oberfläche (Antworten in voller Breite, Seitenleiste ausblendbar, Schriftgröße A−/A+) dazu."
+    en = "Complete. Follow-ups: editing your own messages with versions (“‹ 1/2 ›”) and a copy button. Version 0.3.0 added attachments with image input (EXIF removed), projects with instructions, default model and collections, chat sharing with RWUD permissions and a reworked interface (full-width answers, collapsible sidebar, font size A−/A+)."
 
 [[milestones]]
   id = "6"
@@ -91,8 +91,8 @@
     de = "Dieselbe Frage an mehrere Modelle, Verbrauchsübersicht, Monatsbudgets und die Verwaltungsseite „Familie“."
     en = "The same question to several models, usage overview, monthly budgets and the “Family” admin page."
   [milestones.note]
-    de = "Umgesetzt: Vergleichsmodus mit zwei oder drei Modellen, die Antworten als Versionen im Chat-Baum (Werkzeuge sind im Vergleich aus); Verbrauch und Monatsbudgets mit Hinweis ab 80 % und Sperre ab 100 % außer für kostenfreie Modelle; Seite „Mein Verbrauch“; Seite „Familie“ mit Konten, Rollen, Budgets und Gruppen sowie lesender Einsicht in Chats von Jugendlichen nur mit Option und dauerhaftem Hinweis."
-    en = "Implemented: comparison mode with two or three models, the answers stored as versions in the chat tree (tools are off in comparison); usage and monthly budgets with a warning from 80 % and a block from 100 % except for free models; a personal usage page; a “Family” page with accounts, roles, budgets and groups, plus read-only insight into teenagers' chats only with an option and a permanent notice."
+    de = "Umgesetzt: Vergleichsmodus mit zwei oder drei Modellen, die Antworten als Versionen im Chat-Baum (Werkzeuge sind im Vergleich aus); Verbrauch und Monatsbudgets mit Hinweis ab 80 % und Sperre ab 100 % außer für kostenfreie Modelle; Seite „Mein Verbrauch“; Seite „Familie“ mit Konten, Rollen, Budgets und Gruppen sowie lesender Einsicht in Chats von Jugendlichen nur mit Option und dauerhaftem Hinweis. Seit 0.3.0 rechnet ein Kontenrahmen ab: Konten in Geld, nur Tokens oder als Pauschale, Preise mit Gültigkeit samt Cache und Reasoning, Wechselkurse, Buchungen und Budgets je Konto."
+    en = "Implemented: comparison mode with two or three models, the answers stored as versions in the chat tree (tools are off in comparison); usage and monthly budgets with a warning from 80 % and a block from 100 % except for free models; a personal usage page; a “Family” page with accounts, roles, budgets and groups, plus read-only insight into teenagers' chats only with an option and a permanent notice. Since 0.3.0 billing runs through accounts: monetary, tokens only or flat rate, prices with validity dates including cache and reasoning, exchange rates, bookings and budgets per account."
 
 [[milestones]]
   id = "7"
@@ -104,8 +104,8 @@
     de = "Sammlungen, Upload, Indexierung im Hintergrund, Suche mit pgvector, Quellen mit Seitenangabe."
     en = "Collections, upload, background indexing, search with pgvector, sources with page numbers."
   [milestones.note]
-    de = "Umgesetzt: Sammlungen mit Freigaben, Upload (PDF, DOCX, TXT, MD), Worker mit Wiederholung und OCR (Tesseract), Suche mit Zugriffsfilter in SQL und Volltext, Quellen mit Seitenzahl, Werkzeug für die Dokumentsuche und eine eigene RAG-Verwaltung im Admin. Embeddings lokal über LM Studio (nomic-embed-text, 768 Dimensionen), OCR mit olmOCR über LM Studio und Tesseract als Ersatz, beides im Admin per Knopf testbar; Verzeichnisquellen vom Server oder NAS, beschränkt auf `RAG_SOURCE_ROOTS` und periodisch eingelesen."
-    en = "Implemented: collections with sharing, upload (PDF, DOCX, TXT, MD), a worker with retries and OCR (Tesseract), search with access filtering in SQL plus full text, sources with page numbers, a document search tool and a dedicated RAG section in the admin. Embeddings locally via LM Studio (nomic-embed-text, 768 dimensions), OCR with olmOCR via LM Studio and Tesseract as a fallback, both testable with a button in the admin; directory sources from the server or NAS, limited to `RAG_SOURCE_ROOTS` and read in periodically."
+    de = "Umgesetzt: Sammlungen mit Freigaben, Upload (PDF, DOCX, TXT, MD), Worker mit Wiederholung und OCR (Tesseract), Suche mit Zugriffsfilter in SQL und Volltext, Quellen mit Seitenzahl, Werkzeug für die Dokumentsuche und eine eigene RAG-Verwaltung im Admin. Embeddings lokal über LM Studio (nomic-embed-text, 768 Dimensionen), OCR mit olmOCR über LM Studio und Tesseract als Ersatz, beides im Admin per Knopf testbar; Verzeichnisquellen vom Server oder NAS, beschränkt auf `RAG_SOURCE_ROOTS` und periodisch eingelesen. Seit 0.3.0: Zitieren mit Abschnitt, Seite und Absatz in sechs Stilen samt Literaturangaben und Normen, Abbildungen per Vision-Modell beschrieben, Bilddateien als Dokument, die Dokument-Werkzeuge `list_documents`, `document_info` und `read_document`, Dokumente im Browser ansehen und Aufträge abbrechen."
+    en = "Implemented: collections with sharing, upload (PDF, DOCX, TXT, MD), a worker with retries and OCR (Tesseract), search with access filtering in SQL plus full text, sources with page numbers, a document search tool and a dedicated RAG section in the admin. Embeddings locally via LM Studio (nomic-embed-text, 768 dimensions), OCR with olmOCR via LM Studio and Tesseract as a fallback, both testable with a button in the admin; directory sources from the server or NAS, limited to `RAG_SOURCE_ROOTS` and read in periodically. Since 0.3.0: citations with section, page and paragraph in six styles including bibliographic data and standards, figures described by a vision model, image files as documents, the document tools `list_documents`, `document_info` and `read_document`, viewing documents in the browser and cancelling jobs."
 
 [[milestones]]
   id = "8"
@@ -117,18 +117,21 @@
     de = "Austauschbares Such-Backend, geschützter Seitenabruf, Quellen unter der Antwort."
     en = "Swappable search backend, protected page fetching, sources below the answer."
   [milestones.note]
-    de = "Umgesetzt mit einem selbst gehosteten SearXNG: Schalter „Websuche“ im Chat und Werkzeug für Modelle, „SearXNG testen“ im Admin, Seitenabruf ohne Zugriff auf Adressen im Heimnetz, Webtext nur als markiertes Quellmaterial. Eine Such-API ist nicht angebunden."
-    en = "Implemented with a self-hosted SearXNG: a “web search” switch in the chat and a tool for models, “SearXNG testen” in the admin, page fetching without access to home-network addresses, web text only as marked source material. No search API is connected."
+    de = "Umgesetzt mit einem selbst gehosteten SearXNG: Schalter „Websuche“ im Chat und Werkzeug für Modelle, „SearXNG testen“ im Admin, Seitenabruf ohne Zugriff auf Adressen im Heimnetz, Webtext nur als markiertes Quellmaterial. Seit 0.3.0 die Werkzeuge `fetch_url` und `crawl_site` (SSRF-geschützt, beachten robots.txt), URLs aus der Frage, Markierung erfundener Links und Grundregeln für alle Modelle. Eine Such-API ist nicht angebunden."
+    en = "Implemented with a self-hosted SearXNG: a “web search” switch in the chat and a tool for models, “SearXNG testen” in the admin, page fetching without access to home-network addresses, web text only as marked source material. Since 0.3.0 the `fetch_url` and `crawl_site` tools (SSRF-protected, respecting robots.txt), URLs from the question, flagging of invented links and base rules for all models. No search API is connected."
 
 [[milestones]]
   id = "9"
-  status = "planned"
+  status = "partial"
   [milestones.title]
     de = "Bilder"
     en = "Images"
   [milestones.text]
     de = "Bilderzeugung, Bereich ändern (Inpainting), Varianten und klassische Bearbeitung über einen mitgelieferten MCP-Server."
     en = "Image generation, editing a marked area (inpainting), variations and classic editing via a bundled MCP server."
+  [milestones.note]
+    de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Offen: Bereich ändern, Varianten und der MCP-Server für klassische Bearbeitung."
+    en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Still open: editing areas, variations and the MCP server for classic editing."
 
 [[milestones]]
   id = "10"
@@ -152,7 +155,7 @@
 
 [[milestones]]
   id = "12"
-  status = "planned"
+  status = "partial"
   [milestones.title]
     de = "Betrieb"
     en = "Operations"
@@ -160,8 +163,8 @@
     de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
     en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."
   [milestones.note]
-    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist jetzt ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
-    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS now ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. Still open: backup, a complete guide and verified upgrade and removal."
+    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
+    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Still open: backup, a complete guide and verified upgrade and removal."
 
 [[milestones]]
   id = "13"
@@ -175,3 +178,16 @@
   [milestones.note]
     de = "Neu eingeplant. Das Kontextmenü und die Prompt-Vorlagen kommen zuerst, das Scratchpad dockt an die Projekte an."
     en = "Newly planned. The context menu and prompt templates come first; the scratchpad attaches to projects."
+
+[[milestones]]
+  id = "14"
+  status = "planned"
+  [milestones.title]
+    de = "Runner"
+    en = "Runner"
+  [milestones.text]
+    de = "Ein Container auf dem Rechner, an dem der Browser läuft – bevorzugt Podman rootless, Docker als Alternative. Der MultiGPT-Server verwaltet ihn per Kopplungs-Token (je Konto, nur gehasht gespeichert, widerrufbar, mit Ablauf). Der Runner verbindet sich nur ausgehend per WebSocket über TLS, am Client sind keine Ports offen. Für MultiGPT ist er ein MCP-Server mit Werkzeugen für Shell, Dateien, git und Python in `/workspace`; Einstufung, Rückfrage und MCP-Freigabe je Modell gelten wie gewohnt. Jede Sitzung lebt in einem eigenen Volume: Container sind wegwerfbar, Volumes werden im Web angelegt, begrenzt, gesichert und gelöscht. Abgerechnet wird über die neue Kontoart „Laufzeit“ in Container-Minuten je Rolle bzw. Person und Monat, mit Hinweis ab 80 % und Stopp ab 100 % – das Volume bleibt erhalten. Die Rolle legt Höchstwerte für CPU und RAM fest und ob der Container ins Netz darf; standardmäßig darf er es nicht. Im Web: Status, Starten, Stoppen, Zurücksetzen, Logs und ein Audit-Log aller Befehle."
+    en = "A container on the computer the browser runs on – preferably rootless Podman, with Docker as an alternative. The MultiGPT server manages it via a pairing token (per account, stored only as a hash, revocable, with an expiry date). The runner connects outgoing only, via WebSocket over TLS; no ports are open on the client. To MultiGPT it is an MCP server with tools for shell, files, git and Python in `/workspace`; tool classification, confirmation and MCP access per model apply as usual. Every session lives in its own volume: containers are disposable, volumes are created, limited, backed up and deleted on the web. Usage is billed through the new “runtime” account type in container minutes per role or person and month, with a warning from 80 % and a stop at 100 % – the volume is kept. The role sets limits for CPU and RAM and whether the container may access the network; by default it may not. On the web: status, start, stop, reset, logs and an audit log of every command."
+  [milestones.note]
+    de = "Neu eingeplant. Zuerst gibt es nur Werkzeuge, keinen Coding-Agenten im Container. Offen ist noch, ob der Rückkanal als eigener ASGI-Dienst oder per Long-Polling läuft."
+    en = "Newly planned. Tools come first; there is no coding agent inside the container. Still open: whether the back channel runs as a separate ASGI service or via long polling."

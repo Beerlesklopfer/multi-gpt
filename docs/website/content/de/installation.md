@@ -1,22 +1,28 @@
 ---
 title: "Installation"
 description: "MultiGPT als Debian-Paket, mit Docker oder für die Entwicklung mit make installieren."
-lead: "Es gibt noch keine fertigen Pakete zum Herunterladen. Wer MultiGPT ausprobieren will, baut das Paket aus dem Quellcode mit `make deb`. Danach kann man mit eigenen API-Keys chatten."
+lead: "Aktuell ist Version 0.3.0 mit den Ergänzungen aus 0.3.1. Fertige Pakete zum Herunterladen gibt es noch nicht: Wer MultiGPT ausprobieren will, baut das Paket aus dem Quellcode mit `make deb`. Danach kann man mit eigenen API-Keys chatten."
 menus:
   main:
     weight: 30
 ---
 
-> **Stand:** `make deb` baut das Paket (`multi-gpt_0.1.0_amd64.deb`). Eine Testinstallation
-> auf einem frischen Debian 13 steht noch aus. Der Docker-Weg ist bisher ungetestet. Das
-> Paket bringt nginx mit TLS bereits mit; die vollständige Betriebsanleitung (mit Backup) folgt
-> mit Meilenstein 12.
+> **Stand 0.3.0/0.3.1:** `make deb` baut das Paket (`multi-gpt_<version>_amd64.deb`), Versionen
+> sind als Git-Tags markiert. Neu sind die Abhängigkeiten bubblewrap (Berechnungen) sowie
+> Pango, harfbuzz und DejaVu-Schriften (PDF-Blätter). Wer von 0.2 kommt, liest
+> [Update auf 0.3](#update-auf-03). Eine Testinstallation auf einem frischen Debian 13 steht
+> noch aus, der Docker-Weg ist bisher ungetestet. Die vollständige Betriebsanleitung (mit
+> Backup) folgt mit Meilenstein 12.
 
 ## Voraussetzungen
 
 - Debian 13 (oder ein anderes System mit apt) mit Python 3.12 oder neuer.
 - PostgreSQL mit der Erweiterung pgvector – lokal oder auf einem anderen Rechner.
 - nginx (ab 1.25.1) und `ssl-cert` – installiert apt als Abhängigkeiten mit.
+- Für Berechnungen: `bubblewrap` (installiert apt mit) und erlaubte unprivilegierte
+  User-Namespaces (unter Debian 13 Standard).
+- Für PDF-Blätter: `libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz-subset0` und
+  `fonts-dejavu-core` – installiert apt ebenfalls mit.
 - Für den Paketbau: `debhelper` und `dh-virtualenv`.
 
 ## Weg 1: Debian-Paket (empfohlen)
@@ -69,6 +75,11 @@ Bei der Installation passiert Folgendes:
   `poppler-utils` (PDF-Seiten als Bild) sowie `tesseract-ocr`, `tesseract-ocr-deu` und
   `tesseract-ocr-eng` für die Texterkennung gescannter Seiten. Weitere Sprachen gibt es als
   Pakete `tesseract-ocr-<sprache>` (dann `OCR_LANGUAGES` in `/etc/multi-gpt/.env` anpassen).
+- **Zusätzliche Pakete für Berechnungen und PDF:** `bubblewrap` für die Sandbox von
+  `run_python` sowie Pango, harfbuzz und `fonts-dejavu-core` für die PDF-Erzeugung mit
+  WeasyPrint (WeasyPrint selbst liegt im venv des Pakets). Die Unit `multi-gpt.service` erlaubt
+  dafür zusätzlich `AF_NETLINK`, nur für das Loopback-Gerät der Sandbox. Prüfen im Admin unter
+  „Chat-Einstellungen“ → „Sandbox testen“.
 - **Zwei Dienste:** `multi-gpt.service` (Weboberfläche) und `multi-gpt-worker.service`
   (Worker, der hochgeladene Dokumente im Hintergrund indexiert). Beide werden aktiviert,
   gestartet und bei Updates nach der Migration neu gestartet. Prüfen mit
@@ -96,6 +107,7 @@ sudo mgpt-ctl createsuperuser
 
 `mgpt-ctl` ist ein Wrapper um Djangos `manage.py`, der als Nutzer `multi-gpt` mit
 `/etc/multi-gpt/.env` läuft. `mgpt-ctl migrate` lässt sich jederzeit gefahrlos wiederholen.
+Alle Befehle stehen im [Wiki: mgpt-ctl](https://github.com/Beerlesklopfer/multi-gpt/wiki/mgpt-ctl).
 
 MultiGPT ist danach unter `https://<hostname>/` erreichbar. Ob die App läuft, zeigt
 `curl -k https://<hostname>/healthz/` (`-k` nur mit dem snakeoil-Zertifikat).
@@ -112,6 +124,44 @@ Ordner vom Server oder NAS beschreibt
 **7. Websuche einrichten (optional):** Ein SearXNG im Heimnetz aufsetzen, im Admin die
 Adresse eintragen und mit „SearXNG testen“ prüfen, danach die Websuche einschalten. Die
 Anleitung steht im [Wiki: SearXNG](https://github.com/Beerlesklopfer/multi-gpt/wiki/SearXNG).
+
+## Update auf 0.3
+
+Das Paket migriert die Datenbank bei jedem Update selbst. Beim Update von 0.2 auf 0.3.x sind
+zusätzlich einige Schritte einmalig von Hand nötig (sie stehen auch in `debian/NEWS`):
+
+**1. Paket aktualisieren** (holt bubblewrap, Pango, harfbuzz und DejaVu mit):
+
+```
+sudo apt install ./multi-gpt_<version>_amd64.deb
+```
+
+**2. Fähigkeiten der Modelle erkennen lassen.** Vorhandene Modelle stehen bei „Werkzeuge“ auf
+„nein“ und bekommen sonst weder Websuche noch Seitenabruf, Dokument-Werkzeuge, Berechnungen
+oder PDF-Blätter angeboten:
+
+```
+sudo mgpt-ctl guess_capabilities            # Vorschau
+sudo mgpt-ctl guess_capabilities --apply    # speichern
+```
+
+Alternativ im Admin: „KI-Modelle“ → Aktion „Fähigkeiten automatisch erkennen“. Neue Modelle
+bekommen ihre Fähigkeiten automatisch. Die MCP-Freigabe je Modell ändert der Befehl nie; neue
+lokale Modelle dürfen MCP-Werkzeuge erst nach Freigabe in der Spalte „MCP“ nutzen.
+
+**3. Dokumente neu indexieren**, damit Zitate Absatz und Abschnitt nennen (und, falls
+eingeschaltet, Abbildungen beschrieben werden): im Admin unter „Dokumente (RAG)“ **„Alles neu
+indexieren“** oder
+
+```
+sudo mgpt-ctl reindex
+```
+
+**4. Prüfen:** Im Admin unter „Chat-Einstellungen“ → „Sandbox testen“. Wer die Unit
+`multi-gpt.service` per Drop-in überschreibt, ergänzt `AF_NETLINK` bei
+`RestrictAddressFamilies=` bzw. lässt `RestrictNamespaces=` weg.
+
+Alle Verwaltungsbefehle und Optionen beschreibt das [Wiki: mgpt-ctl](https://github.com/Beerlesklopfer/multi-gpt/wiki/mgpt-ctl).
 
 ## Weg 2: Docker
 

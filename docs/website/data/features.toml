@@ -1,5 +1,6 @@
 # Funktionskacheln der Startseite.
 # status: "done" | "partial" | "planned"; milestone verweist auf data/roadmap.toml.
+# Stand: Version 0.3.1
 
 [[items]]
   status = "done"
@@ -18,8 +19,8 @@
     de = "Debian-Paket und systemd"
     en = "Debian package and systemd"
   [items.text]
-    de = "Ein `.deb` mit eigenem venv, systemd-Unit und dem Verwaltungsbefehl `mgpt-ctl`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
-    en = "A `.deb` with its own venv, a systemd unit and the `mgpt-ctl` admin command. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
+    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`. Versionen sind getaggt, aktuell 0.3.1. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
+    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command. Versions are tagged, currently 0.3.1. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
 
 [[items]]
   status = "done"
@@ -28,8 +29,8 @@
     de = "Ein Chat, viele Anbieter"
     en = "One chat, many providers"
   [items.text]
-    de = "OpenAI, Anthropic, Google Gemini, OpenRouter und andere OpenAI-kompatible Dienste über eigene API-Keys. Antworten kommen gestreamt, das Modell lässt sich pro Nachricht wechseln. Mit OpenAI im echten Einsatz, die übrigen Anbieter bisher simuliert getestet."
-    en = "OpenAI, Anthropic, Google Gemini, OpenRouter and other OpenAI-compatible services via your own API keys. Answers are streamed, and the model can be switched per message. Running with OpenAI for real; the other providers have been tested with simulations so far."
+    de = "OpenAI, Anthropic, Google Gemini, OpenRouter und andere OpenAI-kompatible Dienste über eigene API-Keys. Antworten kommen gestreamt, das Modell lässt sich pro Nachricht wechseln. Nicht erreichbare Anbieter sind ausgegraut, abgelaufene Keys werden klar gemeldet."
+    en = "OpenAI, Anthropic, Google Gemini, OpenRouter and other OpenAI-compatible services via your own API keys. Answers are streamed, and the model can be switched per message. Unreachable providers are greyed out, and expired keys are reported clearly."
 
 [[items]]
   status = "done"
@@ -38,8 +39,58 @@
     de = "Lokale Modelle mit LM Studio"
     en = "Local models with LM Studio"
   [items.text]
-    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden automatisch angeboten. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
-    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically. Local models cost nothing. In real use in a home network."
+    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden samt ihren Fähigkeiten automatisch angeboten. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
+    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically, along with their capabilities. Local models cost nothing. In real use in a home network."
+
+[[items]]
+  status = "done"
+  milestone = "4 / 4a"
+  [items.title]
+    de = "Fähigkeiten-Matrix"
+    en = "Capability matrix"
+  [items.text]
+    de = "Je Modell eine Hauptart (Chat, Bild, Embedding …) und Häkchen für Werkzeuge, Bilder verstehen, Bilder bearbeiten und MCP. MultiGPT erkennt sie automatisch; `mgpt-ctl guess_capabilities` holt das für ältere Modelle nach."
+    en = "Per model a main type (chat, image, embedding …) plus ticks for tools, image understanding, image editing and MCP. MultiGPT detects them automatically; `mgpt-ctl guess_capabilities` catches up on older models."
+
+[[items]]
+  status = "done"
+  milestone = "5"
+  [items.title]
+    de = "Anhänge und Bild-Eingabe"
+    en = "Attachments and image input"
+  [items.text]
+    de = "Bilder und Dokumente einfügen, hineinziehen oder per Büroklammer anhängen. Bilder gehen an Modelle, die sie verstehen; EXIF-Daten wie der Aufnahmeort werden vorher entfernt."
+    en = "Paste, drag in or attach images and documents with the paper clip. Images go to models that understand them; EXIF data such as the location is removed first."
+
+[[items]]
+  status = "done"
+  milestone = "5"
+  [items.title]
+    de = "Projekte"
+    en = "Projects"
+  [items.text]
+    de = "Chats zu Projekten bündeln, mit gemeinsamen Anweisungen, Standardmodell und vorausgewählten Sammlungen – wie in ChatGPT oder Claude."
+    en = "Group chats into projects with shared instructions, a default model and preselected collections – as in ChatGPT or Claude."
+
+[[items]]
+  status = "done"
+  milestone = "5"
+  [items.title]
+    de = "Chats teilen"
+    en = "Share chats"
+  [items.text]
+    de = "Einen Chat mit Konten oder Gruppen teilen, mit Rechten nach RWUD: Lesen, Schreiben, Bearbeiten, Löschen. Ein Widerruf wirkt sofort, Kosten trägt, wer sendet."
+    en = "Share a chat with accounts or groups, with RWUD permissions: read, write, update, delete. Revoking takes effect at once, and whoever sends pays."
+
+[[items]]
+  status = "done"
+  milestone = "5"
+  [items.title]
+    de = "Formeln und SVG-Vorschau"
+    en = "Formulas and SVG preview"
+  [items.text]
+    de = "Mathematische Formeln mit KaTeX, selbst gehostet. SVG-Code aus Antworten erscheint als Vorschau – nur als Bild, ohne Skripte und ohne Nachladen."
+    en = "Mathematical formulas with KaTeX, self-hosted. SVG code in answers is shown as a preview – as an image only, with no scripts and nothing loaded from outside."
 
 [[items]]
   status = "done"
@@ -55,11 +106,11 @@
   status = "done"
   milestone = "6"
   [items.title]
-    de = "Budgets und Verbrauch"
-    en = "Budgets and usage"
+    de = "Kontenrahmen und Budgets"
+    en = "Billing accounts and budgets"
   [items.text]
-    de = "Monatsbudget je Rolle oder Person, Hinweis ab 80 %, ab 100 % Sperre kostenpflichtiger Modelle – kostenfreie wie LM Studio bleiben nutzbar. Seite „Mein Verbrauch“ und die Verwaltungsseite „Familie“ mit Konten, Rollen, Budgets und Gruppen."
-    en = "Monthly budget per role or person, a warning from 80 %, paid models blocked from 100 % – free ones such as LM Studio stay usable. A personal usage page and a “Family” admin page with accounts, roles, budgets and groups."
+    de = "Jeder Anbieter rechnet über ein Konto ab: in Euro oder Dollar, nur in Tokens (lokal) oder als Pauschale. Preise mit Gültigkeitsdatum, Cache und Reasoning, Wechselkurse. Budgets je Konto, Rolle und Person mit Hinweis ab 80 % und Sperre ab 100 %."
+    en = "Each provider bills through an account: in euros or dollars, in tokens only (local) or as a flat rate. Prices with a validity date, cache and reasoning, exchange rates. Budgets per account, role and person with a warning from 80 % and a block from 100 %."
 
 [[items]]
   status = "done"
@@ -78,8 +129,28 @@
     de = "Werkzeuge über MCP"
     en = "Tools via MCP"
   [items.text]
-    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Heikle Aufrufe brauchen eine Bestätigung im Chat. Jeder Aufruf ist im Chat aufklappbar sichtbar."
-    en = "Models call tools from MCP servers. Sensitive calls need a confirmation in the chat. Every call is visible in the chat as an expandable row."
+    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Server lassen sich aus „mcpServers“-JSON importieren und zeigen ihren Online-Status. Welche Modelle MCP nutzen dürfen, legt der Verwalter je Modell fest; heikle Aufrufe brauchen eine Bestätigung."
+    en = "Models call tools from MCP servers. Servers can be imported from “mcpServers” JSON and show their online status. The administrator decides per model which ones may use MCP; sensitive calls need a confirmation."
+
+[[items]]
+  status = "done"
+  milestone = "4a"
+  [items.title]
+    de = "Berechnungen in der Sandbox"
+    en = "Calculations in a sandbox"
+  [items.text]
+    de = "Modelle rechnen exakt mit Python, numpy, sympy und mpmath und zeichnen Diagramme mit matplotlib. Der Code läuft abgeschottet in bubblewrap: ohne Netz, ohne Server-Dateien, ohne Geheimnisse."
+    en = "Models calculate exactly with Python, numpy, sympy and mpmath and draw charts with matplotlib. The code runs isolated in bubblewrap: no network, no server files, no secrets."
+
+[[items]]
+  status = "done"
+  milestone = "4a"
+  [items.title]
+    de = "Arbeitsblätter als PDF"
+    en = "Worksheets as PDF"
+  [items.text]
+    de = "Neu in 0.3.1: druckfertige Blätter – Lineaturen 0 bis 4, Karo, Rechenblätter mit Lösungen, Uhrzeiten, Zahlenstrahl, Sachunterricht, dazu Briefe und Tabellen. Aufgaben und Lösungen rechnet der Server, nicht das Modell."
+    en = "New in 0.3.1: print-ready sheets – handwriting rulings 0 to 4, squared paper, arithmetic sheets with answers, clock faces, number lines, science worksheets, plus letters and tables. The server computes tasks and answers, not the model."
 
 [[items]]
   status = "done"
@@ -88,8 +159,28 @@
     de = "Fragen an eigene Dokumente"
     en = "Ask your own documents"
   [items.text]
-    de = "Sammlungen mit PDFs, Word- und Textdateien, auch gescannte Seiten per OCR. Antworten mit Quellen und Seitenzahl, Suche mit PostgreSQL und pgvector. Embeddings und OCR laufen auf Wunsch komplett lokal über LM Studio, Ordner vom NAS werden periodisch eingelesen."
-    en = "Collections of PDFs, Word and text files, scanned pages included via OCR. Answers with sources and page numbers, search with PostgreSQL and pgvector. Embeddings and OCR can run fully locally via LM Studio, and folders from the NAS are read in periodically."
+    de = "Sammlungen mit PDFs, Word-, Text- und Bilddateien, auch gescannte Seiten per OCR. Suche mit PostgreSQL und pgvector. Embeddings und OCR laufen auf Wunsch komplett lokal über LM Studio, Ordner vom NAS werden periodisch eingelesen."
+    en = "Collections of PDFs, Word, text and image files, scanned pages included via OCR. Search with PostgreSQL and pgvector. Embeddings and OCR can run fully locally via LM Studio, and folders from the NAS are read in periodically."
+
+[[items]]
+  status = "done"
+  milestone = "7"
+  [items.title]
+    de = "Zitieren mit Fundstelle"
+    en = "Citations with locators"
+  [items.text]
+    de = "Quellen mit Abschnitt, Seite und Absatz, im eigenen Zitierstil: DIN ISO 690, APA 7, Harvard, Chicago, MLA 9 oder BibTeX. Literaturangaben pflegbar, auch für Normen mit Nummer und Ausgabe."
+    en = "Sources with section, page and paragraph, in your own citation style: DIN ISO 690, APA 7, Harvard, Chicago, MLA 9 or BibTeX. Bibliographic data can be edited, including standards with number and edition."
+
+[[items]]
+  status = "done"
+  milestone = "7"
+  [items.title]
+    de = "Abbildungen und Dokument-Werkzeuge"
+    en = "Figures and document tools"
+  [items.text]
+    de = "Ein Vision-Modell beschreibt Bilder und Diagramme in Dokumenten, damit die Suche sie findet. Modelle mit Werkzeugen listen Dokumente, lesen das Inhaltsverzeichnis und ganze Abschnitte – nur in Sammlungen, die man selbst lesen darf."
+    en = "A vision model describes images and charts in documents so that search can find them. Models with tools list documents, read the table of contents and whole sections – only in collections you may read yourself."
 
 [[items]]
   status = "done"
@@ -102,14 +193,24 @@
     en = "Current information from the web via a self-hosted SearXNG, with links below the answer – for local models too."
 
 [[items]]
-  status = "planned"
+  status = "done"
+  milestone = "8"
+  [items.title]
+    de = "Seiten abrufen, erfundene Links markieren"
+    en = "Fetch pages, flag invented links"
+  [items.text]
+    de = "Modelle lesen Webseiten und kleine Websites (mit SSRF-Schutz und robots.txt), auch URLs aus der Frage. Links ohne Quelle in der Antwort bekommen ein ⚠ und einen Knopf „Belege prüfen“."
+    en = "Models read web pages and small sites (with SSRF protection and robots.txt), including URLs from your question. Links in an answer without a source get a ⚠ and a “check sources” button."
+
+[[items]]
+  status = "partial"
   milestone = "9"
   [items.title]
     de = "Bilder erzeugen und bearbeiten"
     en = "Create and edit images"
   [items.text]
-    de = "Bilder erzeugen, Bereiche ändern, Varianten, Zuschneiden und Skalieren. Das Original bleibt erhalten."
-    en = "Generate images, change marked areas, variations, crop and resize. The original is kept."
+    de = "Bilder erzeugen mit OpenAI gpt-image oder Gemini: als Werkzeug des Chatmodells oder im Modus „Bild“. Bereiche ändern, Varianten und klassische Bearbeitung folgen."
+    en = "Generate images with OpenAI gpt-image or Gemini: as a tool of the chat model or in “image” mode. Editing areas, variations and classic editing follow."
 
 [[items]]
   status = "planned"
@@ -120,3 +221,23 @@
   [items.text]
     de = "Frage einsprechen, Text vor dem Senden korrigieren, Antworten vorlesen lassen."
     en = "Speak your question, correct the text before sending, have answers read aloud."
+
+[[items]]
+  status = "planned"
+  milestone = "13"
+  [items.title]
+    de = "Scratchpad"
+    en = "Scratchpad"
+  [items.text]
+    de = "Material aus Chats, Dokumenten und dem Web mit Herkunft sammeln und daraus ein belegtes Gesamtdokument erzeugen, mit geprüften Zitaten und Literaturverzeichnis."
+    en = "Collect material from chats, documents and the web with its origin, and turn it into a fully referenced document with verified quotes and a bibliography."
+
+[[items]]
+  status = "planned"
+  milestone = "14"
+  [items.title]
+    de = "Runner"
+    en = "Runner"
+  [items.text]
+    de = "Ein Container auf dem eigenen Rechner als Arbeitsumgebung für Modelle: Shell, Dateien, git und Python. Vom Server per Token verwaltet, Verbindung nur ausgehend, Netz standardmäßig aus, Zeitkontingent je Rolle."
+    en = "A container on your own computer as a workspace for models: shell, files, git and Python. Managed by the server via a token, outgoing connection only, network off by default, a time quota per role."

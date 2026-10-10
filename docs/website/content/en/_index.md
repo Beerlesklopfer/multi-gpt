@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
-eyebrow: "Self-hosted · in development"
+eyebrow: "Self-hosted · in development · version 0.3"
 headline: "One AI chat for the whole family – on your own server"
 lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to a local LM Studio. Chats, accounts and API keys stay on your own server."
 pillarsTitle: "The idea behind it"
@@ -29,17 +29,36 @@ home server with Debian – and that is reachable only from the home network.
 ## What exists today
 
 You can chat with your own API keys: with OpenAI, Anthropic, Google Gemini, OpenRouter and
-LM Studio in your home network, with streamed answers, a model choice per message, Markdown
-and code highlighting. On top of that there are family accounts with roles, monthly budgets and
-a "Family" page, a comparison mode for two or three models, MCP tools with confirmation,
-questions to your own documents (fully local via LM Studio if you like), web search via a
-self-hosted SearXNG, encrypted API keys, an admin area for administrators and a Debian
-package that sets up the database and schema itself.
+LM Studio in your home network, with streamed answers, a model choice per message, Markdown,
+formulas and code highlighting. On top of that there are family accounts with roles, billing
+accounts with budgets, a comparison mode for two or three models, MCP tools with
+confirmation, questions to your own documents with citable sources (fully local via
+LM Studio if you like), web search via a self-hosted SearXNG, encrypted API keys, an admin
+area for administrators and a Debian package that sets up the database, schema and nginx
+itself.
 
-It already runs for real with OpenAI, the other cloud providers have been tested with
-simulations; real tests with Anthropic and Gemini keys and on a fresh Debian installation
-are still pending, and the Docker build is untested. There are no release packages yet.
-Images, voice, music and backup follow – details in the
+## New in 0.3
+
+- **Attachments and image input:** drag or paste images and documents into the chat;
+  location data is stripped from photos.
+- **Projects** and **shared chats** with RWUD permissions.
+- **Citations** with section, page and paragraph in DIN ISO 690, APA, Harvard, Chicago, MLA
+  or BibTeX; figures in documents become searchable.
+- **Image generation** with OpenAI or Gemini.
+- **Calculations** with numpy, sympy and matplotlib in an isolated sandbox.
+- **Page fetching** for models and flagging of invented links.
+- **MCP** with JSON import, online status and access per model, plus the **capability
+  matrix** and **billing accounts** for costs.
+- **0.3.1:** print-ready **worksheets as PDF** – handwriting rulings, arithmetic sheets with
+  answers, science worksheets.
+
+Updating from 0.2? The required steps are under
+[installation]({{< relref "installation" >}}).
+
+It already runs for real with OpenAI and LM Studio; the other cloud providers have mostly
+been tested with simulations so far. A fresh Debian installation is still pending, and the
+Docker build is untested. There are no release packages yet. Image editing, voice, music,
+backup, the scratchpad and the runner follow – details in the
 [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence
