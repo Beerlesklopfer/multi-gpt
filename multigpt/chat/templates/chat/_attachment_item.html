@@ -14,5 +14,8 @@
       <span class="attachment-chip-name">{{ a.display_name }}</span>
       <span class="attachment-chip-size">{{ a.size_label }}</span><span class="sr-only"> (herunterladen)</span>
     </a>
+    {% if a.mime_type == "application/pdf" and not a.owner_id %}{# erzeugtes PDF: im Browser ansehen (api_attachments.viewable_pdf) #}
+    <a class="attachment-chip attachment-view" href="{{ a.url }}" target="_blank" rel="noopener">Ansehen<span class="sr-only"> ({{ a.display_name }})</span></a>
+    {% endif %}
   {% endif %}
 </li>

@@ -52,6 +52,7 @@ class Action(enum.StrEnum):
     UPLOAD_DOCUMENTS = "upload_documents"
     SHARE = "share"
     COMPUTE = "compute"
+    CREATE_DOCUMENTS = "create_documents"
     USE_MCP_SERVER = "use_mcp_server"
     READ = "read"
     WRITE = "write"
@@ -70,6 +71,7 @@ _ROLE_FLAGS = {
     Action.UPLOAD_DOCUMENTS: "can_upload_documents",
     Action.SHARE: "can_share",
     Action.COMPUTE: "can_compute",
+    Action.CREATE_DOCUMENTS: "can_create_documents",
 }
 
 _ADMIN_ACTIONS = {Action.MANAGE_FAMILY, Action.VIEW_USAGE_ALL, Action.ADMIN}

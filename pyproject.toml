@@ -17,6 +17,9 @@ dependencies = [
     "django-axes>=8.0",
     "gunicorn>=23",
     "httpx>=0.27",
+    # markdown-it-py, weasyprint: Blätter als PDF (Werkzeug create_pdf); WeasyPrint
+    # braucht Pango >= 1.44 aus dem System (debian/control).
+    "markdown-it-py>=4.2",
     # matplotlib, mpmath, numpy, sympy: Berechnungen (run_python, M4a-10), nur in der Sandbox.
     "matplotlib>=3.10",
     "mcp>=2.3",
@@ -28,6 +31,7 @@ dependencies = [
     "pypdf>=6.0",
     "python-docx>=1.2",
     "sympy>=1.14",
+    "weasyprint>=70.0",
     "whitenoise>=6.9",
 ]
 

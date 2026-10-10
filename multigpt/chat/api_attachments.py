@@ -7,6 +7,14 @@
   den Chat der Nachricht bzw. als Besitzer des Entwurfs; sonst 404 (Existenz
   fremder Anhänge bleibt verborgen). Bilder ``inline``, alles andere als
   Download; ``nosniff``, ``private, no-store`` und eine CSP ohne Skripte.
+- **Erzeugte PDFs** (``owner`` leer: ``create_pdf``, ``run_python``, MCP) werden
+  ``inline`` ausgeliefert („Ansehen“), ohne CSP – wie „Dokument ansehen“ in
+  ``views_collections``: Die PDF-Betrachter von Firefox und Chrome zeigen
+  PDFs mit ``sandbox`` nicht an. Vertretbar, weil der Typ fest
+  ``application/pdf`` mit ``nosniff`` ist (nie als HTML gedeutet) und beide
+  Betrachter PDF-Skripte abgeschottet vom Ursprung der Seite ausführen (pdf.js
+  in eigener Sandbox, PDFium ohne Zugriff auf DOM und Cookies). Hochgeladene
+  PDFs bleiben Download (unverändertes Verhalten).
 """
 
 import mimetypes
@@ -30,6 +38,7 @@ from .views_collections import x_accel_path
 # Nur diese Typen werden im Browser angezeigt; alles andere ist ein Download.
 INLINE_TYPES = set(attachments.IMAGE_FORMATS.values())
 CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+PDF_TYPE = "application/pdf"
 
 
 def _error(message: str, status: int) -> JsonResponse:
@@ -109,7 +118,14 @@ def _content_type(attachment: Attachment, stored: str) -> str:
     return mime or "application/octet-stream"
 
 
-def _serve(attachment: Attachment, field, *, inline: bool, content_type: str, filename: str):
+def viewable_pdf(attachment: Attachment) -> bool:
+    """Erzeugtes PDF (vom Server bzw. Werkzeug, nicht hochgeladen): im Browser ansehen."""
+    return attachment.owner_id is None and attachment.mime_type == PDF_TYPE
+
+
+def _serve(
+    attachment: Attachment, field, *, inline: bool, content_type: str, filename: str, csp=CSP
+):
     if not field or not field.name:
         raise Http404
     accel = x_accel_path(field.name)
@@ -129,7 +145,8 @@ def _serve(attachment: Attachment, field, *, inline: bool, content_type: str, fi
             response["Content-Disposition"] = content_disposition_header(False, filename)
     response["Cache-Control"] = "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"
-    response["Content-Security-Policy"] = CSP
+    if csp:
+        response["Content-Security-Policy"] = csp
     return response
 
 
@@ -139,13 +156,14 @@ def serve(request, pk: int):
     attachment = readable_attachment(request.user, pk)
     stored = attachment.file.name or ""
     content_type = _content_type(attachment, stored)
-    inline = content_type in INLINE_TYPES
+    pdf = viewable_pdf(attachment) and content_type == PDF_TYPE
     return _serve(
         attachment,
         attachment.file,
-        inline=inline,
+        inline=content_type in INLINE_TYPES or pdf,
         content_type=content_type,
         filename=download_name(attachment, stored),
+        csp=None if pdf else CSP,
     )
 
 

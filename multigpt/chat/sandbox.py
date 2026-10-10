@@ -346,7 +346,7 @@ for stream in (sys.stdout, sys.stderr):
     except BaseException:
         pass
 
-SUFFIXES = (".png", ".svg", ".jpg", ".jpeg", ".webp")
+SUFFIXES = (".png", ".svg", ".jpg", ".jpeg", ".webp", ".pdf")
 
 
 def _images():

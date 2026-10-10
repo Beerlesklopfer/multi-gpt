@@ -81,6 +81,7 @@ from multigpt.billing.pricing import Round, Tally
 from . import attachments as chat_attachments
 from . import (
     citations,
+    documents_pdf,  # registriert create_pdf (Blätter als PDF), System-Hinweis
     images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
     sharing,
     tooling,
@@ -1238,6 +1239,7 @@ class _Loop:
             )
             notes.append(websearch.pages.system_hint(self.bindings))  # fetch_url, crawl_site
             notes.append(images.system_hint(self.bindings))  # generate_image (M9-01)
+            notes.append(documents_pdf.system_hint(self.bindings))  # create_pdf
             system = build_system_prompt(turn.user, turn.conversation, notes)
             adapter = registry.get_adapter(turn.ai_model.provider)
 

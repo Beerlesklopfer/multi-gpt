@@ -68,6 +68,12 @@ class Role(models.Model):
         help_text="Modelle dürfen Python-Code für Rechnungen in einer abgeschotteten "
         "Umgebung ausführen (numpy, sympy, Diagramme).",
     )
+    can_create_documents = models.BooleanField(
+        "Dokumente erzeugen (PDF)",
+        default=False,
+        help_text="Modelle dürfen Blätter zum Ausdrucken als PDF erzeugen (Arbeitsblätter, "
+        "Lineaturen, Briefe, Tabellen).",
+    )
     all_mcp_servers = models.BooleanField(
         "Alle aktiven MCP-Server",
         default=False,

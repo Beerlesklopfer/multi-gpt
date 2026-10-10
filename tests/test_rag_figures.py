@@ -682,7 +682,8 @@ def test_figure_model_choices(lmstudio):
     assert not any("olmocr" in label for label in recommended)
     flat = [label for _g, options in choices[1:] for _v, label in options]
     assert not any("o1 mini" in label for label in flat)  # Cloud ohne Bild-Eingabe
-    assert any("olmocr" in label for label in flat)  # lokal: alle Chatmodelle wählbar
+    # olmOCR ist Hauptart OCR (reine Texterkennung) und für Abbildungen nicht wählbar.
+    assert not any("olmocr" in label for label in flat)
 
 
 def test_new_figure_model_is_created_vision_only(lmstudio):

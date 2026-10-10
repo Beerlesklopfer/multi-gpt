@@ -1,3 +1,17 @@
+multi-gpt (0.3.1) unstable; urgency=medium
+
+  Blätter als PDF: Modelle mit Werkzeugen erzeugen Arbeitsblätter,
+  Schreibblätter mit Lineatur (0–4, liniert, Karo), Rechenblätter mit
+  Lösungen, Uhrzeiten, Zahlenstrahl sowie Briefe und Tabellen als PDF
+  (Werkzeug create_pdf). Neue Abhängigkeiten: WeasyPrint (im Paket), dazu
+  aus Debian libpango-1.0-0, libpangoft2-1.0-0, libharfbuzz-subset0 und
+  fonts-dejavu-core. Neues Rollenrecht „Dokumente erzeugen (PDF)“: an für
+  Verwalter, Erwachsene und Jugendliche, aus für Gäste. Erzeugte PDFs
+  öffnen im Chat mit „Ansehen“ im Browser; zum Drucken „tatsächliche
+  Größe“ bzw. 100 % wählen, damit die Lineaturen maßhaltig sind.
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 08:00:00 +0200
+
 multi-gpt (0.3.0) unstable; urgency=medium
 
   Vorhandene KI-Modelle stehen bei „Werkzeuge“ auf „nein“. Ohne Werkzeuge

@@ -22,6 +22,8 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
   `generate_image`, Modus „Bild“, Hinweis bei Modellen ohne Werkzeuge, Kosten je Bild
 - [Berechnungen](Berechnungen): Werkzeug `run_python` (numpy, sympy, mpmath, Diagramme mit
   matplotlib), Sandbox mit bubblewrap, Grenzen, „Sandbox testen“, Fehlersuche
+- [Blätter und Dokumente (PDF)](Dokumente-erzeugen): Werkzeug `create_pdf` für Arbeitsblätter,
+  Lineaturen mit Häuschen, Rechenblätter mit Lösungen, Uhr, Zahlenstrahl, Briefe und Tabellen
 - [Kosten und Budgets](Kosten-und-Budgets): Kontenrahmen (Geld, nur Tokens, Pauschale),
   Preise mit Historie, Wechselkurse, Budgets je Konto, Beispiele für Anthropic, OpenAI und LM Studio
 - [Fragen an eigene Dokumente (RAG)](RAG): Sammlungen, Upload, Status, Auswahl im Chat, Quellen

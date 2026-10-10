@@ -27,6 +27,15 @@ def _no_sandbox(monkeypatch):
     monkeypatch.setattr(sandbox, "status", lambda refresh=False: off)
 
 
+@pytest.fixture(autouse=True)
+def _no_pdf_tool(monkeypatch):
+    """Werkzeug create_pdf standardmäßig nicht anbieten (genaue Werkzeuglisten in
+    vielen Tests); tests/test_create_pdf.py überschreibt diese Fixture."""
+    from multigpt.chat import documents_pdf
+
+    monkeypatch.setattr(documents_pdf, "weasyprint_installed", lambda: False)
+
+
 @pytest.fixture
 def password():
     return "Geheim-Test-1234"

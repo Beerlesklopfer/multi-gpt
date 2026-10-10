@@ -24,6 +24,7 @@ class RoleAdmin(admin.ModelAdmin):
         "can_upload_documents",
         "can_share",
         "can_compute",
+        "can_create_documents",
         "monthly_budget",
     )
     search_fields = ("name", "key")
@@ -41,6 +42,7 @@ class RoleAdmin(admin.ModelAdmin):
                     "can_upload_documents",
                     "can_share",
                     "can_compute",
+                    "can_create_documents",
                 )
             },
         ),

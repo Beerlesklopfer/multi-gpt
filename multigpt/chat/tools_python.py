@@ -29,6 +29,10 @@ Entscheidungen:
   Werkzeugaufruf, damit sie in der Antwort mit Vorschau erscheinen). Raster
   werden über ``attachments.process_image`` neu kodiert (ohne Metadaten), SVG
   über ``svg_clean`` bereinigt und nur als ``<img>``/Download gezeigt.
+  PDF (z. B. ``plt.savefig('blatt.pdf')`` für Blätter mit freier Geometrie in
+  mm) wird nach Prüfung (Kopf ``%PDF-``, lesbar mit pypdf, höchstens
+  ``MAX_PDF_PAGES`` Seiten) als Datei-Anhang übernommen; der Inhalt bleibt
+  nicht vertrauenswürdig (Auslieferung siehe ``api_attachments``).
   Höchstens ``MAX_FILES_PER_ANSWER`` je Antwort.
 - **Logs:** nur IDs, Dauer, Exit-Status (``sandbox``) – nie Code oder Ausgabe.
 """
@@ -59,6 +63,7 @@ MAX_FILES_PER_ANSWER = 12
 MAX_RASTER_BYTES = 5 * 1024 * 1024
 MAX_SVG_BYTES = svg_clean.MAX_BYTES
 RASTER_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+MAX_PDF_PAGES = 50
 
 MSG_NO_CODE = "Bitte Python-Code im Argument „code“ angeben."
 MSG_TOO_LONG = f"Der Code ist zu lang (höchstens {MAX_CODE_CHARS} Zeichen)."
@@ -79,6 +84,8 @@ DESCRIPTION = (
     "Rechnungen (Gleichungen, Integrale, Statistik, Einheiten, große Zahlen) statt "
     "Kopfrechnen. Für Diagramme matplotlib nutzen und mit plt.savefig('diagramm.png') "
     "bzw. plt.savefig('diagramm.svg') speichern; die Dateien erscheinen in der Antwort. "
+    "Ein Blatt mit eigener, exakter Geometrie (Maße in mm) als PDF speichern, z. B. "
+    "plt.figure(figsize=(210/25.4, 297/25.4)) und plt.savefig('blatt.pdf'). "
     "Jeder Aufruf startet frisch (keine Variablen aus früheren Aufrufen), CPU-Zeit und "
     "Speicher sind begrenzt."
 )
@@ -153,6 +160,32 @@ def _store_svg(message, item: sandbox.OutputFile) -> Attachment:
     return attachment
 
 
+def _store_pdf(message, item: sandbox.OutputFile) -> Attachment:
+    """PDF aus der Sandbox prüfen (Kopf, lesbar, Seitenzahl) und als Datei speichern."""
+    from pypdf import PdfReader
+    from pypdf.errors import PyPdfError
+
+    if not item.data.startswith(b"%PDF-"):
+        raise chat_attachments.UploadError("Kein PDF.")
+    try:
+        pages = len(PdfReader(io.BytesIO(item.data)).pages)
+    except (PyPdfError, ValueError, KeyError, TypeError, OSError) as exc:
+        raise chat_attachments.UploadError("PDF nicht lesbar.") from exc
+    if not 1 <= pages <= MAX_PDF_PAGES:
+        raise chat_attachments.UploadError("Zu viele Seiten.")
+    attachment = Attachment(
+        message=message,
+        owner=None,
+        conversation=message.conversation,
+        kind=Attachment.Kind.FILE,
+        mime_type="application/pdf",
+        size=len(item.data),
+        original_name=_clean_stem(item.name) + ".pdf",
+    )
+    _save(attachment, "rechnung.pdf", item.data, None)
+    return attachment
+
+
 def _save(attachment: Attachment, name: str, data: bytes, thumbnail: bytes | None) -> None:
     try:
         with transaction.atomic():
@@ -181,10 +214,13 @@ def store_files(message, files: list[sandbox.OutputFile]) -> tuple[list[Attachme
                 stored.append(_store_svg(message, item))
             elif lower.endswith(RASTER_SUFFIXES) and len(item.data) <= MAX_RASTER_BYTES:
                 stored.append(_store_raster(message, item))
+            elif lower.endswith(".pdf") and len(item.data) <= MAX_RASTER_BYTES:
+                stored.append(_store_pdf(message, item))
             else:
                 rejected.append(f"{item.name} (Format oder Größe)")
         except (svg_clean.SvgError, chat_attachments.UploadError):
-            rejected.append(f"{item.name} (kein gültiges Bild)")
+            kind = "PDF" if lower.endswith(".pdf") else "Bild"
+            rejected.append(f"{item.name} (kein gültiges {kind})")
         except Exception as exc:  # noqa: BLE001 - ein Anhang darf das Ergebnis nicht verlieren
             logger.error("Anhang aus Berechnung (Nachricht %s): %s", message.pk, type(exc).__name__)
             rejected.append(f"{item.name} (Speichern fehlgeschlagen)")

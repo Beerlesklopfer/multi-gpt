@@ -24,7 +24,11 @@ Depends: ${misc:Depends},
          tesseract-ocr,
          tesseract-ocr-deu,
          tesseract-ocr-eng,
-         bubblewrap
+         bubblewrap,
+         libpango-1.0-0 (>= 1.44),
+         libpangoft2-1.0-0 (>= 1.44),
+         libharfbuzz-subset0,
+         fonts-dejavu-core
 Suggests: postgresql (>= 17),
           postgresql-17-pgvector | postgresql-pgvector
 Description: MultiGPT - local multi-AI chat system for the family

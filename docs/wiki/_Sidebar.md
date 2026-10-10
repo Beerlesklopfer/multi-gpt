@@ -9,6 +9,7 @@
 - [MCP-Server](MCP)
 - [Bilder erzeugen](Bilder)
 - [Berechnungen](Berechnungen)
+- [Blätter und Dokumente (PDF)](Dokumente-erzeugen)
 - [Kosten und Budgets](Kosten-und-Budgets)
 - [mgpt-ctl (Verwaltungsbefehle)](mgpt-ctl)
 

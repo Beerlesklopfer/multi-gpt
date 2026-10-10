@@ -380,7 +380,8 @@ TOOL_SPEC = ToolSpec(
         "Logo oder eine Illustration möchte – zeichne Bilder nicht selbst als SVG, ASCII oder "
         "Code, außer der Nutzer verlangt ausdrücklich Code. Beschreibe im Argument „prompt“ "
         "das gewünschte Bild genau (Motiv, Stil, Farben, Text im Bild). Kostet Geld: je "
-        "Wunsch nur ein Bild, außer der Nutzer will mehrere."
+        "Wunsch nur ein Bild, außer der Nutzer will mehrere. Nicht für Blätter zum "
+        "Ausdrucken (Arbeitsblatt, Lineatur, Brief, Tabelle, Formular)."
     ),
     parameters={
         "type": "object",
