@@ -16,6 +16,7 @@ urlpatterns = [
     path("einstellungen/", views_settings.settings_page, name="settings"),
     # Knoten (M15): API-Keys je Konto und MCP-Server (Streamable HTTP, Bearer-Key).
     path("einstellungen/api-keys/", views_keys.api_keys_page, name="api_keys"),
+    path("einstellungen/api-keys/erzeugen/", views_keys.api_key_quick, name="api_key_quick"),
     path(
         "einstellungen/api-keys/<int:pk>/widerrufen/",
         views_keys.api_key_revoke,

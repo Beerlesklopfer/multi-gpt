@@ -16,6 +16,7 @@ from datetime import timedelta
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -113,6 +114,7 @@ def _context(request, form, created=None):
         "calls": calls,
         "created": created,
         "connect": connect_configs(mcp_url),
+        "placeholder": PLACEHOLDER,
         "connect_created": connect_configs(mcp_url, created.secret) if created else None,
         "can_create": bool(keys.role_scopes(user)),
         "scope_labels": {key: label for key, (label, _) in api_scopes.SCOPES.items()},
@@ -133,12 +135,7 @@ def api_keys_page(request):
             # Knopf „Key erzeugen“ in der Verbindungsvorlage: alle Rechte der Rolle,
             # 90 Tage gültig, Name mit Datum – danach ohne Formular einsatzbereit.
             form = ApiKeyForm(user)
-            created = keys.create_key(
-                user,
-                f"MCP-Client {timezone.localtime():%d.%m.%Y %H:%M}",
-                sorted(keys.role_scopes(user)),
-                expires_at=timezone.now() + timedelta(days=QUICK_DAYS),
-            )
+            created = _quick_key(user)
         elif form.is_valid():
             try:
                 created = keys.create_key(
@@ -153,6 +150,28 @@ def api_keys_page(request):
             else:
                 form = ApiKeyForm(user)
     response = render(request, "node/api_keys.html", _context(request, form, created))
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _quick_key(user):
+    """Key mit allen Rechten der Rolle, 90 Tage gültig, Name mit Datum."""
+    return keys.create_key(
+        user,
+        f"MCP-Client {timezone.localtime():%d.%m.%Y %H:%M}",
+        sorted(keys.role_scopes(user)),
+        expires_at=timezone.now() + timedelta(days=QUICK_DAYS),
+    )
+
+
+@require_POST
+@login_required
+def api_key_quick(request):
+    """Knopf „Erzeugen“ im Key-Eingabefeld (node_connect.js): Key als JSON, einmalig."""
+    if not keys.role_scopes(request.user):
+        return JsonResponse({"error": "Dieses Konto darf keine API-Keys anlegen."}, status=403)
+    created = _quick_key(request.user)
+    response = JsonResponse({"secret": created.secret, "name": created.key.name}, status=201)
     response["Cache-Control"] = "no-store"
     return response
 

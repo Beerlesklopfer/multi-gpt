@@ -1,14 +1,15 @@
-{# Kopierfertige MCP-Verbindungsdaten (views_keys.connect_configs). Text nur über Auto-Escaping. #}
+{# Kopierfertige MCP-Verbindungsdaten (views_keys.connect_configs). Text nur über Auto-Escaping.
+   node_connect.js setzt den Key aus dem Eingabefeld ein (data-template) und kopiert. #}
 <p><strong>JSON</strong> (<code>mcpServers</code> – Claude Desktop: <code>claude_desktop_config.json</code>,
    Claude Code: <code>.mcp.json</code>, Cursor, n8n „MCP-Server importieren“):</p>
 <div class="connect-block">
-  <pre id="mcp-json-{{ suffix }}"><code>{{ cfg.json }}</code></pre>
-  <button type="button" class="button button-small" data-copy-target="mcp-json-{{ suffix }}" hidden>JSON kopieren</button>
-  <span class="hint" data-copy-done hidden role="status">Kopiert</span>
+  <pre id="mcp-json-{{ suffix }}" data-template="{{ cfg.json }}"><code>{{ cfg.json }}</code></pre>
+  <button type="button" class="button button-small" data-connect-copy="mcp-json-{{ suffix }}">JSON kopieren</button>
+  <span class="hint" data-copy-done hidden role="status"></span>
 </div>
 <p><strong>Claude Code</strong> (Terminal):</p>
 <div class="connect-block">
-  <pre id="mcp-cmd-{{ suffix }}"><code>{{ cfg.claude_code }}</code></pre>
-  <button type="button" class="button button-small" data-copy-target="mcp-cmd-{{ suffix }}" hidden>Befehl kopieren</button>
-  <span class="hint" data-copy-done hidden role="status">Kopiert</span>
+  <pre id="mcp-cmd-{{ suffix }}" data-template="{{ cfg.claude_code }}"><code>{{ cfg.claude_code }}</code></pre>
+  <button type="button" class="button button-small" data-connect-copy="mcp-cmd-{{ suffix }}">Befehl kopieren</button>
+  <span class="hint" data-copy-done hidden role="status"></span>
 </div>

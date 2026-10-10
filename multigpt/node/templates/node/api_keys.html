@@ -2,7 +2,7 @@
 {% load static %}
 {# Einstellungen → API-Keys (M15). Ein neuer Key steht nur in dieser Antwort (no-store). #}
 {% block title %}API-Keys – Einstellungen – MultiGPT{% endblock %}
-{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script><script src="{% static 'chat/node_connect.js' %}" defer></script>{% endblock %}
 {% block content %}
   <section class="page settings-page" aria-labelledby="api-keys-title">
     <p class="breadcrumb"><a href="{% url 'settings' %}">Einstellungen</a> › API-Keys</p>
@@ -35,13 +35,26 @@
       <h2 class="section-title" id="api-connect-title">MultiGPT mit einem MCP-Client verbinden</h2>
       <p>Für Claude Desktop, Claude Code, Cursor, n8n und andere MCP-Clients. Beim Anlegen eines
          Keys erscheint die Konfiguration mit eingesetztem Key; sonst <code>&lt;DEIN_API_KEY&gt;</code> ersetzen.</p>
+      <div class="connect-key" data-connect data-placeholder="{{ placeholder }}"
+           {% if can_create %}data-quick-url="{% url 'api_key_quick' %}"{% endif %}>
+        <label for="connect-key-input">API-Key</label>
+        <div class="connect-key-field">
+          <input id="connect-key-input" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="mgpt_… einfügen{% if can_create %} oder erzeugen{% endif %}">
+          {% if can_create %}<button type="button" class="button" data-generate-key hidden>Erzeugen</button>{% endif %}
+        </div>
+        <p class="hint" data-connect-status role="status" aria-live="polite">
+          {% if can_create %}„Erzeugen“ legt einen Key mit allen Rechten deiner Rolle an, 90 Tage gültig, jederzeit widerrufbar. Er ist nur jetzt sichtbar.{% endif %}
+        </p>
+        {% csrf_token %}
+      </div>
       {% if can_create %}
-        <form method="post" action="{% url 'api_keys' %}" class="connect-quick">
-          {% csrf_token %}
-          <input type="hidden" name="quick" value="1">
-          <button type="submit" class="button button-primary">Key erzeugen und einsetzen</button>
-          <span class="hint">Alle Rechte deiner Rolle, 90 Tage gültig; jederzeit widerrufbar.</span>
-        </form>
+        <noscript>
+          <form method="post" action="{% url 'api_keys' %}">{% csrf_token %}
+            <input type="hidden" name="quick" value="1">
+            <button type="submit" class="button">Key erzeugen und einsetzen</button>
+          </form>
+        </noscript>
       {% endif %}
       {% include "node/_connect.html" with cfg=connect suffix="template" %}
     </section>

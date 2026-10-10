@@ -3729,3 +3729,15 @@ span.message-source-link {
   background: var(--bg-sidebar);
   font-size: 0.85rem;
 }
+
+.connect-key-field {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 48rem;
+}
+
+.connect-key-field input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+}

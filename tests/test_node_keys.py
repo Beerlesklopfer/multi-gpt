@@ -240,3 +240,26 @@ def test_quick_button_needs_role_right(client):
     response = client.post(reverse("api_keys"), {"quick": "1"})
     assert response.status_code == 302
     assert not ApiKey.objects.exists()
+
+
+def test_input_field_and_generate_endpoint(client):
+    user = make_user("anna")
+    client.force_login(user)
+    page = client.get(reverse("api_keys")).content.decode()
+    assert 'id="connect-key-input"' in page
+    assert "data-generate-key" in page
+    assert "node_connect.js" in page
+    assert 'data-connect-copy="mcp-json-template"' in page
+    response = client.post(reverse("api_key_quick"))
+    assert response.status_code == 201
+    assert response["Cache-Control"] == "no-store"
+    data = response.json()
+    assert data["secret"].startswith("mgpt_")
+    assert ApiKey.objects.get().name == data["name"]
+
+
+def test_generate_endpoint_requires_role_and_post(client):
+    client.force_login(make_user("gast", role_key="guest"))
+    assert client.get(reverse("api_key_quick")).status_code == 405
+    assert client.post(reverse("api_key_quick")).status_code == 403
+    assert not ApiKey.objects.exists()
