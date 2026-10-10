@@ -1,14 +1,16 @@
 """Chats verwalten (M5-02, M5-03): umbenennen, System-Prompt, archivieren, löschen.
 
 ``PATCH /api/conversations/<pk>/`` mit JSON ``{title?, system_prompt?, temperature?,
-archived?}`` (``temperature``: Kreativität 0–2 oder ``null`` = Standard, creativity.py)
+reasoning_effort?, archived?}`` (``temperature``: Kreativität 0–2 oder ``null`` =
+Standard, creativity.py; ``reasoning_effort``: Denktiefe ``off``/``low``/``medium``/
+``high``/``xhigh``/``max`` oder ``null``/``""`` = Standard, reasoning.py)
 und ``DELETE /api/conversations/<pk>/``. Antworten als JSON, Fehler wie in
 api.py als ``{"error": "<Text>"}``.
 
 Rechte (immer über ``can()``):
 
 - kein READ -> 404 (fremde Chats bleiben unsichtbar),
-- Titel, System-Prompt und Kreativität: UPDATE (Besitzer oder Freigabe mit „Bearbeiten“),
+- Titel, System-Prompt, Kreativität und Denktiefe: UPDATE (Besitzer oder Freigabe mit „Bearbeiten“),
 - Archivieren und Löschen: DELETE (Besitzer oder Freigabe mit „Löschen“). Es
   wirkt für alle; die Oberfläche fragt bei fremden Chats deutlich nach
   („Der Chat gehört … und wird für alle gelöscht.“),
@@ -22,7 +24,7 @@ from django.views.decorators.http import require_http_methods
 from multigpt.accounts.permissions import Action, can
 
 from . import attachments as chat_attachments
-from . import creativity
+from . import creativity, reasoning
 from .api import _error, _json_body, api_login_required
 from .models import Conversation
 
@@ -38,6 +40,7 @@ def serialize_conversation(conversation: Conversation, user) -> dict:
         "temperature": (
             None if conversation.temperature is None else float(conversation.temperature)
         ),
+        "reasoning_effort": conversation.reasoning_effort,
         "archived": conversation.archived,
         "is_owner": conversation.user_id == user.pk,
     }
@@ -90,7 +93,8 @@ def conversation_detail(request, pk: int):
     if data is None:
         return _error("Ungültige Anfrage.", 400)
     fields = {}
-    if any(key in data for key in ("title", "system_prompt", "temperature")) and not may_update:
+    editable = ("title", "system_prompt", "temperature", "reasoning_effort")
+    if any(key in data for key in editable) and not may_update:
         return _error("Du darfst diesen Chat nicht bearbeiten.", 403)
     if "title" in data:
         title, err = _clean_title(data["title"])
@@ -107,6 +111,11 @@ def conversation_detail(request, pk: int):
         if err:
             return _error(err, 400)
         fields["temperature"] = value
+    if "reasoning_effort" in data:
+        effort, err = reasoning.clean(data["reasoning_effort"])
+        if err:
+            return _error(err, 400)
+        fields["reasoning_effort"] = effort
     if "archived" in data:
         if not isinstance(data["archived"], bool):
             return _error("Ungültiger Wert für „archiviert“.", 400)

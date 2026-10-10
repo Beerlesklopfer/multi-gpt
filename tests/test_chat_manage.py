@@ -285,7 +285,7 @@ def test_system_prompt_too_long(anna_client, conv):
     assert patch(anna_client, conv.pk, {"system_prompt": 1}).status_code == 400
 
 
-def test_fixed_role_prompt_invisible_but_sent(client, ai_model):
+def test_fixed_role_prompt_only_in_info_and_sent(client, ai_model):
     role = Role.objects.get(key="teen")
     role.fixed_system_prompt = FIXED_PROMPT
     role.save()
@@ -295,7 +295,9 @@ def test_fixed_role_prompt_invisible_but_sent(client, ai_model):
     client.force_login(teen)
 
     page = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
-    assert FIXED_PROMPT not in page
+    # Nur im Bereich „System-Prompt“ (nur lesend), nicht im Verlauf.
+    assert page.count(FIXED_PROMPT) == 1
+    assert f'id="role-prompt">{FIXED_PROMPT}</div>' in page
     assert "Eigener" in page
     export = client.get(reverse("chat:conversation_export", args=[conv.pk])).content.decode()
     assert FIXED_PROMPT not in export

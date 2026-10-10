@@ -815,6 +815,10 @@
           : "all";
         // Bildfähigkeit (Anhänge, attachments.js); unbekannt zählt als ja.
         option.dataset.vision = String(model.supports_vision !== false);
+        // Stufen der Denktiefe (leer = kein einstellbares Reasoning).
+        option.dataset.reasoning = Array.isArray(model.reasoning_levels)
+          ? model.reasoning_levels.join(",")
+          : "";
         if (model.is_local || model.online === false) {
           option.className = isAvailable(model) ? "model-online" : "model-offline";
         }
@@ -861,6 +865,7 @@
       setStreaming(Boolean(controller));
       updateToolSwitches();
       document.dispatchEvent(new CustomEvent("multigpt:models-loaded"));
+      updateReasoningUi();
     }
 
     // --- Schalter je MCP-Server (M4a-06) ---
@@ -1004,14 +1009,17 @@
       return currentConversation();
     }
 
-    // --- System-Prompt und Kreativität des Chats (M5-03) ---
+    // --- System-Prompt, Kreativität und Denktiefe des Chats (M5-03) ---
 
     const promptForm = document.getElementById("system-prompt-form");
     const promptInput = document.getElementById("system-prompt-input");
     const promptSave = document.getElementById("system-prompt-save");
     const creativitySelect = document.getElementById("creativity-select");
+    const reasoningSelect = document.getElementById("reasoning-select");
+    const reasoningModelHint = document.getElementById("reasoning-model-hint");
     let savedPrompt = promptInput ? promptInput.value.trim() : "";
     let savedCreativity = creativitySelect ? creativitySelect.value : "";
+    let savedReasoning = reasoningSelect ? reasoningSelect.value : "";
 
     // Gleicher Zahlenwert („0.2“ und „0.20“) gilt als unverändert.
     function sameCreativity(a, b) {
@@ -1022,8 +1030,59 @@
       return Boolean(creativitySelect) && !sameCreativity(creativitySelect.value, savedCreativity);
     }
 
+    function reasoningDirty() {
+      return Boolean(reasoningSelect) && reasoningSelect.value !== savedReasoning;
+    }
+
     function promptDirty() {
-      return (Boolean(promptInput) && promptInput.value.trim() !== savedPrompt) || creativityDirty();
+      return (
+        (Boolean(promptInput) && promptInput.value.trim() !== savedPrompt) ||
+        creativityDirty() ||
+        reasoningDirty()
+      );
+    }
+
+    // Denktiefe nur für Modelle mit Reasoning (/api/models: reasoning_levels):
+    // ausgegraut, wenn keines der gewählten Modelle (im Vergleich: der Spalten)
+    // eine Stufe kennt. Gespeichert bleibt die Wahl trotzdem.
+    function reasoningModels() {
+      const ids = window.MultiGPT.compare?.isActive()
+        ? [...document.querySelectorAll('input[name="compare_models"]:checked')].map((i) => i.value)
+        : [modelSelect?.value].filter(Boolean);
+      return ids
+        .map((id) => modelSelect?.querySelector(`option[value="${id}"]`))
+        .filter(Boolean);
+    }
+
+    function updateReasoningUi() {
+      if (!reasoningSelect) {
+        return;
+      }
+      const options = reasoningModels();
+      if (!options.length) {
+        return; // Modelle noch nicht geladen
+      }
+      const levels = new Set(
+        options.flatMap((o) => (o.dataset.reasoning || "").split(",").filter(Boolean)),
+      );
+      reasoningSelect.disabled = levels.size === 0;
+      if (!reasoningModelHint) {
+        return;
+      }
+      if (!levels.size) {
+        reasoningModelHint.textContent =
+          options.length > 1
+            ? "Die gewählten Modelle haben keine einstellbare Denktiefe."
+            : "Das gewählte Modell hat keine einstellbare Denktiefe.";
+      } else {
+        const names = [...reasoningSelect.options]
+          .filter((o) => o.value && levels.has(o.value))
+          .map((o) => o.textContent);
+        reasoningModelHint.textContent = `${
+          options.length > 1 ? "Die gewählten Modelle kennen" : "Das gewählte Modell kennt"
+        }: ${names.join(", ")}.`;
+      }
+      reasoningModelHint.hidden = false;
     }
 
     function updatePromptUi() {
@@ -1041,6 +1100,9 @@
       if (creativitySelect) {
         body.temperature = creativitySelect.value === "" ? null : Number(creativitySelect.value);
       }
+      if (reasoningSelect) {
+        body.reasoning_effort = reasoningSelect.value;
+      }
       const data = await window.MultiGPT.requestJson(
         "PATCH",
         fillTemplate(urls.detailTemplate, conversationId),
@@ -1057,6 +1119,10 @@
           creativitySelect.value = match.value;
           savedCreativity = match.value;
         }
+      }
+      if (reasoningSelect) {
+        savedReasoning = data.reasoning_effort || "";
+        reasoningSelect.value = savedReasoning;
       }
       const hint = document.getElementById("system-prompt-hint");
       if (hint) {
@@ -1841,6 +1907,14 @@
 
     promptInput?.addEventListener("input", updatePromptUi);
     creativitySelect?.addEventListener("change", updatePromptUi);
+    reasoningSelect?.addEventListener("change", updatePromptUi);
+    // Vergleich ein/aus bzw. andere Spalten (compare.js): Denktiefe neu prüfen.
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target?.id === "compare-toggle" || target?.name === "compare_models") {
+        updateReasoningUi();
+      }
+    });
     promptForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!conversationId) {
@@ -1849,7 +1923,7 @@
       }
       try {
         await saveSystemPrompt();
-        setStatus("System-Prompt und Kreativität gespeichert.");
+        setStatus("System-Prompt, Kreativität und Denktiefe gespeichert.");
       } catch (err) {
         setStatus(`System-Prompt konnte nicht gespeichert werden: ${err.message}`, true);
       }
@@ -1867,6 +1941,7 @@
         storageSet(STORAGE_KEY, modelSelect.value);
       }
       updateToolSwitches();
+      updateReasoningUi();
     });
 
     setStreaming(false);

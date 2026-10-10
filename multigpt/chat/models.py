@@ -341,6 +341,17 @@ DEFAULT_BASE_INSTRUCTIONS = (
 )
 
 
+class ReasoningEffort(models.TextChoices):
+    """Denktiefe (chat/reasoning.py, Abbildung je Modell in capabilities.py)."""
+
+    OFF = "off", "Aus/minimal"
+    LOW = "low", "Niedrig"
+    MEDIUM = "medium", "Mittel"
+    HIGH = "high", "Hoch"
+    XHIGH = "xhigh", "Sehr hoch"
+    MAX = "max", "Maximal"
+
+
 class ChatSettings(models.Model):
     """Allgemeine Chat-Einstellungen – genau ein Datensatz (pk=1), siehe ``load()``."""
 
@@ -371,6 +382,20 @@ class ChatSettings(models.Model):
         "„Kreativität“ und ohne Projektvorgabe. Leer = Standard des Anbieters (oft 0,7–1,0). "
         "Modelle, die keine Temperatur annehmen (z. B. OpenAI o-Serie und GPT-5, neuere "
         "Claude-Modelle), bekommen keine.",
+    )
+    # Denktiefe (chat/reasoning.py): Standard für Chats ohne eigene Wahl bzw.
+    # Projektvorgabe. Leer = Standard des Anbieters.
+    default_reasoning_effort = models.CharField(
+        "Standard-Denktiefe",
+        max_length=10,
+        blank=True,
+        default="",
+        choices=ReasoningEffort.choices,
+        help_text="Wie gründlich Modelle mit Reasoning vor der Antwort nachdenken. Höher = "
+        "gründlicher, aber langsamer und teurer (Denk-Tokens werden als Ausgabe berechnet). "
+        "Gilt für Chats ohne eigene Wahl unter „Denktiefe“ und ohne Projektvorgabe. Leer = "
+        "Standard des Anbieters. Modelle ohne Reasoning bekommen nichts; nicht unterstützte "
+        "Stufen werden auf die nächste passende abgebildet.",
     )
     # Bilderzeugung (M9-01, chat/images.py).
     default_image_model = models.ForeignKey(
@@ -632,6 +657,10 @@ class Conversation(models.Model):
         null=True,
         blank=True,
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("2"))],
+    )
+    # Denktiefe (chat/reasoning.py); leer = Projektvorgabe bzw. Chat-Einstellungen.
+    reasoning_effort = models.CharField(
+        "Denktiefe", max_length=10, blank=True, default="", choices=ReasoningEffort.choices
     )
     # Projekt des Besitzers (chat/projects.py); gelöschtes Projekt -> Chat ohne Projekt.
     project = models.ForeignKey(
@@ -1850,6 +1879,10 @@ class Project(models.Model):
         null=True,
         blank=True,
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("2"))],
+    )
+    # Vorgabe für Chats ohne eigene Wahl (chat/reasoning.py); leer = Chat-Einstellungen.
+    reasoning_effort = models.CharField(
+        "Denktiefe", max_length=10, blank=True, default="", choices=ReasoningEffort.choices
     )
     default_model = models.ForeignKey(
         AIModel,

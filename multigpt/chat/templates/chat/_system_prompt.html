@@ -1,6 +1,6 @@
 {# System-Prompt des Chats (M5-03) mit Übersicht, was sonst an das Modell geht (views._prompt_context): #}
-{# Grundregeln im Wortlaut, Rolle nur als Hinweis (ihr Text erscheint hier nie), Projekt-Anweisungen gekürzt. #}
-{# Ändern (Prompt und Kreativität): Recht U (geteilte Chats). #}
+{# Grundregeln und eigener Rollen-Prompt im Wortlaut (nur lesend), Projekt-Anweisungen gekürzt. #}
+{# Ändern (Prompt, Kreativität, Denktiefe): Recht U (geteilte Chats). #}
 {% if has_chat_model and can_update or has_chat_model and not active_conversation %}
   <details class="chat-settings" id="chat-settings"{% if active_conversation.system_prompt %} data-active="true"{% endif %}>
     <summary>System-Prompt: {% if prompt_info.base %}Grundregeln aktiv · {% endif %}eigener Prompt <span id="system-prompt-state">{% if active_conversation.system_prompt %}aktiv{% else %}leer{% endif %}</span></summary>
@@ -19,6 +19,15 @@
         {% endfor %}
       </select>
       <p class="hint" id="creativity-hint">Niedrig: sachlich und gleichbleibend. Hoch: abwechslungsreicher, aber eher erfunden. Gilt für alle Modelle dieses Chats, auch im Vergleich; Modelle ohne einstellbare Temperatur (z. B. GPT-5, neuere Claude- und Gemini-Modelle) antworten mit ihrem eigenen Wert.</p>
+      <label for="reasoning-select">Denktiefe</label>
+      <select id="reasoning-select" name="reasoning_effort" aria-describedby="reasoning-hint reasoning-model-hint">
+        <option value="">{{ reasoning.default_label }}</option>
+        {% for option in reasoning.options %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="hint" id="reasoning-hint">Wie gründlich Modelle mit Reasoning vor der Antwort nachdenken. Höher: gründlicher, aber langsamer und teurer. Gilt für alle Modelle dieses Chats, auch im Vergleich; nicht unterstützte Stufen werden je Modell auf die nächste passende abgebildet.</p>
+      <p class="hint" id="reasoning-model-hint" hidden></p>
       <div class="chat-settings-actions">
         <button type="submit" class="button button-small button-primary" id="system-prompt-save" disabled>Speichern</button>
       </div>
@@ -33,5 +42,6 @@
       <div class="chat-settings-readonly">{{ active_conversation.system_prompt }}</div>
     {% endif %}
     <p class="chat-prompt-heading">Kreativität: <span class="chat-prompt-value">{{ creativity.current }}</span></p>
+    <p class="chat-prompt-heading">Denktiefe: <span class="chat-prompt-value">{{ reasoning.current }}</span></p>
   </details>
 {% endif %}

@@ -1,5 +1,7 @@
 {# Nur lesend: was vor dem eigenen Prompt an das Modell geht (Reihenfolge wie services.build_system_prompt). #}
 {# Die technischen Hinweise von MultiGPT (Quellmaterial, Werkzeuge) werden nur erwähnt. #}
+{# Fester Prompt der Rolle: nur der eigene (Rolle des Betrachters, views._prompt_context), escaped; #}
+{# im Chatverlauf und im Export erscheint er nie. #}
 <div class="chat-prompt-info">
   {% if prompt_info.base %}
     <p class="chat-prompt-heading">Grundregeln <span class="hint">(vom Verwalter, gelten für alle Chats)</span>{% if prompt_info.can_admin %} <a href="{% url 'admin:chat_chatsettings_changelist' %}">Ändern</a>{% endif %}</p>
@@ -7,8 +9,11 @@
   {% elif prompt_info.can_admin %}
     <p class="hint">Keine Grundregeln festgelegt. <a href="{% url 'admin:chat_chatsettings_changelist' %}">Festlegen</a></p>
   {% endif %}
+  {% if prompt_info.role_prompt %}
+    <p class="chat-prompt-heading">Fester Prompt deiner Rolle ({{ prompt_info.role_name }}){% if prompt_info.can_admin %} <a href="{% url 'admin:accounts_role_change' prompt_info.role_pk %}">Ändern</a>{% endif %}</p>
+    <div class="chat-settings-readonly chat-prompt-base" id="role-prompt">{{ prompt_info.role_prompt }}</div>
+  {% endif %}
   <ul class="chat-prompt-extras">
-    {% if prompt_info.role %}<li>+ fester Prompt deiner Rolle</li>{% endif %}
     <li>+ technische Hinweise zu Werkzeugen und Quellen</li>
     {% if prompt_info.project_instructions %}
       <li>

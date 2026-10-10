@@ -12,8 +12,8 @@ from django.views.decorators.http import require_GET
 
 from multigpt.accounts.permissions import Action, can, supervised_conversation_owner
 
-from . import attachments, creativity, projects, services, sharing
-from .models import ChatSettings, Conversation, Message
+from . import attachments, creativity, projects, reasoning, services, sharing
+from .models import ChatSettings, Conversation, Message, ReasoningEffort
 from .websearch import web_search_available
 
 
@@ -31,12 +31,15 @@ _INHERITED_FROM = {"project": "Vorgabe des Projekts", "settings": "Einstellung d
 
 def _prompt_context(request, conversation, project) -> dict:
     """Bereich „System-Prompt“: was außer dem eigenen Prompt an das Modell geht
-    (Grundregeln im Wortlaut, Rolle und Projekt als Hinweis; die technischen
-    Hinweise von MultiGPT nur erwähnt) und die Auswahl „Kreativität“.
+    (Grundregeln und fester Prompt der Rolle im Wortlaut, Projekt-Anweisungen
+    gekürzt; die technischen Hinweise von MultiGPT nur erwähnt) und die
+    Auswahl „Kreativität“ und „Denktiefe“.
 
     ``project``: nur für den Besitzer (``projects.page_context``), Empfänger
     geteilter Chats sehen fremde Projekte nicht. Rolle: die des Betrachters –
-    sein Prompt gilt für die Antworten, die er auslöst."""
+    sein Prompt gilt für die Antworten, die er auslöst (services.build_system_prompt
+    nimmt die Rolle des Absenders), fremde Rollen-Prompts erscheinen nie. Im
+    Chatverlauf und im Export taucht der Rollen-Prompt nicht auf."""
     user = request.user
     role = user.role if getattr(user, "role_id", None) else None
     instructions = project.instructions.strip() if project is not None else ""
@@ -52,11 +55,20 @@ def _prompt_context(request, conversation, project) -> dict:
     ]
     if own is not None and not any(o["selected"] for o in options):
         options.append({"value": f"{own}", "label": creativity.label(own), "selected": True})
+    own_effort = conversation.reasoning_effort if conversation is not None else ""
+    base_effort, effort_source = reasoning.inherited(conversation, project)
+    if base_effort:
+        effort_default = f"{_INHERITED_FROM[effort_source]} ({reasoning.label(base_effort)})"
+    else:
+        effort_default = "Standard des Anbieters"
+    role_prompt = role.fixed_system_prompt.strip() if role is not None else ""
     return {
         "prompt_info": {
             "base": ChatSettings.base_text(),
             "can_admin": can(user, Action.ADMIN),
-            "role": role is not None and bool(role.fixed_system_prompt.strip()),
+            "role_name": role.name if role_prompt else "",
+            "role_prompt": role_prompt,
+            "role_pk": role.pk if role_prompt else None,
             "project_name": project.name if instructions else "",
             "project_instructions": instructions,
             "project_long": len(instructions) > PROMPT_PREVIEW_CHARS,
@@ -66,6 +78,16 @@ def _prompt_context(request, conversation, project) -> dict:
             "default_label": f"Standard – {default_label}",
             "options": options,
             "current": creativity.label(own) if own is not None else f"Standard – {default_label}",
+        },
+        "reasoning": {
+            "default_label": f"Standard – {effort_default}",
+            "options": [
+                {"value": value, "label": text, "selected": own_effort == value}
+                for value, text in ReasoningEffort.choices
+            ],
+            "current": (
+                reasoning.label(own_effort) if own_effort else f"Standard – {effort_default}"
+            ),
         },
     }
 

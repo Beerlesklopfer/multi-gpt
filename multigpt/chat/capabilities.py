@@ -169,23 +169,25 @@ def from_lmstudio(item: dict) -> Detected | None:
 # - OpenAI (developers.openai.com/api/docs/guides/reasoning und
 #   …/guides/latest-model: „When reasoning effort is not `none`, remove
 #   `temperature`, `top_p`, and `top_logprobs`“): o1/o3/o4 nur mit Standard;
-#   gpt-5 (auch mini/nano) denkt standardmäßig (medium) und lehnt sie ab. Ab
-#   gpt-5.1 nur mit ``reasoning_effort: none`` erlaubt, nicht bei allen
-#   Modellen (GPT-6 Astra, GPT-6.1 Sol kennen kein ``none``). MultiGPT setzt
-#   keinen Reasoning-Aufwand, daher die ganze Familie gpt-5 und neuer ohne
-#   Temperatur. gpt-4o, gpt-4.1 usw. nehmen sie an.
+#   gpt-5 (auch mini/nano) denkt immer (kleinste Stufe ``minimal``) und lehnt
+#   sie ab. Ab gpt-5.1 nur mit ``reasoning_effort: none`` erlaubt, nicht bei
+#   allen Modellen (GPT-6 Astra, GPT-6.1 Sol kennen kein ``none``). Ohne
+#   gewählte Denktiefe (``reasoning``) setzt MultiGPT keinen Aufwand, dann die
+#   ganze Familie gpt-5 und neuer ohne Temperatur; mit Denktiefe „Aus“, die
+#   auf ``none`` abgebildet wird (``reasoning_params``), mit. gpt-4o, gpt-4.1
+#   usw. nehmen sie an.
 # - Anthropic (platform.claude.com, Migrationsleitfäden Opus 5.5, Sonnet 5.5,
 #   Haiku 5.5: „Setting temperature, top_p, or top_k to any non-default value on
 #   Claude Opus 4.7 and later models … returns a 400 error“; ebenso Sonnet 5,
 #   Sonnet 5.5, Haiku 5.5, Fable und Mythos): ab claude-opus-4-7 bzw. allen
-#   Claude-5-Modellen nicht. Mit Extended Thinking (``thinking``) generell nicht
-#   (Doku „Extended thinking“: nicht mit temperature/top_k kombinierbar). Bis
-#   Sonnet 4.6, Haiku 4.5, Opus 4.6 erlaubt (nur nicht zusammen mit top_p, das
-#   MultiGPT nicht setzt).
+#   Claude-5-Modellen nicht. Mit Thinking (``thinking`` adaptive/enabled, also
+#   jede Denktiefe außer „Aus“) generell nicht (Doku „Extended thinking“: nicht
+#   mit temperature/top_k kombinierbar). Bis Sonnet 4.6, Haiku 4.5, Opus 4.6
+#   ohne Thinking erlaubt (nur nicht zusammen mit top_p, das MultiGPT nicht setzt).
 # - Google (ai.google.dev/gemini-api/docs/gemini-3: „For all Gemini 3 models,
 #   we strongly recommend keeping the temperature parameter at its default
 #   value of 1.0“, sonst Schleifen oder schlechtere Ergebnisse): Gemini 3 und
-#   neuer nicht; Gemini 1.5/2.x ja.
+#   neuer nicht; Gemini 1.5/2.x ja (auch mit thinkingBudget).
 # - Lokal (LM Studio/llama.cpp, Ollama): immer erlaubt.
 #
 # Die Regel wirkt nach Modell-ID (auch über OpenRouter u. Ä. mit Präfix
@@ -204,11 +206,217 @@ _NO_TEMPERATURE = re.compile(
 )
 
 
-def accepts_temperature(model_id: str, provider: str = "", *, thinking: bool = False) -> bool:
+def accepts_temperature(
+    model_id: str, provider: str = "", *, thinking: bool = False, reasoning: str | None = None
+) -> bool:
     """Darf ``temperature`` an das Modell gehen? ``provider``: ``Provider.kind``
     (``openai_compat``, ``anthropic``, ``google``); ``thinking``: Anfrage mit
-    Extended Thinking (Anthropic). Im Zweifel ja – Ablehnungen fängt der
-    Wiederholversuch ohne Temperatur ab."""
+    Thinking (Anthropic); ``reasoning``: Denktiefe, die mitgeht (Stufe aus
+    ``REASONING_LEVELS``, ``None`` = keine). Im Zweifel ja – Ablehnungen fängt
+    der Wiederholversuch ohne Temperatur ab."""
     if thinking:
         return False
+    rule = _reasoning_rule(model_id, provider) if reasoning else None
+    level = reasoning_level(reasoning, rule.levels) if rule is not None else None
+    if level is not None:
+        if rule.style in (_CLAUDE_EFFORT, _CLAUDE_BUDGET) and level != OFF:
+            return False  # Thinking an
+        if rule.style == _OPENAI and level == OFF and rule.off == "none":
+            return True  # gpt-5.1+: reasoning_effort none erlaubt temperature
     return not _NO_TEMPERATURE.search((model_id or "").lower())
+
+
+# Denktiefe (Reasoning, chat/reasoning.py). Stufen von MultiGPT, aufsteigend;
+# „Aus“ heißt in der Oberfläche „Aus/minimal“, weil manche Modelle nur eine
+# kleinste Stufe kennen. ``xhigh`` und ``max`` gibt es, weil OpenAI (ab
+# gpt-5.2 bzw. gpt-5.6/GPT-6) und Anthropic (ab Opus 4.6) sie anbieten.
+OFF, LOW, MEDIUM, HIGH, XHIGH, MAX = "off", "low", "medium", "high", "xhigh", "max"
+REASONING_LEVELS = (OFF, LOW, MEDIUM, HIGH, XHIGH, MAX)
+
+# Abbildung je Anbieter. Stand der Herstellerangaben, geprüft 2026-10-10:
+#
+# - OpenAI, Chat Completions ``reasoning_effort`` (developers.openai.com/api/
+#   docs/guides/reasoning: „Supported values are model-dependent and can include
+#   `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`“; Modellseiten
+#   …/api/docs/models/<id>): o1/o3/o4-mini low–high (o1-mini/-preview ohne);
+#   gpt-5 (mini/nano) minimal–high; gpt-5.1 none–high; gpt-5.2 bis 5.5
+#   none–xhigh; gpt-5.6 none–max; GPT-6 Luna none–max; GPT-6 Astra und
+#   GPT-6.1 Sol low–max („does not support `none`“, Sol auch kein
+#   ``minimal``). *-chat-latest sind keine Reasoning-Modelle. „Aus“ = ``none``
+#   bzw. bei gpt-5 ``minimal``.
+# - Anthropic (platform.claude.com/docs/en/build-with-claude/effort und
+#   …/thinking-troubleshooting, Tabelle „Thinking support, defaults, and
+#   rejected configurations by model“): ``output_config.effort`` (low, medium,
+#   high, xhigh, max; xhigh ab Opus 4.7/Sonnet 5/Haiku 5.5, nicht Opus 4.6,
+#   Sonnet 4.6, Mythos Preview). Thinking adaptiv: Fable, Mythos, Opus 5.5
+#   immer an (kein „Aus“, ``disabled`` -> 400); Opus 5, Sonnet 5, Haiku 5.5
+#   standardmäßig an, „Aus“ = ``thinking: {"type": "disabled"}``; Sonnet 5.5
+#   „Aus“ = ``{"type": "between_tools"}`` (``disabled`` -> 400); Opus 4.6–4.8,
+#   Sonnet 4.6 standardmäßig aus, Stufe = ``thinking: {"type": "adaptive"}`` plus
+#   effort. ``budget_tokens`` („extended thinking“) ab Claude 4.7 abgelehnt
+#   (400), auf 4.6 veraltet; nur noch für Opus/Sonnet/Haiku 4.5, Opus 4/4.1,
+#   Sonnet 4 und Claude 3.7 Sonnet: ``thinking: {"type": "enabled",
+#   "budget_tokens": n}`` (mindestens 1024, kleiner als ``max_tokens``).
+#   Bei xhigh/max empfiehlt die Doku ein großes ``max_tokens`` (64k).
+# - Google, ``generationConfig.thinkingConfig`` (ai.google.dev/gemini-api/docs/
+#   gemini-3 und firebase.google.com/docs/ai-logic/thinking, beide „Last
+#   updated 2026-10-09“): Gemini 3 ``thinkingLevel`` MINIMAL/LOW/MEDIUM/HIGH
+#   („minimal does not guarantee that thinking is off“), 3 Pro nur low/high,
+#   3.1 Pro ohne minimal, 3.7/3.8 Flash ohne minimal (400). Gemini 2.5
+#   ``thinkingBudget`` (Pro 128–32768, nicht abschaltbar; Flash 0–24576, Flash-
+#   Lite 512–24576, 0 = aus). Beides zusammen -> 400.
+# - Lokal bzw. OpenAI-kompatibel: gpt-oss kennt ``reasoning_effort`` low/medium/
+#   high über sein Chat-Template (Modellkarte developers.openai.com/api/docs/
+#   models/gpt-oss-120b; LM Studio ab 0.4.8 auf v1/chat/completions,
+#   lmstudio.ai/changelog/lmstudio-v0.4.8). Andere lokale Modelle: nicht senden.
+#
+# Nicht unterstützte Stufen werden je Modell abgebildet (``reasoning_level``):
+# „Aus“ auf die kleinste Stufe, sonst auf die nächstkleinere, notfalls die
+# nächstgrößere. Lehnt ein Anbieter den Parameter trotzdem ab, wiederholt
+# services.py ohne und merkt sich das Modell (reasoning.py).
+_OPENAI, _CLAUDE_EFFORT, _CLAUDE_BUDGET = "openai", "claude_effort", "claude_budget"
+_GEMINI_LEVEL, _GEMINI_BUDGET = "gemini_level", "gemini_budget"
+
+
+@dataclass(frozen=True)
+class _Reasoning:
+    levels: tuple[str, ...]
+    style: str
+    # Wert für „Aus“: OpenAI ``none``/``minimal``; Claude ``disabled``,
+    # ``between_tools`` oder leer (Standard ist aus, nichts senden).
+    off: str = ""
+    # Claude: Thinking ist standardmäßig aus und wird für eine Stufe eingeschaltet.
+    adaptive: bool = False
+
+
+_E = (LOW, MEDIUM, HIGH)
+_OPENAI_RULES = [
+    (r"(^|/)gpt-[\d.]+-chat|(^|/)o1-(mini|preview)", None),
+    (r"(^|/)o[1-9]([-_.]|$)", _Reasoning(_E, _OPENAI)),
+    (r"(^|/)gpt-5([-_]|$)", _Reasoning((OFF, *_E), _OPENAI, "minimal")),
+    (r"(^|/)gpt-5\.1([-_]|$)", _Reasoning((OFF, *_E), _OPENAI, "none")),
+    (r"(^|/)gpt-5\.[2-5]([-_]|$)", _Reasoning((OFF, *_E, XHIGH), _OPENAI, "none")),
+    (r"(^|/)gpt-5\.([6-9]|\d{2})([-_]|$)", _Reasoning(REASONING_LEVELS, _OPENAI, "none")),
+    (r"(^|/)gpt-([6-9]|\d{2})(\.\d+)?-luna", _Reasoning(REASONING_LEVELS, _OPENAI, "none")),
+    (r"(^|/)gpt-([6-9]|\d{2})([-_.]|$)", _Reasoning((*_E, XHIGH, MAX), _OPENAI)),
+    (r"gpt-oss", _Reasoning(_E, _OPENAI)),
+]
+_CLAUDE_ALL = (*_E, XHIGH, MAX)
+_V = r"([-_.@]|$)"  # Ende der Versionsangabe (auch Bedrock-IDs mit Datum bzw. @)
+_ANTHROPIC_RULES = [
+    (r"claude-(fable|mythos)-([5-9]|\d{2})", _Reasoning(_CLAUDE_ALL, _CLAUDE_EFFORT)),
+    (r"claude-mythos-preview", _Reasoning((*_E, MAX), _CLAUDE_EFFORT)),
+    (r"claude-opus-5-5" + _V, _Reasoning(_CLAUDE_ALL, _CLAUDE_EFFORT)),
+    (r"claude-sonnet-5-5" + _V, _Reasoning((OFF, *_CLAUDE_ALL), _CLAUDE_EFFORT, "between_tools")),
+    (r"claude-(opus|sonnet)-5" + _V, _Reasoning((OFF, *_CLAUDE_ALL), _CLAUDE_EFFORT, "disabled")),
+    (r"claude-haiku-5-5" + _V, _Reasoning((OFF, *_CLAUDE_ALL), _CLAUDE_EFFORT, "disabled")),
+    # Neuere Familien: wie Opus 5.5 (Thinking immer an), bis die Doku anderes sagt.
+    (r"claude-(opus|sonnet|haiku)-([5-9]|\d{2})", _Reasoning(_CLAUDE_ALL, _CLAUDE_EFFORT)),
+    (
+        r"claude-opus-4-[7-9]" + _V,
+        _Reasoning((OFF, *_CLAUDE_ALL), _CLAUDE_EFFORT, adaptive=True),
+    ),
+    (
+        r"claude-(opus|sonnet)-4-6" + _V,
+        _Reasoning((OFF, *_E, MAX), _CLAUDE_EFFORT, adaptive=True),
+    ),
+    (
+        r"claude-(opus|sonnet|haiku)-4-5"
+        + _V
+        + r"|claude-(opus|sonnet)-4"
+        + _V
+        + r"|claude-3-7-sonnet",
+        _Reasoning((OFF, *_E), _CLAUDE_BUDGET),
+    ),
+]
+_GOOGLE_RULES = [
+    (r"gemini-2\.5-pro", _Reasoning(_E, _GEMINI_BUDGET)),
+    (r"gemini-2\.5-flash", _Reasoning((OFF, *_E), _GEMINI_BUDGET)),
+    (r"gemini-3-pro", _Reasoning((LOW, HIGH), _GEMINI_LEVEL)),
+    (r"gemini-3\.[7-9]-flash(?!-lite)", _Reasoning(_E, _GEMINI_LEVEL)),
+    (r"gemini-3(\.\d+)?-flash", _Reasoning((OFF, *_E), _GEMINI_LEVEL)),
+    (r"gemini-([3-9]|\d{2})([-_.]|$)", _Reasoning(_E, _GEMINI_LEVEL)),
+]
+_RULES = {
+    "openai_compat": [(re.compile(p), r) for p, r in _OPENAI_RULES],
+    "anthropic": [(re.compile(p), r) for p, r in _ANTHROPIC_RULES],
+    "google": [(re.compile(p), r) for p, r in _GOOGLE_RULES],
+}
+
+# Claude: Budgets für „extended thinking“ und ``max_tokens`` (Pflichtfeld,
+# Standard des Adapters 16000; das Budget kommt obendrauf, höchstens 32000 =
+# Ausgabegrenze von Opus 4/4.1). Gemini 2.5: ``thinkingBudget`` je Stufe.
+_CLAUDE_MAX_TOKENS = 16000
+_CLAUDE_MAX_TOKENS_LARGE = 64000  # xhigh/max laut Doku
+_CLAUDE_BUDGETS = {LOW: 2048, MEDIUM: 8000, HIGH: 16000}
+_GEMINI_BUDGETS = {LOW: 1024, MEDIUM: 8192, HIGH: 24576}
+
+
+def _reasoning_rule(model_id: str, provider: str = "") -> _Reasoning | None:
+    lowered = (model_id or "").lower()
+    if not provider:
+        if "claude" in lowered:
+            provider = "anthropic"
+        elif "gemini" in lowered:
+            provider = "google"
+        else:
+            provider = "openai_compat"
+    for pattern, rule in _RULES.get(provider, []):
+        if pattern.search(lowered):
+            return rule
+    return None
+
+
+def reasoning_support(model_id: str, provider: str = "") -> tuple[str, ...] | None:
+    """Stufen der Denktiefe, die das Modell kennt (Teilmenge von
+    ``REASONING_LEVELS``), oder ``None`` (kein einstellbares Reasoning)."""
+    rule = _reasoning_rule(model_id, provider)
+    return rule.levels if rule is not None else None
+
+
+def reasoning_level(level: str | None, supported) -> str | None:
+    """Gewählte Stufe auf die unterstützten abbilden (siehe oben); ``None``,
+    wenn nichts gewählt ist oder das Modell keine Stufen kennt."""
+    if not level or not supported or level not in REASONING_LEVELS:
+        return None
+    if level in supported:
+        return level
+    order = REASONING_LEVELS.index
+    lowest = min(supported, key=order)
+    if level == OFF:
+        return lowest
+    below = [s for s in supported if s != OFF and order(s) < order(level)]
+    return max(below, key=order) if below else lowest
+
+
+def reasoning_params(model_id: str, provider: str, level: str | None) -> dict:
+    """Parameter für ``adapter.stream`` (anbieterspezifisch, siehe oben) oder ``{}``."""
+    rule = _reasoning_rule(model_id, provider)
+    if rule is None:
+        return {}
+    level = reasoning_level(level, rule.levels)
+    if level is None:
+        return {}
+    if rule.style == _OPENAI:
+        return {"reasoning_effort": rule.off if level == OFF else level}
+    if rule.style == _CLAUDE_EFFORT:
+        if level == OFF:
+            return {"thinking": {"type": rule.off}} if rule.off else {}
+        params: dict = {"output_config": {"effort": level}}
+        if rule.adaptive:
+            params["thinking"] = {"type": "adaptive"}
+        if level in (XHIGH, MAX):
+            params["max_tokens"] = _CLAUDE_MAX_TOKENS_LARGE
+        return params
+    if rule.style == _CLAUDE_BUDGET:
+        if level == OFF:
+            return {}
+        budget = _CLAUDE_BUDGETS[level]
+        return {
+            "thinking": {"type": "enabled", "budget_tokens": budget},
+            "max_tokens": _CLAUDE_MAX_TOKENS + budget,
+        }
+    if rule.style == _GEMINI_LEVEL:
+        return {"thinkingConfig": {"thinkingLevel": "MINIMAL" if level == OFF else level.upper()}}
+    # _GEMINI_BUDGET
+    return {"thinkingConfig": {"thinkingBudget": 0 if level == OFF else _GEMINI_BUDGETS[level]}}

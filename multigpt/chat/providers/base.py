@@ -79,8 +79,8 @@ class Error:
 
     message: str
     retryable: bool = False
-    # Name eines Parameters, den der Anbieter abgelehnt hat (bisher nur
-    # ``temperature``, siehe ``rejected_parameter``); services.py wiederholt dann ohne.
+    # Namen abgelehnter Parameter, kommagetrennt (``temperature``, ``reasoning``,
+    # siehe ``rejected_parameter``); services.py wiederholt dann ohne.
     rejected_param: str = field(default="", compare=False)
 
 
@@ -454,16 +454,30 @@ def _error_strings(body: bytes) -> list[str]:
     return [str(v) for v in values if v]
 
 
-# Parameter, deren Ablehnung services.py mit einem Wiederholversuch ohne sie abfängt.
-_RETRY_WITHOUT = ("temperature",)
+# Parameter, deren Ablehnung services.py mit einem Wiederholversuch ohne sie
+# abfängt: Name -> Muster im (kleingeschriebenen) Fehlertext. „reasoning“ steht
+# für die Denktiefe in jeder Form (OpenAI ``reasoning_effort``, Claude
+# ``output_config.effort``/``thinking``, Gemini ``thinkingConfig``); Fehler zu
+# zurückgegebenen Thinking-Blöcken (Signatur, „cannot be modified“) zählen nicht.
+_RETRY_WITHOUT = {
+    "temperature": re.compile(r"temperature"),
+    "reasoning": re.compile(
+        r"reasoning|effort|budget_tokens|between_tools"
+        r"|thinking(?:\.type|_?config|_?level|_?budget|\b(?![`'\"]?\s+(?:or|block)))"
+    ),
+}
 
 
 def rejected_parameter(status: int, body: bytes) -> str:
-    """Lehnt der Anbieter einen optionalen Parameter ab? Dann dessen Name, sonst "".
+    """Lehnt der Anbieter optionale Parameter ab? Dann deren Namen (kommagetrennt,
+    z. B. ``temperature`` oder ``reasoning``), sonst "". services.py wiederholt
+    ohne die davon, die tatsächlich gesendet wurden.
 
     OpenAI: 400 ``unsupported_parameter``/``unsupported_value`` mit ``param:
-    "temperature"``; Anthropic: 400 ``invalid_request_error`` mit „temperature“
-    im Text; Gemini: 400 ``INVALID_ARGUMENT``. Der Text wird nur geprüft, nie
+    "temperature"`` bzw. ``"reasoning_effort"``; Anthropic: 400
+    ``invalid_request_error`` mit dem Parameter im Text (z. B.
+    „"thinking.type.enabled" is not supported for this model“); Gemini: 400
+    ``INVALID_ARGUMENT``; lokale Server auch 422. Der Text wird nur geprüft, nie
     angezeigt oder protokolliert.
     """
     if status not in (400, 422):
@@ -476,10 +490,7 @@ def rejected_parameter(status: int, body: bytes) -> str:
     except (ValueError, TypeError, AttributeError):
         pass
     text = " ".join(values).lower()
-    for name in _RETRY_WITHOUT:
-        if name in text:
-            return name
-    return ""
+    return ",".join(name for name, pattern in _RETRY_WITHOUT.items() if pattern.search(text))
 
 
 def is_key_expired(status: int, body: bytes) -> bool:

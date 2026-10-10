@@ -434,18 +434,6 @@ def test_prompt_info_admin_link_for_admins(client):
     assert 'eigener Prompt <span id="system-prompt-state">leer</span>' in html
 
 
-def test_prompt_info_role_only_mentioned(client):
-    teen = make_user("tom", "teen")
-    teen.role.fixed_system_prompt = "GEHEIMER-ROLLENPROMPT"
-    teen.role.save()
-    client.force_login(teen)
-    make_model()
-    conv = Conversation.objects.create(user=teen)
-    html = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
-    assert "+ fester Prompt deiner Rolle" in html
-    assert "GEHEIMER-ROLLENPROMPT" not in html
-
-
 def test_project_form_temperature(client, anna):
     project = Project.objects.create(owner=anna, name="P")
     url = reverse("chat:project_detail", args=[project.pk])

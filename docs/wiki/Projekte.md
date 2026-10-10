@@ -55,8 +55,8 @@ fallen weg; die Leserechte gelten wie immer.
 
 Die **Kreativität** des Projekts (Präzise 0,2, Ausgewogen 0,7, Kreativ 1,0 oder Standard) gilt
 für Chats des Projekts, die unter „System-Prompt“ keine eigene Kreativität gewählt haben. Bei
-„Standard“ gilt die Einstellung des Verwalters. Details unter
-[Chat-Einstellungen](Chat-Einstellungen).
+„Standard“ gilt die Einstellung des Verwalters. Ebenso die **Denktiefe** (Aus/minimal bis
+Maximal, nur für Modelle mit Reasoning). Details unter [Chat-Einstellungen](Chat-Einstellungen).
 
 ## Seitenleiste, Suche und Archiv
 

@@ -17,7 +17,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from multigpt.accounts import usage
 from multigpt.accounts.permissions import Action, applicable_shares, can, model_permitted
 
-from . import api_images, projects, services, sharing, status, tooling, websearch
+from . import api_images, projects, reasoning, services, sharing, status, tooling, websearch
 from . import attachments as chat_attachments
 from . import sources as source_refs
 from .mcp import status as mcp_status
@@ -142,6 +142,8 @@ def _serialize_model(m: AIModel) -> dict:
         "is_local": m.provider.is_local,
         "supports_tools": m.supports_tools,
         "supports_vision": m.supports_vision,
+        # Stufen der Denktiefe (reasoning.py), null = kein einstellbares Reasoning.
+        "reasoning_levels": reasoning.levels_for(m),
         # MCP-Freigabe des Verwalters: None = alle Server der Rolle, sonst die
         # erlaubten IDs (leer bei „kein“). Durchgesetzt wird auf dem Server.
         "mcp_access": m.mcp_access,

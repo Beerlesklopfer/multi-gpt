@@ -10,8 +10,9 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
 
 ## Anleitungen
 
-- [Chat-Einstellungen](Chat-Einstellungen): Grundregeln für alle Modelle, Anzeige im Chat,
-  Kreativität (Temperatur) je Chat, Projekt und Standard, Modelle ohne Temperatur
+- [Chat-Einstellungen](Chat-Einstellungen): Grundregeln für alle Modelle, Anzeige im Chat
+  (auch der eigene Rollen-Prompt), Kreativität (Temperatur) und Denktiefe (Reasoning) je Chat,
+  Projekt und Standard, Abbildung je Anbieter
 - [Projekte](Projekte): Chats gruppieren, Anweisungen, Standardmodell und Sammlungen je Projekt,
   verschieben, Archiv, Löschen mit oder ohne Chats
 - [Chats teilen](Chats-teilen): Chats mit Konten oder Gruppen teilen, Rechte Lesen, Schreiben,

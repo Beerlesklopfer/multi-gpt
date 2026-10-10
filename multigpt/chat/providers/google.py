@@ -9,7 +9,7 @@ Grundlage (gelesen 2026-10-09):
 - Anfrage: ``contents[]`` mit ``role`` ``user``/``model`` und ``parts[].text``;
   System-Prompt als ``systemInstruction`` (Content, nur Text);
   ``generationConfig`` u. a. mit ``maxOutputTokens``, ``temperature``,
-  ``topP``, ``topK``, ``stopSequences``.
+  ``topP``, ``topK``, ``stopSequences``, ``thinkingConfig`` (Denktiefe).
 - Antwort: ``candidates[].content.parts[]`` (``text``; ``thought: true`` bei
   Gedanken-Zusammenfassungen; ``functionCall`` mit ``name``/``args``),
   ``candidates[].finishReason`` (``STOP``, ``MAX_TOKENS``, ``SAFETY`` …),
@@ -137,6 +137,9 @@ _GENERATION_PARAMS = {
     "stop": "stopSequences",
     "stop_sequences": "stopSequences",
     "stopSequences": "stopSequences",
+    # Denktiefe (capabilities.reasoning_params): thinkingLevel bzw. thinkingBudget.
+    "thinkingConfig": "thinkingConfig",
+    "thinking_config": "thinkingConfig",
 }
 _RESERVED_PARAMS = {
     "model",

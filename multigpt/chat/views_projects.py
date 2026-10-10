@@ -20,7 +20,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from multigpt.accounts.permissions import Action, can
 
 from . import creativity, projects, services
-from .models import AIModel, Project
+from .models import AIModel, Project, ReasoningEffort
 from .rag.search import readable_collections
 
 
@@ -61,6 +61,7 @@ class ProjectForm(forms.ModelForm):
             "instructions",
             "default_model",
             "temperature",
+            "reasoning_effort",
             "collections",
             "color",
             "pinned",
@@ -111,6 +112,13 @@ class ProjectForm(forms.ModelForm):
             # Gespeichert mit zwei Stellen (0.20), Auswahl ohne (0.2).
             match = [v for v, _ in creativity.PRESETS if v == own]
             self.initial["temperature"] = f"{match[0] if match else own}"
+        effort = self.fields["reasoning_effort"]
+        effort.choices = [("", "Standard (Einstellung des Verwalters)"), *ReasoningEffort.choices]
+        effort.help_text = (
+            "Vorgabe für Chats im Projekt, die unter „System-Prompt“ keine eigene Denktiefe "
+            "gewählt haben. Nur für Modelle mit Reasoning; höher = gründlicher, aber langsamer "
+            "und teurer."
+        )
         collections = self.fields["collections"]
         collections.queryset = readable_collections(user).select_related("owner").order_by("name")
         collections.viewer_id = user.pk

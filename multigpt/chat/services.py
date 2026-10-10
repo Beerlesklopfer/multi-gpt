@@ -84,6 +84,7 @@ from . import (
     creativity,
     documents_pdf,  # registriert create_pdf (Blätter als PDF), System-Hinweis
     images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
+    reasoning,
     sharing,
     tooling,
     tools_python,  # noqa: F401 - registriert run_python (Berechnungen, M4a-10)
@@ -820,6 +821,12 @@ def prepare_resume(user, conversation: Conversation, message: Message, decisions
 # der Verlauf tool_use enthält).
 MAX_ROUNDS = 10
 ROUND_SEPARATOR = "\n\n"
+# Optionale Parameter, die bei Ablehnung (HTTP 400/422) ohne wiederholt und
+# für das Modell gemerkt werden (providers.base.rejected_parameter).
+_REMEMBER_REJECTED = {
+    "temperature": creativity.remember_rejected,
+    "reasoning": reasoning.remember_rejected,
+}
 
 
 def _close(stream):
@@ -1243,14 +1250,25 @@ class _Loop:
             notes.append(documents_pdf.system_hint(self.bindings))  # create_pdf
             system = build_system_prompt(turn.user, turn.conversation, notes)
             adapter = registry.get_adapter(turn.ai_model.provider)
-            # Kreativität des Chats (creativity.py); im Vergleich für alle Spalten gleich.
+            # Kreativität und Denktiefe des Chats (creativity.py, reasoning.py); im
+            # Vergleich für alle Spalten gleich, die Denktiefe je Modell abgebildet.
             temperature = creativity.effective(turn.conversation)
+            effort = reasoning.effective(turn.conversation)
 
             while True:
                 sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
                 calls_so_far = int(self.state.get("model_calls", 0))
                 last = calls_so_far >= MAX_ROUNDS - 1
-                params = creativity.params_for(turn.ai_model, temperature)
+                # Nach einer Ablehnung (unten) ohne den abgelehnten Parameter.
+                optional = {
+                    "reasoning": reasoning.params_for(turn.ai_model, effort),
+                    "temperature": creativity.params_for(
+                        turn.ai_model,
+                        temperature,
+                        reasoning=reasoning.level_for(turn.ai_model, effort),
+                    ),
+                }
+                params = {**optional["reasoning"], **optional["temperature"]}
                 if specs:
                     params.update(tools=specs, tool_choice="none" if last else "auto")
                 self.stream = adapter.stream(
@@ -1285,15 +1303,14 @@ class _Loop:
                         round_in, round_out = event.tokens_in, event.tokens_out
                         round_usage = event
                     elif isinstance(event, Error):
-                        if (
-                            event.rejected_param == "temperature"
-                            and "temperature" in params
-                            and not round_parts
-                            and not calls
-                        ):
-                            # Anbieter lehnt die Temperatur ab (Regel in
+                        rejected = [
+                            name for name in event.rejected_param.split(",") if optional.get(name)
+                        ]
+                        if rejected and not round_parts and not calls:
+                            # Anbieter lehnt Temperatur bzw. Denktiefe ab (Regel in
                             # capabilities.py veraltet): ohne wiederholen, merken.
-                            creativity.remember_rejected(turn.ai_model)
+                            for name in rejected:
+                                _REMEMBER_REJECTED[name](turn.ai_model)
                             retry_plain = True
                             break
                         error = event.message or GENERIC_ERROR

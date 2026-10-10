@@ -1183,6 +1183,17 @@ class ChatSettingsAdmin(admin.ModelAdmin):
                 "Wert gilt, wenn dort nichts gewählt ist.",
             },
         ),
+        # Denktiefe (chat/reasoning.py)
+        (
+            "Denktiefe",
+            {
+                "fields": ["default_reasoning_effort"],
+                "description": "Im Chat wählbar unter „System-Prompt“ → „Denktiefe“, im Projekt "
+                "als Vorgabe. Dieser Wert gilt, wenn dort nichts gewählt ist. Abbildung je "
+                "Anbieter: OpenAI reasoning_effort, Claude effort/Thinking, Gemini "
+                "thinkingConfig; lokal nur gpt-oss.",
+            },
+        ),
         # Bilderzeugung (M9-01, chat/images.py)
         ("Bilder", {"fields": ["default_image_model", "image_tool_confirm"]}),
         # Berechnungen (M4a-10, chat/tools_python.py, chat/sandbox.py)

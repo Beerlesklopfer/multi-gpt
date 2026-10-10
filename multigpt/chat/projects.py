@@ -283,6 +283,7 @@ def serialize_project(project: Project, user, *, detail: bool = False) -> dict:
                 "temperature": (
                     None if project.temperature is None else float(project.temperature)
                 ),
+                "reasoning_effort": project.reasoning_effort,
                 "collections": sorted(c.pk for c in project.collections.all()),
                 "created": project.created.isoformat(),
                 "updated": project.updated.isoformat(),

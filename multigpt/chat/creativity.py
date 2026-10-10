@@ -9,7 +9,8 @@ An das Modell geht der Wert als ``params["temperature"]`` (``params_for``) –
 nur, wenn das Modell sie annimmt (``capabilities.accepts_temperature``) und der
 Anbieter sie in diesem Prozess nicht schon einmal abgelehnt hat
 (``remember_rejected``, gesetzt vom Wiederholversuch in services.py). Alle
-Spalten eines Vergleichs nutzen denselben Wert des Chats.
+Spalten eines Vergleichs nutzen denselben Wert des Chats. Ob ein Modell sie
+annimmt, hängt auch von der Denktiefe ab (reasoning.py).
 """
 
 import logging
@@ -68,12 +69,20 @@ def clean(raw) -> tuple[Decimal | None, str | None]:
     return value.quantize(Decimal("0.01")), None
 
 
+def owner_project(conversation: Conversation | None):
+    """Projekt des Chats, sofern es dem Chat-Besitzer gehört (auch reasoning.py)."""
+    if conversation is None or not conversation.project_id:
+        return None
+    project = conversation.project
+    if project is not None and project.owner_id != conversation.user_id:
+        return None
+    return project
+
+
 def inherited(conversation: Conversation | None, project=None) -> tuple[Decimal | None, str]:
     """Wert ohne Wahl im Chat und seine Herkunft (``project`` bzw. ``settings``)."""
-    if project is None and conversation is not None and conversation.project_id:
-        project = conversation.project
-        if project is not None and project.owner_id != conversation.user_id:
-            project = None
+    if project is None:
+        project = owner_project(conversation)
     if project is not None and project.temperature is not None:
         return project.temperature, "project"
     return default_temperature(), "settings"
@@ -105,13 +114,23 @@ def forget_rejected() -> None:
     _rejected.clear()
 
 
-def params_for(ai_model: AIModel, value: Decimal | None, *, thinking: bool = False) -> dict:
-    """``{"temperature": float}`` oder ``{}`` (kein Wert, Modell nimmt keine an)."""
+def params_for(
+    ai_model: AIModel,
+    value: Decimal | None,
+    *,
+    thinking: bool = False,
+    reasoning: str | None = None,
+) -> dict:
+    """``{"temperature": float}`` oder ``{}`` (kein Wert, Modell nimmt keine an).
+    ``reasoning``: Denktiefe, die mitgeht (reasoning.level_for); mit Thinking
+    (Claude) keine Temperatur, mit „Aus“ (gpt-5.1+: ``none``) wieder erlaubt."""
     if value is None:
         return {}
     if (ai_model.provider_id, ai_model.model_id) in _rejected:
         return {}
     kind = ai_model.provider.kind if ai_model.provider_id else ""
-    if not capabilities.accepts_temperature(ai_model.model_id, kind, thinking=thinking):
+    if not capabilities.accepts_temperature(
+        ai_model.model_id, kind, thinking=thinking, reasoning=reasoning
+    ):
         return {}
     return {"temperature": float(value)}
