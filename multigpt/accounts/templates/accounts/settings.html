@@ -12,7 +12,12 @@
         BibTeX lassen sich unter jeder Antwort über „Zitat kopieren“ wählen. Links ohne Quelle
         werden auf Wunsch als möglicherweise erfunden markiert.
       </p>
-      {{ form.as_div }}
+      <div>{{ form.citation_style.as_field_group }}</div>
+      <div>{{ form.citation_short.as_field_group }}</div>
+      <div>{{ form.citation_locator.as_field_group }}</div>
+      <div>{{ form.mark_unverified_links.as_field_group }}</div>
+      <h2 class="section-title">Chat</h2>
+      <div>{{ form.context_menu.as_field_group }}</div>
       <button type="submit" class="button button-primary">Speichern</button>
       <a href="{% url 'chat:index' %}" class="button">Zurück zum Chat</a>
     </form>

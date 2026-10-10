@@ -75,13 +75,25 @@
       return li;
     }
 
-    function show(li, name, online, lastOnline, error) {
+    // Geladene Kontextlänge je Modell (LM Studio, Feld "contexts") für den Tooltip.
+    function contextText(contexts) {
+      if (!contexts || typeof contexts !== "object") {
+        return "";
+      }
+      return Object.entries(contexts)
+        .filter(([, value]) => Number.isInteger(value))
+        .map(([model, value]) => `${model}: ${value.toLocaleString("de-DE")} Tokens Kontext`)
+        .join("\n");
+    }
+
+    function show(li, name, online, lastOnline, error, contexts) {
       li.dataset.online = String(online);
       li.dataset.name = name;
       li.dataset.error = online ? "" : error || "";
       const text = statusText(name, online, lastOnline, error);
       li.querySelector(".provider-status-text").textContent = text;
-      li.title = !online && error ? `${name} offline – ${error}` : text;
+      const context = online ? contextText(contexts) : "";
+      li.title = !online && error ? `${name} offline – ${error}` : context ? `${text}\n${context}` : text;
     }
 
     // Serverseitig gerenderten Stand übernehmen (Zeitformat wie im Client).
@@ -130,7 +142,14 @@
         // Erster Abruf: Stand aus dem HTML als Vergleich, damit ein Wechsel
         // zwischen Seitenaufbau und erster Abfrage auch gemeldet wird.
         const previousOnline = before ? before.online : li.dataset.online === "true";
-        show(li, String(p.name ?? ""), online, p.last_online, p.error ? String(p.error) : "");
+        show(
+          li,
+          String(p.name ?? ""),
+          online,
+          p.last_online,
+          p.error ? String(p.error) : "",
+          p.contexts,
+        );
         if (previousOnline !== online) {
           changed = true;
           window.MultiGPT.announce(

@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 
+from .. import model_manager
 from ..models import AIModel, RagSettings
 from ..providers import registry
 from ..providers.base import ProviderError
@@ -272,6 +273,15 @@ def _provider_error(exc: ProviderError) -> OcrError:
 
 
 def _ask(ai_model: AIModel, image: bytes) -> str:
+    # Modellverwaltung (LM Studio): vorher laden; geht das nicht, wartet der Auftrag.
+    try:
+        with model_manager.use(ai_model):
+            return _ask_loaded(ai_model, image)
+    except model_manager.ModelUnavailable as exc:
+        raise OcrError(f"OCR-Modell: {exc.message}", unreachable=True) from None
+
+
+def _ask_loaded(ai_model: AIModel, image: bytes) -> str:
     adapter = registry.get_adapter(ai_model.provider)
     last: ProviderError | None = None
     for temperature in OLMOCR_TEMPERATURES:

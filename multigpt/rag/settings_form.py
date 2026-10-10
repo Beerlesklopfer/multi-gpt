@@ -20,6 +20,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.text import capfirst
 
+from multigpt.chat import admin_lmstudio
 from multigpt.chat.management.commands.sync_models import guess_capability
 from multigpt.chat.models import AIModel, Provider, RagSettings
 from multigpt.chat.rag.embeddings import suggested_prefixes
@@ -232,6 +233,19 @@ def _field(name: str):
     return RagSettings._meta.get_field(name)
 
 
+# Modellfeld -> Feld „Kontextfenster“ (Lade-Profil am Modell, Modellverwaltung LM Studio).
+CONTEXT_FIELDS = {
+    "embedding_model": "embedding_context",
+    "ocr_model": "ocr_context",
+    "figure_model": "figure_context",
+}
+CONTEXT_CAPABILITY = {
+    "embedding_model": AIModel.Capability.EMBEDDING,
+    "ocr_model": AIModel.Capability.OCR,
+    "figure_model": AIModel.Capability.CHAT,
+}
+
+
 class RagSettingsForm(forms.ModelForm):
     embedding_model = forms.ChoiceField(
         label="Embedding-Modell",
@@ -266,6 +280,14 @@ class RagSettingsForm(forms.ModelForm):
         required=False,
         strip=False,
         max_length=100,
+    )
+
+    embedding_context = admin_lmstudio.context_field(
+        "Kontextfenster", None, admin_lmstudio.CONTEXT_HELP
+    )
+    ocr_context = admin_lmstudio.context_field("Kontextfenster", None, admin_lmstudio.CONTEXT_HELP)
+    figure_context = admin_lmstudio.context_field(
+        "Kontextfenster", None, admin_lmstudio.CONTEXT_HELP
     )
 
     class Meta:
@@ -306,6 +328,28 @@ class RagSettingsForm(forms.ModelForm):
         self.initial["ocr_model"] = (
             f"m{ocr.pk}" if ocr else first_recommended(self.fields["ocr_model"].choices)
         )
+        # Kontextfenster je Modell: Stufen bis zur maximalen Länge laut LM Studio,
+        # vorbelegt mit dem Lade-Profil bzw. dem geladenen Wert (sonst Vorschlag).
+        current = {"embedding_model": embedding, "ocr_model": ocr, "figure_model": figure}
+        for model_field, context_name in CONTEXT_FIELDS.items():
+            model = current[model_field]
+            max_context = admin_lmstudio.cached_max_context(model)
+            field = admin_lmstudio.context_field(
+                "Kontextfenster", max_context, admin_lmstudio.CONTEXT_HELP
+            )
+            field.widget.attrs.update(
+                {
+                    "data-vram-for": f"id_{model_field}",
+                    "data-vram-capability": CONTEXT_CAPABILITY[model_field],
+                }
+            )
+            value = model.load_context_length if model is not None else None
+            if value is None and model is not None:
+                value = (model.provider.reported_context or {}).get(model.model_id)
+            if value and str(value) not in dict(field.choices):
+                field.choices = [*field.choices, (str(value), str(value))]
+            self.fields[context_name] = field
+            self.initial[context_name] = value or ""
 
     def clean_embedding_model(self):
         return resolve_choice(EMBEDDING, self.cleaned_data.get("embedding_model") or "")
@@ -315,6 +359,22 @@ class RagSettingsForm(forms.ModelForm):
 
     def clean_figure_model(self):
         return resolve_choice(FIGURE, self.cleaned_data.get("figure_model") or "")
+
+    def _clean_context(self, model_field: str, context_name: str):
+        value = self.cleaned_data.get(context_name)
+        model = self.cleaned_data.get(model_field)
+        if model is not None and value == model.load_context_length:
+            return value
+        return admin_lmstudio.check_context(value, admin_lmstudio.cached_max_context(model))
+
+    def clean_embedding_context(self):
+        return self._clean_context("embedding_model", "embedding_context")
+
+    def clean_ocr_context(self):
+        return self._clean_context("ocr_model", "ocr_context")
+
+    def clean_figure_context(self):
+        return self._clean_context("figure_model", "figure_context")
 
     def clean(self):
         cleaned = super().clean()

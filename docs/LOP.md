@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-10, nach 0.3.1 (veröffentlicht) und M15 „Knoten“ (lokal, erscheint als 0.3.2).
+Stand: 2026-10-11, nach 0.3.1 (veröffentlicht) und M15 „Knoten“ (lokal, erscheint als 0.3.2).
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 
 ## A. Entscheidungen des Nutzers
@@ -22,6 +22,12 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht? Einzelne Nachrichten löschen? | später |
 | A16 | Berechnungen | scipy aufnehmen (ca. 100 MB)? | nur bei Bedarf |
 | A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf |
+| A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja |
+| A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |
+| A21 | Modellverwaltung (M7-09, 0.3.2) | Wie viel Reserve braucht der Monitor an der LM-Studio-Grafikkarte (Auflösung, Anzahl Monitore, Desktop-Effekte)? | 2 GB (Standard); bei 4K bzw. zwei Monitoren 3 GB; Wert aus `nvidia-smi` ohne geladene Modelle ablesen |
+| A22 | Modellverwaltung | Chatmodell gpt-oss-20b anheften? | nein: Priorität 60 statt anheften (Indexierung verdrängt es dann nie, ein anderes Chatmodell schon); nomic anheften |
+| A23 | Modellverwaltung | Budget für die Karte des LM-Studio-Rechners (Größe der Grafikkarte)? „Modelle verwalten“ ist bis dahin aus. | Grafikspeicher laut `nvidia-smi` in GB eintragen, dann einschalten und JIT/Auto-Evict in LM Studio abschalten |
+| A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört |
 
 ## B. Klärung im Betrieb
 
@@ -57,6 +63,15 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C19 | MCP-SSE: Ein Client-Abbruch während eines laufenden `tools/call` (z. B. `ask`) bricht das Werkzeug nicht ab (der POST-Thread merkt die Trennung des Streams nicht). |
 | C20 | MCP-SSE: Trennt der Client, merkt der Server das erst beim nächsten Keepalive (bis 15 s); bis dahin zählt der Stream gegen die Grenzen. |
 | C21 | Erkennungsliste: `chat-latest` (gpt-5-chat) gilt als ohne Bild-Eingabe; laut OpenAI versteht es Bilder (auf der Dev-DB von Hand korrigiert). |
+| C22 | Kontextmenü (M13-01): offen sind „Ins Scratchpad“ (M13-05), eigene Vorlagen (M13-02), Knopf „⋯“ je Nachricht für die ganze Nachricht, die Abschnittsansicht `collections/chunk.html` und „Nachfragen“ aus nur lesbaren Chats in einem neuen Chat (Frage 7c). |
+| C23 | Kontextmenü und Mitscrollen nur in headless Firefox geprüft (Auswahl per Skript, Mausrad, Bild auf, Touch nicht echt); langes Tippen am Handy und Chromium ungetestet. |
+| C24 | Token-Schätzung (M4a-12) nur an gpt-oss-20b in LM Studio kalibriert (n8n-Schemas 1,5-fach überschätzt); Cloud-Anbieter ungeprüft, deren Kontextlänge nur per Admin-Feld. |
+| C25 | find_tools: Stichwortliste deutsch → englisch klein; Zustandsfragen („Ist das Licht im Flur an?“) treffen eher HassTurnOn als GetLiveContext (HASS geht als kleiner Server ohnehin ganz mit). |
+| C26 | `![…](anhang:ID)` im Antworttext: Auflösung in `markdown.js` nicht im Browser geprüft (kein Node in der Entwicklung); während des Streams ausgeblendet, sichtbar nach dem Nachladen der Nachricht. |
+| C27 | Modellverwaltung: „wird geladen …“ steht nur in der Statuszeile des Chats und im Admin, nicht in der Modellauswahl bzw. der Statusanzeige oben. |
+| C28 | Modellverwaltung: Laden und Entladen nur gegen nachgebildetes LM Studio getestet; am echten Gerät (0.4.x) prüfen, ob `parallel` beim Laden angenommen wird (nicht dokumentiert) und welche Fehlermeldung LM Studio bei zu wenig Speicher liefert. |
+| C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |
+| C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
 
 ## D. Geplante Meilensteine
 
@@ -66,5 +81,5 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | M10 Sprache (Spracherkennung, Vorlesen) | offen |
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
-| M13 Scratchpad | geplant, wartet auf A13 |
+| M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Rest geplant, wartet auf A13 |
 | M14 Runner | geplant, wartet auf A14 |

@@ -20,7 +20,7 @@ Eine selbst gehostete Web-App im heimischen Intranet, über die eine Familie (zu
 
 ## 3. Nicht-Ziele (v1)
 
-- Kein Starten, Stoppen oder Aufwecken von LM Studio aus der App heraus (kein Wake-on-LAN, kein Laden von Modellen). Die App zeigt nur an, ob LM Studio erreichbar ist (siehe Abschnitt 8a).
+- Kein Starten, Stoppen oder Aufwecken von LM Studio aus der App heraus (kein Wake-on-LAN). Die App zeigt an, ob LM Studio erreichbar ist (siehe Abschnitt 8a). **Geändert mit 0.3.2 (Nutzerentscheidung, M7-09):** Ist LM Studio erreichbar und „Modelle verwalten“ am Anbieter eingeschaltet, lädt und entlädt die App Modelle selbst – vor dem Gebrauch, ohne TTL und nie über ein Speicherbudget, das eine Reserve für den Monitor an derselben Grafikkarte freihält.
 - Kein durchgehender Sprachdialog in Echtzeit. Sprache läuft als Aufnahme → Text und Antwort → Vorlesen (Abschnitt 8c).
 - Kein Betrieb eigener Bildmodelle auf dem NAS. Erzeugung, Inpainting und Varianten laufen über API-Anbieter oder angebundene MCP-Server, klassische Bildbearbeitung (Zuschneiden, Skalieren, Umwandeln) lokal in Python (Abschnitte 8e und 8g).
 - Keine Trennung mehrerer Haushalte in einer Installation. Ein System gehört einer Familie, innerhalb davon gibt es Rollen und Gruppen (Abschnitt 8f).
@@ -181,6 +181,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 - **Anzeige:** Statuspunkt in der Kopfzeile und an den lokalen Modellen in der Modellauswahl: grün "LM Studio online", grau "offline, zuletzt online um …". Der Browser fragt alle 30 s nach, solange der Tab sichtbar ist.
 - **Meldung:** Wechselt der Status von offline auf online, erscheint ein kurzer Hinweis ("LM Studio ist jetzt online"). Umgekehrt ebenso.
 - **Modellauswahl:** Lokale Modelle sind bei offline ausgegraut und nicht wählbar. Bei online werden die tatsächlich von LM Studio gemeldeten Modelle angeboten, ohne Pflege im Admin.
+- **Modellverwaltung (seit 0.3.2, M7-09):** Auf Wunsch lädt MultiGPT ein lokales Modell vor dem Gebrauch über die REST-API v1 von LM Studio (Lade-Profil: Kontextfenster, Parallelität, keine TTL), entlädt dafür nach Priorität und letzter Nutzung andere (nie angeheftete, gerade genutzte, unbekannte; Indexierungsmodelle nicht während eines Laufs) und lädt nie über das Budget (Budget − Reserve, Schätzung Modelldatei + KV-Cache). Leerlauf-Entladen übernimmt der Worker. Einzelheiten in Implementierung.md (M7-09).
 - **Fehlerfall:** Geht LM Studio während einer Antwort offline, bleibt der bereits empfangene Text erhalten, die Nachricht wird als abgebrochen markiert, und der Nutzer kann mit einem anderen Modell neu erzeugen.
 - **Kosten:** Lokale Modelle zählen in der Verbrauchsübersicht mit Tokens, aber mit 0 € Kosten.
 

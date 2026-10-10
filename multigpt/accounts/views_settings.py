@@ -1,6 +1,7 @@
 """Seite „Einstellungen“: persönliche Einstellungen des eigenen Kontos.
 
-Bisher: Zitieren (Stil, Kurzbeleg im Antworttext, Seite/Absatz anzeigen). Die
+Bisher: Zitieren (Stil, Kurzbeleg im Antworttext, Seite/Absatz anzeigen) und
+das eigene Kontextmenü im Chat (M13-01). Die
 Seite ändert nur das angemeldete Konto – es gibt keinen Parameter für ein
 anderes Konto.
 """
@@ -18,12 +19,19 @@ from multigpt.chat import citations
 class SettingsForm(forms.ModelForm):
     class Meta:
         model = get_user_model()
-        fields = ["citation_style", "citation_short", "citation_locator", "mark_unverified_links"]
+        fields = [
+            "citation_style",
+            "citation_short",
+            "citation_locator",
+            "mark_unverified_links",
+            "context_menu",
+        ]
         labels = {
             "citation_style": "Zitierstil",
             "citation_short": "Quellen im Antworttext als Kurzbeleg zeigen",
             "citation_locator": "Abschnitt, Seite und Absatz anzeigen",
             "mark_unverified_links": "Ungeprüfte Links markieren",
+            "context_menu": "Eigenes Kontextmenü im Chat",
         }
         help_texts = {
             "citation_style": "Für die Quellenliste unter Antworten, „Zitat kopieren“ und den "
@@ -34,6 +42,9 @@ class SettingsForm(forms.ModelForm):
             "„Abschn. 7.5.3, S. 12, Abs. 3“.",
             "mark_unverified_links": "Links in Antworten, die aus keiner Quelle und keinem "
             "Werkzeugergebnis stammen, bekommen ein Warnsymbol (möglicherweise erfunden).",
+            "context_menu": "Markierten Text per Rechtsklick, Leiste unter der Auswahl oder "
+            "Umschalt+F10 zitieren, nachfragen und kopieren. Umschalt+Rechtsklick zeigt immer "
+            "das Browsermenü. Aus: nur das Browsermenü.",
         }
         widgets = {"citation_style": forms.RadioSelect}
 

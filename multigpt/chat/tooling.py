@@ -63,6 +63,12 @@ MSG_ROUND_LIMIT = "Nicht ausgeführt: Die Höchstzahl an Werkzeugrunden ist erre
 MSG_UNANSWERED = "Nicht ausgeführt: Die Rückfrage wurde nicht beantwortet."
 MSG_ABORTED = "Abgebrochen."
 MSG_EMPTY = "(Das Werkzeug hat kein Ergebnis geliefert.)"
+# Für Werkzeuge, die Anhänge erzeugen: Modelle schreiben sonst ``![…](anhang:ID)``
+# in die Antwort (im Chat ein kaputtes Bild).
+NOTE_ATTACHMENT_SHOWN = (
+    "Der Anhang erscheint automatisch unter der Antwort – im Antworttext nicht verlinken "
+    "oder als Bild einbinden."
+)
 
 _INVALID = re.compile(r"[^a-zA-Z0-9_-]+")
 
@@ -372,7 +378,10 @@ def execute(server: McpServer, tool_call: ToolCall, message) -> Outcome:
         ids = _store_files(message, tool_call, result)
         text = result.text or ""
         if ids:
-            note = f"[{len(ids)} Datei(en) als Anhang gespeichert und dem Nutzer angezeigt.]"
+            note = (
+                f"[{len(ids)} Datei(en) als Anhang gespeichert und dem Nutzer angezeigt. "
+                f"{NOTE_ATTACHMENT_SHOWN}]"
+            )
             text = f"{text}\n\n{note}" if text else note
         status = ToolCall.Status.ERROR if result.is_error else ToolCall.Status.OK
         outcome = Outcome(status, text or MSG_EMPTY, bool(result.is_error), ids)

@@ -54,3 +54,25 @@
 
 /* RAG-Einstellungen: Test-Knöpfe im Formular (speichern und testen). */
 .rag-test-row { justify-content: flex-start; }
+
+/* Modellverwaltung LM Studio: erwarteter Speicher und Budgetbalken. */
+.vram-estimate { margin-top: 0.3em; }
+.vram-estimate.vram-warning, .vram-warning-text { color: #ba2121; }
+.vram-ok { color: #2b5a1e; }
+.vram-bar { display: flex; height: 1.4em; border-radius: 4px; overflow: hidden; margin: 10px; border: 1px solid var(--hairline-color); }
+.vram-bar span { display: block; min-width: 2px; }
+.vram-bar .vram-seg--model { background: #4a90d9; }
+.vram-bar .vram-seg--pinned { background: #1d4c79; }
+.vram-bar .vram-seg--foreign { background: #8a8a8a; }
+.vram-bar .vram-seg--free { background: #dff0d8; }
+.vram-bar .vram-seg--reserve { background: repeating-linear-gradient(45deg, #f6d6d6, #f6d6d6 4px, #fbeaea 4px, #fbeaea 8px); }
+.vram-legend { display: flex; flex-wrap: wrap; gap: 0.4em 1.2em; padding: 0 10px 8px; font-size: 0.8125rem; }
+.vram-table td, .vram-table th { vertical-align: top; }
+.vram-table form { display: inline; margin: 0; }
+.vram-table select { max-width: 9em; }
+@media (prefers-color-scheme: dark) {
+  .vram-estimate.vram-warning, .vram-warning-text { color: #f19a9a; }
+  .vram-ok { color: #9fd38a; }
+  .vram-bar .vram-seg--free { background: #24421b; }
+  .vram-bar .vram-seg--reserve { background: repeating-linear-gradient(45deg, #5a1c1c, #5a1c1c 4px, #3d1414 4px, #3d1414 8px); }
+}

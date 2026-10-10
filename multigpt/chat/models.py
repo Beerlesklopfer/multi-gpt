@@ -131,6 +131,43 @@ class Provider(models.Model):
         editable=False,
         help_text="Ursache, falls die letzte Prüfung fehlschlug (ohne Key); sonst leer.",
     )
+    # Kontextlängen, die ein lokaler Anbieter meldet (LM Studio ``/api/v0/models``:
+    # ``loaded_context_length`` geladener Modelle), je Modell-ID; M4a-12.
+    reported_context = models.JSONField(
+        "gemeldete Kontextlängen",
+        default=dict,
+        blank=True,
+        editable=False,
+        help_text="Kontextlänge geladener Modelle in Tokens laut letzter Prüfung (LM Studio).",
+    )
+    # Modellverwaltung (M7-09, erweitert 0.3.2, chat/model_manager.py): MultiGPT
+    # lädt und entlädt die Modelle in LM Studio selbst, nie über das Budget.
+    manage_models = models.BooleanField(
+        "Modelle verwalten (LM Studio)",
+        default=False,
+        help_text="MultiGPT lädt Modelle vor dem Gebrauch über die REST-API von LM Studio "
+        "(ab 0.4) und entlädt andere, wenn der Grafikspeicher nicht reicht. Braucht das "
+        "Speicherbudget.",
+    )
+    vram_budget_gb = models.DecimalField(
+        "Speicherbudget für Modelle (GB)",
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.5"))],
+        help_text="Grafikspeicher, den LM Studio insgesamt nutzen darf, in GB (10⁹ Byte; "
+        "eine Karte mit 16 GiB hat 17,1 GB). LM Studio meldet ihn über die API nicht.",
+    )
+    vram_reserve_gb = models.DecimalField(
+        "Reserve für Anzeige bzw. System (GB)",
+        max_digits=5,
+        decimal_places=1,
+        default=Decimal("2.0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Bleibt immer frei, z. B. für den Monitor an derselben Grafikkarte, den "
+        "Desktop und Schätzfehler.",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -139,6 +176,22 @@ class Provider(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        if self.manage_models:
+            if not (self.is_local and self.kind == self.Kind.OPENAI_COMPAT):
+                raise ValidationError(
+                    {"manage_models": "Nur für lokale, OpenAI-kompatible Anbieter (LM Studio)."}
+                )
+            if self.vram_budget_gb is None:
+                raise ValidationError(
+                    {"vram_budget_gb": "Zum Verwalten der Modelle bitte das Budget angeben."}
+                )
+        if self.vram_budget_gb is not None and self.vram_reserve_gb >= self.vram_budget_gb:
+            raise ValidationError(
+                {"vram_reserve_gb": "Die Reserve muss kleiner als das Budget sein."}
+            )
 
 
 class AIModel(models.Model):
@@ -151,6 +204,14 @@ class AIModel(models.Model):
         MUSIC = "music", "Musik"  # M11
         # Reine Texterkennung (olmOCR): nur für die OCR der Dokumentsuche, nie im Chat.
         OCR = "ocr", "Texterkennung (OCR)"
+
+    class ToolsOnDemand(models.TextChoices):
+        # Werkzeuge nach Bedarf (M4a-12, chat/tool_select.py); leer = Einstellung
+        # in den Chat-Einstellungen.
+        DEFAULT = "", "Standard"
+        AUTO = "auto", "automatisch"
+        ALWAYS = "always", "immer"
+        NEVER = "never", "nie"
 
     class McpAccess(models.TextChoices):
         # Welche MCP-Server das Modell nutzen darf, zusätzlich zur Rolle des
@@ -205,6 +266,73 @@ class AIModel(models.Model):
         related_name="allowed_models",
         verbose_name="erlaubte MCP-Server",
         help_text="Nur bei MCP „ausgewählte“ wirksam.",
+    )
+    tools_on_demand = models.CharField(
+        "Werkzeuge nach Bedarf",
+        max_length=10,
+        blank=True,
+        default="",
+        choices=ToolsOnDemand.choices,
+        help_text="Nur ein kleiner Kern an Werkzeugen plus find_tools statt aller "
+        "Beschreibungen. „Standard“ = Chat-Einstellungen. „nie“ für Cloud-Modelle mit "
+        "großem Kontext, die alle Werkzeuge direkt sehen sollen.",
+    )
+    context_length = models.PositiveIntegerField(
+        "Kontextlänge (Tokens)",
+        null=True,
+        blank=True,
+        help_text="Für die Schätzung vor dem Senden. Leer = was der Anbieter meldet "
+        "(LM Studio: geladene Kontextlänge) bzw. unbekannt. Eine Meldung von LM Studio hat "
+        "Vorrang.",
+    )
+    # Lade-Profil (Modellverwaltung LM Studio, chat/model_manager.py): wirkt nur
+    # bei Anbietern mit „Modelle verwalten“.
+    load_context_length = models.PositiveIntegerField(
+        "Kontextfenster beim Laden",
+        null=True,
+        blank=True,
+        help_text="Damit lädt MultiGPT das Modell in LM Studio. Leer = Vorschlag nach Art: "
+        "Chat 32 768, OCR 8 192, Embedding Modellstandard.",
+    )
+    load_parallel = models.PositiveSmallIntegerField(
+        "Parallele Anfragen beim Laden",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(16)],
+        help_text="Leer = Standard von LM Studio.",
+    )
+    pinned = models.BooleanField(
+        "angeheftet",
+        default=False,
+        help_text="Wird nie automatisch entladen (z. B. das Embedding-Modell für die Suche).",
+    )
+    load_priority = models.PositiveSmallIntegerField(
+        "Priorität",
+        default=50,
+        validators=[MaxValueValidator(100)],
+        help_text="0–100. Muss Platz geschaffen werden, gehen Modelle mit niedrigerer "
+        "Priorität zuerst; im Chat auch gleich hohe (zuletzt genutzte zuletzt).",
+    )
+    auto_load = models.BooleanField(
+        "automatisch laden",
+        default=True,
+        help_text="Vor dem Gebrauch laden, falls nicht geladen. Aus: nur von Hand laden.",
+    )
+    idle_unload_minutes = models.PositiveIntegerField(
+        "Entladen nach Leerlauf (Minuten)",
+        default=30,
+        help_text="0 = nie. Gilt nicht für angeheftete Modelle. Übernimmt der Worker, "
+        "nicht die TTL von LM Studio.",
+    )
+    vram_gb = models.DecimalField(
+        "gemessener Speicherbedarf (GB)",
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Leer = Schätzung (Datei plus Kontext-Cache). Ein gemessener Wert, z. B. "
+        "aus nvidia-smi nach dem Laden, hat Vorrang.",
     )
     active = models.BooleanField("aktiv", default=True)
     sort_order = models.PositiveIntegerField("Reihenfolge", default=0)
@@ -396,6 +524,31 @@ class ChatSettings(models.Model):
         "Gilt für Chats ohne eigene Wahl unter „Denktiefe“ und ohne Projektvorgabe. Leer = "
         "Standard des Anbieters. Modelle ohne Reasoning bekommen nichts; nicht unterstützte "
         "Stufen werden auf die nächste passende abgebildet.",
+    )
+    # Werkzeuge nach Bedarf (M4a-12, chat/tool_select.py).
+    tools_on_demand = models.CharField(
+        "Werkzeuge nach Bedarf",
+        max_length=10,
+        default="auto",
+        choices=[
+            ("auto", "automatisch"),
+            ("always", "immer"),
+            ("never", "nie"),
+        ],
+        help_text="Statt aller Werkzeugbeschreibungen bekommt das Modell nur einen kleinen "
+        "Kern plus das Werkzeug find_tools, mit dem es weitere sucht und freischaltet. "
+        "„automatisch“: nur, wenn es viele Werkzeuge sind (mehr als 12 bzw. mehr als ca. "
+        "4000 Tokens) oder der Kontext des Modells knapp wird. Je Modell überschreibbar "
+        "(KI-Modelle, Spalte „Werkzeuge nach Bedarf“).",
+    )
+    core_tools = models.CharField(
+        "Basiswerkzeuge",
+        max_length=500,
+        blank=True,
+        default="web_search, search_documents, create_pdf",
+        help_text="Eingebaute Werkzeuge, die im Modus nach Bedarf immer direkt mitgehen "
+        "(Namen, durch Komma getrennt). Kleine MCP-Server gehen ebenfalls ganz mit, große "
+        "nur über find_tools.",
     )
     # Bilderzeugung (M9-01, chat/images.py).
     default_image_model = models.ForeignKey(
@@ -1744,6 +1897,8 @@ class IndexRun(models.Model):
     docs_failed = models.PositiveIntegerField("Dokumente mit Fehler", default=0)
     docs_cancelled = models.PositiveIntegerField("Dokumente abgebrochen", default=0)
     error_text = models.TextField("Fehler", blank=True)
+    # Kurzer Hinweis des Workers, z. B. „Lade allenai/olmocr-2-7b …“ (Modellverwaltung).
+    note = models.CharField("Hinweis", max_length=300, blank=True)
     started = models.DateTimeField("gestartet", default=timezone.now)
     finished = models.DateTimeField("beendet", null=True, blank=True)
 
@@ -1786,6 +1941,8 @@ class IndexRun(models.Model):
             parts.append(f"{self.docs_failed} Fehler")
         if self.docs_cancelled:
             parts.append(f"{self.docs_cancelled} abgebrochen")
+        if self.note and self.is_open:
+            parts.append(self.note)
         return f"Lauf #{self.pk}: {', '.join(parts)} ({self.duration_text()})"
 
 
@@ -1917,3 +2074,7 @@ class Project(models.Model):
     def __str__(self):
         # Wie bei Chats ohne Namen: __str__ erscheint in Logs und Auswahllisten.
         return f"Projekt {self.pk}"
+
+
+# Modellverwaltung (LM Studio): Laufzeitzustand und Belegung, eigenes Modul.
+from .models_lmstudio import ModelLease, ModelRuntime  # noqa: E402,F401

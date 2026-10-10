@@ -190,7 +190,8 @@
       col.state.textContent = "wartet …";
       col.abortButton.setAttribute("aria-label", `Antwort von ${model.name} abbrechen`);
       col.chooseButton.setAttribute("aria-label", `Mit der Antwort von ${model.name} weiter`);
-      col.renderer = markdown ? markdown.streamRenderer(col.content, null) : null;
+      // Mitscrollen je gerendertem Bild, nur wenn der Nutzer unten ist (scroll_follow.js).
+      col.renderer = markdown ? markdown.streamRenderer(col.content, view.afterRender) : null;
       col.abortButton.addEventListener("click", () => col.controller.abort());
       col.chooseButton.addEventListener("click", () => choose(col));
       return col;
@@ -262,6 +263,7 @@
               col.renderer.append(chunk);
             } else {
               col.content.append(chunk);
+              view.followBottom();
             }
           } else if (event === "status") {
             if (typeof data.text === "string" && data.text) {
@@ -270,6 +272,7 @@
           } else if (event === "sources") {
             // Quellenliste mit Zitieren wie im Einzelchat (citations.js).
             window.MultiGPT.sources?.render(col.article, data.sources);
+            view.followBottom();
             const count = Array.isArray(data.sources) ? data.sources.length : 0;
             if (count && col.note.hidden) {
               setNote(col, count === 1 ? "1 Quelle" : `${count} Quellen`, null);

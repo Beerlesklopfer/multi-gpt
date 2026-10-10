@@ -35,6 +35,7 @@ import re
 
 from django.conf import settings
 
+from .. import model_manager
 from ..models import EMBEDDING_DIMENSIONS, AIModel, RagSettings
 from ..providers import registry
 from ..providers.base import ProviderError
@@ -147,12 +148,19 @@ def _provider_error(exc: ProviderError) -> EmbeddingError:
     )
 
 
-def _call(ai_model: AIModel, texts: list[str]) -> list[list[float]]:
-    """Adapter aufrufen; ``dimensions`` nur für Modelle, die es kennen."""
+def _call(ai_model: AIModel, texts: list[str], *, interactive: bool = False) -> list[list[float]]:
+    """Adapter aufrufen; ``dimensions`` nur für Modelle, die es kennen.
+
+    Modellverwaltung (LM Studio): vorher laden bzw. Platz schaffen; geht das
+    nicht, wartet die Indexierung (``unreachable``) bzw. die Suche meldet es.
+    """
     dimensions = EMBEDDING_DIMENSIONS if supports_dimensions(ai_model.model_id) else None
     try:
         adapter = registry.get_adapter(ai_model.provider)
-        return adapter.embed(ai_model.model_id, texts, dimensions=dimensions)
+        with model_manager.use(ai_model, interactive=interactive):
+            return adapter.embed(ai_model.model_id, texts, dimensions=dimensions)
+    except model_manager.ModelUnavailable as exc:
+        raise EmbeddingError(exc.message, unreachable=True) from None
     except NotImplementedError:
         raise EmbeddingError(MSG_UNSUPPORTED) from None
     except ProviderError as exc:
@@ -174,7 +182,9 @@ def _with_prefix(texts: list[str], prefix: str) -> list[str]:
     return [prefix + t for t in texts] if prefix else texts
 
 
-def embed_with(ai_model: AIModel, texts: list[str], *, prefix: str = "") -> list[list[float]]:
+def embed_with(
+    ai_model: AIModel, texts: list[str], *, prefix: str = "", interactive: bool = False
+) -> list[list[float]]:
     """Wie ``embed_texts``, aber mit einem bestimmten Modell und Präfix."""
     texts = list(texts)
     if not texts:
@@ -183,7 +193,7 @@ def embed_with(ai_model: AIModel, texts: list[str], *, prefix: str = "") -> list
         raise EmbeddingError(MSG_EMPTY)
     if fake_enabled():
         return [fake_embedding(t) for t in texts]
-    vectors = _call(ai_model, _with_prefix(texts, prefix))
+    vectors = _call(ai_model, _with_prefix(texts, prefix), interactive=interactive)
     if len(vectors) != len(texts):
         raise EmbeddingError(MSG_FAILED)
     _check_dimensions(vectors)
@@ -226,7 +236,7 @@ def embed_texts(texts: list[str], *, kind: str = KIND_DOCUMENT) -> list[list[flo
     prefix = cfg.query_prefix if kind == KIND_QUERY else cfg.document_prefix
     if kind == KIND_QUERY:
         _ensure_reachable(ai_model)
-    return embed_with(ai_model, texts, prefix=prefix)
+    return embed_with(ai_model, texts, prefix=prefix, interactive=kind == KIND_QUERY)
 
 
 def embed_query(text: str) -> list[float]:
@@ -249,7 +259,7 @@ def check() -> tuple[str, str]:
         return "error", exc.message
     prefix = RagSettings.load().query_prefix
     try:
-        vectors = _call(ai_model, _with_prefix([CHECK_TEXT], prefix))
+        vectors = _call(ai_model, _with_prefix([CHECK_TEXT], prefix), interactive=True)
     except EmbeddingError as exc:
         return "error", f"Embedding fehlgeschlagen: {exc.message}"
     got = len(vectors[0]) if vectors else 0

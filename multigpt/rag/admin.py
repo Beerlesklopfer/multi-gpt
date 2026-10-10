@@ -23,6 +23,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils.text import Truncator
 
+from multigpt.chat import admin_lmstudio
 from multigpt.chat import status as provider_status
 from multigpt.chat.api_collections import delete_document_files
 from multigpt.chat.forms_citation import BIB_FIELDS, DocumentCitationForm
@@ -41,7 +42,7 @@ from .models import (
     RagOverview,
     RagSettingsProxy,
 )
-from .settings_form import RagSettingsForm, materialize
+from .settings_form import CONTEXT_FIELDS, RagSettingsForm, materialize
 from .source_forms import DirectorySourceForm
 
 ADMIN_CSS = "rag/admin_rag.css"
@@ -151,6 +152,9 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
                 name="rag_overview_check_embedding",
             ),
             path("check-ocr/", view(self.check_ocr_view), name="rag_overview_check_ocr"),
+            # Modellverwaltung LM Studio (chat/admin_lmstudio.py).
+            path("lmstudio/", view(self.lmstudio_view), name="rag_overview_lmstudio"),
+            path("vram/", view(self.vram_view), name="rag_overview_vram"),
         ]
 
     def _require(self, request):
@@ -253,6 +257,29 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
         self.message_user(request, text, _level(level))
         return HttpResponseRedirect(_overview_url())
 
+    def lmstudio_view(self, request):
+        """„LM Studio: geladene Modelle“ – wie ``lms ps``, mit Budget und Knöpfen."""
+        self._require(request)
+        if request.method == "POST":
+            if not request.user.has_perm("chat.change_aimodel"):
+                raise PermissionDenied
+            level, text = admin_lmstudio.page_action(request)
+            self.message_user(request, text, _level(level))
+            return HttpResponseRedirect(reverse("admin:rag_overview_lmstudio"))
+        context = {
+            **self._context(request, "LM Studio: geladene Modelle"),
+            "providers": admin_lmstudio.page_context(),
+            "can_change": request.user.has_perm("chat.change_aimodel"),
+        }
+        return TemplateResponse(request, "admin/rag/ragoverview/lmstudio.html", context)
+
+    def vram_view(self, request):
+        """Erwarteter Speicher als JSON für die Auswahl „Kontextfenster“ (nur lesend)."""
+        self._require(request)
+        if not request.user.has_perm("chat.view_aimodel"):
+            raise PermissionDenied
+        return admin_lmstudio.vram_view(request)
+
 
 # --- Einstellungen ------------------------------------------------------------
 
@@ -275,7 +302,7 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
 
     class Media:
         css = {"all": [ADMIN_CSS]}
-        js = ["rag/settings_form.js"]
+        js = ["rag/settings_form.js", "rag/vram_estimate.js"]
 
     index_order = 40
     form = RagSettingsForm
@@ -283,7 +310,12 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
         (
             None,
             {
-                "fields": ["embedding_model", "document_prefix", "query_prefix"],
+                "fields": [
+                    "embedding_model",
+                    "embedding_context",
+                    "document_prefix",
+                    "query_prefix",
+                ],
                 "description": "Nach dem Speichern über „Embedding testen“ (oben rechts) "
                 "prüfen. Ein Wechsel des Modells oder der Präfixe erfordert „Alles neu "
                 "indexieren“ (oben rechts), sonst passen die gespeicherten Abschnitte nicht "
@@ -294,7 +326,7 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
         (
             "Texterkennung (OCR)",
             {
-                "fields": ["ocr_backend", "ocr_model", "ocr_fallback_tesseract"],
+                "fields": ["ocr_backend", "ocr_model", "ocr_context", "ocr_fallback_tesseract"],
                 "description": "Für gescannte PDF-Seiten ohne Textebene. olmOCR liest "
                 "Tabellen, Spalten und Formeln besser als Tesseract, braucht aber ein "
                 "geladenes Vision-Modell (z. B. allenai/olmocr-2-7b in LM Studio). Nach dem "
@@ -307,6 +339,7 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
                 "fields": [
                     "describe_figures",
                     "figure_model",
+                    "figure_context",
                     "figure_max_per_document",
                     "figure_max_per_page",
                     "figure_min_edge",
@@ -355,6 +388,8 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
             # Anbieter), damit gerade in LM Studio geladene Modelle erscheinen.
             for provider in Provider.objects.filter(active=True, check_status=True):
                 provider_status.refresh(provider)
+            # Eckdaten (Größe, maximale Kontextlänge) für „Kontextfenster“.
+            admin_lmstudio.refresh_catalogs()
         return super().change_view(request, object_id, form_url, extra_context)
 
     def changelist_view(self, request, extra_context=None):
@@ -384,6 +419,15 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
             RagSettings.objects.filter(pk=obj.pk).values_list("ocr_model_id", flat=True).first()
         )
         super().save_model(request, obj, form, change)
+        # Kontextfenster (Lade-Profil) am jeweiligen Modell speichern.
+        for field, context_field in CONTEXT_FIELDS.items():
+            model = getattr(obj, field)
+            if model is None or context_field not in form.cleaned_data:
+                continue
+            value = form.cleaned_data[context_field]
+            if value != model.load_context_length:
+                model.load_context_length = value
+                model.save(update_fields=["load_context_length"])
         if (
             obj.ocr_model_id
             and obj.ocr_backend == RagSettings.OcrBackend.TESSERACT

@@ -494,8 +494,8 @@
   [[milestones.steps]]
     id = "M7-09"
     status = "done"
-    de = "Embeddings und Texterkennung lokal über LM Studio"
-    en = "Local embeddings and OCR via LM Studio"
+    de = "Embeddings und Texterkennung lokal über LM Studio; erweitert 0.3.2: Modelle automatisch laden mit Speicherbudget"
+    en = "Local embeddings and OCR via LM Studio; extended in 0.3.2: automatic model loading within a memory budget"
 
   [[milestones.steps]]
     id = "M7-10"

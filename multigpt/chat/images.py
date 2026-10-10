@@ -368,7 +368,8 @@ def _tool_run(user, arguments: dict, sources) -> tooling.BuiltinResult:
     return tooling.BuiltinResult(
         f"Bild erzeugt und dem Nutzer in der Antwort angezeigt (Anhang #{attachment.pk}, "
         f"{attachment.width}×{attachment.height} px, Modell {image_model.display_name}). "
-        "Das Bild nicht erneut als Code oder Text darstellen."
+        "Das Bild nicht erneut als Code oder Text darstellen. "
+        f"{tooling.NOTE_ATTACHMENT_SHOWN}"
     )
 
 

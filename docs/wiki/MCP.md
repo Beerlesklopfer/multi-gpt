@@ -126,6 +126,16 @@ Zusätzlich gelten die Rechte der Rolle (Schnittmenge). Auf der Seite des Server
 Abschnitt **„Modelle“**, welche Modelle ihn nutzen dürfen. Das Modell braucht außerdem das
 Häkchen „Werkzeuge“.
 
+## Werkzeuge nach Bedarf
+
+Große Server (n8n mit über 50 Werkzeugen) füllen mit ihren Beschreibungen den Kontext lokaler
+Modelle. Im Modus **Werkzeuge nach Bedarf** sieht das Modell nur einen Kern und sucht den Rest mit
+`find_tools`; kleine Server (bis 10 Werkzeuge, z. B. Home Assistant) gehen ganz mit. Die
+Einstufung oben gilt unverändert: Ist z. B. `intent__HassTurnOff` „ohne Rückfrage“ eingestuft,
+schaltet ein „Schalte im Schlafzimmer das Licht aus“ direkt; sonst kommt die Rückfrage. In der
+Ausgabe von `find_tools` stehen die Beschreibungen der Server gekürzt, einzeilig und ohne
+Markup. Einstellung und Kontextlänge: [Anbieter und Modelle](Anbieter-und-Modelle#werkzeuge-nach-bedarf-und-kontextlänge).
+
 ## Eingebaute Werkzeuge für die Indexierung
 
 Unabhängig von MCP-Servern bekommen werkzeugfähige Modelle für Konten mit passenden Rechten

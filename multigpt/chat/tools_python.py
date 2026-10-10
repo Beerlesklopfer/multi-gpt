@@ -257,7 +257,7 @@ def format_result(result: sandbox.RunResult, limits: sandbox.Limits, stored=(), 
         lines += [
             "",
             f"Dateien als Anhang gespeichert und dem Nutzer in der Antwort angezeigt: {names}. "
-            "Nicht erneut als Code, Text oder Bild ausgeben.",
+            "Nicht erneut als Code, Text oder Bild ausgeben. " + tooling.NOTE_ATTACHMENT_SHOWN,
         ]
     skipped = list(rejected) + [f"{n} (Grenze für Anzahl oder Größe)" for n in result.skipped_files]
     if skipped:

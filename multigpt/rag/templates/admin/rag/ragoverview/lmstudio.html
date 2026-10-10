@@ -1,0 +1,100 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{# Modellverwaltung LM Studio: geladene Modelle wie „lms ps“, Budget, laden/entladen/anheften. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'rag/admin_rag.css' %}">{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'rag/vram_estimate.js' %}" defer></script>{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='rag' %}">Dokumente (RAG)</a>
+  &rsaquo; <a href="{% url 'admin:rag_ragoverview_changelist' %}">RAG-Übersicht</a>
+  &rsaquo; LM Studio
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if not providers %}
+    <p class="help rag-hint">Kein lokaler Anbieter (LM Studio) eingerichtet.</p>
+  {% endif %}
+  {% for p in providers %}
+  <div class="module" style="margin-bottom: 1.2em">
+    <h2>{{ p.provider.name }} – {% if p.managed %}Modelle werden verwaltet{% else %}Modellverwaltung aus{% endif %}</h2>
+    {% if p.error %}<p class="errornote">LM Studio: {{ p.error }}</p>{% endif %}
+    {% if not p.managed %}
+      <p class="help rag-hint">„Modelle verwalten“ und das Speicherbudget stellt der Verwalter am <a href="{% url 'admin:chat_provider_change' p.provider.pk %}">Anbieter</a> ein. Ohne Verwaltung lädt LM Studio Modelle selbst (JIT) und MultiGPT greift nicht ein.</p>
+    {% endif %}
+    {% if p.bar %}
+      <p class="help rag-hint">Budget {{ p.budget }}, davon Reserve für Anzeige/System {{ p.reserve }}; belegt {{ p.used }} (Schätzung), frei {{ p.free }}.</p>
+      <div class="vram-bar" role="img" aria-label="Budget: belegt {{ p.used }}, frei {{ p.free }}, Reserve {{ p.reserve }}">
+        {% for seg in p.bar %}<span class="vram-seg--{{ seg.kind }}" style="width: {{ seg.pct|stringformat:'s' }}%" title="{{ seg.label }}"></span>{% endfor %}
+      </div>
+      <div class="vram-legend">{% for seg in p.bar %}<span>{{ seg.label }}</span>{% endfor %}</div>
+    {% elif p.managed %}
+      <p class="errornote">Kein Speicherbudget gesetzt.</p>
+    {% endif %}
+    <table class="vram-table" style="width: 100%">
+      <thead>
+        <tr>
+          <th scope="col">Modell</th><th scope="col">Größe</th><th scope="col">Kontext geladen / max.</th>
+          <th scope="col">Status</th><th scope="col">Zuletzt genutzt</th><th scope="col">Kontextfenster und erwarteter Speicher</th><th scope="col">Aktionen</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in p.rows %}
+        <tr>
+          <td>
+            <a href="{% url 'admin:chat_aimodel_change' row.model.pk %}">{{ row.model.display_name }}</a><br><code>{{ row.model.model_id }}</code>
+            <br>{{ row.model.get_capability_display }}{% if row.indexing %}, Indexierung{% endif %}{% if row.model.pinned %}, <strong>angeheftet</strong>{% endif %}, Priorität {{ row.model.load_priority }}
+            {% if row.too_big %}<br><span class="rag-status rag-status--error">größer als das Budget</span>{% endif %}
+          </td>
+          <td>{{ row.size }}</td>
+          <td>{{ row.loaded_context|default:"–" }} / {{ row.max_context|default:"–" }}</td>
+          <td>
+            <span class="rag-status{% if row.level %} rag-status--{{ row.level }}{% endif %}">{{ row.status }}</span>
+            {% if row.busy %}<br>{{ row.busy }} laufende Anfrage(n){% endif %}
+            {% if row.error %}<br><span class="rag-bad">{{ row.error }}</span>{% endif %}
+          </td>
+          <td>{% if row.last_used %}{{ row.last_used|date:"d.m. H:i" }}{% else %}–{% endif %}{% if row.model.idle_unload_minutes and not row.model.pinned %}<br><small>entladen nach {{ row.model.idle_unload_minutes }} min</small>{% endif %}</td>
+          <td>
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="profile">
+              <input type="hidden" name="model" value="{{ row.model.pk }}">
+              <select name="context" class="vram-context" data-vram-model="m{{ row.model.pk }}" data-vram-url="{% url 'admin:rag_overview_vram' %}" aria-label="Kontextfenster für {{ row.model.model_id }}"{% if not can_change %} disabled{% endif %}>
+                {% for value, label in row.choices %}<option value="{{ value }}"{% if value == row.profile_context|stringformat:'s' or not value and not row.profile_context %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+              {% if can_change %}<input type="submit" value="Speichern">{% endif %}
+            </form>
+          </td>
+          <td>
+            {% if can_change %}
+            {% if row.slot %}
+              <form method="post">{% csrf_token %}<input type="hidden" name="action" value="unload"><input type="hidden" name="provider" value="{{ p.provider.pk }}"><input type="hidden" name="instance" value="{{ row.slot.instance_id }}"><input type="submit" value="Entladen"></form>
+            {% elif p.managed %}
+              <form method="post">{% csrf_token %}<input type="hidden" name="action" value="load"><input type="hidden" name="model" value="{{ row.model.pk }}"><input type="submit" value="Laden"></form>
+            {% endif %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="{% if row.model.pinned %}unpin{% else %}pin{% endif %}"><input type="hidden" name="model" value="{{ row.model.pk }}"><input type="submit" value="{% if row.model.pinned %}Lösen{% else %}Anheften{% endif %}"></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% for slot in p.foreign %}
+        <tr>
+          <td><code>{{ slot.instance_id }}</code><br>nicht als KI-Modell angelegt – wird nie automatisch entladen</td>
+          <td colspan="2">{{ slot.context|default:"–" }} Tokens</td>
+          <td><span class="rag-status rag-status--done">geladen</span></td>
+          <td>–</td>
+          <td>{{ slot.size_text }} (Schätzung)</td>
+          <td>{% if can_change %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="unload"><input type="hidden" name="provider" value="{{ p.provider.pk }}"><input type="hidden" name="instance" value="{{ slot.instance_id }}"><input type="submit" value="Entladen"></form>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="help rag-hint">Speicher ist eine Schätzung: Modelldatei plus Kontext-Cache (2 × Schichten × KV-Köpfe × Kopfdimension × 2 Byte × Kontext) plus Zuschlag; ein gemessener Wert am Modell hat Vorrang. Entladen von Hand wirkt auch auf angeheftete Modelle. Automatisch entladen werden nie angeheftete, gerade genutzte oder nicht angelegte Modelle, Indexierungsmodelle nicht während eines Laufs.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -32,7 +32,7 @@ from django.utils.text import Truncator
 from multigpt.billing.admin import ModelPriceInline
 from multigpt.core.fields import mask_secret
 
-from . import capabilities, detect, sandbox, status, websearch
+from . import admin_lmstudio, capabilities, detect, sandbox, status, websearch
 from . import mcp as mcp_client
 from .management.commands.sync_models import guess_capability
 from .mcp import importer as mcp_importer
@@ -89,7 +89,7 @@ def _secret_widget():
     return forms.PasswordInput(render_value=False, attrs={"autocomplete": "new-password"})
 
 
-class ProviderForm(SecretFieldFormMixin, forms.ModelForm):
+class ProviderForm(admin_lmstudio.DefaultsWhenMissingMixin, SecretFieldFormMixin, forms.ModelForm):
     secret_field = "api_key"
     api_key = forms.CharField(
         label="API-Key",
@@ -122,6 +122,9 @@ class ProviderForm(SecretFieldFormMixin, forms.ModelForm):
             "is_local",
             "check_status",
             "billing_account",
+            "manage_models",
+            "vram_budget_gb",
+            "vram_reserve_gb",
         ]
 
 
@@ -303,6 +306,7 @@ class AIModelInline(admin.TabularInline):
         "supports_vision",
         "can_edit_images",
         "mcp_access",
+        "tools_on_demand",
         "active",
         "sort_order",
     ]
@@ -368,17 +372,40 @@ class ProviderAdmin(admin.ModelAdmin):
     ]
     list_filter = ["kind", "active", "is_local"]
     search_fields = ["name", "base_url"]
-    readonly_fields = ["api_key_hint", "last_online", "online", "last_checked", "last_error"]
+    readonly_fields = [
+        "api_key_hint",
+        "last_online",
+        "online",
+        "last_checked",
+        "last_error",
+        "context_lengths",
+        "lmstudio_link",
+    ]
     actions = ["check_selected_action"]
     fieldsets = [
         (None, {"fields": ["name", "kind", "base_url", "active"]}),
         ("API-Key", {"fields": ["api_key_hint", "api_key", "clear_api_key"]}),
         ("Lokaler Anbieter", {"fields": ["is_local", "check_status"]}),
+        (
+            "Modellverwaltung (LM Studio)",
+            {
+                "fields": ["manage_models", "vram_budget_gb", "vram_reserve_gb", "lmstudio_link"],
+                "description": "MultiGPT lädt Modelle vor dem Gebrauch selbst und hält sich "
+                "dabei an das Budget (Schätzung je Modell: Datei plus Kontext-Cache). Die "
+                "Reserve bleibt immer frei, z. B. für den Monitor an derselben Grafikkarte.",
+            },
+        ),
         ("Abrechnung", {"fields": ["billing_account"]}),
         (
             "Verbindung",
             {
-                "fields": ["online", "last_checked", "last_online", "last_error"],
+                "fields": [
+                    "online",
+                    "last_checked",
+                    "last_online",
+                    "last_error",
+                    "context_lengths",
+                ],
                 "description": "Ergebnis der letzten Prüfung. Prüfen über „Verbindung jetzt "
                 "prüfen“ oben rechts; beim Speichern wird automatisch kurz geprüft.",
             },
@@ -389,6 +416,28 @@ class ProviderAdmin(admin.ModelAdmin):
     @admin.display(description="gespeicherter Key")
     def api_key_hint(self, obj):
         return mask_secret(obj.api_key) or "–"
+
+    @admin.display(description="Kontextlänge geladener Modelle")
+    def context_lengths(self, obj):
+        # Meldung von LM Studio (M4a-12); dient der Schätzung vor dem Senden.
+        items = sorted((obj.reported_context or {}).items())
+        if not items:
+            return "–"
+        return format_html(
+            "<ul>{}</ul>",
+            format_html_join(
+                "",
+                "<li>{}: {} Tokens</li>",
+                ((model_id, f"{value:,}".replace(",", " ")) for model_id, value in items),
+            ),
+        )
+
+    @admin.display(description="Geladene Modelle")
+    def lmstudio_link(self, obj):
+        if not obj.is_local:
+            return "–"
+        url = reverse("admin:rag_overview_lmstudio")
+        return format_html('<a href="{}">LM Studio: geladene Modelle und Budget</a>', url)
 
     @admin.display(description="Online", boolean=True, ordering="online")
     def online_state(self, obj):
@@ -613,6 +662,10 @@ class AIModelAdmin(admin.ModelAdmin):
         "supports_vision",
         "can_edit_images",
         "mcp_access",
+        "tools_on_demand",
+        "load_context_length",
+        "vram_hint",
+        "pinned",
         "active",
         "sort_order",
     ]
@@ -622,6 +675,9 @@ class AIModelAdmin(admin.ModelAdmin):
         "supports_vision",
         "can_edit_images",
         "mcp_access",
+        "tools_on_demand",
+        "load_context_length",
+        "pinned",
         "active",
         "sort_order",
     ]
@@ -638,6 +694,21 @@ class AIModelAdmin(admin.ModelAdmin):
     filter_horizontal = ["mcp_servers"]
     inlines = [ModelPriceInline]  # Preise mit Historie (multigpt/billing)
     actions = ["detect_capabilities_action"]
+    # Lade-Profil (Modellverwaltung LM Studio): Kontextfenster als Auswahl mit
+    # erwartetem Speicher (admin_lmstudio.py, rag/vram_estimate.js).
+    form = admin_lmstudio.AIModelForm
+
+    class Media:
+        css = {"all": ["rag/admin_rag.css"]}
+        js = ["rag/vram_estimate.js"]
+
+    def get_changelist_form(self, request, **kwargs):
+        kwargs.setdefault("form", admin_lmstudio.MatrixForm)
+        return super().get_changelist_form(request, **kwargs)
+
+    @admin.display(description="Speicher (Schätzung)")
+    def vram_hint(self, obj):
+        return admin_lmstudio.matrix_hint(obj)
 
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         """Gemeldete Modelle je Anbieter für die Combobox am Feld „Modell-ID“."""
@@ -1192,6 +1263,18 @@ class ChatSettingsAdmin(admin.ModelAdmin):
                 "als Vorgabe. Dieser Wert gilt, wenn dort nichts gewählt ist. Abbildung je "
                 "Anbieter: OpenAI reasoning_effort, Claude effort/Thinking, Gemini "
                 "thinkingConfig; lokal nur gpt-oss.",
+            },
+        ),
+        # Werkzeuge nach Bedarf (M4a-12, chat/tool_select.py)
+        (
+            "Werkzeuge",
+            {
+                "fields": ["tools_on_demand", "core_tools"],
+                "description": "Viele Werkzeugbeschreibungen (z. B. n8n mit über 50 "
+                "Werkzeugen) füllen den Kontext lokaler Modelle, bis keine Antwort mehr "
+                "passt. Nach Bedarf sieht das Modell nur den Kern und sucht den Rest mit "
+                "find_tools. Rückfrage und Einstufung je Werkzeug (MCP-Server) gelten "
+                "unverändert.",
             },
         ),
         # Bilderzeugung (M9-01, chat/images.py)

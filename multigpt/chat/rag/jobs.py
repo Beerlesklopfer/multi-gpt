@@ -509,6 +509,17 @@ def run_job(job: Job, should_stop: Callable[[], bool] | None = None) -> str:
     Rückgabe: neuer Status des Jobs (``done``/``pending``/``failed``) bzw.
     ``cancelled``, wenn der Auftrag abgebrochen und entfernt wurde.
     """
+    from .. import model_manager
+
+    # Hinweise der Modellverwaltung („Lade …“) an diesen Lauf schreiben.
+    token = model_manager.current_run.set(job.run_id)
+    try:
+        return _run_job(job, should_stop)
+    finally:
+        model_manager.current_run.reset(token)
+
+
+def _run_job(job: Job, should_stop: Callable[[], bool] | None) -> str:
     state = {"cancelled": False}
     stop = _heartbeat(job, should_stop or (lambda: False), state)
     handler = HANDLERS.get(job.kind)

@@ -17,6 +17,7 @@
   <script src="{% static 'chat/citations.js' %}" defer></script>
   <script src="{% static 'chat/collections_picker.js' %}" defer></script>
   <script src="{% static 'chat/attachments.js' %}" defer></script>
+  <script src="{% static 'chat/scroll_follow.js' %}" defer></script>
   <script src="{% static 'chat/chat.js' %}" defer></script>
   <script src="{% static 'chat/tool_code.js' %}" defer></script>
   <script src="{% static 'chat/image_mode.js' %}" defer></script>
@@ -24,6 +25,10 @@
   <script src="{% static 'chat/compare.js' %}" defer></script>
   <script src="{% static 'chat/input_options.js' %}" defer></script>
   <script src="{% static 'chat/sharing.js' %}" defer></script>
+  {% if request.user.context_menu %}
+    {# Kontextmenü und Leiste bei Textauswahl (M13-01); abschaltbar in den Einstellungen. #}
+    <script src="{% static 'chat/context_menu.js' %}" defer></script>
+  {% endif %}
 {% endblock %}
 {% block content %}
   <section class="chat" id="chat"
@@ -33,6 +38,7 @@
            data-project-id="{{ chat_project.pk|default_if_none:'' }}"
            data-project-collections="{{ project_collection_ids }}"
            data-mark-links="{{ request.user.mark_unverified_links|yesno:'true,false' }}"
+           data-context-menu="{{ request.user.context_menu|yesno:'true,false' }}"
            data-conversation-url-template="{% url 'chat:conversation' 0 %}"
            data-api-conversations="{% url 'chat:api_conversations' %}"
            data-api-models="{% url 'chat:api_models' %}"
@@ -104,6 +110,13 @@
           <p>Für dein Konto ist noch kein KI-Modell freigeschaltet. Bitte wende dich an einen Verwalter, damit er dir Modelle freigibt.</p>
         </div>
       {% endif %}
+    </div>
+    {# Verlauf folgt dem Stream nur, solange der Nutzer unten ist (scroll_follow.js). #}
+    <div class="scroll-latest-anchor">
+      <button type="button" class="scroll-latest" id="scroll-latest" hidden
+              aria-label="Zu den neuesten Nachrichten springen">
+        <span aria-hidden="true">↓</span> Neueste
+      </button>
     </div>
     <p class="chat-status" id="chat-status" role="status" aria-live="polite"></p>
     {% if not has_chat_model %}

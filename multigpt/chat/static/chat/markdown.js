@@ -84,6 +84,11 @@
         },
         // Keine externen Bilder laden: als Link darstellen.
         image(token) {
+          // ![…](anhang:ID): Verweis auf einen Anhang (linkAttachments unten).
+          const ref = /^anhang:(\d+)$/.exec(String(token.href || "").trim());
+          if (ref) {
+            return `<a class="attachment-ref" href="#anhang-${ref[1]}">${escapeHtml(token.text || "Anhang")}</a>`;
+          }
           const label = token.text ? `Bild: ${token.text}` : "Bild";
           return `<a href="${escapeHtml(token.href || "")}">${escapeHtml(label)}</a>`;
         },
@@ -175,6 +180,52 @@
     }
   }
 
+  // ![…](anhang:ID) im Modelltext (nach create_pdf bzw. generate_image): nur
+  // Anhänge DERSELBEN Nachricht (.message-attachments im Artikel, vom Server
+  // gerendert). Bild -> kleine Vorschau, sonst Link „Ansehen“; fremde bzw.
+  // (noch) unbekannte IDs werden ausgeblendet – der Anhang steht ohnehin unter
+  // der Antwort. Adressen kommen nur aus data-url/-thumbnail-url des Servers.
+  const LOCAL_PATH = /^\/(?!\/)/;
+
+  function linkAttachments(el) {
+    const refs = el.querySelectorAll('a.attachment-ref[href^="#anhang-"]');
+    if (!refs.length) {
+      return;
+    }
+    const article = el.closest(".chat-message");
+    for (const ref of refs) {
+      const id = ref.getAttribute("href").slice("#anhang-".length);
+      const item = article?.querySelector(
+        `:scope > .message-attachments > [data-attachment-id="${CSS.escape(id)}"]`,
+      );
+      const url = item?.dataset.url || "";
+      if (!item || !LOCAL_PATH.test(url)) {
+        ref.remove();
+        continue;
+      }
+      const label = ref.textContent;
+      const link = document.createElement("a");
+      link.className = "attachment-ref";
+      link.href = url;
+      if (item.dataset.kind === "image") {
+        const thumb = item.dataset.thumbnailUrl || "";
+        const img = document.createElement("img");
+        img.src = LOCAL_PATH.test(thumb) ? thumb : url;
+        img.alt = label;
+        img.loading = "lazy";
+        // Aussehen wie die Vorschaubilder der Anhänge (app.css).
+        link.classList.add("attachment-thumb");
+        link.setAttribute("aria-label", `Bild ${label} öffnen`);
+        link.append(img);
+      } else {
+        link.textContent = `${label} – Ansehen`;
+      }
+      link.target = "_blank";
+      link.rel = "noopener";
+      ref.replaceWith(link);
+    }
+  }
+
   // Text als bereinigtes Markdown in el darstellen. final=false während des
   // Streams (ohne Hervorhebung, die bei jedem Bild neu liefe).
   // Quelltext je Element, damit eine fortgesetzte Antwort (Rückfrage bei
@@ -210,6 +261,7 @@
     }
     el.replaceChildren(fragment);
     el.classList.add("is-markdown");
+    linkAttachments(el);
     decorateCodeBlocks(el, final);
     // SVG-Codeblöcke: Bildvorschau nur als <img> (svg_preview.js).
     window.MultiGPT?.svgPreview?.decorate(el, text, final);

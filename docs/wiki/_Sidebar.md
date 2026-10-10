@@ -3,6 +3,7 @@
 - [Startseite](Home)
 - [Konfiguration (.env)](Konfiguration)
 - [nginx und TLS](nginx-und-TLS)
+- [Chat-Bedienung (Zitieren, Kontextmenü, Scrollen, Tasten)](Chat-Bedienung)
 - [Chat-Einstellungen (Grundregeln, Kreativität, Denktiefe)](Chat-Einstellungen)
 - [Projekte](Projekte)
 - [Chats teilen](Chats-teilen)

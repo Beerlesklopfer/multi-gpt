@@ -237,9 +237,11 @@ def test_new_local_models_use_lmstudio_capabilities(lmstudio, mock):
     assert models["vectors"].capability == AIModel.Capability.EMBEDDING
     assert all(m.mcp_access == AIModel.McpAccess.NONE for m in models.values())
     assert v0.call_count == 1
-    # Keine neuen Modelle: kein weiterer Abruf von /api/v0/models.
+    # Ein Abruf je Prüfung (auch für die Kontextlänge, M4a-12); keine neuen
+    # Modelle, also nichts angelegt.
     status.force_check(lmstudio)
-    assert v0.call_count == 1
+    assert v0.call_count == 2
+    assert lmstudio.ai_models.count() == len(V0_ITEMS)
 
 
 @pytest.mark.parametrize(

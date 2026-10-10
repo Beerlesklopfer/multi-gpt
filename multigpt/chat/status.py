@@ -80,7 +80,7 @@ def _claim_for(provider: Provider) -> bool:
     return False
 
 
-def _sync_local_models(provider: Provider, model_ids: list[str]) -> int:
+def _sync_local_models(provider: Provider, model_ids: list[str], known=None) -> int:
     """Neu gemeldete Modelle eines lokalen Anbieters anlegen; Anzahl neuer.
 
     Fähigkeiten (Hauptart, Werkzeuge, Bilder) nach Meldung von LM Studio
@@ -97,7 +97,7 @@ def _sync_local_models(provider: Provider, model_ids: list[str]) -> int:
     ]
     if not model_ids:
         return 0
-    found = detect.detect(provider, model_ids)
+    found = detect.detect(provider, model_ids, known=known)
     new = [
         detect.new_model(provider, model_id, found[model_id], active=True) for model_id in model_ids
     ]
@@ -136,10 +136,24 @@ def check_provider(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckR
         setattr(provider, key, value)
 
     if online and provider.is_local:
-        created = _sync_local_models(provider, result.models)
+        # Ein Abruf je Prüfung (LM Studio ``/api/v0/models``): Fähigkeiten für neue
+        # Modelle und geladene Kontextlänge für die Schätzung vor dem Senden (M4a-12).
+        try:
+            capabilities, contexts = registry.get_adapter(provider).local_report(timeout)
+        except Exception:
+            capabilities, contexts = {}, {}
+        created = _sync_local_models(provider, result.models, capabilities)
         if created:
             logger.info("Anbieter %s: %d neue lokale Modelle angelegt", provider.pk, created)
+        _store_context(provider, contexts)
     return result
+
+
+def _store_context(provider: Provider, contexts: dict) -> None:
+    """Geladene Kontextlängen (LM Studio) speichern, nur bei Änderung."""
+    if contexts != (provider.reported_context or {}):
+        Provider.objects.filter(pk=provider.pk).update(reported_context=contexts)
+        provider.reported_context = contexts
 
 
 def force_check(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckResult:
@@ -160,7 +174,14 @@ def refresh(provider: Provider) -> Provider:
     if _claim_for(provider):
         check_provider(provider)
     provider.refresh_from_db(
-        fields=["online", "last_online", "last_checked", "reported_models", "last_error"]
+        fields=[
+            "online",
+            "last_online",
+            "last_checked",
+            "reported_models",
+            "last_error",
+            "reported_context",
+        ]
     )
     return provider
 
@@ -210,6 +231,8 @@ def serialize(provider: Provider) -> dict:
         "last_online": provider.last_online.isoformat() if provider.last_online else None,
         "last_checked": provider.last_checked.isoformat() if provider.last_checked else None,
         "models": list(provider.reported_models or []) if provider.online else [],
+        # Geladene Kontextlänge je Modell-ID (LM Studio, M4a-12), sonst leer.
+        "contexts": dict(provider.reported_context or {}) if provider.online else {},
         # Ursache bei offline (deutscher Text ohne Key/Anbieter-Rohtext), sonst None.
         "error": None if provider.online else (provider.last_error or None),
     }

@@ -15,6 +15,10 @@ Bei jeder Antwort setzt MultiGPT den System-Prompt in dieser Reihenfolge zusamme
 4. Anweisungen des Projekts (siehe [Projekte](Projekte)),
 5. System-Prompt des Chats.
 
+Welche Werkzeuge mitgehen, steuert der Abschnitt **Werkzeuge** der Chat-Einstellungen
+(Werkzeuge nach Bedarf, Basiswerkzeuge), siehe
+[Anbieter und Modelle](Anbieter-und-Modelle#werkzeuge-nach-bedarf-und-kontextlänge).
+
 Im Chat zeigt der aufklappbare Bereich **„System-Prompt“** das an. Die Kopfzeile lautet z. B.
 „System-Prompt: Grundregeln aktiv · eigener Prompt leer“. Aufgeklappt stehen dort:
 

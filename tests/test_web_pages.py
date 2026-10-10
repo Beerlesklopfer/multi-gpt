@@ -753,20 +753,18 @@ def test_chat_settings_admin_singleton(admin_client):
     assert "Grundregeln für alle Modelle" in response.content.decode()
     assert admin_client.get(reverse("admin:chat_chatsettings_add")).status_code == 403
     assert admin_client.get(reverse("admin:chat_chatsettings_delete", args=[1])).status_code == 403
-    response = admin_client.post(
-        reverse("admin:chat_chatsettings_change", args=[1]),
-        {
-            "base_instructions": "Neu.",
-            # Berechnungen (M4a-10): Pflichtfelder mit ihren Vorgaben
-            "python_enabled": "on",
-            "python_cpu_seconds": 10,
-            "python_wall_seconds": 20,
-            "python_memory_mb": 512,
-            "python_processes": 4,
-            "python_file_mb": 10,
-            "python_output_kb": 64,
-        },
-    )
+    url = reverse("admin:chat_chatsettings_change", args=[1])
+    # Alle Felder mit ihren Vorgaben aus dem Formular, nur die Grundregeln geändert –
+    # so bleibt der Test stabil, wenn neue Einstellungen dazukommen.
+    form = admin_client.get(url).context["adminform"].form
+    data = {}
+    for name, field in form.fields.items():
+        value = form.initial.get(name, field.initial)
+        if value is None or value is False:
+            continue
+        data[name] = "on" if value is True else value
+    data["base_instructions"] = "Neu."
+    response = admin_client.post(url, data)
     assert response.status_code == 302
     assert ChatSettings.base_text() == "Neu."
 

@@ -847,7 +847,8 @@ def _tool_run(user, arguments: dict, sources) -> tooling.BuiltinResult:
     )
     seiten = "Seite" if pages == 1 else "Seiten"
     return tooling.BuiltinResult(
-        f"PDF erzeugt: {job.filename}, {pages} {seiten} (Anhang #{attachment.pk}).{job.note}"
+        f"PDF erzeugt: {job.filename}, {pages} {seiten} (Anhang #{attachment.pk}).{job.note} "
+        f"{tooling.NOTE_ATTACHMENT_SHOWN}"
     )
 
 

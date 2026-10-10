@@ -181,6 +181,13 @@ class User(AbstractUser):
         help_text="Links in Antworten, die aus keiner Quelle und keinem Werkzeugergebnis "
         "stammen, bekommen ein Warnsymbol.",
     )
+    # Kontextmenü im Chat (M13-01): Rechtsklick, Leiste bei Textauswahl, Umschalt+F10.
+    context_menu = models.BooleanField(
+        "Eigenes Kontextmenü",
+        default=True,
+        help_text="Markierter Text im Chat lässt sich zitieren, nachfragen und kopieren. "
+        "Aus: überall das Browsermenü.",
+    )
 
     class Meta(AbstractUser.Meta):
         swappable = "AUTH_USER_MODEL"

@@ -10,6 +10,9 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
 
 ## Anleitungen
 
+- [Chat-Bedienung](Chat-Bedienung): markierten Text zitieren (auch mehrere Zitate in einer
+  Nachricht), Kontextmenü und Leiste bei Textauswahl, Schnellaktionen, Mitscrollen beim Schreiben
+  der KI mit „↓ Neueste“, Tastaturkürzel
 - [Chat-Einstellungen](Chat-Einstellungen): Grundregeln für alle Modelle, Anzeige im Chat
   (auch der eigene Rollen-Prompt), Kreativität (Temperatur) und Denktiefe (Reasoning) je Chat,
   Projekt und Standard, Abbildung je Anbieter

@@ -2,10 +2,10 @@
 
 Quelle je Modell: Was ein lokaler Anbieter selbst meldet (LM Studio,
 ``/api/v0/models``: ``type`` und ``capabilities``), sonst die Heuristik aus
-``capabilities`` (Modell-ID). Die Meldung von LM Studio wird nur bei Bedarf
-abgerufen: beim Anlegen neuer Modelle eines lokalen Anbieters, bei der
-Admin-Aktion und bei ``manage.py guess_capabilities`` – nicht bei jeder
-Statusprüfung.
+``capabilities`` (Modell-ID). Die Statusprüfung lokaler Anbieter ruft die
+Meldung einmal je Prüfung ab (sie liefert auch die geladene Kontextlänge,
+M4a-12) und reicht sie an ``detect`` durch; übernommen wird sie nur für neue
+Modelle. Dazu die Admin-Aktion und ``manage.py guess_capabilities``.
 
 Neue Modelle bekommen die erkannten Werte (``new_model``). Bestehende werden
 nur auf ausdrücklichen Wunsch geändert (``diff``/``apply``), weil der
@@ -70,10 +70,14 @@ def reported(provider: Provider, timeout: float = DETECT_TIMEOUT) -> dict[str, D
         return {}
 
 
-def detect(provider: Provider, model_ids, timeout: float = DETECT_TIMEOUT) -> dict[str, Detected]:
-    """Fähigkeiten je Modell-ID: Meldung des Anbieters, sonst Heuristik."""
+def detect(
+    provider: Provider, model_ids, timeout: float = DETECT_TIMEOUT, known=None
+) -> dict[str, Detected]:
+    """Fähigkeiten je Modell-ID: Meldung des Anbieters (``known``, sonst abgerufen),
+    sonst Heuristik."""
     model_ids = list(model_ids)
-    known = reported(provider, timeout) if model_ids else {}
+    if known is None:
+        known = reported(provider, timeout) if model_ids else {}
     return {mid: known.get(mid) or capabilities.guess(mid) for mid in model_ids}
 
 

@@ -875,6 +875,16 @@ class ProviderAdapter:
         (``capabilities.Detected``); ``{}``, wenn er keine meldet. Nie eine Ausnahme."""
         return {}
 
+    def context_lengths(self, timeout: float = 2) -> dict[str, int]:
+        """Vom Anbieter gemeldete Kontextlänge geladener Modelle (Tokens) je
+        Modell-ID; ``{}``, wenn er keine meldet (M4a-12). Nie eine Ausnahme."""
+        return {}
+
+    def local_report(self, timeout: float = 2) -> tuple[dict, dict[str, int]]:
+        """``(model_capabilities, context_lengths)`` – lokale Anbieter liefern
+        beides aus einem Abruf. Nie eine Ausnahme."""
+        return self.model_capabilities(timeout), self.context_lengths(timeout)
+
     def embed(
         self, model_id: str, texts: list[str], dimensions: int | None = None
     ) -> list[list[float]]:

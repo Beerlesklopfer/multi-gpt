@@ -57,6 +57,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from urllib.parse import urlsplit
@@ -64,6 +65,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from ..capabilities import Detected, from_lmstudio
+from ..context_budget import format_tokens
 from .base import (
     FINISH_TOOL_CALLS,
     MSG_IMAGE_TOO_LARGE,
@@ -164,8 +166,8 @@ def _error_code(body: bytes) -> str:
     return f"{err.get('type') or '-'}/{err.get('code') or '-'}"
 
 
-def _provider_text(body: bytes) -> str:
-    """Fehlertext aus der Antwort, gekürzt und ohne Steuerzeichen.
+def _provider_text(body: bytes, limit: int | None = 200) -> str:
+    """Fehlertext aus der Antwort, gekürzt (``limit``) und ohne Steuerzeichen.
 
     Nur für Anbieter ohne API-Key (z. B. LM Studio) verwenden – bei Cloud-Anbietern
     kann der Text Teile des Keys enthalten.
@@ -179,7 +181,9 @@ def _provider_text(body: bytes) -> str:
     if not isinstance(err, str):
         return ""
     text = " ".join(err.split())
-    return text[:200] + ("…" if len(text) > 200 else "")
+    if limit is None:
+        return text[:2000]
+    return text[:limit] + ("…" if len(text) > limit else "")
 
 
 def _model_not_found(model_id: str) -> str:
@@ -227,11 +231,13 @@ class OpenAICompatAdapter(ProviderAdapter):
     def _stream_error(self, parser: _ChunkParser) -> Error:
         """Fehler mitten im Stream: bei Anbietern ohne Key (LM Studio) mit dessen Text."""
         self._log("Fehler im Stream", parser.error_code)
+        keyless = not (self.provider.api_key or "").strip()
+        context = _is_context_error(parser.error_code)
+        if context or (keyless and _is_context_error(parser.error_raw)):
+            return Error(context_error_message(parser.error_raw, keyless), retryable=False)
         text = parser.error_text
-        if (self.provider.api_key or "").strip() or not text:
+        if not keyless or not text:
             return Error(MSG_STREAM_ERROR, retryable=True)
-        if _is_context_error(text):
-            return Error(f"{MSG_CONTEXT_TOO_SMALL} LM Studio meldet: {text}", retryable=False)
         return Error(f"{MSG_STREAM_ERROR} LM Studio meldet: {text}", retryable=True)
 
     # --- Modellliste ---------------------------------------------------------
@@ -278,29 +284,57 @@ class OpenAICompatAdapter(ProviderAdapter):
             return False
         return True
 
-    def model_capabilities(self, timeout: float = 2) -> dict[str, Detected]:
-        """Fähigkeiten, die LM Studio selbst meldet; ``{}``, wenn das nicht geht.
+    def _lmstudio_models(self, timeout: float) -> list:
+        """Einträge aus LM Studios ``/api/v0/models``; ``[]``, wenn das nicht geht.
 
-        LM Studio (ab 0.3.16) liefert neben ``/v1/models`` unter ``/api/v0/models``
-        je Modell ``type`` (llm, vlm, embeddings) und ``capabilities``
-        (z. B. ``["tool_use"]``). Die Adresse liegt an der Server-Wurzel, also
-        Basis-URL ohne ``/v1``. Andere Server (Ollama, vLLM) antworten mit 404.
+        Die Adresse liegt an der Server-Wurzel, also Basis-URL ohne ``/v1``.
+        Andere Server (Ollama, vLLM) antworten mit 404.
         """
         root = self.base_url.removesuffix("/v1")
         try:
             with httpx.Client(timeout=timeout) as client:
                 response = client.get(f"{root}/api/v0/models", headers=self._headers())
             if response.status_code != 200:
-                return {}
+                return []
             data = response.json().get("data") or []
         except Exception:
-            return {}
-        result = {}
-        for item in data if isinstance(data, list) else []:
+            return []
+        return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
+    def model_capabilities(self, timeout: float = 2) -> dict[str, Detected]:
+        """Fähigkeiten, die LM Studio selbst meldet; ``{}``, wenn das nicht geht.
+
+        LM Studio (ab 0.3.16) liefert neben ``/v1/models`` unter ``/api/v0/models``
+        je Modell ``type`` (llm, vlm, embeddings) und ``capabilities``
+        (z. B. ``["tool_use"]``).
+        """
+        return self.local_report(timeout)[0]
+
+    def context_lengths(self, timeout: float = 2) -> dict[str, int]:
+        return self.local_report(timeout)[1]
+
+    def local_report(self, timeout: float = 2) -> tuple[dict[str, Detected], dict[str, int]]:
+        """Fähigkeiten und Kontextlänge geladener Modelle aus einem Abruf.
+
+        Kontextlänge (M4a-12): ``/api/v0/models`` (lmstudio.ai/docs/developer/rest/
+        endpoints, geprüft 2026-10-10) nennt je Modell ``max_context_length`` (was
+        das Modell kann) und bei geladenen Modellen ``loaded_context_length``
+        (womit es geladen ist, z. B. 16384). Maßgeblich ist nur die geladene
+        Länge; nicht geladene Modelle lädt LM Studio bei Bedarf mit seiner
+        Voreinstellung.
+        """
+        capabilities, contexts = {}, {}
+        for item in self._lmstudio_models(timeout):
+            model_id = str(item.get("id") or "")
+            if not model_id:
+                continue
             detected = from_lmstudio(item)
-            if detected is not None and item.get("id"):
-                result[str(item["id"])] = detected
-        return result
+            if detected is not None:
+                capabilities[model_id] = detected
+            value = item.get("loaded_context_length")
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                contexts[model_id] = value
+        return capabilities, contexts
 
     # --- Embeddings (M7) ------------------------------------------------------
 
@@ -553,6 +587,12 @@ class OpenAICompatAdapter(ProviderAdapter):
                     message, retryable = http_error_message(response.status_code, error_body)
                     if response.status_code == 404 and detail.endswith("/model_not_found"):
                         message = _model_not_found(model_id)
+                    keyless = not (self.provider.api_key or "").strip()
+                    raw = _provider_text(error_body, limit=None) if keyless else ""
+                    if response.status_code in (400, 413) and (
+                        _is_context_error(detail) or _is_context_error(raw)
+                    ):
+                        message, retryable = context_error_message(raw, keyless), False
                     rejected = rejected_parameter(response.status_code, error_body)
                     yield Error(message, retryable=retryable, rejected_param=rejected)
                     return
@@ -577,16 +617,51 @@ MSG_CONTEXT_TOO_SMALL = (
     "In LM Studio das Modell mit größerer Kontextlänge laden (z. B. 16k oder 32k) oder "
     "den Chat kürzen bzw. Werkzeuge abschalten."
 )
+MSG_CONTEXT_TOO_SMALL_CLOUD = (
+    "Der Verlauf passt nicht in den Kontext des Modells (inklusive Werkzeugbeschreibungen). "
+    "Bitte einen neuen Chat beginnen, Werkzeuge abschalten oder ein Modell mit größerem "
+    "Kontext wählen."
+)
+# Kleinbuchstaben; geprüft gegen Text und ``type/code`` des Fehlers. LM Studio
+# (llama.cpp) meldet z. B. „request (25069 tokens) exceeds the available context
+# size (16384 tokens), try increasing it“ mit Typ ``exceed_context_size_error``,
+# OpenAI den Code ``context_length_exceeded``.
 _CONTEXT_WORDS = (
     "context length",
     "context window",
     "context size",
+    "context_length",
+    "exceed_context_size",
+    "available context",
     "n_ctx",
     "too many tokens",
     "exceeds the context",
     "context overflow",
     "maximum context",
 )
+_CONTEXT_NUMBERS = (
+    re.compile(r"\((\d+) tokens\) exceeds the available context size \((\d+) tokens\)"),
+    re.compile(r"n_prompt_tokens\W+(\d+)\W+n_ctx\W+(\d+)"),
+)
+
+
+def context_error_message(text: str, local: bool) -> str:
+    """Meldung für einen zu kleinen Kontext, mit Zahlen, wenn der Anbieter sie nennt
+    (z. B. „25 743 von 16 384 Tokens“); bei Anbietern ohne Key mit dessen Text."""
+    numbers = ""
+    for pattern in _CONTEXT_NUMBERS:
+        match = pattern.search(text or "")
+        if match:
+            used, size = (int(v) for v in match.groups())
+            numbers = f" Benötigt: {format_tokens(used)} von {format_tokens(size)} Tokens."
+            break
+    if not local:
+        return MSG_CONTEXT_TOO_SMALL_CLOUD + numbers
+    # LM Studio verpackt die Meldung von llama.cpp als JSON-Text: nur deren „message“.
+    inner = re.search(r'"message"\s*:\s*"([^"]{10,300})"', text or "")
+    short = " ".join((inner.group(1) if inner else text or "").split())
+    short = short[:200] + ("…" if len(short) > 200 else "")
+    return MSG_CONTEXT_TOO_SMALL + numbers + (f" LM Studio meldet: {short}" if short else "")
 
 
 def _anchor(pattern: str) -> str:
@@ -843,11 +918,13 @@ class _ChunkParser:
         # Fehler mitten im Stream: Kurzcode fürs Log, Text nur für Anbieter ohne Key.
         self.error_code = "-"
         self.error_text = ""
+        self.error_raw = ""
 
     def _remember_error(self, chunk: dict) -> None:
         raw = json.dumps(chunk).encode()
         self.error_code = _error_code(raw)
         self.error_text = _provider_text(raw)
+        self.error_raw = _provider_text(raw, limit=None)  # ungekürzt, für die Erkennung
 
     def feed(self, line: str) -> Iterator[Event]:
         line = line.rstrip("\r")

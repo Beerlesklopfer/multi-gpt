@@ -8,7 +8,8 @@ Embedding-Paketen) unterbrochen und wieder eingereiht.
 Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
 (je Quelle höchstens ein offener Scan-Job), prüft fällige MCP-Server
 (``chat/mcp/status.py``) und löscht alte Einträge im Audit-Log der API
-(``node/audit.py``) – ein eigener Timer ist nicht nötig.
+(``node/audit.py``) und entlädt lokale Modelle nach Leerlauf
+(``chat/model_manager.py``) – ein eigener Timer ist nicht nötig.
 """
 
 import logging
@@ -20,6 +21,7 @@ from django.core.management.base import BaseCommand
 from django.db import DatabaseError, close_old_connections, connection
 
 from multigpt.chat import attachments as chat_attachments
+from multigpt.chat import model_manager
 from multigpt.chat.mcp import status as mcp_status
 from multigpt.chat.rag import jobs
 from multigpt.node import audit as api_audit
@@ -76,6 +78,8 @@ class Command(BaseCommand):
                         api_audit.cleanup()
                         # Legacy-SSE (M15): Sitzungen ohne lebenden Stream löschen.
                         api_sse.cleanup()
+                        # Modellverwaltung (LM Studio): nach Leerlauf entladen.
+                        model_manager.unload_idle()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:

@@ -1,0 +1,568 @@
+{
+ "HASS": [
+  {
+   "name": "assist_satellite__HassBroadcast",
+   "description": "Broadcast a message through the home",
+   "params": [
+    "message"
+   ]
+  },
+  {
+   "name": "climate__HassClimateSetTemperature",
+   "description": "Sets the target temperature of a climate device or entity",
+   "params": [
+    "temperature",
+    "area",
+    "name",
+    "floor"
+   ]
+  },
+  {
+   "name": "homeassistant__GetLiveContext",
+   "description": "Provides real-time information about the CURRENT state, value, or mode of devices, sensors, entities, or areas. Use this tool for: 1. Answering questions about current conditions (e.g., 'Is the light on?'). 2. As the first step in conditional actions (e.g., 'If the weather is rainy, turn off sprink…",
+   "params": [
+    "name",
+    "domain",
+    "area"
+   ]
+  },
+  {
+   "name": "intent__HassTurnOn",
+   "description": "Turns on/opens/presses a device or entity. For locks, this performs a 'lock' action. Use for requests like 'turn on', 'activate', 'enable', or 'lock'.",
+   "params": [
+    "name",
+    "area",
+    "floor",
+    "domain",
+    "device_class"
+   ]
+  },
+  {
+   "name": "intent__HassTurnOff",
+   "description": "Turns off/closes a device or entity. For locks, this performs an 'unlock' action. Use for requests like 'turn off', 'deactivate', 'disable', or 'unlock'.",
+   "params": [
+    "name",
+    "area",
+    "floor",
+    "domain",
+    "device_class"
+   ]
+  },
+  {
+   "name": "intent__HassCancelAllTimers",
+   "description": "Cancels all timers",
+   "params": [
+    "area"
+   ]
+  },
+  {
+   "name": "light__HassLightSet",
+   "description": "Sets the brightness percentage or color of a light",
+   "params": [
+    "name",
+    "area",
+    "floor",
+    "domain",
+    "color",
+    "temperature",
+    "brightness"
+   ]
+  },
+  {
+   "name": "llm__GetDateTime",
+   "description": "Provides the current date and time.",
+   "params": []
+  }
+ ],
+ "n8n": [
+  {
+   "name": "search_workflows",
+   "description": "Search for workflows with optional filters. Returns a preview of each workflow. Where workflows are organised into folders, narrow the search with folderId instead of scanning everything: reuse a parentFolderId from an earlier result, or resolve a folder name with search_folders when that tool is a…",
+   "params": [
+    "limit",
+    "query",
+    "projectId",
+    "tags",
+    "sortBy",
+    "folderId",
+    "includeSubfolders"
+   ]
+  },
+  {
+   "name": "execute_workflow",
+   "description": "Execute a workflow by ID. Returns the execution ID immediately without waiting for completion. Before executing always ensure you know the input schema by first using the get_workflow_details tool and consulting workflow description; pass detailLevel 'execution' to that tool when running the workfl…",
+   "params": [
+    "workflowId",
+    "executionMode",
+    "triggerNodeName",
+    "inputs"
+   ]
+  },
+  {
+   "name": "get_workflow_execution",
+   "description": "Get workflow execution details by execution ID and workflow ID. By default returns metadata only. Set includeData to true to include node execution data, optionally filtered by nodeNames and truncated by truncateData.",
+   "params": [
+    "workflowId",
+    "executionId",
+    "includeData",
+    "nodeNames",
+    "truncateData"
+   ]
+  },
+  {
+   "name": "search_workflow_executions",
+   "description": "Search for workflow executions with optional filters. Returns execution metadata including status, timing, and workflow ID.",
+   "params": [
+    "workflowId",
+    "status",
+    "startedAfter",
+    "startedBefore",
+    "limit",
+    "cursor"
+   ]
+  },
+  {
+   "name": "get_workflow_details",
+   "description": "Get detailed information about a specific workflow including trigger details",
+   "params": [
+    "workflowId",
+    "detailLevel"
+   ]
+  },
+  {
+   "name": "get_workflow_history",
+   "description": "List the saved version history of a workflow (newest first), so you can inspect how it changed over time and pick a version to retrieve or restore.",
+   "params": [
+    "workflowId",
+    "limit",
+    "offset"
+   ]
+  },
+  {
+   "name": "get_workflow_version",
+   "description": "Retrieve the full content (nodes, connections, node groups) of a specific workflow version from its history. Use the versionId from get_workflow_history.",
+   "params": [
+    "workflowId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "get_workflow_versions_diff",
+   "description": "Compare two saved versions of a workflow and return what changed between them: nodes added (with their full content), removed, or modified (with a field-level delta per modified node) and connections added or removed. Pass the older version as fromVersionId and the newer one as toVersionId, using v…",
+   "params": [
+    "workflowId",
+    "fromVersionId",
+    "toVersionId"
+   ]
+  },
+  {
+   "name": "publish_workflow",
+   "description": "Publish (activate) a workflow to make it available for production execution. This creates an active version from the current draft.",
+   "params": [
+    "workflowId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "unpublish_workflow",
+   "description": "Unpublish (deactivate) a workflow to stop it from being available for production execution.",
+   "params": [
+    "workflowId"
+   ]
+  },
+  {
+   "name": "prepare_workflow_pin_data",
+   "description": "Prepare test pin data for a workflow. Trigger nodes, nodes with credentials, and HTTP Request nodes need pin data. Logic nodes (Set, If, Code, etc.) and credential-free I/O nodes (Execute Command, file read/write) execute normally without pin data. Returns JSON Schemas describing the expected outpu…",
+   "params": [
+    "workflowId"
+   ]
+  },
+  {
+   "name": "test_workflow",
+   "description": "Test a workflow using pin data to bypass external services. Trigger nodes, nodes with credentials, and HTTP Request nodes are pinned (use simulated data). Other nodes (Set, If, Code, etc.) execute normally — including credential-free I/O nodes like Execute Command or file read/write nodes. Use prep…",
+   "params": [
+    "workflowId",
+    "pinData",
+    "triggerNodeName",
+    "timeout"
+   ]
+  },
+  {
+   "name": "list_credentials",
+   "description": "List credentials the current user can access. Use this to find a credential ID before referencing it anywhere one is required. Prefer reusing a credential already used by another node in the workflow (get_workflow_details with detailLevel 'full' shows the credentials on each node). Never returns cr…",
+   "params": [
+    "limit",
+    "query",
+    "type",
+    "projectId",
+    "onlySharedWithMe"
+   ]
+  },
+  {
+   "name": "list_n8n_gateway_services",
+   "description": "List Gateway credits coverage: node and credential types the platform can provide managed credentials for, plus supported resource+operation combinations, minimum type versions, and hidden node properties. Use this to decide which nodes let the user skip credential setup.",
+   "params": []
+  },
+  {
+   "name": "list_workflow_tags",
+   "description": "List all workflow tags in the instance.",
+   "params": [
+    "limit"
+   ]
+  },
+  {
+   "name": "search_data_tables",
+   "description": "Search for data tables accessible to the current user. Use this to find a data table ID before modifying or adding data to it.",
+   "params": [
+    "query",
+    "projectId",
+    "limit"
+   ]
+  },
+  {
+   "name": "create_data_table",
+   "description": "Create a new data table with the specified columns. Use search_projects to find a project ID first.",
+   "params": [
+    "projectId",
+    "name",
+    "columns"
+   ]
+  },
+  {
+   "name": "rename_data_table",
+   "description": "Rename an existing data table.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "name"
+   ]
+  },
+  {
+   "name": "add_data_table_column",
+   "description": "Add a new column to an existing data table.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "name",
+    "type"
+   ]
+  },
+  {
+   "name": "delete_data_table_column",
+   "description": "Delete a column from a data table. This permanently removes the column and all its data.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "columnId"
+   ]
+  },
+  {
+   "name": "rename_data_table_column",
+   "description": "Rename a column in a data table.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "columnId",
+    "name"
+   ]
+  },
+  {
+   "name": "add_data_table_rows",
+   "description": "Insert rows into an existing data table. Each row is an object mapping column names to values. Use search_data_tables to find the data table ID first.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "rows"
+   ]
+  },
+  {
+   "name": "get_data_table_rows",
+   "description": "Read rows from a data table, with optional filtering, sorting and pagination. Use search_data_tables to find the data table ID and its columns first.",
+   "params": [
+    "dataTableId",
+    "projectId",
+    "filter",
+    "sortBy",
+    "limit",
+    "skip"
+   ]
+  },
+  {
+   "name": "search_nodes",
+   "description": "Search for n8n nodes by service name, trigger type, or utility function. Set usage=\"agentTool\" to return only Agent-compatible tool nodes. Returns node IDs, discriminators (resource/operation/mode), and related nodes needed for get_node_types.",
+   "params": [
+    "queries",
+    "usage"
+   ]
+  },
+  {
+   "name": "get_node_types",
+   "description": "Get TypeScript type definitions for n8n nodes. Returns exact parameter names and structures. MUST be called before writing workflow code or configuring node-backed tools — guessing parameter names creates invalid configurations. Pass nodeIds as an array of objects like { nodeId: \"n8n-nodes-base.gma…",
+   "params": [
+    "nodeIds"
+   ]
+  },
+  {
+   "name": "get_workflow_best_practices",
+   "description": "Required planning step when building a workflow, and only then. Get best-practices guidance (recommended nodes, patterns, and common pitfalls) for a specific workflow technique before searching for nodes or writing code. Call once per relevant technique. Use technique=\"list\" first if unsure which t…",
+   "params": [
+    "technique"
+   ]
+  },
+  {
+   "name": "explore_node_resources",
+   "description": "Resolve the real values behind a node's resource locator or load-options dropdown (e.g. Slack channels, Google Sheets tabs, OpenAI models). Use this after get_node_types so you ground RLC and load-options parameters in real IDs instead of inventing them. Requires a credential ID from list_credentia…",
+   "params": [
+    "nodeType",
+    "version",
+    "methodName",
+    "methodType",
+    "credentialType",
+    "credentialId",
+    "filter",
+    "paginationToken",
+    "currentNodeParameters"
+   ]
+  },
+  {
+   "name": "validate_workflow",
+   "description": "Validate n8n Workflow SDK code. Required before creating or updating workflows from code. If you have not already read get_workflow_sdk_reference, call that first; guessing SDK syntax commonly creates invalid workflows.",
+   "params": [
+    "code"
+   ]
+  },
+  {
+   "name": "validate_node_config",
+   "description": "Validate a node's config the moment you write it — before assembling create_workflow_from_code or calling update_workflow. Read-only and needs no existing workflow, so use it freely while composing. Unlike the write tools (which validate only as they mutate), this returns isolated per-node, per-par…",
+   "params": [
+    "nodes"
+   ]
+  },
+  {
+   "name": "create_workflow_from_code",
+   "description": "Create a workflow in n8n from validated SDK code. This tool expects code that already follows the n8n Workflow SDK patterns and has passed validate_workflow. If code fails to parse, call get_workflow_sdk_reference, rewrite the code using the reference, validate again, then retry creation. If the us…",
+   "params": [
+    "code",
+    "skillsUsed",
+    "name",
+    "description",
+    "versionName",
+    "versionDescription",
+    "projectId",
+    "folderId"
+   ]
+  },
+  {
+   "name": "search_projects",
+   "description": "Search for projects accessible to the current user. Call this whenever the user names a project — pass the name as the query, then use the resolved ID with tools that take a projectId. Results are ranked with exact case-insensitive name matches first. If no exact match is found but multiple partial…",
+   "params": [
+    "query",
+    "type",
+    "limit"
+   ]
+  },
+  {
+   "name": "search_folders",
+   "description": "Search for folders within a project. Use this to resolve a folder name to an ID before searching workflows inside a folder, creating a workflow in a folder, creating or updating a folder, or moving workflows into a folder. Each result includes the folder's full name path — when multiple folders mat…",
+   "params": [
+    "projectId",
+    "query",
+    "limit"
+   ]
+  },
+  {
+   "name": "create_folder",
+   "description": "Create a folder in a project, optionally nested under an existing folder. Requires a projectId — use search_projects first if needed. If the user named a parent folder, resolve it with search_folders; when multiple folders match the name, ask the user which one they meant before creating. After cre…",
+   "params": [
+    "projectId",
+    "name",
+    "parentFolderId"
+   ]
+  },
+  {
+   "name": "update_folder",
+   "description": "Rename a folder and/or move it under another folder in the same project. Resolve folders by name with search_folders first; when multiple folders match a name, ask the user which one they meant before updating. After the update, confirm the result to the user using folder names, not IDs.",
+   "params": [
+    "projectId",
+    "folderId",
+    "name",
+    "parentFolderId"
+   ]
+  },
+  {
+   "name": "move_workflows_to_folder",
+   "description": "Move one or more existing workflows into a folder (or to the project root). The destination folder must be in the same project as the workflows. Resolve the folder by name with search_folders first; when multiple folders match the name, ask the user which one they meant before moving. After moving,…",
+   "params": [
+    "workflowIds",
+    "folderId"
+   ]
+  },
+  {
+   "name": "archive_workflow",
+   "description": "Archive a workflow in n8n by its ID.",
+   "params": [
+    "workflowId"
+   ]
+  },
+  {
+   "name": "update_workflow",
+   "description": "Atomically update an existing workflow with operation objects. Edits nodes/connections and also workflow-level settings via setWorkflowSettings — including the error workflow that runs automatically on failure to send alerts (e.g. when a user asks to \"add error handling\" or \"notify me if this break…",
+   "params": [
+    "workflowId",
+    "skillsUsed",
+    "operations",
+    "versionName",
+    "versionDescription"
+   ]
+  },
+  {
+   "name": "restore_workflow_version",
+   "description": "Restore a workflow to a previous version from its history. Re-applies that version as the current draft and records a new history entry. Use get_workflow_history to find the versionId.",
+   "params": [
+    "workflowId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "get_workflow_sdk_reference",
+   "description": "Required reference when building a workflow, and only then. Call this BEFORE writing workflow code to learn workflow(), trigger()/node(), .add()/.to(), expr(), and credential patterns.",
+   "params": [
+    "section"
+   ]
+  },
+  {
+   "name": "search_agents",
+   "description": "Search Agents the current user can access. Use excludeAgentId to discover saved sub-agents. Other agent tools only operate on agents with availableInMCP: true.",
+   "params": [
+    "projectId",
+    "query",
+    "publishedOnly",
+    "excludeAgentId",
+    "limit"
+   ]
+  },
+  {
+   "name": "get_agent",
+   "description": "Read an Agent draft, sidecar resources, runnable state, and configHash. Call before mutate_agent. Pass versionId to inspect a published version snapshot instead of the draft.",
+   "params": [
+    "agentId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "create_agent",
+   "description": "Create an Agent draft, optionally with its initial model, credential, instructions, and ordinary tool configuration. Returns its n8n editor URL. Use mutate_agent afterward for skills, tasks, and custom tools.",
+   "params": [
+    "projectId",
+    "name",
+    "config"
+   ]
+  },
+  {
+   "name": "mutate_agent",
+   "description": "Apply one config, skill, task, or custom-tool mutation to an Agent draft. The operation fields sit directly on the operation object (no value wrapper), e.g. { \"type\": \"config.patch\", \"patch\": [...] }. Returns the next configHash for subsequent mutations.",
+   "params": [
+    "agentId",
+    "baseConfigHash",
+    "operation"
+   ]
+  },
+  {
+   "name": "validate_agent",
+   "description": "Validate an Agent draft, sidecar references, and user-accessible credentials. Returns its n8n editor URL.",
+   "params": [
+    "agentId"
+   ]
+  },
+  {
+   "name": "call_agent",
+   "description": "Test an Agent draft through built-in Preview chat. Start or continue a conversation with a message request, or resume one returned approval after the human decides. This uses real tools and credentials, so external side effects are possible.",
+   "params": [
+    "agentId",
+    "request"
+   ]
+  },
+  {
+   "name": "publish_agent",
+   "description": "Publish a valid Agent draft and activate its tasks and integrations. Pass versionId to republish a previously published version instead. Only call after the user explicitly requests or confirms publication; completing a build does not imply approval.",
+   "params": [
+    "agentId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "unpublish_agent",
+   "description": "Unpublish an Agent and stop its live tasks and integrations.",
+   "params": [
+    "agentId"
+   ]
+  },
+  {
+   "name": "revert_agent",
+   "description": "Restore an Agent draft from a published version, overwriting the draft config, skills, tasks, and custom tools. Does not publish. Inspect the version with get_agent first; the response returns the new configHash.",
+   "params": [
+    "agentId",
+    "versionId"
+   ]
+  },
+  {
+   "name": "list_agent_versions",
+   "description": "List the publish history of an Agent, newest first. Pass a versionId to get_agent to inspect a version before revert_agent or publish_agent.",
+   "params": [
+    "agentId",
+    "limit",
+    "offset"
+   ]
+  },
+  {
+   "name": "delete_agent",
+   "description": "Permanently delete an Agent and its associated resources.",
+   "params": [
+    "agentId"
+   ]
+  },
+  {
+   "name": "discover_agent_assets",
+   "description": "Discover model catalogs, chat integrations, attachable workflows, saved sub-agents, or MCP registry servers.",
+   "params": [
+    "projectId",
+    "kind",
+    "query",
+    "provider",
+    "credentialId",
+    "excludeAgentId"
+   ]
+  },
+  {
+   "name": "verify_agent_mcp_server",
+   "description": "Test an MCP server with a user-accessible credential and return its available tools. Call before writing an mcpServers config entry; validate_agent performs no live MCP check.",
+   "params": [
+    "projectId",
+    "name",
+    "url",
+    "transport",
+    "authentication",
+    "credential",
+    "metadata",
+    "connectionTimeoutMs"
+   ]
+  },
+  {
+   "name": "update_agent_integration",
+   "description": "Configure or disconnect a Slack, Telegram, or Linear conversation integration. This is the only way to manage integrations; config.replace and config.patch can't change them. Configuration never publishes the Agent. If the Agent is already published, connecting starts the channel immediately. Other…",
+   "params": [
+    "agentId",
+    "action",
+    "type",
+    "credentialId",
+    "settings",
+    "replacesCredentialId"
+   ]
+  },
+  {
+   "name": "get_agent_builder_reference",
+   "description": "Return the required reference for Agent configuration and mutate_agent operations. Read before building an Agent.",
+   "params": []
+  }
+ ]
+}

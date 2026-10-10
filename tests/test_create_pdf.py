@@ -626,7 +626,8 @@ def test_tool_loop_creates_pdf_attachment(client, tool_model):
     assert attachment.mime_type == "application/pdf" and attachment.tool_call is None
     expected = f"PDF erzeugt: schreibblatt.pdf, 1 Seite (Anhang #{attachment.pk})."
     tool_messages = [m for m in requests[1]["messages"] if m["role"] == "tool"]
-    assert tool_messages[0]["content"] == expected
+    assert tool_messages[0]["content"].startswith(expected)
+    assert "nicht verlinken" in tool_messages[0]["content"]
     assert ToolCall.objects.get().tool == "create_pdf"
     # Anzeige: Datei-Chip mit Ansehen und Download.
     page = client.get(reverse("chat:conversation_messages", args=[conversation.pk]))

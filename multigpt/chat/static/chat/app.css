@@ -3777,3 +3777,182 @@ span.message-source-link {
   transform: translateY(-50%);
   padding: 0.25rem 0.75rem;
 }
+
+/* Mitscrollen beim Streamen (scroll_follow.js): Knopf „↓ Neueste“ unten mittig
+   über dem Eingabefeld, nur sichtbar, wenn der Verlauf nicht mehr folgt. */
+.scroll-latest-anchor {
+  position: relative;
+  height: 0;
+}
+
+.scroll-latest {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+}
+
+.scroll-latest:hover {
+  border-color: var(--accent);
+}
+
+/* Kontextmenü und Leiste bei Textauswahl (context_menu.js, M13-01) */
+
+.context-menu,
+.selection-toolbar {
+  position: fixed;
+  z-index: 60;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+}
+
+.context-menu {
+  width: max-content;
+  min-width: 13rem;
+  max-width: calc(100vw - 16px);
+  padding: 0.3rem;
+}
+
+.context-menu-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-menu-item:hover,
+.context-menu-item:focus-visible,
+.context-menu-item:focus {
+  background: var(--bg-sidebar);
+  outline: none;
+}
+
+.context-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.context-menu-separator {
+  margin: 0.25rem 0.3rem;
+  border-top: 1px solid var(--border);
+}
+
+.context-menu-hint {
+  margin: 0.25rem 0.3rem 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.selection-toolbar {
+  display: flex;
+  gap: 0.15rem;
+  max-width: calc(100vw - 16px);
+  padding: 0.2rem;
+}
+
+.selection-toolbar-button {
+  min-height: 2rem;
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selection-toolbar-button:hover,
+.selection-toolbar-button:focus-visible {
+  background: var(--bg-sidebar);
+}
+
+/* Unsichtbarer Messrahmen für den Text einer Auswahl (innerText braucht Layout). */
+.context-measure {
+  position: fixed;
+  top: 0;
+  left: -200vw;
+  width: 40rem;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Zitate im Eingabefeld: „Zitate (n)“ mit Entfernen je Zitat. */
+.quote-list {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+.quote-list-title {
+  margin: 0 0 0.15rem;
+  color: var(--text-muted);
+}
+
+.quote-list-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quote-list-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: 0.5rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.quote-list-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-list-remove {
+  flex-shrink: 0;
+  min-width: 1.75rem;
+  height: 1.75rem;
+}
+
+@media (pointer: coarse) {
+  .context-menu-item,
+  .selection-toolbar-button {
+    min-height: 2.5rem;
+  }
+}

@@ -81,11 +81,14 @@ from multigpt.billing.pricing import Round, Tally
 from . import attachments as chat_attachments
 from . import (
     citations,
+    context_budget,
     creativity,
     documents_pdf,  # registriert create_pdf (Blätter als PDF), System-Hinweis
     images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
+    model_manager,
     reasoning,
     sharing,
+    tool_select,  # registriert find_tools (Werkzeuge nach Bedarf, M4a-12)
     tooling,
     tools_python,  # noqa: F401 - registriert run_python (Berechnungen, M4a-10)
     websearch,  # registriert Websuche (Kontext und Werkzeug), System-Hinweis
@@ -116,6 +119,31 @@ SAVE_INTERVAL = 2.0
 MAX_CONTENT_LENGTH = 100_000
 TITLE_LENGTH = 60
 GENERIC_ERROR = "Die Antwort konnte nicht erzeugt werden. Bitte später erneut versuchen."
+# Leere Antwort (M4a-12): kein Text, kein Werkzeugaufruf – meist Kontext voll.
+MSG_EMPTY_ANSWER = (
+    "Das Modell hat keine Antwort geliefert (Kontext voll oder Ausgabegrenze erreicht)."
+)
+MSG_EMPTY_HINT = (
+    "Bei lokalen Modellen in LM Studio eine größere Kontextlänge laden; sonst Werkzeuge "
+    "abschalten oder einen neuen Chat beginnen."
+)
+MSG_PROMPT_TOO_LARGE = (
+    "Die Anfrage passt nicht in den Kontext des Modells (geschätzt {estimate} von {context} "
+    "Tokens, davon {tools} für Werkzeugbeschreibungen). Bei lokalen Modellen in LM Studio "
+    "eine größere Kontextlänge laden; sonst Werkzeuge abschalten oder einen neuen Chat "
+    "beginnen."
+)
+MSG_HISTORY_TRIMMED = (
+    "Der Chat ist zu lang für den Kontext des Modells: Die ältesten {count} Nachrichten "
+    "wurden für diese Antwort weggelassen."
+)
+NOTE_HISTORY_TRIMMED = (
+    "Ältere Nachrichten dieses Chats fehlen aus Platzgründen im Verlauf; frag nach, wenn "
+    "dir dafür etwas fehlt."
+)
+# Mindestens so viel Platz muss für die Antwort bleiben, sonst Fehler vor dem Senden.
+MIN_ANSWER_TOKENS = 1024
+_LENGTH_REASONS = {"length", "max_tokens", "MAX_TOKENS"}
 
 
 class TurnError(Exception):
@@ -890,7 +918,11 @@ class _Loop:
                                 "server_id", "tool", "tool_call", "decision"?}],
                      "results": [{"tool_call_id", "name", "content", "is_error"}]}],
          "text_offset": int,              # Länge von content nach der letzten Runde
-         "final_provider_state": {...}}   # provider_state der letzten Antwort
+         "final_provider_state": {...},   # provider_state der letzten Antwort
+         "on_demand": True,               # Werkzeuge nach Bedarf (M4a-12)
+         "unlocked": [name, ...],         # per find_tools freigeschaltet
+         "prompt_estimate": n,            # geschätzte Prompt-Tokens (letzte Runde)
+         "trimmed": n}                    # weggelassene ältere Nachrichten
     """
 
     def __init__(self, turn: Turn):
@@ -907,7 +939,11 @@ class _Loop:
         self.tally = billing.tally_of(self.msg) if turn.resume else Tally()
         self.stream = None
         self.paused = False
+        # Angebotene Werkzeuge; im Modus nach Bedarf nur ein Teil der erlaubten
+        # (``selection.candidates``), siehe tool_select.
         self.bindings: dict[str, tooling.Binding] = {}
+        self.selection: tool_select.Selection | None = None
+        self.trim_notice = False
         # Quellen der Antwort (durchgehend nummeriert) und Quellmaterial-Block
         # der festen Abläufe (bleibt über eine Rückfrage hinweg erhalten).
         # Zitierstil des Absenders (geteilte Chats: nie der des Besitzers).
@@ -956,20 +992,24 @@ class _Loop:
 
     def _new_round(self, text: str, provider_state, calls: list[ToolCallEvent]) -> dict:
         stored = []
+        candidates = self.selection.candidates if self.selection else {}
         for event in calls:
+            # Nur angebotene Werkzeuge bekommen ihre Zuordnung; ein erlaubtes, aber
+            # nicht freigeschaltetes (Modus nach Bedarf) wird nicht ausgeführt.
             binding = self.bindings.get(event.name)
-            stored.append(
-                {
-                    "id": event.id,
-                    "name": event.name,
-                    "arguments": event.arguments,
-                    "provider_state": event.provider_state,
-                    "server_id": binding.server_id if binding else None,
-                    "tool": binding.tool if binding else None,
-                    "builtin": binding.builtin if binding else None,
-                    "tool_call": None,
-                }
-            )
+            item = {
+                "id": event.id,
+                "name": event.name,
+                "arguments": event.arguments,
+                "provider_state": event.provider_state,
+                "server_id": binding.server_id if binding else None,
+                "tool": binding.tool if binding else None,
+                "builtin": binding.builtin if binding else None,
+                "tool_call": None,
+            }
+            if binding is None and event.name in candidates:
+                item["locked"] = True
+            stored.append(item)
         rnd = {"text": text, "provider_state": provider_state, "calls": stored, "results": []}
         self.state["rounds"].append(rnd)
         self.state["text_offset"] = len(self.content)
@@ -1040,12 +1080,17 @@ class _Loop:
         yield "done", {"status": Message.Status.AWAITING_CONFIRMATION}
 
     def _execute(self, rnd: dict, call: dict):
+        if call.get("builtin") == tool_select.FIND_TOOLS:
+            yield from self._execute_find(rnd, call)
+            return
         if call.get("builtin"):
             yield from self._execute_builtin(rnd, call)
             return
         user = self.turn.user
         # Rechte vor jedem Aufruf erneut prüfen (auch nach einer Bestätigung).
         server, err = tooling.resolve_server(user, call, self.servers, self.turn.ai_model)
+        if call.get("locked"):
+            server, err = None, tool_select.MSG_NOT_UNLOCKED
         decision = call.get("decision")
         if decision == "reject":
             tool_call = self._tool_call_for(call, server, ToolCall.Status.REJECTED)
@@ -1163,6 +1208,132 @@ class _Loop:
         if self.sources.changed:
             yield "sources", self.sources.event()
 
+    def _execute_find(self, rnd: dict, call: dict):
+        """``find_tools`` (M4a-12): sucht unter den erlaubten Werkzeugen und schaltet
+        die Treffer für die weiteren Runden dieser Antwort frei."""
+        tool_call = self._tool_call_for(call, None, ToolCall.Status.RUNNING)
+        yield "tool_call", {**tooling.call_event(tool_call), "status": ToolCall.Status.RUNNING}
+        started = time.monotonic()
+        if self.selection is None or not self.selection.on_demand:
+            text, found, is_error = tooling.MSG_NOT_ALLOWED, [], True
+        else:
+            text, found, is_error = tool_select.run_find(self.selection, call.get("arguments"))
+        unlocked = self.state.setdefault("unlocked", [])
+        for name in found:
+            if name not in unlocked:
+                unlocked.append(name)
+            self.bindings[name] = self.selection.candidates[name]
+        status = ToolCall.Status.ERROR if is_error else ToolCall.Status.OK
+        outcome = tooling.Outcome(status, text, is_error)
+        tooling.record(tool_call, outcome, started)
+        logger.info("Werkzeugsuche %s: %d Treffer", tool_call.pk, len(found))
+        self._add_result(rnd, call, outcome.text, outcome.is_error)
+        self._persist()
+        yield "tool_result", tooling.result_event(tool_call, [])
+
+    def _system_prompt(self, history: list[ChatMessage]) -> str | None:
+        """System-Prompt samt Hinweisen zu den gerade angebotenen Werkzeugen."""
+        turn = self.turn
+        notes = []
+        documents = chat_attachments.has_documents(history)
+        if self.context or documents or any(b.builtin for b in self.bindings.values()):
+            notes.append(source_refs.SYSTEM_NOTE)
+        # Websuche: Werkzeug angeboten bzw. Hinweis auf den Schalter (M8).
+        notes.append(websearch.system_hint(turn.user, turn.options, "web_search" in self.bindings))
+        notes.append(websearch.pages.system_hint(self.bindings))  # fetch_url, crawl_site
+        notes.append(images.system_hint(self.bindings))  # generate_image (M9-01)
+        notes.append(documents_pdf.system_hint(self.bindings))  # create_pdf
+        notes.append(tool_select.system_hint(self.selection))  # find_tools (M4a-12)
+        if self.state.get("trimmed"):
+            notes.append(NOTE_HISTORY_TRIMMED)
+        return build_system_prompt(turn.user, turn.conversation, notes)
+
+    def _reduce_tools(self, history: list[ChatMessage], budget: int | None) -> None:
+        """Kontext knapp (geschätzt über ``budget``): erst Werkzeuge nach Bedarf
+        anbieten (außer Modus „nie“), bevor der Verlauf gekürzt wird."""
+        selection = self.selection
+        if not budget or selection is None or selection.on_demand or not selection.candidates:
+            return
+        mode = tool_select.mode_for(self.turn.ai_model)
+        if mode == tool_select.NEVER:
+            return
+        specs = [b.spec for b in self.bindings.values()]
+        if context_budget.estimate(self._system_prompt(history), history, specs) <= budget:
+            return
+        self.selection = tool_select.select(
+            selection.candidates,
+            mode,
+            self.state.get("unlocked") or (),
+            force=True,
+            query=self.turn.query,
+        )
+        self._adopt_selection()
+
+    def _adopt_selection(self) -> None:
+        """Angebot übernehmen; Vorauswahl aus der Nutzerfrage gilt wie freigeschaltet
+        (bleibt so über eine Rückfrage hinweg gleich)."""
+        self.bindings = dict(self.selection.offered)
+        if not self.selection.on_demand:
+            return
+        self.state["on_demand"] = True
+        unlocked = self.state.setdefault("unlocked", [])
+        for name in self.selection.preselected:
+            if name not in unlocked:
+                unlocked.append(name)
+
+    def _fit_context(self, history: list[ChatMessage], context: int | None):
+        """Vor jedem Anbieteraufruf: Schätzung, ggf. älteren Verlauf kürzen
+        (Generator, SSE ``status``). Liefert den System-Prompt und eine
+        Fehlermeldung (leer = senden)."""
+        specs = [b.spec for b in self.bindings.values()]
+        system = self._system_prompt(history)
+        estimate = context_budget.estimate(system, history, specs)
+        budget = context_budget.prompt_budget(context)
+        if budget and estimate > budget:
+            fixed = context_budget.text_tokens(system) + context_budget.specs_tokens(specs)
+            removed = context_budget.trim_history(history, fixed, budget)
+            if removed:
+                self.state["trimmed"] = int(self.state.get("trimmed", 0)) + removed
+                system = self._system_prompt(history)
+                estimate = context_budget.estimate(system, history, specs)
+                if not self.trim_notice:
+                    self.trim_notice = True
+                    text = MSG_HISTORY_TRIMMED.format(count=self.state["trimmed"])
+                    yield "status", {"text": text, "level": "warning"}
+        self.state["prompt_estimate"] = estimate
+        if context and estimate > context - MIN_ANSWER_TOKENS:
+            logger.info(
+                "Antwort %s: Anfrage zu groß für den Kontext (%d von %d Tokens geschätzt)",
+                self.msg.pk,
+                estimate,
+                context,
+            )
+            return system, MSG_PROMPT_TOO_LARGE.format(
+                estimate=context_budget.format_tokens(estimate),
+                context=context_budget.format_tokens(context),
+                tools=context_budget.format_tokens(context_budget.specs_tokens(specs)),
+            )
+        return system, ""
+
+    def _empty_answer(self, done: Done | None, round_in: int) -> str:
+        """Fehlertext, wenn die Antwort leer blieb (kein Text, kein Aufruf), sonst "".
+
+        Nach Werkzeugrunden zählt eine leere Schlussrunde nur bei Abbruch wegen
+        der Ausgabegrenze – die Ergebnisse (z. B. ein PDF) hat der Nutzer ja."""
+        if self.content.strip():
+            return ""
+        reason = done.finish_reason if done else None
+        if self.state["rounds"] and reason not in _LENGTH_REASONS:
+            return ""
+        context = context_budget.context_length(self.turn.ai_model)
+        detail = ""
+        if context and round_in:
+            detail = (
+                f" Eingabe: {context_budget.format_tokens(round_in)} von "
+                f"{context_budget.format_tokens(context)} Tokens Kontext."
+            )
+        return f"{MSG_EMPTY_ANSWER}{detail} {MSG_EMPTY_HINT}"
+
     def _over_limit(self, rnd: dict):
         """Aufrufe trotz ``tool_choice="none"`` in der letzten Runde: protokollieren,
         nicht ausführen."""
@@ -1201,26 +1372,35 @@ class _Loop:
             if turn.ai_model.supports_tools and not turn.options.get("no_tools"):
                 # MCP-Werkzeuge der eingeschalteten Server plus eingebaute
                 # Werkzeuge (web_search) nach Recht und Einstellung.
+                candidates: dict[str, tooling.Binding] = {}
                 if self.servers:
                     offline = []
-                    self.bindings = tooling.collect_tools(
+                    candidates = tooling.collect_tools(
                         turn.user, self.servers, turn.ai_model, offline=offline
                     )
                     if offline:  # Hinweis statt Fehler mitten in der Antwort
                         hint = mcp_status.offline_hint(offline)
                         yield "status", {"text": hint, "level": "warning"}
-                self.bindings.update(tooling.builtin_bindings(turn.user, turn.ai_model))
+                candidates.update(tooling.builtin_bindings(turn.user, turn.ai_model))
+                # Werkzeuge nach Bedarf (M4a-12): ggf. nur Kern plus find_tools.
+                self.selection = tool_select.select(
+                    candidates,
+                    tool_select.mode_for(turn.ai_model),
+                    self.state.get("unlocked") or (),
+                    force=bool(self.state.get("on_demand")),
+                    query=turn.query,
+                )
+                self._adopt_selection()
             if turn.resume and self.state["rounds"]:
                 paused = yield from self._process_round(self.state["rounds"][-1])
                 if paused:
                     return
-            specs = [b.spec for b in self.bindings.values()]
             provider_id = turn.ai_model.provider_id
             history = build_history(
                 turn.conversation,
                 exclude_ids=[msg.pk],
                 provider_id=provider_id,
-                with_tools=bool(specs),
+                with_tools=bool(self.bindings),
                 leaf=msg,  # Pfad dieser Antwort, auch wenn inzwischen umgeschaltet wurde
                 vision=turn.ai_model.supports_vision,
                 for_user=turn.user,
@@ -1231,7 +1411,7 @@ class _Loop:
                     if item.role == "user":
                         item.content = source_refs.wrap_question(item.content, self.context)
                         break
-            if specs:
+            if self.bindings:
                 for rnd in self.state["rounds"]:
                     history += round_messages(rnd)
             elif self.state["rounds"]:
@@ -1239,26 +1419,29 @@ class _Loop:
                 text = self.content.strip()
                 if text:
                     history.append(ChatMessage("assistant", text))
-            notes = []
-            documents = chat_attachments.has_documents(history)
-            if self.context or documents or any(b.builtin for b in self.bindings.values()):
-                notes.append(source_refs.SYSTEM_NOTE)
-            # Websuche: Werkzeug angeboten bzw. Hinweis auf den Schalter (M8).
-            notes.append(
-                websearch.system_hint(turn.user, turn.options, "web_search" in self.bindings)
-            )
-            notes.append(websearch.pages.system_hint(self.bindings))  # fetch_url, crawl_site
-            notes.append(images.system_hint(self.bindings))  # generate_image (M9-01)
-            notes.append(documents_pdf.system_hint(self.bindings))  # create_pdf
-            system = build_system_prompt(turn.user, turn.conversation, notes)
+            # Modellverwaltung (LM Studio, M7-09): vor dem Gebrauch laden, ggf.
+            # Platz im Grafikspeicher schaffen; sonst klare Meldung statt Antwort.
+            error = yield from model_manager.chat_ready(turn.ai_model)
+            if error:
+                status = Message.Status.ERROR
+            # Kontext schützen (M4a-12): Länge laut Anbieter bzw. Admin; wird es
+            # knapp, erst Werkzeuge nach Bedarf, dann älteren Verlauf kürzen.
+            context = context_budget.context_length(turn.ai_model)
+            self._reduce_tools(history, context_budget.prompt_budget(context))
             adapter = registry.get_adapter(turn.ai_model.provider)
             # Kreativität und Denktiefe des Chats (creativity.py, reasoning.py); im
             # Vergleich für alle Spalten gleich, die Denktiefe je Modell abgebildet.
             temperature = creativity.effective(turn.conversation)
             effort = reasoning.effective(turn.conversation)
 
-            while True:
+            while not error:
                 sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
+                # Angebot kann sich ändern (find_tools schaltet frei).
+                specs = [b.spec for b in self.bindings.values()]
+                system, error = yield from self._fit_context(history, context)
+                if error:
+                    status = Message.Status.ERROR
+                    break
                 calls_so_far = int(self.state.get("model_calls", 0))
                 last = calls_so_far >= MAX_ROUNDS - 1
                 # Nach einer Ablehnung (unten) ohne den abgelehnten Parameter.
@@ -1353,6 +1536,10 @@ class _Loop:
                     history += round_messages(rnd)
                     continue
                 self.state["final_provider_state"] = done.provider_state if done else None
+                error = self._empty_answer(done, round_in)
+                if error:
+                    status = Message.Status.ERROR
+                    logger.info("Antwort %s ist leer geblieben", msg.pk)
                 break
         except GeneratorExit:
             _close(self.stream)
@@ -1418,4 +1605,5 @@ def run_turn(turn: Turn) -> Iterator[tuple[str, dict]]:
 
     Usage und Kosten werden über alle Runden der Antwort summiert.
     """
-    return _Loop(turn).run()
+    # Modellverwaltung: Modell während der ganzen Antwort als belegt markieren.
+    return model_manager.hold(turn.ai_model, _Loop(turn).run())

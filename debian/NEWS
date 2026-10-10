@@ -38,6 +38,48 @@ multi-gpt (0.3.2) unstable; urgency=medium
   API-Aufrufen (nur Metadaten) und der Übersicht „Integrationen“ (n8n).
   Anleitung: Wiki-Seiten „API-Keys“ und „n8n“.
 
+  Werkzeuge nach Bedarf: Mit vielen MCP-Werkzeugen (z. B. n8n mit über 50)
+  passten die Beschreibungen nicht mehr in den Kontext lokaler Modelle, die
+  Antworten blieben leer. Jetzt bekommt das Modell nur einen Kern
+  (web_search, search_documents, create_pdf, kleine Server wie Home
+  Assistant ganz) und sucht weitere Werkzeuge mit find_tools. Rückfrage
+  und Einstufung je Werkzeug gelten unverändert. Einstellung im Admin unter
+  Chat-Einstellungen → Werkzeuge (automatisch, immer, nie), je Modell in
+  der Spalte „Werkzeuge nach Bedarf“. MultiGPT liest die geladene
+  Kontextlänge aus LM Studio, schätzt die Anfrage vor dem Senden, lässt
+  notfalls ältere Nachrichten weg und meldet einen zu kleinen Kontext mit
+  Zahlen. Leere Antworten gelten als Fehler. Tipp: gpt-oss-20b in LM
+  Studio mit 32k Kontext laden.
+
+  Zitieren im Chat: Markierten Text in Antworten, eigenen Nachrichten,
+  Vergleichsspalten und Quellenlisten per Rechtsklick, über die Leiste
+  unter der Markierung (auch am Handy) oder mit Umschalt+F10 als Zitat
+  ins Eingabefeld übernehmen. Mehrere Zitate landen nacheinander in einer
+  Nachricht, jeweils mit Herkunft (Modell, „Ich“, „Quelle [n]“); dazu
+  Nachfragen, Erklären, Vereinfachen, Übersetzen, Gegenargumente, Belege
+  suchen und Kopieren mit Quellenangabe. Gesendet wird nichts von selbst.
+  Umschalt+Rechtsklick zeigt weiter das Browsermenü; abschaltbar unter
+  Einstellungen → Chat. Schreibt die KI noch, lässt sich der Verlauf jetzt
+  frei scrollen: Er folgt nur, solange man unten ist, sonst bringt
+  „↓ Neueste“ zurück ans Ende. Anleitung: Wiki-Seite „Chat-Bedienung“.
+
+  Lokale Modelle verwaltet MultiGPT jetzt auf Wunsch selbst (LM Studio ab
+  0.4): Vor Chat, Vergleich, Embeddings, OCR und Abbildungen lädt es das
+  Modell mit seinem Lade-Profil (Kontextfenster, ohne TTL) und entlädt
+  dafür andere – nie über ein Speicherbudget. Einschalten im Admin unter
+  Anbieter → LM Studio → „Modelle verwalten“ mit „Speicherbudget für
+  Modelle (GB)“ und „Reserve für Anzeige bzw. System (GB)“ (Standard 2 GB,
+  weil die Grafikkarte auch den Monitor betreibt). Angeheftete Modelle
+  (z. B. nomic-embed) und gerade genutzte bleiben immer geladen, die
+  Indexierung verdrängt das Chatmodell nicht; passt etwas nicht, meldet der
+  Chat „Zu wenig Grafikspeicher für …“ bzw. der Lauf wartet. Nach 30
+  Minuten ohne Nutzung entlädt der Worker. In den RAG-Einstellungen, der
+  Fähigkeiten-Matrix und auf der neuen Seite „LM Studio: geladene Modelle“
+  (RAG-Übersicht) lässt sich das Kontextfenster wählen, daneben steht der
+  erwartete Speicher. Konsole: sudo mgpt-ctl lms ps|budget|load|unload.
+  In LM Studio danach JIT bzw. „Auto-Evict“ abschalten. Ohne den Schalter
+  bleibt alles wie bisher (Modelle von Hand mit lms load laden).
+
  -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 12:00:00 +0200
 
 multi-gpt (0.3.1) unstable; urgency=medium

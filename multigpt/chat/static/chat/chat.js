@@ -13,7 +13,6 @@
 (() => {
   const STORAGE_KEY = "multigpt.lastModel";
   const WEB_SEARCH_KEY = "multigpt.webSearch";
-  const SCROLL_STICK_PX = 48;
   const TITLE_MAX = 60;
   const RESULT_DISPLAY_CHARS = 4000;
 
@@ -220,6 +219,10 @@
     const textarea = document.getElementById("message-input");
     const sendButton = document.getElementById("send-button");
     const newChatButton = document.getElementById("new-chat-button");
+    // Mitscrollen nur, solange der Nutzer unten ist; sonst Knopf „↓ Neueste“.
+    const follow = window.MultiGPT.scrollFollow(history, {
+      button: document.getElementById("scroll-latest"),
+    });
 
     const urls = {
       conversations: chat.dataset.apiConversations,
@@ -247,11 +250,12 @@
     }
 
     function isNearBottom() {
-      return history.scrollHeight - history.scrollTop - history.clientHeight <= SCROLL_STICK_PX;
+      return follow.nearBottom();
     }
 
+    // Ans Ende springen und wieder mitscrollen (eigene Aktion des Nutzers).
     function scrollToBottom() {
-      history.scrollTop = history.scrollHeight;
+      follow.jump();
     }
 
     function messageElements() {
@@ -516,9 +520,10 @@
     }
 
     // Hinweis oben im sichtbaren Bereich zeigen, sonst bis ans Ende scrollen.
+    // Liest der Nutzer weiter oben, bleibt die Ansicht stehen.
     function revealConfirmation(article) {
       const box = article.querySelector(".tool-confirm");
-      if (!box) {
+      if (!box || !follow.following()) {
         return;
       }
       scrollToBottom();
@@ -1151,15 +1156,12 @@
       assistantEl.dataset.streaming = "true";
       const contentEl = assistantEl.querySelector(".chat-message-content");
       contentEl.dataset.markdown = "true";
-      let stick = true;
+      // Mitscrollen nach jedem Rendern (requestAnimationFrame), nur wenn der
+      // Nutzer unten ist; sonst hält follow die Position (scroll_follow.js).
       const renderer = markdown
         ? markdown.streamRenderer(
             contentEl,
-            () => {
-              if (stick) {
-                scrollToBottom();
-              }
-            },
+            follow.afterRender,
             opts.continuation ? markdown.sourceOf(contentEl) : "",
           )
         : null;
@@ -1260,9 +1262,7 @@
           } else if (event === "tool_call") {
             upsertToolCall(assistantEl, data);
             refreshConfirmBox(assistantEl);
-            if (stick) {
-              scrollToBottom();
-            }
+            follow.stick();
           } else if (event === "tool_result") {
             applyToolResult(assistantEl, data);
           } else if (event === "confirmation_required") {
@@ -1274,30 +1274,24 @@
               setStatus(data.text, serverStatus === "warning" ? "warning" : false);
             }
           } else if (event === "sources") {
-            stick = isNearBottom();
             renderSources(assistantEl, data.sources);
             const count = assistantEl.querySelectorAll(".message-source").length;
             if (count && serverStatus !== "warning") {
               setStatus(`${count === 1 ? "1 Quelle" : `${count} Quellen`} gefunden. Antwort wird erzeugt …`);
               serverStatus = "info";
             }
-            if (stick) {
-              scrollToBottom();
-            }
+            follow.stick();
           } else if (event === "delta") {
             if (serverStatus === "info") {
               serverStatus = null;
               setStatus("Antwort wird erzeugt …");
             }
-            stick = isNearBottom();
             const chunk = typeof data.text === "string" ? data.text : "";
             if (renderer) {
-              renderer.append(chunk);
+              renderer.append(chunk); // mitgescrollt wird nach dem Rendern
             } else {
               textNode.appendData(chunk);
-            }
-            if (stick) {
-              scrollToBottom();
+              follow.stick();
             }
           } else if (event === "error") {
             errorText = typeof data.message === "string" ? data.message : "";
@@ -1335,7 +1329,6 @@
             }
           }
           delete assistantEl.dataset.streaming;
-          stick = isNearBottom();
           renderer?.finish();
           if (status === "error" && !errorText) {
             errorText = "Unbekannter Fehler.";
@@ -1500,16 +1493,18 @@
       ) {
         index -= 1;
       }
-      const stick = isNearBottom();
-      for (const el of current.slice(index)) {
-        el.remove();
-      }
-      const added = fresh.slice(index).map((el) => document.adoptNode(el));
-      log.append(...added);
-      markdown?.renderAll(log);
-      for (const article of added) {
-        refreshConfirmBox(article);
-      }
+      // Liest der Nutzer weiter oben, bleibt die Ansicht stehen (kein Sprung).
+      follow.keepPosition(() => {
+        for (const el of current.slice(index)) {
+          el.remove();
+        }
+        const added = fresh.slice(index).map((el) => document.adoptNode(el));
+        log.append(...added);
+        markdown?.renderAll(log);
+        for (const article of added) {
+          refreshConfirmBox(article);
+        }
+      });
       if (editing && !editing.article.isConnected) {
         editing = null;
       }
@@ -1517,9 +1512,7 @@
         emptyState.hidden = Boolean(log.querySelector(".chat-message"));
       }
       updateMessageActions();
-      if (stick) {
-        scrollToBottom();
-      }
+      follow.stick();
       return true;
     }
 
@@ -1833,6 +1826,9 @@
       selectedModel,
       scrollToBottom,
       isNearBottom,
+      // Nach neuem Inhalt bzw. Rendern mitscrollen, falls der Nutzer unten ist.
+      followBottom: follow.stick,
+      afterRender: follow.afterRender,
       messageElements,
       returnFocus,
       autosize,

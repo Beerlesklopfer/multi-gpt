@@ -1001,6 +1001,7 @@ def test_admin_rejects_limits_above_maximum(admin_client, monkeypatch):
     data = {
         "base_instructions": cfg.base_instructions,
         "default_image_model": "",
+        "tools_on_demand": "auto",
         "python_enabled": "on",
         "python_cpu_seconds": 10,
         "python_wall_seconds": 20,

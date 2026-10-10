@@ -1,0 +1,225 @@
+"""REST-API von LM Studio für die Modellverwaltung (M7-09, erweitert 0.3.2).
+
+Grundlage (gelesen 2026-10-10, LM Studio 0.4.x):
+
+- Übersicht: https://lmstudio.ai/docs/developer/rest – die native API v1 unter
+  ``/api/v1/*`` gibt es seit LM Studio 0.4.0 (Load/Unload/Download neu in 0.4.0,
+  https://lmstudio.ai/docs/developer/api-changelog).
+- ``GET /api/v1/models`` (https://lmstudio.ai/docs/developer/rest/list):
+  ``{"models": [{type, key, display_name, architecture, quantization{name,
+  bits_per_weight}, size_bytes, params_string, max_context_length,
+  capabilities{vision, …}, loaded_instances: [{id, config: {context_length,
+  parallel, …}}]}]}``. Geprüft lesend am LM Studio des Nutzers.
+- ``POST /api/v1/models/load`` (https://lmstudio.ai/docs/developer/rest/load):
+  ``model`` (Pflicht), optional ``context_length``, ``eval_batch_size``,
+  ``flash_attention``, ``num_experts``, ``offload_kv_cache_to_gpu``,
+  ``echo_load_config``; Antwort ``{type, instance_id, load_time_seconds,
+  status: "loaded", load_config?}``. Fehlerformate sind nicht dokumentiert.
+- ``POST /api/v1/models/unload`` (https://lmstudio.ai/docs/developer/rest/unload):
+  ``{"instance_id": …}`` -> ``{"instance_id": …}``.
+- TTL (https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict): Per JIT
+  geladene Modelle haben standardmäßig 60 Minuten TTL, mit ``lms load``
+  geladene keine. Der Load-Endpunkt dokumentiert kein ``ttl`` – MultiGPT
+  schickt deshalb keines; das Leerlauf-Entladen übernimmt der Worker.
+- ``parallel`` steht in der Liste (``config.parallel``), beim Load-Endpunkt aber
+  nicht in der Doku. Es wird nur geschickt, wenn am Modell ausdrücklich gesetzt.
+- Grafikspeicher (frei/gesamt) meldet die API nicht; das Budget stellt der
+  Verwalter ein (``Provider.vram_budget_gb``).
+
+Authentifizierung wie bei ``/v1``: Bearer-Token, falls am Anbieter ein Key
+gespeichert ist. Fehlertexte von LM Studio (z. B. „nicht genug Speicher“)
+werden gekürzt übernommen – der lokale Server kennt keinen Key, der darin
+stehen könnte; Logs enthalten nur IDs und HTTP-Status.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+LIST_TIMEOUT = 5.0
+LOAD_TIMEOUT = 600.0  # große Modelle laden von der Platte (bis Minuten)
+UNLOAD_TIMEOUT = 60.0
+MAX_ERROR_CHARS = 200
+
+MSG_UNREACHABLE = "LM Studio ist nicht erreichbar."
+MSG_OLD_VERSION = "LM Studio kennt die Modellverwaltung nicht (REST-API v1 ab Version 0.4 nötig)."
+MSG_INVALID = "LM Studio lieferte eine unerwartete Antwort."
+MSG_HTTP = "LM Studio meldet HTTP {status}"
+
+
+class LmsError(Exception):
+    """Fehler der LM-Studio-API; ``message`` deutsch, ``unreachable`` bei Netzfehlern."""
+
+    def __init__(self, message: str, *, status: int | None = None, unreachable: bool = False):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+        self.unreachable = unreachable
+
+
+@dataclass
+class Instance:
+    id: str
+    context_length: int | None = None
+    parallel: int | None = None
+
+
+@dataclass
+class CatalogModel:
+    """Ein Eintrag aus ``GET /api/v1/models``."""
+
+    key: str
+    type: str = "llm"  # llm, embedding, decision
+    display_name: str = ""
+    architecture: str = ""
+    params: str = ""
+    size_bytes: int = 0
+    max_context_length: int | None = None
+    bits_per_weight: float | None = None
+    vision: bool = False
+    instances: list[Instance] = field(default_factory=list)
+
+    @property
+    def loaded(self) -> bool:
+        return bool(self.instances)
+
+
+def api_root(provider) -> str:
+    """Server-Wurzel: Basis-URL ohne ``/v1`` (wie ``_lmstudio_models`` im Adapter)."""
+    base = (provider.base_url or "http://localhost:1234/v1").rstrip("/")
+    return base.removesuffix("/v1")
+
+
+def _headers(provider) -> dict:
+    headers = {"Accept": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+    return headers
+
+
+def _int(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def _error_text(response: httpx.Response) -> str:
+    """Kurzer Fehlertext aus der Antwort (``error.message`` bzw. ``error``)."""
+    try:
+        data = response.json()
+    except (ValueError, json.JSONDecodeError):
+        return ""
+    error = data.get("error") if isinstance(data, dict) else None
+    if isinstance(error, dict):
+        error = error.get("message")
+    if not isinstance(error, str):
+        return ""
+    text = " ".join(error.split())
+    return text if len(text) <= MAX_ERROR_CHARS else text[: MAX_ERROR_CHARS - 1] + "…"
+
+
+def parse_models(data) -> list[CatalogModel]:
+    """Antwort von ``GET /api/v1/models`` -> Liste; unbrauchbare Einträge fallen weg."""
+    items = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise LmsError(MSG_INVALID)
+    result = []
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            continue
+        quant = item.get("quantization") if isinstance(item.get("quantization"), dict) else {}
+        caps = item.get("capabilities") if isinstance(item.get("capabilities"), dict) else {}
+        instances = []
+        for inst in item.get("loaded_instances") or []:
+            if isinstance(inst, dict) and isinstance(inst.get("id"), str):
+                config = inst.get("config") if isinstance(inst.get("config"), dict) else {}
+                instances.append(
+                    Instance(
+                        inst["id"],
+                        _int(config.get("context_length")),
+                        _int(config.get("parallel")),
+                    )
+                )
+        bits = quant.get("bits_per_weight")
+        result.append(
+            CatalogModel(
+                key=item["key"],
+                type=str(item.get("type") or "llm"),
+                display_name=str(item.get("display_name") or item["key"]),
+                architecture=str(item.get("architecture") or ""),
+                params=str(item.get("params_string") or ""),
+                size_bytes=_int(item.get("size_bytes")) or 0,
+                max_context_length=_int(item.get("max_context_length")),
+                bits_per_weight=float(bits) if isinstance(bits, int | float) and bits > 0 else None,
+                vision=bool(caps.get("vision")),
+                instances=instances,
+            )
+        )
+    return result
+
+
+def _request(provider, method: str, path: str, timeout: float, body=None) -> httpx.Response:
+    url = api_root(provider) + path
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            return client.request(method, url, headers=_headers(provider), json=body)
+    except httpx.TimeoutException as exc:
+        raise LmsError(f"{MSG_UNREACHABLE} (Zeitüberschreitung)", unreachable=True) from exc
+    except httpx.HTTPError as exc:
+        raise LmsError(MSG_UNREACHABLE, unreachable=True) from exc
+
+
+def _check(response: httpx.Response, what: str, provider) -> None:
+    if response.status_code == 200:
+        return
+    detail = _error_text(response)
+    logger.warning("LM Studio %s (Anbieter %s): HTTP %s", what, provider.pk, response.status_code)
+    if response.status_code == 404 and what == "Modellliste":
+        raise LmsError(MSG_OLD_VERSION, status=404)
+    message = MSG_HTTP.format(status=response.status_code)
+    raise LmsError(f"{message}: {detail}" if detail else f"{message}.", status=response.status_code)
+
+
+def list_models(provider, timeout: float = LIST_TIMEOUT) -> list[CatalogModel]:
+    """Alle Modelle samt geladener Instanzen (``GET /api/v1/models``)."""
+    response = _request(provider, "GET", "/api/v1/models", timeout)
+    _check(response, "Modellliste", provider)
+    try:
+        return parse_models(response.json())
+    except ValueError as exc:
+        raise LmsError(MSG_INVALID) from exc
+
+
+def load(
+    provider,
+    model_key: str,
+    *,
+    context_length: int | None = None,
+    parallel: int | None = None,
+    timeout: float = LOAD_TIMEOUT,
+) -> dict:
+    """Modell laden (``POST /api/v1/models/load``), ohne TTL. Rückgabe: Antwort-JSON."""
+    body: dict = {"model": model_key, "echo_load_config": True}
+    if context_length:
+        body["context_length"] = int(context_length)
+    if parallel:
+        body["parallel"] = int(parallel)
+    response = _request(provider, "POST", "/api/v1/models/load", timeout, body)
+    _check(response, "Laden", provider)
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise LmsError(MSG_INVALID) from exc
+    return data if isinstance(data, dict) else {}
+
+
+def unload(provider, instance_id: str, timeout: float = UNLOAD_TIMEOUT) -> None:
+    """Instanz entladen (``POST /api/v1/models/unload``)."""
+    response = _request(
+        provider, "POST", "/api/v1/models/unload", timeout, {"instance_id": instance_id}
+    )
+    _check(response, "Entladen", provider)

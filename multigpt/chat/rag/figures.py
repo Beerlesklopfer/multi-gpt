@@ -72,6 +72,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import model_manager
 from ..models import AIModel, RagSettings
 from ..providers import registry
 from ..providers.base import ProviderError
@@ -406,14 +407,21 @@ class Collector:
             adapter = registry.get_adapter(ai_model.provider)
             language = _language("\n".join(p.text for p in pages))
             captions = _captions(pages)
-            for figure in self.figures:
-                if should_stop():
-                    raise extract.Interrupted
-                caption = captions.get(figure.index, "")
-                text = self._describe_one(adapter, ai_model, figure, caption, language)
-                if text:
-                    lead = f"{caption} – " if caption else ""
-                    descriptions[figure.index] = f"[Abbildung: {lead}{text}]"
+            # Modellverwaltung (LM Studio): vorher laden; geht das nicht, wartet der Auftrag.
+            try:
+                with model_manager.use(ai_model):
+                    for figure in self.figures:
+                        if should_stop():
+                            raise extract.Interrupted
+                        caption = captions.get(figure.index, "")
+                        text = self._describe_one(adapter, ai_model, figure, caption, language)
+                        if text:
+                            lead = f"{caption} – " if caption else ""
+                            descriptions[figure.index] = f"[Abbildung: {lead}{text}]"
+            except model_manager.ModelUnavailable as exc:
+                raise FigureError(
+                    f"Modell für Abbildungen: {exc.message}", unreachable=True
+                ) from None
         for page in pages:
             page.text = replace_markers(page.text, descriptions)
         if self.figures:
