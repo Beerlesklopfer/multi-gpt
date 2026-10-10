@@ -72,6 +72,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C28 | Modellverwaltung: Laden und Entladen nur gegen nachgebildetes LM Studio getestet; am echten Gerät (0.4.x) prüfen, ob `parallel` beim Laden angenommen wird (nicht dokumentiert) und welche Fehlermeldung LM Studio bei zu wenig Speicher liefert. |
 | C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
+| C31 | Indexierung: Der Worker bearbeitet ein Dokument nach dem anderen (~40 s je Buch mit Textebene). Mehrere Dokumente gleichzeitig (z. B. 2–4, begrenzt durch die Parallelität in LM Studio) würde große Verzeichnisquellen deutlich schneller machen. Parallele OCR-Seiten lohnen bei Text-PDFs kaum. |
 
 ## D. Geplante Meilensteine
 
