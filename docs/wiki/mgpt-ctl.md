@@ -115,7 +115,7 @@ sudo mgpt-ctl sync_models --provider OpenAI
 
 ### `reindex` – Dokumente neu indexieren
 
-Legt Indexierungsaufträge an; der Worker (`multi-gpt-worker.service`) arbeitet sie ab. Seit 0.4
+Legt Indexierungsaufträge an; der Worker (`multi-gpt-worker.service`) arbeitet sie ab. Seit 0.3.2
 hängen sie an einem Lauf: Die Ausgabe nennt dessen Nummer, `mgpt-ctl index status --follow --run
 <Nummer>` zeigt den Fortschritt. Laufende Läufe sind außerdem im Admin unter „Dokumente (RAG)“ →
 „Läufe“ zu sehen und abzubrechen.

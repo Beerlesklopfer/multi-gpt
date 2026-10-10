@@ -7,7 +7,7 @@ Einstufung erst nach einer Rückfrage im Chat.
 
 Alles auf dieser Seite erledigt der Verwalter im Admin unter **Chat › MCP-Server**.
 
-Umgekehrt ist MultiGPT seit 0.4 auch selbst **MCP-Server** unter `https://<hostname>/mcp/`: Andere
+Umgekehrt ist MultiGPT seit 0.3.2 auch selbst **MCP-Server** unter `https://<hostname>/mcp/`: Andere
 Programme steuern es mit dem API-Key eines Kontos – siehe [API-Keys](API-Keys) und, für beide
 Richtungen mit n8n, [n8n](n8n).
 

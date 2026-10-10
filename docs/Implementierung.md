@@ -539,7 +539,7 @@ MultiGPT wird selbst MCP-Server. Externe Orchestratoren (n8n, Claude Desktop, an
 - **M15-07** nginx: `location ~ ^/mcp/?$` im conffile (ungepuffert, 300 s, `include /etc/multi-gpt/nginx/mcp.conf`); das postinst erzeugt `mcp.conf` mit `client_max_body_size` ⌈MB×4/3⌉+10. `make test-packaging` prüft Erzeugung, Einbindung und Rücknahme; `functional.sh` zusätzlich SSE ohne Puffer und 40 MB an `/mcp/`.
 - **M15-08** n8n: Wiki „n8n“ (beide Richtungen, Beispiel-Workflows), keine harte Startbedingung (offene Frage 9a).
 - **M15-09** Tests: `tests/test_node_keys.py`, `test_node_mcp.py`, `test_node_tools_run.py`, `test_node_cli.py`, `test_node_chat_tools.py`, `test_node_e2e.py` (Projekt-Client gegen `live_server`, beide Ären).
-- **M15-10** Doku: Wiki „API-Keys“, „n8n“, Ergänzungen in „MCP-Server“, „mgpt-ctl“, „Konfiguration“, „nginx und TLS“, Startseite und Seitenleiste; `debian/NEWS` 0.4.0.
+- **M15-10** Doku: Wiki „API-Keys“, „n8n“, Ergänzungen in „MCP-Server“, „mgpt-ctl“, „Konfiguration“, „nginx und TLS“, Startseite und Seitenleiste; `debian/NEWS` 0.3.2.
 
 *Abnahme:* In n8n liest ein Workflow eine neue Datei aus dem NAS-Ordner, lädt sie mit `upload_document` hoch und fragt `run_status` ab, bis der Lauf fertig ist; `mgpt-ctl index status --follow` zeigt denselben Lauf. Ein Key ohne `docs.write` sieht `upload_document` nicht; ein widerrufener Key bekommt sofort 401. `ask` mit Sammlung liefert eine Antwort mit Quellen, die Kosten stehen im Verbrauch des Kontos, der Chat „API: …“ ist sichtbar. Die Seite „Integrationen“ zeigt den n8n-MCP-Server online.
 

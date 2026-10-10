@@ -189,7 +189,7 @@ sudo dpkg-reconfigure multi-gpt
 Das setzt `client_max_body_size` (auch für `/mcp/` in `mcp.conf`) neu und startet die Dienste neu.
 
 Hat jemand die Site `/etc/nginx/sites-available/multi-gpt` von Hand geändert und beim Update auf
-0.4 die alte Fassung behalten, fehlt dort die `location` für `/mcp/`. Der MCP-Server funktioniert
+0.3.2 die alte Fassung behalten, fehlt dort die `location` für `/mcp/`. Der MCP-Server funktioniert
 dann trotzdem, aber Fortschrittsmeldungen kommen gepuffert an und Uploads über `/mcp/` sind auf
 die normale Grenze beschränkt. Abhilfe: die neue Fassung (`multi-gpt.dpkg-dist`) übernehmen
 oder den Block `location ~ ^/mcp/?$ { … }` daraus übertragen.
