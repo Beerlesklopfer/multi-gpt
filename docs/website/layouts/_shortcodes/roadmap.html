@@ -1,5 +1,7 @@
-{{- /* Meilensteinliste aus data/roadmap.toml. */ -}}
+{{- /* Meilensteinliste aus data/roadmap.toml, je Meilenstein mit seinen Arbeitspaketen (steps). */ -}}
 {{- $lang := site.Language.Lang }}
+{{- $icons := dict "done" "✓" "partial" "◐" "planned" "○" }}
+<p class="step-legend muted">{{ T "steps_legend" }}</p>
 <ol class="roadmap">
   {{- range hugo.Data.roadmap.milestones }}
   <li class="milestone milestone-{{ .status }}">
@@ -10,6 +12,28 @@
     <p>{{ index .text $lang | markdownify }}</p>
     {{- with .note }}
     <p class="milestone-note">{{ index . $lang | markdownify }}</p>
+    {{- end }}
+    {{- $steps := .steps | default slice }}
+    {{- if $steps }}
+    {{- $done := len (where $steps "status" "done") }}
+    <details class="steps"{{ if eq .status "partial" }} open{{ end }}>
+      <summary>{{ T "steps_title" }}: {{ T "steps_count" (dict "Done" $done "Total" (len $steps)) }}</summary>
+      <ul class="step-list">
+        {{- range $steps }}
+        <li class="step step-{{ .status }}" id="{{ lower .id }}">
+          <span class="step-icon" aria-hidden="true">{{ index $icons .status }}</span>
+          <span class="step-body">
+            <span class="visually-hidden">{{ T (printf "status_%s" .status) }}:</span>
+            <span class="step-id">{{ .id }}</span>
+            {{ index . $lang }}
+            {{- with .version }} <span class="step-version">{{ T "step_version" (dict "Version" .) }}</span>{{ end }}
+          </span>
+        </li>
+        {{- end }}
+      </ul>
+    </details>
+    {{- else }}
+    <p class="milestone-note">{{ T "steps_none" }}</p>
     {{- end }}
   </li>
   {{- end }}

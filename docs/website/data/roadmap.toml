@@ -1,7 +1,8 @@
 # Meilensteine aus doc/Plan.md, Abschnitt 11.
 # status: "done" | "partial" | "planned"  (Texte dazu in i18n/*.toml)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.1.
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.2.
+# steps: Arbeitspakete je Meilenstein (id, status, optional version = erschienen mit).
 
 [[milestones]]
   id = "1"
@@ -13,8 +14,62 @@
     de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
     en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
-    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.1). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
-    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.1). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.2). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.2). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+
+  [[milestones.steps]]
+    id = "M1-01"
+    status = "done"
+    de = "Django-Projekt und Abhängigkeiten"
+    en = "Django project and dependencies"
+
+  [[milestones.steps]]
+    id = "M1-02"
+    status = "done"
+    de = "Einstellungen nur aus der Umgebung"
+    en = "Settings from the environment only"
+
+  [[milestones.steps]]
+    id = "M1-03"
+    status = "done"
+    de = "PostgreSQL mit pgvector"
+    en = "PostgreSQL with pgvector"
+
+  [[milestones.steps]]
+    id = "M1-04"
+    status = "done"
+    de = "Anmeldung mit Login-Drosselung"
+    en = "Login with brute-force throttling"
+
+  [[milestones.steps]]
+    id = "M1-05"
+    status = "done"
+    de = "Grundlayout mit Kopfzeile und Seitenleiste"
+    en = "Base layout with header and sidebar"
+
+  [[milestones.steps]]
+    id = "M1-06"
+    status = "done"
+    de = "Makefile für Einrichtung, Tests und Paketbau"
+    en = "Makefile for setup, tests and packaging"
+
+  [[milestones.steps]]
+    id = "M1-07"
+    status = "done"
+    de = "gunicorn und Health-Check"
+    en = "gunicorn and health check"
+
+  [[milestones.steps]]
+    id = "M1-08"
+    status = "done"
+    de = "Debian-Paket mit Dienst und Verwaltungsbefehl, Docker-Dateien"
+    en = "Debian package with service and admin command, Docker files"
+
+  [[milestones.steps]]
+    id = "M1-09"
+    status = "done"
+    de = "Testgerüst und Linter"
+    en = "Test setup and linter"
 
 [[milestones]]
   id = "2"
@@ -29,6 +84,42 @@
     de = "Abgeschlossen. Jugendliche und Gäste haben anfangs keine Modelle; der Verwalter gibt sie pro Rolle frei."
     en = "Complete. Teenagers and guests start without models; the administrator enables them per role."
 
+  [[milestones.steps]]
+    id = "M2-01"
+    status = "done"
+    de = "Datenmodell: Anbieter, Modelle, Rollen, Gruppen"
+    en = "Data model: providers, models, roles, groups"
+
+  [[milestones.steps]]
+    id = "M2-02"
+    status = "done"
+    de = "Verschlüsselte API-Keys"
+    en = "Encrypted API keys"
+
+  [[milestones.steps]]
+    id = "M2-03"
+    status = "done"
+    de = "Verwaltungsmasken"
+    en = "Admin forms"
+
+  [[milestones.steps]]
+    id = "M2-04"
+    status = "done"
+    de = "Vier Startrollen und Gruppe „Familie“"
+    en = "Four default roles and the “family” group"
+
+  [[milestones.steps]]
+    id = "M2-05"
+    status = "done"
+    de = "Zentrale Rechteprüfung"
+    en = "Central permission check"
+
+  [[milestones.steps]]
+    id = "M2-06"
+    status = "done"
+    de = "Konten mit Rollenwahl anlegen"
+    en = "Create accounts with a role"
+
 [[milestones]]
   id = "3"
   status = "done"
@@ -41,6 +132,42 @@
   [milestones.note]
     de = "Ende-zu-Ende im Browser getestet; gestreamte Antworten mit echtem OpenAI-Key laufen."
     en = "Tested end to end in the browser; streamed answers with a real OpenAI key work."
+
+  [[milestones.steps]]
+    id = "M3-01"
+    status = "done"
+    de = "Gemeinsame Schnittstelle für Anbieter"
+    en = "Common provider interface"
+
+  [[milestones.steps]]
+    id = "M3-02"
+    status = "done"
+    de = "Adapter für OpenAI-kompatible Anbieter"
+    en = "Adapter for OpenAI-compatible providers"
+
+  [[milestones.steps]]
+    id = "M3-03"
+    status = "done"
+    de = "Gestreamte Antworten"
+    en = "Streamed answers"
+
+  [[milestones.steps]]
+    id = "M3-04"
+    status = "done"
+    de = "Abbrechen, Teiltext bleibt erhalten"
+    en = "Stop button, partial text is kept"
+
+  [[milestones.steps]]
+    id = "M3-05"
+    status = "done"
+    de = "Chatansicht mit Modellwahl und „Neu erzeugen“"
+    en = "Chat view with model choice and “regenerate”"
+
+  [[milestones.steps]]
+    id = "M3-06"
+    status = "done"
+    de = "Tests: Ablauf, Fehler, Abbruch, fremde Chats"
+    en = "Tests: event order, errors, stopping, other users' chats"
 
 [[milestones]]
   id = "4"
@@ -55,6 +182,36 @@
     de = "LM Studio läuft im echten Heimnetz. Seit 0.3.0 bekommen neue Modelle ihre Fähigkeiten automatisch (bei LM Studio aus dessen Modellliste), dazu die Fähigkeiten-Matrix im Admin, ausgegraute Offline-Anbieter und eine eigene Meldung für abgelaufene API-Keys. Noch offen für die Abnahme: echte Aufrufe an Anthropic und Gemini."
     en = "LM Studio runs in a real home network. Since 0.3.0 new models get their capabilities automatically (for LM Studio from its model list), plus the capability matrix in the admin, greyed-out offline providers and a dedicated message for expired API keys. Still open for acceptance: real calls to Anthropic and Gemini."
 
+  [[milestones.steps]]
+    id = "M4-01"
+    status = "done"
+    de = "Adapter für Anthropic und Google Gemini"
+    en = "Adapters for Anthropic and Google Gemini"
+
+  [[milestones.steps]]
+    id = "M4-02"
+    status = "done"
+    de = "Modelllisten der Anbieter abrufen"
+    en = "Fetch the providers' model lists"
+
+  [[milestones.steps]]
+    id = "M4-03"
+    status = "done"
+    de = "Online-Status der Anbieter"
+    en = "Provider online status"
+
+  [[milestones.steps]]
+    id = "M4-04"
+    status = "done"
+    de = "Statusanzeige im Chat, Offline-Modelle ausgegraut"
+    en = "Status indicator in the chat, offline models greyed out"
+
+  [[milestones.steps]]
+    id = "M4-05"
+    status = "done"
+    de = "Lokale Modelle kostenlos, kein Senden an Offline-Anbieter"
+    en = "Local models free of charge, no sending to offline providers"
+
 [[milestones]]
   id = "4a"
   status = "done"
@@ -67,6 +224,76 @@
   [milestones.note]
     de = "Werkzeugschleife mit höchstens 10 Runden, Rückfrage vor nicht freigegebenen Werkzeugen (auch nach Neuladen), Anzeige jedes Aufrufs im Chat. Seit 0.3.0: Import aus „mcpServers“-JSON, Online-Status je Server, Werkzeugtabelle mit Einstufung im Admin, MCP-Freigabe je Modell (kein, alle, ausgewählte; serverseitig geprüft) und das Werkzeug `run_python` in einer bubblewrap-Sandbox. Seit 0.3.1 das Werkzeug `create_pdf` für Arbeitsblätter, Briefe und Tabellen. MCP-Werkzeuge laufen auch mit lokalen Modellen über LM Studio."
     en = "Tool loop with at most 10 rounds, confirmation before unapproved tools (also after a reload), every call shown in the chat. Since 0.3.0: import from “mcpServers” JSON, online status per server, a tool table with classification in the admin, MCP access per model (none, all, selected; checked on the server) and the `run_python` tool in a bubblewrap sandbox. Since 0.3.1 the `create_pdf` tool for worksheets, letters and tables. MCP tools also work with local models via LM Studio."
+
+  [[milestones.steps]]
+    id = "M4a-01"
+    status = "done"
+    de = "Brücke zwischen Webserver und MCP"
+    en = "Bridge between web server and MCP"
+
+  [[milestones.steps]]
+    id = "M4a-02"
+    status = "done"
+    de = "Werkzeugaufrufe in allen drei Adaptern"
+    en = "Tool calls in all three adapters"
+
+  [[milestones.steps]]
+    id = "M4a-03"
+    status = "done"
+    de = "MCP-Client mit Verbindungstest"
+    en = "MCP client with connection test"
+
+  [[milestones.steps]]
+    id = "M4a-04"
+    status = "done"
+    de = "Werkzeugschleife mit Rundenlimit und Rechteprüfung"
+    en = "Tool loop with round limit and permission check"
+
+  [[milestones.steps]]
+    id = "M4a-05"
+    status = "done"
+    de = "Rückfrage vor heiklen Werkzeugen"
+    en = "Confirmation before sensitive tools"
+
+  [[milestones.steps]]
+    id = "M4a-06"
+    status = "done"
+    de = "Werkzeugaufrufe im Chat aufklappbar"
+    en = "Collapsible tool calls in the chat"
+
+  [[milestones.steps]]
+    id = "M4a-07"
+    status = "done"
+    de = "Tests mit eigenem MCP-Testserver"
+    en = "Tests with a built-in MCP test server"
+
+  [[milestones.steps]]
+    id = "M4a-08"
+    status = "done"
+    version = "0.3.0"
+    de = "MCP-Freigabe je Modell"
+    en = "MCP access per model"
+
+  [[milestones.steps]]
+    id = "M4a-09"
+    status = "done"
+    version = "0.3.0"
+    de = "Online-Status und Werkzeugliste je MCP-Server"
+    en = "Online status and tool list per MCP server"
+
+  [[milestones.steps]]
+    id = "M4a-10"
+    status = "done"
+    version = "0.3.0"
+    de = "Berechnungen mit Python in einer Sandbox"
+    en = "Calculations with Python in a sandbox"
+
+  [[milestones.steps]]
+    id = "M4a-11"
+    status = "done"
+    version = "0.3.1"
+    de = "Arbeitsblätter und Texte als PDF"
+    en = "Worksheets and texts as PDF"
 
 [[milestones]]
   id = "5"
@@ -81,6 +308,50 @@
     de = "Abgeschlossen. Nachgezogen: eigene Nachrichten bearbeiten mit Versionen („‹ 1/2 ›“) und Kopierknopf. In 0.3.0 kamen Anhänge mit Bild-Eingabe (EXIF entfernt), Projekte mit Anweisungen, Standardmodell und Sammlungen, Chats teilen mit RWUD-Rechten sowie eine überarbeitete Oberfläche (Antworten in voller Breite, Seitenleiste ausblendbar, Schriftgröße A−/A+) dazu."
     en = "Complete. Follow-ups: editing your own messages with versions (“‹ 1/2 ›”) and a copy button. Version 0.3.0 added attachments with image input (EXIF removed), projects with instructions, default model and collections, chat sharing with RWUD permissions and a reworked interface (full-width answers, collapsible sidebar, font size A−/A+)."
 
+  [[milestones.steps]]
+    id = "M5-01"
+    status = "done"
+    de = "Markdown, Code-Hervorhebung und Formeln"
+    en = "Markdown, code highlighting and formulas"
+
+  [[milestones.steps]]
+    id = "M5-02"
+    status = "done"
+    de = "Titel, Umbenennen, Archiv, Löschen, Suche"
+    en = "Titles, rename, archive, delete, search"
+
+  [[milestones.steps]]
+    id = "M5-03"
+    status = "done"
+    de = "System-Prompt je Chat"
+    en = "System prompt per chat"
+
+  [[milestones.steps]]
+    id = "M5-04"
+    status = "done"
+    de = "Export als Markdown"
+    en = "Export as Markdown"
+
+  [[milestones.steps]]
+    id = "M5-05"
+    status = "done"
+    de = "Nachrichten bearbeiten, Versionen umschalten"
+    en = "Edit messages, switch between versions"
+
+  [[milestones.steps]]
+    id = "M5-06"
+    status = "done"
+    version = "0.3.0"
+    de = "Chats teilen mit Rechten"
+    en = "Share chats with permissions"
+
+  [[milestones.steps]]
+    id = "M5-07"
+    status = "done"
+    version = "0.3.0"
+    de = "Projekte"
+    en = "Projects"
+
 [[milestones]]
   id = "6"
   status = "done"
@@ -93,6 +364,71 @@
   [milestones.note]
     de = "Umgesetzt: Vergleichsmodus mit zwei oder drei Modellen, die Antworten als Versionen im Chat-Baum (Werkzeuge sind im Vergleich aus); Verbrauch und Monatsbudgets mit Hinweis ab 80 % und Sperre ab 100 % außer für kostenfreie Modelle; Seite „Mein Verbrauch“; Seite „Familie“ mit Konten, Rollen, Budgets und Gruppen sowie lesender Einsicht in Chats von Jugendlichen nur mit Option und dauerhaftem Hinweis. Seit 0.3.0 rechnet ein Kontenrahmen ab: Konten in Geld, nur Tokens oder als Pauschale, Preise mit Gültigkeit samt Cache und Reasoning, Wechselkurse, Buchungen und Budgets je Konto."
     en = "Implemented: comparison mode with two or three models, the answers stored as versions in the chat tree (tools are off in comparison); usage and monthly budgets with a warning from 80 % and a block from 100 % except for free models; a personal usage page; a “Family” page with accounts, roles, budgets and groups, plus read-only insight into teenagers' chats only with an option and a permanent notice. Since 0.3.0 billing runs through accounts: monetary, tokens only or flat rate, prices with validity dates including cache and reasoning, exchange rates, bookings and budgets per account."
+
+  [[milestones.steps]]
+    id = "M6-01"
+    status = "done"
+    de = "Vergleichsmodus mit 2–3 Modellen"
+    en = "Comparison mode with 2–3 models"
+
+  [[milestones.steps]]
+    id = "M6-02"
+    status = "done"
+    de = "Verbrauchsübersicht"
+    en = "Usage overview"
+
+  [[milestones.steps]]
+    id = "M6-03"
+    status = "done"
+    de = "Budgets: Hinweis ab 80 %, Sperre ab 100 %"
+    en = "Budgets: warning from 80 %, block at 100 %"
+
+  [[milestones.steps]]
+    id = "M6-04"
+    status = "done"
+    de = "Seite „Familie“"
+    en = "“Family” page"
+
+  [[milestones.steps]]
+    id = "M6-05"
+    status = "done"
+    de = "Einsicht in Jugendlichen-Chats nur mit Option"
+    en = "Viewing teenagers' chats only with opt-in"
+
+  [[milestones.steps]]
+    id = "M6-06"
+    status = "done"
+    version = "0.3.0"
+    de = "Abrechnungskonten je Anbieter"
+    en = "Billing accounts per provider"
+
+  [[milestones.steps]]
+    id = "M6-07"
+    status = "done"
+    version = "0.3.0"
+    de = "Preise mit Gültigkeitsdatum"
+    en = "Prices with validity dates"
+
+  [[milestones.steps]]
+    id = "M6-08"
+    status = "done"
+    version = "0.3.0"
+    de = "Buchung je Antwort"
+    en = "Booking per answer"
+
+  [[milestones.steps]]
+    id = "M6-09"
+    status = "done"
+    version = "0.3.0"
+    de = "Wechselkurse USD/EUR"
+    en = "USD/EUR exchange rates"
+
+  [[milestones.steps]]
+    id = "M6-10"
+    status = "done"
+    version = "0.3.0"
+    de = "Budgets je Abrechnungskonto"
+    en = "Budgets per billing account"
 
 [[milestones]]
   id = "7"
@@ -107,6 +443,87 @@
     de = "Umgesetzt: Sammlungen mit Freigaben, Upload (PDF, DOCX, TXT, MD), Worker mit Wiederholung und OCR (Tesseract), Suche mit Zugriffsfilter in SQL und Volltext, Quellen mit Seitenzahl, Werkzeug für die Dokumentsuche und eine eigene RAG-Verwaltung im Admin. Embeddings lokal über LM Studio (nomic-embed-text, 768 Dimensionen), OCR mit olmOCR über LM Studio und Tesseract als Ersatz, beides im Admin per Knopf testbar; Verzeichnisquellen vom Server oder NAS, beschränkt auf `RAG_SOURCE_ROOTS` und periodisch eingelesen. Seit 0.3.0: Zitieren mit Abschnitt, Seite und Absatz in sechs Stilen samt Literaturangaben und Normen, Abbildungen per Vision-Modell beschrieben, Bilddateien als Dokument, die Dokument-Werkzeuge `list_documents`, `document_info` und `read_document`, Dokumente im Browser ansehen und Aufträge abbrechen."
     en = "Implemented: collections with sharing, upload (PDF, DOCX, TXT, MD), a worker with retries and OCR (Tesseract), search with access filtering in SQL plus full text, sources with page numbers, a document search tool and a dedicated RAG section in the admin. Embeddings locally via LM Studio (nomic-embed-text, 768 dimensions), OCR with olmOCR via LM Studio and Tesseract as a fallback, both testable with a button in the admin; directory sources from the server or NAS, limited to `RAG_SOURCE_ROOTS` and read in periodically. Since 0.3.0: citations with section, page and paragraph in six styles including bibliographic data and standards, figures described by a vision model, image files as documents, the document tools `list_documents`, `document_info` and `read_document`, viewing documents in the browser and cancelling jobs."
 
+  [[milestones.steps]]
+    id = "M7-01"
+    status = "done"
+    de = "Sammlungen, Dokumente und Freigaben"
+    en = "Collections, documents and sharing"
+
+  [[milestones.steps]]
+    id = "M7-02"
+    status = "done"
+    de = "Hintergrund-Worker für Aufträge"
+    en = "Background worker for jobs"
+
+  [[milestones.steps]]
+    id = "M7-03"
+    status = "done"
+    de = "Text auslesen, zerteilen, Embeddings"
+    en = "Text extraction, chunking, embeddings"
+
+  [[milestones.steps]]
+    id = "M7-04"
+    status = "done"
+    de = "Vektorindex und Neu-Indexieren"
+    en = "Vector index and reindexing"
+
+  [[milestones.steps]]
+    id = "M7-05"
+    status = "done"
+    de = "Suche mit Zugriffsfilter und Quellenangabe"
+    en = "Search with access filter and sources"
+
+  [[milestones.steps]]
+    id = "M7-06"
+    status = "done"
+    de = "Dokumentensuche als Werkzeug"
+    en = "Document search as a tool"
+
+  [[milestones.steps]]
+    id = "M7-07"
+    status = "done"
+    de = "Tests zu Trefferqualität und Zugriffsgrenzen"
+    en = "Tests for result quality and access limits"
+
+  [[milestones.steps]]
+    id = "M7-08"
+    status = "done"
+    de = "Eigene Dokumentenverwaltung im Admin"
+    en = "Dedicated document admin"
+
+  [[milestones.steps]]
+    id = "M7-09"
+    status = "done"
+    de = "Embeddings und Texterkennung lokal über LM Studio"
+    en = "Local embeddings and OCR via LM Studio"
+
+  [[milestones.steps]]
+    id = "M7-10"
+    status = "done"
+    de = "Verzeichnisquellen"
+    en = "Directory sources"
+
+  [[milestones.steps]]
+    id = "M7-11"
+    status = "done"
+    version = "0.3.0"
+    de = "Abbildungen beschreiben, Bilder als Dokument"
+    en = "Describe figures, images as documents"
+
+  [[milestones.steps]]
+    id = "M7-12"
+    status = "done"
+    version = "0.3.0"
+    de = "Werkzeuge zum Auflisten und Lesen von Dokumenten"
+    en = "Tools to list and read documents"
+
+  [[milestones.steps]]
+    id = "M7-13"
+    status = "done"
+    version = "0.3.0"
+    de = "Zitieren mit Seite, Absatz und Gliederung, Zitierstile"
+    en = "Citing with page, paragraph and section, citation styles"
+
 [[milestones]]
   id = "8"
   status = "done"
@@ -119,6 +536,64 @@
   [milestones.note]
     de = "Umgesetzt mit einem selbst gehosteten SearXNG: Schalter „Websuche“ im Chat und Werkzeug für Modelle, „SearXNG testen“ im Admin, Seitenabruf ohne Zugriff auf Adressen im Heimnetz, Webtext nur als markiertes Quellmaterial. Seit 0.3.0 die Werkzeuge `fetch_url` und `crawl_site` (SSRF-geschützt, beachten robots.txt), URLs aus der Frage, Markierung erfundener Links und Grundregeln für alle Modelle. Eine Such-API ist nicht angebunden."
     en = "Implemented with a self-hosted SearXNG: a “web search” switch in the chat and a tool for models, “SearXNG testen” in the admin, page fetching without access to home-network addresses, web text only as marked source material. Since 0.3.0 the `fetch_url` and `crawl_site` tools (SSRF-protected, respecting robots.txt), URLs from the question, flagging of invented links and base rules for all models. No search API is connected."
+
+  [[milestones.steps]]
+    id = "M8-01"
+    status = "done"
+    de = "Suche über SearXNG"
+    en = "Search via SearXNG"
+
+  [[milestones.steps]]
+    id = "M8-02"
+    status = "done"
+    de = "Seitenabruf ohne Zugriff aufs Heimnetz"
+    en = "Page fetching without access to the home network"
+
+  [[milestones.steps]]
+    id = "M8-03"
+    status = "done"
+    de = "Webtext als markiertes Quellmaterial"
+    en = "Web text as marked source material"
+
+  [[milestones.steps]]
+    id = "M8-04"
+    status = "done"
+    de = "Quellen unter der Antwort, Websuche als Werkzeug"
+    en = "Sources below the answer, web search as a tool"
+
+  [[milestones.steps]]
+    id = "M8-05"
+    status = "done"
+    de = "Tests gegen Intranet-Adressen und Weiterleitungen"
+    en = "Tests against intranet addresses and redirects"
+
+  [[milestones.steps]]
+    id = "M8-06"
+    status = "done"
+    version = "0.3.0"
+    de = "Werkzeug „Seite abrufen“"
+    en = "“Fetch page” tool"
+
+  [[milestones.steps]]
+    id = "M8-07"
+    status = "done"
+    version = "0.3.0"
+    de = "Werkzeug „Website durchsuchen“"
+    en = "“Crawl website” tool"
+
+  [[milestones.steps]]
+    id = "M8-08"
+    status = "done"
+    version = "0.3.0"
+    de = "Schutz vor erfundenen Fakten und Links"
+    en = "Safeguards against invented facts and links"
+
+  [[milestones.steps]]
+    id = "M8-09"
+    status = "done"
+    version = "0.3.1"
+    de = "Grundregeln sichtbar, Kreativität und Denktiefe einstellbar"
+    en = "Visible base rules, adjustable creativity and reasoning effort"
 
 [[milestones]]
   id = "9"
@@ -133,6 +608,37 @@
     de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Offen: Bereich ändern, Varianten und der MCP-Server für klassische Bearbeitung."
     en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Still open: editing areas, variations and the MCP server for classic editing."
 
+  [[milestones.steps]]
+    id = "M9-01"
+    status = "done"
+    version = "0.3.0"
+    de = "Bilderzeugung (OpenAI, Gemini)"
+    en = "Image generation (OpenAI, Gemini)"
+
+  [[milestones.steps]]
+    id = "M9-02"
+    status = "planned"
+    de = "Bereich ändern (Maske) und Varianten"
+    en = "Edit a marked area (mask) and variations"
+
+  [[milestones.steps]]
+    id = "M9-03"
+    status = "planned"
+    de = "Klassische Bildbearbeitung über mitgelieferten MCP-Server"
+    en = "Classic image editing via a bundled MCP server"
+
+  [[milestones.steps]]
+    id = "M9-04"
+    status = "partial"
+    de = "Geschützte Auslieferung der Bilder (Auslieferung über nginx noch offen)"
+    en = "Protected delivery of images (delivery via nginx still open)"
+
+  [[milestones.steps]]
+    id = "M9-05"
+    status = "planned"
+    de = "Tests der Bildbearbeitung"
+    en = "Tests for image editing"
+
 [[milestones]]
   id = "10"
   status = "planned"
@@ -143,6 +649,24 @@
     de = "Spracheingabe (Aufnahme → Text) und Vorlesen der Antworten, über HTTPS im Browser an PC und Handy."
     en = "Voice input (recording → text) and reading answers aloud, over HTTPS in the browser on PC and phone."
 
+  [[milestones.steps]]
+    id = "M10-01"
+    status = "planned"
+    de = "Spracheingabe: Aufnahme wird zu Text"
+    en = "Voice input: recording becomes text"
+
+  [[milestones.steps]]
+    id = "M10-02"
+    status = "planned"
+    de = "Antworten vorlesen"
+    en = "Read answers aloud"
+
+  [[milestones.steps]]
+    id = "M10-03"
+    status = "planned"
+    de = "Grenzen für Aufnahmelänge und Dateigröße"
+    en = "Limits for recording length and file size"
+
 [[milestones]]
   id = "11"
   status = "planned"
@@ -152,6 +676,7 @@
   [milestones.text]
     de = "Neu eingeplant; der genaue Umfang wird gerade geklärt."
     en = "Newly planned; the exact scope is still being defined."
+
 
 [[milestones]]
   id = "12"
@@ -166,6 +691,30 @@
     de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
     en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Still open: backup, a complete guide and verified upgrade and removal."
 
+  [[milestones.steps]]
+    id = "M12-01"
+    status = "done"
+    de = "nginx mit TLS im Paket"
+    en = "nginx with TLS in the package"
+
+  [[milestones.steps]]
+    id = "M12-02"
+    status = "planned"
+    de = "Backup von Datenbank, Dateien und Einstellungen"
+    en = "Backup of database, files and settings"
+
+  [[milestones.steps]]
+    id = "M12-03"
+    status = "partial"
+    de = "Vollständige Installationsanleitung"
+    en = "Complete installation guide"
+
+  [[milestones.steps]]
+    id = "M12-04"
+    status = "partial"
+    de = "Upgrade und Entfernen des Pakets geprüft (automatische Tests vorhanden, Prüfung auf Debian 13 offen)"
+    en = "Verified package upgrade and removal (automated tests exist, check on Debian 13 open)"
+
 [[milestones]]
   id = "13"
   status = "planned"
@@ -179,6 +728,84 @@
     de = "Neu eingeplant. Das Kontextmenü und die Prompt-Vorlagen kommen zuerst, das Scratchpad dockt an die Projekte an."
     en = "Newly planned. The context menu and prompt templates come first; the scratchpad attaches to projects."
 
+  [[milestones.steps]]
+    id = "M13-01"
+    status = "planned"
+    de = "Kontextmenü im Chat"
+    en = "Context menu in the chat"
+
+  [[milestones.steps]]
+    id = "M13-02"
+    status = "planned"
+    de = "Prompt-Vorlagen"
+    en = "Prompt templates"
+
+  [[milestones.steps]]
+    id = "M13-03"
+    status = "planned"
+    de = "Zitieren für alle Quellenarten"
+    en = "Citing for all kinds of sources"
+
+  [[milestones.steps]]
+    id = "M13-04"
+    status = "planned"
+    de = "Datenmodell und Rechte"
+    en = "Data model and permissions"
+
+  [[milestones.steps]]
+    id = "M13-05"
+    status = "planned"
+    de = "Material sammeln mit Herkunft"
+    en = "Collect material with its origin"
+
+  [[milestones.steps]]
+    id = "M13-06"
+    status = "planned"
+    de = "Oberfläche des Scratchpads"
+    en = "Scratchpad interface"
+
+  [[milestones.steps]]
+    id = "M13-07"
+    status = "planned"
+    de = "Gliederung"
+    en = "Outline"
+
+  [[milestones.steps]]
+    id = "M13-08"
+    status = "planned"
+    de = "Abschnitte schreiben und überarbeiten lassen"
+    en = "Have sections written and revised"
+
+  [[milestones.steps]]
+    id = "M13-09"
+    status = "planned"
+    de = "Belegprüfung"
+    en = "Citation check"
+
+  [[milestones.steps]]
+    id = "M13-10"
+    status = "planned"
+    de = "Kurzbelege und Literaturverzeichnis"
+    en = "In-text citations and bibliography"
+
+  [[milestones.steps]]
+    id = "M13-11"
+    status = "planned"
+    de = "Export als Markdown, DOCX und PDF"
+    en = "Export as Markdown, DOCX and PDF"
+
+  [[milestones.steps]]
+    id = "M13-12"
+    status = "planned"
+    de = "Projekte und Teilen"
+    en = "Projects and sharing"
+
+  [[milestones.steps]]
+    id = "M13-13"
+    status = "planned"
+    de = "Datenschutz, Sicherheit, Doku"
+    en = "Privacy, security, documentation"
+
 [[milestones]]
   id = "14"
   status = "planned"
@@ -191,3 +818,147 @@
   [milestones.note]
     de = "Neu eingeplant. Zuerst gibt es nur Werkzeuge, keinen Coding-Agenten im Container. Offen ist noch, ob der Rückkanal als eigener ASGI-Dienst oder per Long-Polling läuft."
     en = "Newly planned. Tools come first; there is no coding agent inside the container. Still open: whether the back channel runs as a separate ASGI service or via long polling."
+
+  [[milestones.steps]]
+    id = "M14-01"
+    status = "planned"
+    de = "Datenmodell"
+    en = "Data model"
+
+  [[milestones.steps]]
+    id = "M14-02"
+    status = "planned"
+    de = "Kopplung per Token"
+    en = "Pairing via token"
+
+  [[milestones.steps]]
+    id = "M14-03"
+    status = "planned"
+    de = "Rückkanal auf dem Server"
+    en = "Back channel on the server"
+
+  [[milestones.steps]]
+    id = "M14-04"
+    status = "planned"
+    de = "Runner-Programm für Podman und Docker"
+    en = "Runner program for Podman and Docker"
+
+  [[milestones.steps]]
+    id = "M14-05"
+    status = "planned"
+    de = "Werkzeuge für Shell, Dateien, git und Python"
+    en = "Tools for shell, files, git and Python"
+
+  [[milestones.steps]]
+    id = "M14-06"
+    status = "planned"
+    de = "Volumes und Sitzungen"
+    en = "Volumes and sessions"
+
+  [[milestones.steps]]
+    id = "M14-07"
+    status = "planned"
+    de = "Zeitkontingent in Container-Minuten"
+    en = "Time quota in container minutes"
+
+  [[milestones.steps]]
+    id = "M14-08"
+    status = "planned"
+    de = "Verwaltung im Web"
+    en = "Management on the web"
+
+  [[milestones.steps]]
+    id = "M14-09"
+    status = "planned"
+    de = "Sicherheit, Datenschutz, Doku"
+    en = "Security, privacy, documentation"
+
+[[milestones]]
+  id = "15"
+  status = "done"
+  [milestones.title]
+    de = "Knoten"
+    en = "Node"
+  [milestones.text]
+    de = "MultiGPT als MCP-Server: Jedes Konto kann API-Keys anlegen, deren Rechte nie über die eigene Rolle hinausgehen. Andere Programme wie n8n, Claude oder Cursor fragen damit Modelle, durchsuchen und laden Dokumente, starten und verfolgen die Indexierung und holen erzeugte Dateien ab. Keys werden nur gehasht gespeichert, sind widerrufbar und haben auf Wunsch ein Ablaufdatum; jeder Aufruf landet ohne Inhalte im Audit-Log. Dazu Befehle für die Kommandozeile und Chat-Werkzeuge für die Indexierung."
+    en = "MultiGPT as an MCP server: every account can create API keys whose permissions never exceed its own role. Other programs such as n8n, Claude or Cursor use them to ask models, search and upload documents, start and follow indexing and fetch generated files. Keys are stored only as a hash, can be revoked and optionally expire; every call is recorded in the audit log without content. Plus command-line commands and chat tools for indexing."
+  [milestones.note]
+    de = "Umgesetzt mit Version 0.3.2. Offen für die Abnahme: n8n-Workflows gegen ein installiertes Paket und der ältere Transport mit verschiedenen Clients im Betrieb."
+    en = "Done with version 0.3.2. Still open for acceptance: n8n workflows against an installed package and the older transport with various clients in practice."
+
+  [[milestones.steps]]
+    id = "M15-01"
+    status = "done"
+    version = "0.3.2"
+    de = "API-Keys je Konto mit Rechten im Rahmen der Rolle"
+    en = "API keys per account with permissions within the role"
+
+  [[milestones.steps]]
+    id = "M15-02"
+    status = "done"
+    version = "0.3.2"
+    de = "MCP-Server mit Werkzeugen"
+    en = "MCP server with tools"
+
+  [[milestones.steps]]
+    id = "M15-03"
+    status = "done"
+    version = "0.3.2"
+    de = "Seite „API-Keys“"
+    en = "“API keys” page"
+
+  [[milestones.steps]]
+    id = "M15-04"
+    status = "done"
+    version = "0.3.2"
+    de = "Übersicht im Admin"
+    en = "Overview in the admin area"
+
+  [[milestones.steps]]
+    id = "M15-05"
+    status = "done"
+    version = "0.3.2"
+    de = "Kommandozeile für Indexierung und API-Keys"
+    en = "Command line for indexing and API keys"
+
+  [[milestones.steps]]
+    id = "M15-06"
+    status = "done"
+    version = "0.3.2"
+    de = "Chat-Werkzeuge für die Indexierung"
+    en = "Chat tools for indexing"
+
+  [[milestones.steps]]
+    id = "M15-07"
+    status = "done"
+    version = "0.3.2"
+    de = "Anbindung an nginx"
+    en = "nginx integration"
+
+  [[milestones.steps]]
+    id = "M15-08"
+    status = "done"
+    version = "0.3.2"
+    de = "Anleitung für n8n"
+    en = "Guide for n8n"
+
+  [[milestones.steps]]
+    id = "M15-09"
+    status = "done"
+    version = "0.3.2"
+    de = "Tests"
+    en = "Tests"
+
+  [[milestones.steps]]
+    id = "M15-10"
+    status = "done"
+    version = "0.3.2"
+    de = "Dokumentation"
+    en = "Documentation"
+
+  [[milestones.steps]]
+    id = "M15-11"
+    status = "done"
+    version = "0.3.2"
+    de = "Älterer MCP-Transport (HTTP+SSE)"
+    en = "Older MCP transport (HTTP+SSE)"
