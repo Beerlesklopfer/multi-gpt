@@ -14,8 +14,8 @@
 #                    + 10 MB), interne location für X-Accel-Redirect
 #                    (/_protected/media/ -> MEDIA_ROOT)
 #   headers.conf     Sicherheits-Header (HSTS nur mit eigenem Zertifikat)
-#   mcp.conf         client_max_body_size für /mcp/ (Uploads als base64:
-#                    4/3 von DOCUMENT_MAX_UPLOAD_MB + 10 MB)
+#   mcp.conf         client_max_body_size für /mcp/, /mcp/sse und /mcp/messages
+#                    (Uploads als base64: 4/3 von DOCUMENT_MAX_UPLOAD_MB + 10 MB)
 #
 # Ändern: sudo dpkg-reconfigure multi-gpt
 # Eigene Ergänzungen im HTTPS-Server: Dateien /etc/multi-gpt/nginx/local/*.conf
@@ -105,6 +105,21 @@ server {
         proxy_request_buffering on;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
+        include /etc/multi-gpt/nginx/mcp.conf;
+    }
+
+    # MCP Legacy-Transport HTTP+SSE (/mcp/sse und /mcp/messages) für ältere
+    # Clients: Der Stream bleibt bis zu MCP_SSE_MAX_MINUTES (30 Min.) offen, der
+    # Server sendet alle 15 s ein Keepalive. Ohne Puffer (Django setzt zusätzlich
+    # X-Accel-Buffering: no), langer read_timeout als Reserve; POSTs an
+    # /mcp/messages haben dieselbe Upload-Grenze wie /mcp/.
+    location ~ ^/mcp/(sse|messages)/?$ {
+        proxy_pass http://multi_gpt_app;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         include /etc/multi-gpt/nginx/mcp.conf;
     }
 

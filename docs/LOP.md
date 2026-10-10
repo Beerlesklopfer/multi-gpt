@@ -12,7 +12,8 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein |
 | A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |
 | A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |
-| A6 | nginx | Eigene Änderungen an der Site: `location` für `/mcp/` beim Update übernehmen | Bestätigung genügt |
+| A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |
+| A18 | MCP-SSE | Grenzen 2 Streams je Key, 4 je Prozess, 30 Min. Laufzeit passend? (Jeder Stream belegt einen von 8 Threads je Prozess.) | ja; bei Bedarf `MULTI_GPT_THREADS` erhöhen statt die Grenze |
 | A7 | Sandbox | Standard-CPU-Zeit 10 s → 20–30 s? (sympy-Test scheitert unter Last) | ja, 30 s |
 | A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |
 | A9 | Dev-DB | `guess_capabilities --apply` ausführen (gpt-5.5, gpt-oss, qwen3 → Werkzeuge)? | ja |
@@ -54,6 +55,10 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C14 | Docker-Image: Sandbox abgeschaltet, bubblewrap fehlt im Dockerfile. |
 | C15 | Kontenrahmen: Batch-/Flex-Tarife, Gemini-Cache-Speicher und Freikontingente nicht abgebildet. |
 | C16 | Sandbox-Tests scheitern unter Last der vollen Suite gelegentlich an der CPU-Grenze (siehe A7). |
+| C17 | MCP-SSE: Ein beendeter Stream (nach 30 Min., Neustart, Widerruf) wird nur von Clients mit automatischem Neuverbinden überbrückt; mit n8n, mcp-remote und Claude Desktop nicht im Betrieb geprüft. |
+| C18 | MCP-SSE: Der SDK-Client liest SSE-Events nur bis 1 MB; `get_file` mit großen Dateien (base64) scheitert dort über SSE – dann Streamable HTTP nutzen. |
+| C19 | MCP-SSE: Ein Client-Abbruch während eines laufenden `tools/call` (z. B. `ask`) bricht das Werkzeug nicht ab (der POST-Thread merkt die Trennung des Streams nicht). |
+| C20 | MCP-SSE: Trennt der Client, merkt der Server das erst beim nächsten Keepalive (bis 15 s); bis dahin zählt der Stream gegen die Grenzen. |
 
 ## D. Geplante Meilensteine
 

@@ -29,6 +29,7 @@ Browser ──HTTPS (443)──> nginx ──HTTP──> gunicorn auf 127.0.0.1:
 | **Statische Dateien** | liefert nginx direkt aus `/usr/share/python/multi-gpt/static/` (mit vorkomprimierten `.gz`-Dateien, gehashte Namen ein Jahr im Cache) |
 | **Gestreamte Antworten (SSE)** | ohne Puffer, bis 300 s offen (passend zu `MULTI_GPT_TIMEOUT`) |
 | **MCP-Server `/mcp/`** | ohne Puffer (Fortschritt als SSE), 300 s, eigene Upload-Grenze für base64 (siehe [API-Keys](API-Keys)) |
+| **MCP-SSE `/mcp/sse`, `/mcp/messages`** | älterer Transport HTTP+SSE: ohne Puffer, `proxy_read_timeout` 3600 s (der Stream bleibt bis 30 Min. offen, Keepalive alle 15 s), Upload-Grenze wie `/mcp/` |
 | **Uploads** | `client_max_body_size` = `DOCUMENT_MAX_UPLOAD_MB` + 10 MB |
 | **Sicherheits-Header** | `X-Content-Type-Options`, `Referrer-Policy`; HSTS nur mit eigenem Zertifikat |
 
@@ -58,7 +59,7 @@ Diese Dateien erzeugt das postinst bei **jeder** Konfiguration (Installation, Up
 | `http.conf` | `listen 80` (ggf. mit `default_server`), `server_name` |
 | `https.conf` | `listen 443 ssl` (ggf. mit `default_server`), `server_name`, Zertifikat und Schlüssel, `client_max_body_size`, interne `location /_protected/media/` für X-Accel-Redirect |
 | `headers.conf` | Sicherheits-Header; `Strict-Transport-Security` (HSTS, 2 Jahre) nur mit eigenem Zertifikat |
-| `mcp.conf` | `client_max_body_size` für `/mcp/`: Dateien kommen dort base64-kodiert im JSON (4/3 der Größe), also ⌈`DOCUMENT_MAX_UPLOAD_MB` × 4/3⌉ + 10 MB (bei 25 MB: 44 MB) |
+| `mcp.conf` | `client_max_body_size` für `/mcp/`, `/mcp/sse` und `/mcp/messages`: Dateien kommen dort base64-kodiert im JSON (4/3 der Größe), also ⌈`DOCUMENT_MAX_UPLOAD_MB` × 4/3⌉ + 10 MB (bei 25 MB: 44 MB) |
 
 ### Eigene Ergänzungen: `/etc/multi-gpt/nginx/local/*.conf`
 
@@ -191,8 +192,14 @@ Das setzt `client_max_body_size` (auch für `/mcp/` in `mcp.conf`) neu und start
 Hat jemand die Site `/etc/nginx/sites-available/multi-gpt` von Hand geändert und beim Update auf
 0.3.2 die alte Fassung behalten, fehlt dort die `location` für `/mcp/`. Der MCP-Server funktioniert
 dann trotzdem, aber Fortschrittsmeldungen kommen gepuffert an und Uploads über `/mcp/` sind auf
-die normale Grenze beschränkt. Abhilfe: die neue Fassung (`multi-gpt.dpkg-dist`) übernehmen
-oder den Block `location ~ ^/mcp/?$ { … }` daraus übertragen.
+die normale Grenze beschränkt. Ohne den Block `location ~ ^/mcp/(sse|messages)/?$` kommen
+Antworten über den SSE-Stream (ältere Clients) gepuffert oder gar nicht an, und nginx beendet den
+Stream nach 60 s. Abhilfe: die neue Fassung (`multi-gpt.dpkg-dist`) übernehmen oder beide Blöcke
+(`location ~ ^/mcp/?$ { … }` und `location ~ ^/mcp/(sse|messages)/?$ { … }`) daraus übertragen.
+
+Eigene Proxys vor MultiGPT (z. B. ein Reverse-Proxy im Container-Host) brauchen für `/mcp/sse`
+ebenso: kein Puffern der Antwort (nginx: `proxy_buffering off`, Django sendet zusätzlich
+`X-Accel-Buffering: no`) und ein Lese-Timeout deutlich über 15 s, besser 3600 s.
 
 ## Fehlersuche
 

@@ -18,6 +18,9 @@ check "X-Accel-location" grep -q "alias $R/media/;" "$R/etc/multi-gpt/nginx/http
 check "mcp.conf: base64-Upload 44m" grep -qx "client_max_body_size 44m;" "$R/etc/multi-gpt/nginx/mcp.conf"
 check "Site: /mcp/ ungepuffert" bash -c "grep -A6 'location ~ ^/mcp/' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_buffering off;'"
 check "Site bindet mcp.conf ein" grep -q "include $R/etc/multi-gpt/nginx/mcp.conf;" "$R/etc/nginx/sites-available/multi-gpt"
+check "Site: /mcp/sse ungepuffert" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_buffering off;'"
+check "Site: /mcp/sse read_timeout 3600s" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_read_timeout 3600s;'"
+check "Site: /mcp/sse bindet mcp.conf ein" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'mcp.conf;'"
 check "ALLOWED_HOSTS" test "$(envv ALLOWED_HOSTS)" = "localhost,127.0.0.1,nas.intranet.example,nas,192.168.24.250,172.17.0.1"
 check "CSRF" test "$(envv CSRF_TRUSTED_ORIGINS)" = "https://nas.intranet.example,https://nas,https://192.168.24.250,https://172.17.0.1"
 check "SECURE_COOKIES True" test "$(envv SECURE_COOKIES)" = True

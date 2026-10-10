@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from multigpt.accounts import views_settings, views_usage
+from multigpt.node import sse as node_sse
 from multigpt.node import views as node_views
 from multigpt.node import views_keys
 
@@ -31,5 +32,10 @@ urlpatterns = [
     # Weiterleitung (APPEND_SLASH) würde den POST verlieren.
     path("mcp/", node_views.mcp_endpoint, name="mcp"),
     path("mcp", node_views.mcp_endpoint),
+    # Legacy-Transport HTTP+SSE (MCP 2024-11-05) für ältere Clients (node/sse.py).
+    path("mcp/sse", node_sse.sse_endpoint, name="mcp_sse"),
+    path("mcp/sse/", node_sse.sse_endpoint),
+    path("mcp/messages", node_sse.messages_endpoint, name="mcp_messages"),
+    path("mcp/messages/", node_sse.messages_endpoint),
     path("", include("multigpt.chat.urls")),
 ]

@@ -10,7 +10,8 @@
     <p class="page-intro">
       Mit einem API-Key steuern andere Programme – z. B. n8n, Claude Desktop oder eigene
       Agenten – MultiGPT über den MCP-Server unter <code>{{ request.scheme }}://{{ request.get_host }}/mcp/</code>
-      (Header <code>Authorization: Bearer &lt;Key&gt;</code>). Ein Key kann nie mehr als dein Konto:
+      (Header <code>Authorization: Bearer &lt;Key&gt;</code>; ältere Clients mit SSE:
+      <code>/mcp/sse</code>). Ein Key kann nie mehr als dein Konto:
       Es gelten deine Rolle, Freigaben und Budgets; Kosten gehen auf dein Konto.
       Anleitung: <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/API-Keys">Wiki „API-Keys“</a>
       und <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/n8n">„n8n“</a>.

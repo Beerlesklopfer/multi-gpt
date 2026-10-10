@@ -73,7 +73,7 @@ Embedding-Modell, Präfixe und OCR-Verfahren stehen **nicht** in der `.env`, son
 
 ## MCP-Server und API-Keys
 
-MultiGPT ist unter `/mcp/` selbst MCP-Server (siehe [API-Keys](API-Keys) und [n8n](n8n)).
+MultiGPT ist unter `/mcp/` (ältere Clients: `/mcp/sse`) selbst MCP-Server (siehe [API-Keys](API-Keys) und [n8n](n8n)).
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -82,6 +82,10 @@ MultiGPT ist unter `/mcp/` selbst MCP-Server (siehe [API-Keys](API-Keys) und [n8
 | `API_RATE_LIMIT_PER_MINUTE` | `120` | Höchstzahl Aufrufe je Key und Minute. |
 | `API_FILE_MAX_MB` | `20` | Höchstgröße einer Datei für das Werkzeug `get_file`. |
 | `API_AUDIT_DAYS` | `90` | Aufbewahrung des Audit-Logs der API-Aufrufe (nur Metadaten). |
+| `MCP_SSE_PER_PROCESS` | `4` | Höchstzahl offener SSE-Streams (`/mcp/sse`, ältere Clients) je gunicorn-Prozess; jeder belegt einen Thread (`MULTI_GPT_THREADS`). Darüber HTTP 503. |
+| `MCP_SSE_PER_KEY` | `2` | Höchstzahl offener SSE-Streams je Key über alle Prozesse. Darüber HTTP 503. |
+| `MCP_SSE_MAX_MINUTES` | `30` | Höchstdauer eines SSE-Streams; danach verbindet der Client neu. |
+| `MCP_SSE_KEEPALIVE_SECONDS` | `15` | Abstand der Keepalives im SSE-Stream; dabei prüft der Server auch den Key (Widerruf). |
 
 ## Kosten
 

@@ -24,11 +24,54 @@ Authorization: Bearer mgpt_…
 - Quellen: [Streamable HTTP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http),
   [Transports 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
 
+### SSE für ältere Clients (HTTP+SSE)
+
+Manche Clients können nur den älteren Transport **HTTP+SSE** (Spezifikation
+[2024-11-05](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse)),
+z. B. der n8n-Knoten „MCP Client Tool“ in Version 1 bzw. mit „Server Sent Events (Deprecated)“,
+`mcp-remote` mit `--transport sse-only` oder ältere Desktop-Clients. Dafür gibt es zusätzlich:
+
+```
+GET  https://<hostname>/mcp/sse                       (Event-Stream öffnen)
+POST https://<hostname>/mcp/messages?session_id=…     (Adresse liefert der Stream)
+Authorization: Bearer mgpt_…                          (bei beiden)
+```
+
+Ablauf: Der Stream sendet zuerst `event: endpoint` mit der POST-Adresse samt Sitzungs-ID
+(128 Bit Zufall), danach alle 15 s einen Keepalive. Jede Nachricht an diese Adresse bekommt
+sofort nach der Verarbeitung **202**; die Antwort kommt als `event: message` über den Stream
+(bei `ask` mit `progressToken` vorher `notifications/progress`). Werkzeuge, Rechte, Drosselung
+und Audit-Log sind dieselben wie bei `/mcp/`.
+
+- Die Sitzung gehört zu dem Key, der den Stream geöffnet hat. Eine fremde, unbekannte oder
+  beendete Sitzung ergibt **404** – dann neu verbinden.
+- Höchstens **2 Streams je Key** und **4 je gunicorn-Prozess** (`MCP_SSE_PER_KEY`,
+  `MCP_SSE_PER_PROCESS`), sonst **503** mit `Retry-After`. Jeder offene Stream belegt einen
+  Thread des Servers.
+- Ein Stream endet nach **30 Minuten** (`MCP_SSE_MAX_MINUTES`), bei einem Neustart des Dienstes
+  und spätestens 15 s nach dem Widerruf des Keys. Clients verbinden sich dann neu.
+- Wo möglich **Streamable HTTP** (`/mcp/`) nehmen: zustandslos, ohne Dauerverbindung.
+
+Auf der Seite „API-Keys“ stehen unter **SSE (ältere Clients …)** JSON, `claude mcp add` und die
+n8n-Felder für diesen Weg, z. B.
+
+```json
+{"mcpServers": {"multigpt": {"type": "sse", "url": "https://nas.example/mcp/sse",
+                             "headers": {"Authorization": "Bearer mgpt_…"}}}}
+```
+
+```bash
+claude mcp add --transport sse multigpt https://nas.example/mcp/sse --header "Authorization: Bearer mgpt_…"
+```
+
 ## Key anlegen
 
 **Im Browser:** Einstellungen → „API-Keys (MCP-Zugang …)“ → Name, Rechte, Gültigkeit und
 optional „Nur diese Sammlungen“ wählen → **Key anlegen**. Der Key erscheint **genau einmal**;
 MultiGPT speichert nur einen Hash (SHA-256). Verloren = widerrufen und neu anlegen.
+Unter dem Key-Feld stehen die Verbindungsdaten zum Kopieren: JSON (`mcpServers`) und
+`claude mcp add` für Streamable HTTP, aufklappbar dieselben Angaben für **SSE** (ältere Clients,
+n8n mit „Server Sent Events“).
 
 **Auf der Konsole** (Betrieb):
 
@@ -176,5 +219,7 @@ Bei einem selbstsignierten Zertifikat (snakeoil) braucht Node zusätzlich
 | HTTP 403 | Rolle ohne „API-Keys/MCP-Zugang“ bzw. Key ohne wirksame Rechte; oder fremder `Origin`. |
 | HTTP 429 | Zu viele Fehlversuche von dieser IP oder zu viele Aufrufe mit diesem Key. |
 | HTTP 413 | Anfrage zu groß (Upload über `DOCUMENT_MAX_UPLOAD_MB`). |
+| HTTP 404 an `/mcp/messages` | SSE-Sitzung unbekannt, beendet oder von einem anderen Key – Stream neu öffnen. |
+| HTTP 503 an `/mcp/sse` | Zu viele offene SSE-Streams (je Key bzw. Serverprozess); `Retry-After` abwarten oder Streamable HTTP nutzen. |
 | `Unknown tool` | Werkzeug gibt es nicht oder der Key hat das Recht nicht. |
 | `isError: true` | Das Werkzeug lehnt ab (z. B. „Sammlung nicht gefunden.“, „Diese Sammlung darf nur gelesen werden.“). |

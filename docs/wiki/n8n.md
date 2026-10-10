@@ -55,9 +55,35 @@ Tipp: Den Server „n8n …“ nennen oder die URL von n8n verwenden; daran erke
      „Manual“ oder „JSON“). Für `get_file`: Option **Convert to Binary**.
    - **MCP Client Tool** (Werkzeuge für einen *AI Agent* in n8n): gleiche Adresse und
      Zugangsdaten, **Tools to Include** auf die benötigten Werkzeuge beschränken.
+   - **Ältere n8n-Versionen bzw. SSE:** Der Knoten „MCP Client Tool“ kennt in Version 1 nur
+     SSE (Feld **SSE Endpoint**); in neueren Versionen gibt es unter **Server Transport** neben
+     „HTTP Streamable“ (Standard) noch „Server Sent Events (Deprecated)“. Dann als Adresse
+     `https://<hostname>/mcp/sse` eintragen, siehe unten.
 4. Läuft MultiGPT mit dem selbstsignierten snakeoil-Zertifikat, vertraut n8n ihm nicht. Besser
    ein eigenes Zertifikat einspielen ([nginx und TLS](nginx-und-TLS)); sonst dem n8n-Container
    das Zertifikat bekannt machen (`NODE_EXTRA_CA_CERTS`).
+
+### SSE-Variante für ältere n8n
+
+Stand der n8n-Doku und des Quelltexts (Oktober 2026): „MCP Client Tool“ (Knotenversion 1.4)
+bietet unter **Server Transport** „HTTP Streamable“ (Standard ab Version 1.2) und „Server Sent
+Events (Deprecated)“ (Standard in 1.1); Version 1 kennt nur SSE mit dem Feld **SSE Endpoint**.
+Authentication: „Bearer Auth“, „Header Auth“, „MCP OAuth2“, „Multiple Headers Auth“ oder „None“.
+Der Knoten „MCP Client“ hat ebenfalls **Server Transport** und **MCP Endpoint URL**.
+
+Wenn „HTTP Streamable“ fehlt oder nicht funktioniert:
+
+| Feld | Wert |
+|---|---|
+| Server Transport | „Server Sent Events (Deprecated)“ (in Version 1 entfällt das Feld) |
+| Endpoint bzw. SSE Endpoint | `https://<hostname>/mcp/sse` |
+| Authentication | „Header Auth“: Name `Authorization`, Value `Bearer mgpt_…` – oder „Bearer Auth“ mit dem Key |
+
+Die Seite „API-Keys“ zeigt diese Felder unter **SSE (ältere Clients …)** mit dem Key zum
+Kopieren. n8n öffnet den Stream je Ausführung und schließt ihn danach; jeder offene Stream
+belegt einen Thread in MultiGPT (höchstens 2 je Key, siehe [API-Keys](API-Keys#sse-für-ältere-clients-httpsse)).
+Läuft ein Workflow mit vielen parallelen Agenten auf denselben Key, kann 503 kommen – dann
+Streamable HTTP oder je Workflow einen eigenen Key nehmen.
 
 Alternativ ohne MCP-Knoten: **HTTP Request** mit `POST https://<hostname>/mcp/`, Header
 `Authorization: Bearer …`, `Accept: application/json, text/event-stream` und als JSON-Body z. B.

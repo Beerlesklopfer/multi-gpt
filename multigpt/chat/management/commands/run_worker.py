@@ -23,6 +23,7 @@ from multigpt.chat import attachments as chat_attachments
 from multigpt.chat.mcp import status as mcp_status
 from multigpt.chat.rag import jobs
 from multigpt.node import audit as api_audit
+from multigpt.node import sse as api_sse
 from multigpt.rag import crawl
 
 logger = logging.getLogger("multigpt.worker")
@@ -73,6 +74,8 @@ class Command(BaseCommand):
                         mcp_status.check_due()
                         # Audit-Log der API-Aufrufe (M15): alte Einträge löschen.
                         api_audit.cleanup()
+                        # Legacy-SSE (M15): Sitzungen ohne lebenden Stream löschen.
+                        api_sse.cleanup()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:

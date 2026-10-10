@@ -227,3 +227,11 @@ API_RATE_LIMIT_PER_MINUTE = env.int("API_RATE_LIMIT_PER_MINUTE", default=120)
 # Höchstgröße für get_file (MB); Audit-Log der Aufrufe wird nach API_AUDIT_DAYS gelöscht.
 API_FILE_MAX_MB = env.int("API_FILE_MAX_MB", default=20)
 API_AUDIT_DAYS = env.int("API_AUDIT_DAYS", default=90)
+# Legacy-Transport HTTP+SSE (/mcp/sse, ältere Clients): Jeder offene Stream belegt
+# einen gunicorn-Thread. Höchstens MCP_SSE_PER_PROCESS Streams je Prozess und
+# MCP_SSE_PER_KEY je Key (sonst 503); ein Stream endet nach MCP_SSE_MAX_MINUTES,
+# Keepalive (und Prüfung des Keys) alle MCP_SSE_KEEPALIVE_SECONDS.
+MCP_SSE_PER_PROCESS = env.int("MCP_SSE_PER_PROCESS", default=4)
+MCP_SSE_PER_KEY = env.int("MCP_SSE_PER_KEY", default=2)
+MCP_SSE_MAX_MINUTES = env.int("MCP_SSE_MAX_MINUTES", default=30)
+MCP_SSE_KEEPALIVE_SECONDS = env.int("MCP_SSE_KEEPALIVE_SECONDS", default=15)

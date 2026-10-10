@@ -218,6 +218,37 @@ def test_page_offers_copyable_mcp_config(client):
     assert again.context["connect_created"] is None
 
 
+def test_page_offers_sse_variant_for_older_clients(client):
+    import json
+
+    user = make_user("anna")
+    client.force_login(user)
+    url = reverse("api_keys")
+    response = client.post(url, {"name": "n8n alt", "scopes": [S.DOCS_READ], "expires": "30"})
+    secret = response.context["created"].secret
+    shown = response.context["connect_created"]
+    server = json.loads(shown["sse_json"])["mcpServers"]["multigpt"]
+    assert server == {
+        "type": "sse",
+        "url": "http://testserver/mcp/sse",
+        "headers": {"Authorization": f"Bearer {secret}"},
+    }
+    assert shown["sse_claude_code"] == (
+        "claude mcp add --transport sse multigpt http://testserver/mcp/sse "
+        f'--header "Authorization: Bearer {secret}"'
+    )
+    assert "Server Sent Events (Deprecated)" in shown["n8n_sse"]
+    assert f"Bearer {secret}" in shown["n8n_sse"]
+    page = client.get(url).content.decode()
+    assert "SSE</strong> (ältere Clients, z. B. n8n MCP Client mit SSE)" in page
+    for block in ("mcp-sse-json", "mcp-sse-cmd", "mcp-sse-n8n"):
+        # Kopierknopf im Feld und Vorlage mit Platzhalter für das Live-Einsetzen
+        assert f'data-connect-copy="{block}-template"' in page
+        assert f'<pre id="{block}-template" data-template="' in page
+    assert page.count("&lt;DEIN_API_KEY&gt;") >= 10  # je Block Vorlage und Anzeige
+    assert secret not in page
+
+
 def test_quick_button_creates_key_with_role_scopes(client):
     import json
 

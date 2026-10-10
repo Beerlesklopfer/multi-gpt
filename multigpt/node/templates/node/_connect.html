@@ -20,3 +20,38 @@
   </button>
   <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
 </div>
+<details class="connect-sse">
+  <summary><strong>SSE</strong> (ältere Clients, z. B. n8n MCP Client mit SSE)</summary>
+  <p class="hint">Älterer Transport HTTP+SSE unter <code>{{ cfg.sse_url }}</code> für Clients, die
+     „HTTP Streamable“ noch nicht können (n8n „MCP Client Tool“ in Version 1 bzw. mit
+     „Server Sent Events (Deprecated)“, mcp-remote, einige Desktop-Clients). Wenn möglich die
+     Angaben oben (Streamable HTTP) nutzen.</p>
+  <p><strong>JSON</strong> (<code>mcpServers</code> mit <code>"type": "sse"</code>):</p>
+  <div class="connect-block">
+    <pre id="mcp-sse-json-{{ suffix }}" data-template="{{ tpl.sse_json }}"><code>{{ cfg.sse_json }}</code></pre>
+    <button type="button" class="icon-button connect-copy" data-connect-copy="mcp-sse-json-{{ suffix }}"
+            aria-label="JSON (SSE) kopieren" title="JSON (SSE) kopieren">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+    </button>
+    <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+  </div>
+  <p><strong>Claude Code</strong> (Terminal):</p>
+  <div class="connect-block">
+    <pre id="mcp-sse-cmd-{{ suffix }}" data-template="{{ tpl.sse_claude_code }}"><code>{{ cfg.sse_claude_code }}</code></pre>
+    <button type="button" class="icon-button connect-copy" data-connect-copy="mcp-sse-cmd-{{ suffix }}"
+            aria-label="Befehl (SSE) kopieren" title="Befehl (SSE) kopieren">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+    </button>
+    <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+  </div>
+  <p><strong>n8n</strong> („MCP Client Tool“; in Version 1 heißt das Feld „SSE Endpoint“; statt
+     „Header Auth“ geht auch „Bearer Auth“ mit dem Key als Token):</p>
+  <div class="connect-block">
+    <pre id="mcp-sse-n8n-{{ suffix }}" data-template="{{ tpl.n8n_sse }}"><code>{{ cfg.n8n_sse }}</code></pre>
+    <button type="button" class="icon-button connect-copy" data-connect-copy="mcp-sse-n8n-{{ suffix }}"
+            aria-label="n8n-Felder kopieren" title="n8n-Felder kopieren">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+    </button>
+    <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+  </div>
+</details>

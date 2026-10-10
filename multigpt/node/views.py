@@ -4,6 +4,9 @@ Ablauf je Anfrage (zustandslos, jede Prüfung frisch aus der Datenbank):
 
 1. ``Origin`` prüfen (Schutz gegen DNS-Rebinding): nur Hosts aus ``ALLOWED_HOSTS``.
 2. Nur POST (GET/DELETE: 405, kein Server→Client-Stream, keine Sitzungen).
+   Den alten Transport HTTP+SSE mit Stream und Sitzung gibt es getrennt unter
+   ``/mcp/sse`` (``sse.py``); er nutzt ``authorize``, ``read_message`` und
+   ``dispatch`` von hier.
 3. Drosselung je IP nach Fehlversuchen (429), dann ``Authorization: Bearer``:
    ohne bzw. mit ungültigem, abgelaufenem oder widerrufenem Key 401 ohne
    Details. Cookies und Sitzung werden auf ``/mcp/`` nie ausgewertet, deshalb
@@ -118,14 +121,12 @@ class _Call:
         return response
 
 
-@csrf_exempt
-def mcp_endpoint(request):
-    call = _Call(request)
-    if not _origin_ok(request.headers.get("Origin")):
-        return _json(_rpc_error(None, protocol.INVALID_REQUEST, "Forbidden origin"), 403)
-    if request.method != "POST":
-        return _plain(405, Allow="POST")
+def authorize(request, call: _Call):
+    """Drosselung je IP, Bearer-Key, Drosselung je Key und Scopes.
 
+    Liefert den ``CallContext`` oder eine fertige Fehlerantwort (429, 401, 403).
+    Gemeinsam für ``/mcp/`` und den Legacy-Transport (``sse``).
+    """
     if audit.ip_blocked(call.ip):
         call.record(ApiCall.Status.RATE_LIMITED, 429)
         return _plain(429, Retry_After=str(int(audit.failure_window().total_seconds())))
@@ -143,7 +144,11 @@ def mcp_endpoint(request):
         # Rolle hat das Recht verloren o. Ä.: wie ein ungültiger Key, ohne Details.
         call.record(ApiCall.Status.DENIED, 403)
         return _plain(403)
+    return ctx
 
+
+def read_message(request, call: _Call):
+    """Body lesen: ein JSON-RPC-Objekt (dict) oder eine fertige Fehlerantwort."""
     limit = max_request_bytes()
     if call.request_bytes > limit:
         call.record(ApiCall.Status.INVALID, 413)
@@ -166,30 +171,34 @@ def mcp_endpoint(request):
         )
     method = body.get("method")
     call.method = method if isinstance(method, str) else ""
-    if "id" not in body:
-        # Benachrichtigung (z. B. notifications/initialized): annehmen, nichts tun.
-        call.record(ApiCall.Status.OK, 202)
-        return _plain(202)
-    request_id = body.get("id")
-    if not isinstance(method, str) or not isinstance(request_id, str | int):
+    if "id" in body and (not isinstance(method, str) or not isinstance(body.get("id"), str | int)):
         return call.reply(
             _rpc_error(None, protocol.INVALID_REQUEST, "Invalid request"),
             ApiCall.Status.INVALID,
             400,
         )
-    headers = {name.lower(): value for name, value in request.headers.items()}
-    try:
-        env = protocol.envelope(body, headers)
-    except RpcError as exc:
-        return call.reply(
-            _rpc_error(request_id, exc.code, exc.message, exc.data),
-            ApiCall.Status.INVALID,
-            exc.http_status,
-        )
-    params = body.get("params") if isinstance(body.get("params"), dict) else {}
+    return body
+
+
+def dispatch(call: _Call, ctx, env, request_id, params, progress=None):
+    """Methode ausführen -> ``(payload, Audit-Status, HTTP-Status)``.
+
+    ``progress`` (optional) bekommt bei ``tools/call`` jeden ``Progress`` des
+    Werkzeugs (Legacy-SSE: als ``notifications/progress`` in den Stream).
+    """
+    method = call.method
     try:
         if method == "tools/call":
-            return _tools_call(request, call, ctx, env, request_id, params)
+            tool, arguments = protocol.resolve_tool(ctx, params)
+            call.tool = tool.name
+            output = _drain(protocol.run_tool(tool, ctx, arguments), progress)
+            payload = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": protocol.finish(protocol.call_tool_result(output), env),
+            }
+            status = ApiCall.Status.TOOL_ERROR if output.is_error else ApiCall.Status.OK
+            return payload, status, 200
         if method == "initialize" and not env.modern:
             result = protocol.initialize_result(params)
         elif method == "server/discover":
@@ -206,30 +215,64 @@ def mcp_endpoint(request):
             if exc.code == protocol.INVALID_PARAMS
             else (ApiCall.Status.INVALID)
         )
-        return call.reply(
+        return (
             _rpc_error(request_id, exc.code, exc.message, exc.data),
             status,
             exc.http_status if exc.http_status != 200 else env.status_for(exc.code),
         )
     payload = {"jsonrpc": "2.0", "id": request_id, "result": protocol.finish(result, env)}
-    return call.reply(payload, ApiCall.Status.OK)
+    return payload, ApiCall.Status.OK, 200
 
 
-def _tools_call(request, call: _Call, ctx, env, request_id, params):
-    tool, arguments = protocol.resolve_tool(ctx, params)
-    call.tool = tool.name
+@csrf_exempt
+def mcp_endpoint(request):
+    call = _Call(request)
+    if not _origin_ok(request.headers.get("Origin")):
+        return _json(_rpc_error(None, protocol.INVALID_REQUEST, "Forbidden origin"), 403)
+    if request.method != "POST":
+        return _plain(405, Allow="POST")
+
+    ctx = authorize(request, call)
+    if isinstance(ctx, HttpResponse):
+        return ctx
+    body = read_message(request, call)
+    if isinstance(body, HttpResponse):
+        return body
+    if "id" not in body:
+        # Benachrichtigung (z. B. notifications/initialized): annehmen, nichts tun.
+        call.record(ApiCall.Status.OK, 202)
+        return _plain(202)
+    request_id = body.get("id")
+    headers = {name.lower(): value for name, value in request.headers.items()}
+    try:
+        env = protocol.envelope(body, headers)
+    except RpcError as exc:
+        return call.reply(
+            _rpc_error(request_id, exc.code, exc.message, exc.data),
+            ApiCall.Status.INVALID,
+            exc.http_status,
+        )
+    params = body.get("params") if isinstance(body.get("params"), dict) else {}
+    if call.method == "tools/call":
+        streamed = _tools_call_sse(request, call, ctx, env, request_id, params)
+        if streamed is not None:
+            return streamed
+    payload, status, http_status = dispatch(call, ctx, env, request_id, params)
+    return call.reply(payload, status, http_status)
+
+
+def _tools_call_sse(request, call: _Call, ctx, env, request_id, params):
+    """``tools/call`` als SSE mit Fortschritt, wenn der Client das annimmt und ein
+    ``progressToken`` schickt; sonst None (dann JSON über ``dispatch``)."""
     token = protocol.progress_token(params)
-    wants_sse = SSE_TYPE in (request.headers.get("Accept") or "")
+    if token is None or SSE_TYPE not in (request.headers.get("Accept") or ""):
+        return None
+    try:
+        tool, arguments = protocol.resolve_tool(ctx, params)
+    except RpcError:
+        return None  # Fehler beantwortet dispatch als JSON
+    call.tool = tool.name
     steps = protocol.run_tool(tool, ctx, arguments)
-    if token is None or not wants_sse:
-        output = _drain(steps)
-        payload = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": protocol.finish(protocol.call_tool_result(output), env),
-        }
-        status = ApiCall.Status.TOOL_ERROR if output.is_error else ApiCall.Status.OK
-        return call.reply(payload, status)
     response = StreamingHttpResponse(
         _sse(call, steps, env, request_id, token), content_type=SSE_TYPE
     )
@@ -238,12 +281,14 @@ def _tools_call(request, call: _Call, ctx, env, request_id, params):
     return response
 
 
-def _drain(steps):
+def _drain(steps, progress=None):
     while True:
         try:
-            next(steps)
+            item = next(steps)
         except StopIteration as stop:
             return stop.value
+        if progress is not None and isinstance(item, Progress):
+            progress(item)
 
 
 def _event(payload: dict) -> bytes:

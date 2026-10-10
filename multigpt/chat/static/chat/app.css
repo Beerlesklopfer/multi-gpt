@@ -3753,6 +3753,11 @@ span.message-source-link {
   border-radius: var(--radius);
 }
 
+.connect-sse > summary {
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
 .connect-key-field {
   position: relative;
   max-width: 48rem;

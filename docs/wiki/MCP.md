@@ -7,7 +7,8 @@ Einstufung erst nach einer Rückfrage im Chat.
 
 Alles auf dieser Seite erledigt der Verwalter im Admin unter **Chat › MCP-Server**.
 
-Umgekehrt ist MultiGPT seit 0.3.2 auch selbst **MCP-Server** unter `https://<hostname>/mcp/`: Andere
+Umgekehrt ist MultiGPT seit 0.3.2 auch selbst **MCP-Server** unter `https://<hostname>/mcp/`
+(Streamable HTTP; für ältere Clients zusätzlich HTTP+SSE unter `https://<hostname>/mcp/sse`): Andere
 Programme steuern es mit dem API-Key eines Kontos – siehe [API-Keys](API-Keys) und, für beide
 Richtungen mit n8n, [n8n](n8n).
 
@@ -143,7 +144,7 @@ Rückfrage hängt nur an der Registrierung, nicht an Text aus Dokumenten oder We
 
 ## MultiGPT als MCP-Server
 
-Siehe [API-Keys](API-Keys): Adresse `/mcp/`, Rechte (Scopes) je Key, Werkzeuge (`ask`,
+Siehe [API-Keys](API-Keys): Adresse `/mcp/` (für ältere Clients `/mcp/sse`), Rechte (Scopes) je Key, Werkzeuge (`ask`,
 Dokumente hochladen und durchsuchen, Läufe starten, überwachen und abbrechen, Dateien abholen,
 `create_pdf` u. a.), Sicherheit, Audit-Log. Beispiel-Workflows: [n8n](n8n).
 

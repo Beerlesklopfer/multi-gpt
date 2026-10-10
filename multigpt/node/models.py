@@ -12,6 +12,10 @@ Anlegen angezeigt und nie gespeichert oder geloggt.
 
 Datenschutz: ``ApiCall`` hält nur Metadaten (Key, Methode, Werkzeug, Status,
 Dauer, Größen, IP), nie Argumente oder Ergebnisse.
+
+``SseSession``/``SseMessage`` (Legacy-Transport HTTP+SSE, ``sse.py``): Antworten
+liegen dort nur bis zur Zustellung an den Stream (Sekunden) und werden beim
+Senden gelöscht, spätestens mit der Sitzung.
 """
 
 from django.conf import settings
@@ -135,6 +139,55 @@ class ApiCall(models.Model):
 
     def __str__(self):
         return f"API-Aufruf {self.pk} ({self.get_status_display()})"
+
+
+class SseSession(models.Model):
+    """Offener Stream des Legacy-Transports HTTP+SSE (``GET /mcp/sse``).
+
+    Die ID (128 Bit Zufall, hex) steht in der POST-URL; gültig ist sie nur
+    zusammen mit dem Key, der den Stream geöffnet hat. Der Stream setzt
+    ``last_seen`` bei jedem Keepalive; der Worker löscht Sitzungen, deren
+    Stream nicht mehr lebt (Prozess beendet o. Ä.).
+    """
+
+    id = models.CharField("Sitzung", max_length=32, primary_key=True, editable=False)
+    key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.CASCADE,
+        related_name="sse_sessions",
+        verbose_name="API-Key",
+    )
+    created = models.DateTimeField("geöffnet", default=timezone.now)
+    last_seen = models.DateTimeField("zuletzt aktiv", default=timezone.now)
+
+    class Meta:
+        verbose_name = "SSE-Sitzung"
+        verbose_name_plural = "SSE-Sitzungen"
+        indexes = [models.Index(fields=["key", "last_seen"], name="node_ssesession_key_seen")]
+
+    def __str__(self):
+        return f"SSE-Sitzung {self.id[:8]}…"
+
+
+class SseMessage(models.Model):
+    """Ausgehende Nachricht an einen SSE-Stream (Warteschlange zwischen Prozessen).
+
+    Der POST-Handler legt die JSON-RPC-Antwort hier ab und meldet die ID per
+    ``NOTIFY``; der Stream liest, sendet und löscht. Lebt nur Sekunden.
+    """
+
+    session = models.ForeignKey(
+        SseSession, on_delete=models.CASCADE, related_name="messages", verbose_name="Sitzung"
+    )
+    payload = models.TextField("Nachricht (JSON)")
+    created = models.DateTimeField("erstellt", default=timezone.now)
+
+    class Meta:
+        verbose_name = "SSE-Nachricht"
+        verbose_name_plural = "SSE-Nachrichten"
+
+    def __str__(self):
+        return f"SSE-Nachricht {self.pk}"
 
 
 class IntegrationOverview(ApiKey):

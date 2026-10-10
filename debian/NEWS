@@ -19,6 +19,16 @@ multi-gpt (0.3.2) unstable; urgency=medium
   „location ~ ^/mcp/?$“ daraus; ohne ihn funktioniert /mcp/, aber ohne
   ungepufferten Fortschritt und mit der normalen Upload-Grenze.
 
+  Für ältere MCP-Clients, die nur den Transport HTTP+SSE können (z. B. n8n
+  „MCP Client Tool“ mit „Server Sent Events“, mcp-remote), gibt es
+  zusätzlich https://<hostname>/mcp/sse mit demselben API-Key; die Seite
+  API-Keys zeigt die Verbindungsdaten dafür. Höchstens 2 Streams je Key und
+  4 je gunicorn-Prozess (MCP_SSE_PER_KEY, MCP_SSE_PER_PROCESS in
+  /etc/multi-gpt/.env), ein Stream bleibt bis 30 Minuten offen. Dafür hat
+  die nginx-Site einen zweiten Block „location ~ ^/mcp/(sse|messages)/?$“
+  (ohne Puffer, 3600 s); wer die Site von Hand geändert hat, übernimmt auch
+  ihn, sonst kommen Antworten über SSE gepuffert oder gar nicht an.
+
   Indexierung auf der Konsole beobachten:
 
     sudo mgpt-ctl index status --follow

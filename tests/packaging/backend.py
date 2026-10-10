@@ -11,7 +11,7 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path.startswith("/api/conversations/1/messages/"):
+        if self.path.startswith("/api/conversations/1/messages/") or self.path == "/mcp/sse":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Transfer-Encoding", "chunked")
@@ -55,6 +55,15 @@ class H(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 time.sleep(1)
             self.wfile.write(b"0\r\n\r\n")
+            return
+        if self.path.startswith("/mcp/messages"):
+            # Legacy-SSE (M15): 202 mit Pfad samt Query (Sitzung kommt an?)
+            body = json.dumps({"path": self.path, "got": n}).encode()
+            self.send_response(202)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         body = f"got {n}".encode()
         self.send_response(200)

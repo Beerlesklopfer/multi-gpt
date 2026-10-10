@@ -100,22 +100,43 @@ def connect_configs(mcp_url: str, secret: str = PLACEHOLDER) -> dict[str, str]:
     """Kopierfertige Verbindungsdaten für MCP-Clients.
 
     ``json``: „mcpServers“-Format (Claude Desktop, Claude Code ``.mcp.json``,
-    Cursor, n8n-Import); ``claude_code``: Befehl für ``claude mcp add``.
+    Cursor, n8n-Import); ``claude_code``: Befehl für ``claude mcp add``. Die
+    ``sse_*``-Einträge gelten für den Legacy-Transport HTTP+SSE (``/mcp/sse``,
+    ältere Clients); ``n8n_sse`` sind die Felder des n8n-Knotens „MCP Client
+    Tool“ mit „Server Sent Events (Deprecated)“ bzw. in Version 1.
     """
-    config = {
-        "mcpServers": {
-            SERVER_NAME: {
-                "type": "http",
-                "url": mcp_url,
-                "headers": {"Authorization": f"Bearer {secret}"},
+    sse_url = mcp_url.rstrip("/") + "/sse"
+    bearer = f"Bearer {secret}"
+
+    def server_json(kind: str, url: str) -> str:
+        config = {
+            "mcpServers": {
+                SERVER_NAME: {"type": kind, "url": url, "headers": {"Authorization": bearer}}
             }
         }
-    }
-    command = (
-        f"claude mcp add --transport http {SERVER_NAME} {mcp_url} "
-        f'--header "Authorization: Bearer {secret}"'
+        return json.dumps(config, indent=2, ensure_ascii=False)
+
+    def command(kind: str, url: str) -> str:
+        return (
+            f"claude mcp add --transport {kind} {SERVER_NAME} {url} "
+            f'--header "Authorization: {bearer}"'
+        )
+
+    n8n = (
+        "Server Transport:  Server Sent Events (Deprecated)\n"
+        f"Endpoint:          {sse_url}\n"
+        "Authentication:    Header Auth (Zugangsdaten anlegen)\n"
+        "  Name:            Authorization\n"
+        f"  Value:           {bearer}"
     )
-    return {"json": json.dumps(config, indent=2, ensure_ascii=False), "claude_code": command}
+    return {
+        "json": server_json("http", mcp_url),
+        "claude_code": command("http", mcp_url),
+        "sse_url": sse_url,
+        "sse_json": server_json("sse", sse_url),
+        "sse_claude_code": command("sse", sse_url),
+        "n8n_sse": n8n,
+    }
 
 
 def _context(request, form, created=None):

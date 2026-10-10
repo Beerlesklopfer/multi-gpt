@@ -70,6 +70,17 @@ for line in sys.stdin:
 print(max(lags))")
   check "MCP $path SSE ungepuffert (max. ${lag}s)" python3 -c "assert $lag < 0.5"
 done
+# MCP Legacy-SSE (/mcp/sse): Stream ungepuffert, POST an /mcp/messages mit Sitzung
+lag=$($C -N $U/mcp/sse | python3 -c "
+import sys, time
+lags = []
+for line in sys.stdin:
+    if line.startswith('data:'):
+        lags.append(time.time() - float(line.split()[2]))
+print(max(lags))")
+check "MCP /mcp/sse ungepuffert (max. ${lag}s)" python3 -c "assert $lag < 0.5"
+j=$($C -X POST -H 'Content-Type: application/json' --data '{}' "$U/mcp/messages?session_id=0123abcd")
+check "MCP /mcp/messages mit session_id" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['path']=='/mcp/messages?session_id=0123abcd', d" "$j"
 dd if=/dev/zero of="$R/30m" bs=1M count=30 status=none
 r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/30m" -H 'Content-Type: application/octet-stream' $U/api/upload)
 check "30 MB Upload erlaubt ($r)" test "$r" = 200
@@ -78,6 +89,8 @@ r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Conten
 check "40 MB Upload abgewiesen ($r)" test "$r" = 413
 r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Content-Type: application/json' $U/mcp/)
 check "40 MB an /mcp/ erlaubt (base64-Grenze 44m) ($r)" test "$r" = 200
+r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Content-Type: application/json' "$U/mcp/messages?session_id=x")
+check "40 MB an /mcp/messages erlaubt ($r)" test "$r" = 202
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example -tls1_1 2>&1 | grep -c "Cipher is (NONE)\|alert\|no protocols")
 check "TLS 1.1 abgelehnt" test "$tls" -ge 1
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example 2>/dev/null | grep -E "^(New|Negotiated|Server Temp Key)|Protocol" | head -3)
