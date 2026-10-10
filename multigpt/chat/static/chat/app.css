@@ -3626,3 +3626,32 @@ span.message-source-link {
   padding: 0.5rem;
   background: transparent;
 }
+
+/* Antwort läuft: drehender Kreis neben dem Modellnamen (Chat und Vergleich),
+   auch solange noch kein Text da ist (Websuche, Werkzeuge, Nachdenken). */
+.chat-message[data-streaming="true"] .chat-message-author::after,
+[data-streaming="true"] .compare-column-model::after {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.5em;
+  vertical-align: -0.1em;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, currentColor);
+  border-radius: 50%;
+  animation: answer-spinner 0.8s linear infinite;
+}
+
+@keyframes answer-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message[data-streaming="true"] .chat-message-author::after,
+  [data-streaming="true"] .compare-column-model::after {
+    animation-duration: 2.5s;
+  }
+}
