@@ -59,7 +59,14 @@ ProtectHostname=yes
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# AF_NETLINK: bubblewrap richtet im neuen, leeren Netz-Namespace der Sandbox für
+# Berechnungen (run_python, M4a-10) das Loopback-Gerät per NETLINK_ROUTE ein und
+# bricht ohne diese Familie ab. Netlink wirkt dort nur im Namespace der Sandbox.
+# User-Namespaces (bwrap --unshare-all) brauchen kein weiteres Recht: Die Unit
+# setzt kein RestrictNamespaces=; NoNewPrivileges verträgt sich mit bwrap ohne
+# setuid. Ein neues /proc in der Sandbox verbieten ProtectKernelTunables und
+# ProtectKernelLogs – die Sandbox kommt deshalb ohne /proc aus.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 SystemCallArchitectures=native
 
 [Install]

@@ -15,7 +15,8 @@ gespeichert; ausgeführt wird immer nach dieser gespeicherten Zuordnung.
 **Sicherheit (Plan 9):** Ob ein Aufruf eine Rückfrage braucht, entscheidet nur
 ``mcp.requires_confirmation`` anhand der DB – nie Text von Modell oder Werkzeug.
 Rechte (``can(USE_MCP_SERVER)``) werden vor dem Anbieten und vor jedem Aufruf
-geprüft.
+geprüft, ebenso die MCP-Freigabe des Modells (``AIModel.mcp_access``, frisch aus
+der DB); es gilt die Schnittmenge. Eingebaute Werkzeuge hängen nicht daran.
 """
 
 from __future__ import annotations
@@ -50,6 +51,10 @@ MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 MSG_REJECTED = "Vom Nutzer abgelehnt."
 MSG_NOT_ALLOWED = "Dieses Werkzeug steht nicht zur Verfügung."
+MSG_MODEL_NOT_ALLOWED = (
+    "Nicht ausgeführt: Dieses Modell darf den MCP-Server nicht nutzen "
+    "(vom Verwalter nicht freigegeben)."
+)
 MSG_UNKNOWN = "Unbekanntes Werkzeug."
 MSG_TIMEOUT = "Zeitüberschreitung: Das Werkzeug hat nicht innerhalb von {seconds} s geantwortet."
 MSG_FAILED = "Das Werkzeug konnte nicht ausgeführt werden."
@@ -65,15 +70,29 @@ _INVALID = re.compile(r"[^a-zA-Z0-9_-]+")
 # --- Server und Werkzeuge -----------------------------------------------------
 
 
-def available_servers(user) -> list[McpServer]:
-    """Aktive MCP-Server, die ``user`` nutzen darf (Plan 8g)."""
-    return [s for s in McpServer.objects.filter(active=True) if can(user, Action.USE_MCP_SERVER, s)]
+def available_servers(user, ai_model=None) -> list[McpServer]:
+    """Aktive MCP-Server, die ``user`` nutzen darf (Plan 8g); mit ``ai_model``
+    nur die, die der Verwalter für dieses Modell freigegeben hat."""
+    servers = McpServer.objects.filter(active=True)
+    if ai_model is not None:
+        model_ids = ai_model.allowed_mcp_ids()
+        if model_ids is not None:
+            servers = servers.filter(pk__in=model_ids)
+    return [s for s in servers if can(user, Action.USE_MCP_SERVER, s)]
 
 
-def enabled_server_ids(user, requested) -> list[int]:
+def model_allows(ai_model, server_id) -> bool:
+    """Darf ``ai_model`` den Server nutzen (``mcp_access``, frisch aus der DB)?"""
+    if ai_model is None:
+        return True
+    model_ids = ai_model.allowed_mcp_ids()
+    return model_ids is None or server_id in model_ids
+
+
+def enabled_server_ids(user, requested, ai_model=None) -> list[int]:
     """Eingeschaltete Server für eine Antwort: ``requested`` None -> alle
-    erlaubten (Voreinstellung nach Rolle), sonst die erlaubten davon."""
-    allowed = [s.pk for s in available_servers(user)]
+    erlaubten (Voreinstellung nach Rolle und Modell), sonst die erlaubten davon."""
+    allowed = [s.pk for s in available_servers(user, ai_model)]
     if requested is None:
         return allowed
     wanted = set(requested)
@@ -135,13 +154,19 @@ class BuiltinResult:
 @dataclass(frozen=True)
 class BuiltinTool:
     """``available(user, ai_model) -> bool``;
-    ``run(user, arguments: dict, sources: SourceCollector) -> BuiltinResult``."""
+    ``run(user, arguments: dict, sources: SourceCollector) -> BuiltinResult``.
+
+    ``confirm() -> bool`` (optional): Rückfrage vor jedem Aufruf, z. B. weil er
+    Geld kostet (``generate_image``, Einstellung im Admin). Wie bei MCP nur aus
+    der DB, nie aus Text von Modell oder Werkzeug.
+    """
 
     name: str
     label: str
     spec: ToolSpec
     available: Callable[[Any, Any], bool]
     run: Callable[[Any, dict, Any], BuiltinResult]
+    confirm: Callable[[], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +195,12 @@ def register_builtin(tool: BuiltinTool) -> None:
 
 def get_builtin(name: str | None) -> BuiltinTool | None:
     return _BUILTINS.get(name or "")
+
+
+def builtin_needs_confirmation(name: str | None) -> bool:
+    """Braucht das eingebaute Werkzeug eine Rückfrage (``BuiltinTool.confirm``)?"""
+    tool = _BUILTINS.get(name or "")
+    return bool(tool is not None and tool.confirm is not None and tool.confirm())
 
 
 def register_context_provider(key: str, provider: Callable, *, order: int = 100) -> None:
@@ -203,20 +234,35 @@ def builtin_bindings(user, ai_model) -> dict[str, Binding]:
     }
 
 
-def collect_tools(user, server_ids) -> dict[str, Binding]:
-    """Werkzeuge der eingeschalteten, erlaubten Server. Nicht erreichbare Server
-    werden übersprungen (nur ID und Fehlerart im Log)."""
+def collect_tools(user, server_ids, ai_model=None, offline=None) -> dict[str, Binding]:
+    """Werkzeuge der eingeschalteten, erlaubten Server (Rolle und Freigabe für
+    ``ai_model``). Nicht erreichbare Server werden übersprungen (nur ID und
+    Fehlerart im Log): zuletzt offline geprüfte ohne Verbindungsversuch
+    (``chat/mcp/status.py``), andere nach dem gescheiterten Abruf (dann als
+    offline vermerkt). Ihre Namen landen in ``offline`` (Liste), falls übergeben."""
+    from .mcp import status as mcp_status
+
     bindings: dict[str, Binding] = {}
     servers = McpServer.objects.filter(pk__in=list(server_ids or []), active=True).order_by(
         "name", "pk"
     )
+    model_ids = ai_model.allowed_mcp_ids() if ai_model is not None else None
     for server in servers:
         if not can(user, Action.USE_MCP_SERVER, server):
+            continue
+        if model_ids is not None and server.pk not in model_ids:
+            continue
+        if mcp_status.known_offline(server):
+            if offline is not None:
+                offline.append(server.name)
             continue
         try:
             specs = mcp.list_tools(server)
         except mcp.McpError as exc:
             logger.warning("MCP-Server %s: Werkzeugliste fehlt (%s)", server.pk, type(exc).__name__)
+            mcp_status.mark_failed(server, exc)
+            if offline is not None:
+                offline.append(server.name)
             continue
         for spec in sorted(specs, key=lambda s: s.name):
             name = tool_name(server, spec.name, bindings)
@@ -230,8 +276,9 @@ def collect_tools(user, server_ids) -> dict[str, Binding]:
     return bindings
 
 
-def resolve_server(user, call: dict, enabled_ids) -> tuple[McpServer | None, str]:
-    """Server eines gespeicherten Aufrufs laden und Rechte prüfen.
+def resolve_server(user, call: dict, enabled_ids, ai_model=None) -> tuple[McpServer | None, str]:
+    """Server eines gespeicherten Aufrufs laden, Rechte und Freigabe für
+    ``ai_model`` prüfen (vor jedem Aufruf, auch nach einer Bestätigung).
 
     Ergebnis: (Server, "") oder (None, Fehlertext für das Modell).
     """
@@ -242,6 +289,12 @@ def resolve_server(user, call: dict, enabled_ids) -> tuple[McpServer | None, str
     server = McpServer.objects.filter(pk=call["server_id"]).first()
     if server is None or not can(user, Action.USE_MCP_SERVER, server):
         return None, MSG_NOT_ALLOWED
+    if not model_allows(ai_model, server.pk):
+        # Nur IDs im Log, keine Argumente oder Werkzeugnamen.
+        logger.warning(
+            "MCP-Aufruf abgelehnt: Modell %s darf Server %s nicht nutzen", ai_model.pk, server.pk
+        )
+        return None, MSG_MODEL_NOT_ALLOWED
     return server, ""
 
 

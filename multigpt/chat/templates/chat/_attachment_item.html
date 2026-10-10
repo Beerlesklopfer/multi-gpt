@@ -1,0 +1,18 @@
+{# Ein Anhang in chat/_attachment_list.html (Variable a). #}
+<li class="message-attachment message-attachment-{{ a.is_image|yesno:'image,file' }}"
+    data-attachment-id="{{ a.pk }}" data-kind="{{ a.is_image|yesno:'image,file' }}"
+    data-name="{{ a.display_name }}" data-size="{{ a.size|default_if_none:0 }}"
+    data-url="{{ a.url }}" data-thumbnail-url="{{ a.thumbnail_url }}"{% if a.width and a.height %}
+    data-width="{{ a.width }}" data-height="{{ a.height }}"{% endif %}>
+  {% if a.is_image %}
+    <a class="attachment-thumb" href="{{ a.url }}" data-attachment-image
+       aria-label="Bild {{ a.display_name }} vergrößern"><img src="{{ a.thumbnail_url|default:a.url }}"
+       alt="{{ a.display_name }}" loading="lazy"{% if a.width and a.height %} width="{{ a.width }}" height="{{ a.height }}"{% endif %}></a>
+  {% else %}
+    <a class="attachment-chip" href="{{ a.url }}" download>
+      <span class="attach-file-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+      <span class="attachment-chip-name">{{ a.display_name }}</span>
+      <span class="attachment-chip-size">{{ a.size_label }}</span><span class="sr-only"> (herunterladen)</span>
+    </a>
+  {% endif %}
+</li>

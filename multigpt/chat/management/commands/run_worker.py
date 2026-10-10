@@ -6,7 +6,8 @@ laufender Job wird an der nächsten Prüfstelle (zwischen PDF-Seiten bzw.
 Embedding-Paketen) unterbrochen und wieder eingereiht.
 
 Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
-(je Quelle höchstens ein offener Scan-Job) – ein eigener Timer ist nicht nötig.
+(je Quelle höchstens ein offener Scan-Job) und prüft fällige MCP-Server
+(``chat/mcp/status.py``) – ein eigener Timer ist nicht nötig.
 """
 
 import logging
@@ -17,6 +18,8 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import DatabaseError, close_old_connections, connection
 
+from multigpt.chat import attachments as chat_attachments
+from multigpt.chat.mcp import status as mcp_status
 from multigpt.chat.rag import jobs
 from multigpt.rag import crawl
 
@@ -61,6 +64,11 @@ class Command(BaseCommand):
                         jobs.requeue_stale()
                         # Verzeichnisquellen (crawler): fällige Scans einreihen.
                         crawl.enqueue_due_scans()
+                        # Anhänge im Chat: Entwürfe älter als 24 h löschen.
+                        chat_attachments.cleanup_drafts()
+                        # MCP-Server: Status und Werkzeugliste (online alle 5 Min.,
+                        # offline jede Minute; Anspruch gegen Doppelprüfung).
+                        mcp_status.check_due()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:

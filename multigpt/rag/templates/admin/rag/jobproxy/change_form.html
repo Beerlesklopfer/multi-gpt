@@ -1,0 +1,15 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls %}
+{# Nur Metadaten; Knopf „Abbrechen“ (POST) für wartende und laufende Aufträge. #}
+
+{% block object-tools-items %}
+  {% if original and original.status == "pending" or original and original.status == "running" %}
+  <li>
+    <form method="post" action="{% url 'admin:rag_jobproxy_cancel' original.pk|admin_urlquote %}" class="rag-tool-form">
+      {% csrf_token %}
+      <button type="submit" class="rag-tool-button"{% if original.cancel_requested %} disabled title="Abbruch angefordert – der Worker beendet den Auftrag nach dem aktuellen Schritt"{% else %} title="Wartende Aufträge werden sofort entfernt, laufende nach dem aktuellen Schritt beendet"{% endif %}>{% if original.cancel_requested %}Wird abgebrochen …{% else %}Abbrechen{% endif %}</button>
+    </form>
+  </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

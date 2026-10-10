@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{# MCP-Server aus „mcpServers“-JSON. Die Vorschau entsteht im Browser (admin_mcp_import.js) und zeigt nie Header- oder Umgebungswerte. #}
+{% block extrahead %}{{ block.super }}<script src="{% static 'chat/admin_mcp_import.js' %}" defer></script>{% endblock %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Start</a> ›
+    <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a> ›
+    <a href="{% url 'admin:chat_mcpserver_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> ›
+    Import
+  </div>
+{% endblock %}
+{% block content %}
+  <div id="content-main">
+    <p>Konfiguration einfügen, wie sie Claude Desktop, Claude Code, Cursor oder n8n anzeigen.
+       Beim Einfügen erscheint sofort eine Vorschau der erkannten Server.</p>
+    <form method="post" id="mcp-import-form" novalidate>
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <fieldset class="module aligned">
+        <div class="form-row">
+          {{ form.config.errors }}
+          <label for="{{ form.config.id_for_label }}" class="required">{{ form.config.label }}:</label>
+          {{ form.config }}
+          <div class="help">{{ form.config.help_text }}</div>
+          <p><button type="button" class="button" id="mcp-import-paste" hidden>Aus Zwischenablage einfügen</button></p>
+          <div id="mcp-import-preview" aria-live="polite"></div>
+        </div>
+        <div class="form-row">
+          {{ form.update_existing.errors }}
+          <div class="checkbox-row">{{ form.update_existing }}
+            <label for="{{ form.update_existing.id_for_label }}" class="vCheckboxLabel">{{ form.update_existing.label }}</label>
+          </div>
+          <div class="help">{{ form.update_existing.help_text }}</div>
+        </div>
+      </fieldset>
+      <div class="submit-row"><input type="submit" class="default" value="Importieren"></div>
+    </form>
+  </div>
+{% endblock %}

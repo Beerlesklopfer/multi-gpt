@@ -6,33 +6,21 @@ der Verwalter sie bewusst freischaltet (Preise, Anzeigename, Werkzeuge).
 Vorhandene Einträge bleiben unverändert. Lokale Anbieter (LM Studio)
 überspringt das Kommando: Deren Modelle gleicht die Statusprüfung ab.
 
-Die Fähigkeit wird nur bei eindeutigen ID-Mustern abweichend von ``chat``
-gesetzt; im Zweifel ``chat``, der Verwalter korrigiert im Admin.
+Die Hauptart wird nur bei eindeutigen ID-Mustern abweichend von ``chat``
+gesetzt; im Zweifel ``chat``, der Verwalter korrigiert im Admin. Werkzeuge,
+Bild-Eingabe und MCP-Freigabe belegt ``detect.new_model`` vor (Heuristik).
 """
-
-import re
 
 from django.core.management.base import BaseCommand, CommandError
 
+from multigpt.chat import capabilities, detect
 from multigpt.chat.models import AIModel, Provider
 from multigpt.chat.providers import ProviderError, get_adapter
 
-# Reihenfolge zählt: erstes passendes Muster gewinnt.
-_CAPABILITY_PATTERNS = [
-    (re.compile(r"embed"), AIModel.Capability.EMBEDDING),
-    (re.compile(r"(^|[-_./])tts([-_.]|$)"), AIModel.Capability.TTS),
-    (re.compile(r"whisper|transcribe"), AIModel.Capability.STT),
-    (re.compile(r"dall-e|gpt-image|(^|/)imagen"), AIModel.Capability.IMAGE),
-]
-
 
 def guess_capability(model_id: str) -> str:
-    """Fähigkeit aus eindeutigen ID-Mustern, sonst ``chat``."""
-    lowered = model_id.lower()
-    for pattern, capability in _CAPABILITY_PATTERNS:
-        if pattern.search(lowered):
-            return capability
-    return AIModel.Capability.CHAT
+    """Hauptart aus eindeutigen ID-Mustern, sonst ``chat`` (``capabilities``)."""
+    return AIModel.Capability(capabilities.guess_capability(model_id))
 
 
 class Command(BaseCommand):
@@ -96,13 +84,7 @@ class Command(BaseCommand):
                 too_long += 1
                 continue
             new.append(
-                AIModel(
-                    provider=provider,
-                    model_id=model_id,
-                    display_name=model_id,
-                    capability=guess_capability(model_id),
-                    active=False,
-                )
+                detect.new_model(provider, model_id, capabilities.guess(model_id), active=False)
             )
         if new and not dry_run:
             # ignore_conflicts: Ein paralleler Abgleich darf nicht stören.

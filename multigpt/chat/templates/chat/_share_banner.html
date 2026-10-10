@@ -1,0 +1,27 @@
+{# Geteilte Chats (sharing.js): Hinweis beim Empfänger, Kopie und Austragen; Stand für „Neue Nachrichten“. #}
+{% if share_access.shared %}
+  <div class="share-banner" id="share-banner" role="note">
+    <p class="share-banner-text">
+      Geteilt von <strong>{{ chat_owner_name }}</strong> · {{ share_access.text }}
+      <span class="share-rights" aria-hidden="true">{{ share_access.label }}</span>
+    </p>
+    <div class="share-banner-actions">
+      {% if can_copy_chat %}
+        <button type="button" class="button button-small" data-share-copy hidden
+                data-api-copy="{% url 'chat:api_conversation_copy' active_conversation.pk %}">Als eigene Kopie fortsetzen</button>
+      {% endif %}
+      <button type="button" class="button button-small" data-share-leave hidden
+              data-owner="{{ chat_owner_name }}"
+              data-api-leave="{% url 'chat:api_conversation_leave' active_conversation.pk %}">Aus meiner Liste entfernen</button>
+    </div>
+  </div>
+{% endif %}
+{% if chat_is_shared %}
+  <div class="share-state" id="share-state" hidden
+       data-api-state="{% url 'chat:api_conversation_state' active_conversation.pk %}"
+       data-stamp="{{ share_stamp }}"></div>
+  <p class="share-update" id="share-update" role="status" hidden>
+    <span class="share-update-text">Neue Nachrichten in diesem Chat.</span>
+    <button type="button" class="button button-small" data-share-reload>Neu laden</button>
+  </p>
+{% endif %}

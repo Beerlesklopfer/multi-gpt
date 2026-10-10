@@ -119,7 +119,8 @@ def test_reader_sees_versions_but_no_edit(client, tree, ben):
     client.force_login(ben)
     html = page(client, tree["conv"])
     assert "Version 1 von 2" in article(html, tree["u1"].pk)
-    assert "data-version-target" not in html
+    # Geteilte Chats: Umschalten ändert nur die eigene Ansicht, Lesen genügt.
+    assert "data-version-target" in html
     assert "data-edit-message" not in html
     assert "data-regenerate-message" not in html
     assert "data-copy-message" in html
@@ -128,7 +129,7 @@ def test_reader_sees_versions_but_no_edit(client, tree, ben):
 def test_shared_writer_can_edit(client, tree, ben):
     group = UserGroup.objects.create(name="Versionen-Leser")
     ben.groups.add(group)
-    Share.objects.create(conversation=tree["conv"], group=group, can_write=True)
+    Share.objects.create(conversation=tree["conv"], group=group, can_write=True, can_update=True)
     client.force_login(ben)
     html = page(client, tree["conv"])
     assert "data-edit-message" in article(html, tree["u1"].pk)

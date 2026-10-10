@@ -295,7 +295,8 @@ def _assistant_blocks(message: ChatMessage) -> list[dict]:
 def _turn_payload(turn: Turn) -> dict:
     """Ein Zug als Messages-API-Nachricht; ohne Werkzeuge mit Text-Inhalt wie bisher."""
     plain = all(
-        m.role != "tool" and not m.tool_calls and not m.provider_state for m in turn.messages
+        m.role != "tool" and not m.tool_calls and not m.provider_state and not m.images
+        for m in turn.messages
     )
     if plain:
         return {"role": turn.role, "content": turn.text}
@@ -312,6 +313,14 @@ def _turn_payload(turn: Turn) -> dict:
         if result.is_error:
             block["is_error"] = True
         blocks.append(block)
+    # Bilder vor dem Text (Empfehlung der Vision-Doku), nach den Ergebnissen.
+    for image in turn.images:
+        blocks.append(
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": image.mime_type, "data": image.base64()},
+            }
+        )
     if turn.text:
         blocks.append({"type": "text", "text": turn.text})
     return {"role": "user", "content": blocks}
@@ -456,6 +465,11 @@ class _EventParser:
         for key, value in usage.items():
             if isinstance(value, int) and not isinstance(value, bool):
                 self.usage[key] = value
+            elif isinstance(value, dict):
+                # cache_creation (5m/1h-Aufteilung), server_tool_use (Websuche)
+                for sub, number in value.items():
+                    if isinstance(number, int) and not isinstance(number, bool):
+                        self.usage[f"{key}.{sub}"] = number
 
     def _finish(self) -> Iterator[Event]:
         result = self._content()
@@ -475,7 +489,31 @@ class _EventParser:
                 + self.usage.get("cache_creation_input_tokens", 0)
                 + self.usage.get("cache_read_input_tokens", 0)
             )
-            yield Usage(tokens_in=tokens_in, tokens_out=self.usage.get("output_tokens", 0))
+            # Cache-Schreiben: Summe in cache_creation_input_tokens, Aufteilung
+            # nach Haltezeit (5 Minuten, 1 Stunde) in cache_creation, falls gemeldet.
+            write = self.usage.get("cache_creation_input_tokens", 0)
+            write_1h = min(self.usage.get("cache_creation.ephemeral_1h_input_tokens", 0), write)
+            units = {
+                unit: count
+                for unit, count in (
+                    ("web_search", self.usage.get("server_tool_use.web_search_requests", 0)),
+                    ("web_fetch", self.usage.get("server_tool_use.web_fetch_requests", 0)),
+                )
+                if count > 0
+            }
+            yield Usage(
+                tokens_in=tokens_in,
+                tokens_out=self.usage.get("output_tokens", 0),
+                cached_read=self.usage.get("cache_read_input_tokens", 0),
+                cache_write=write - write_1h,
+                cache_write_1h=write_1h,
+                # Nur im letzten message_delta; in output_tokens enthalten.
+                reasoning=min(
+                    self.usage.get("output_tokens_details.thinking_tokens", 0),
+                    self.usage.get("output_tokens", 0),
+                ),
+                units=units,
+            )
         self.finished = True
         state = None
         if any(b.get("type") in _THINKING_BLOCKS for b in content):

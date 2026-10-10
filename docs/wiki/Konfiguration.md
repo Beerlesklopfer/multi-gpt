@@ -68,6 +68,12 @@ Embedding-Modell, Präfixe und OCR-Verfahren stehen **nicht** in der `.env`, son
 „Dokumente (RAG)“ → „Einstellungen“ (siehe [RAG-Einrichtung](RAG-Einrichtung)). Die Websuche
 (SearXNG-URL usw.) steht im Admin unter „Chat“ → „Sucheinstellungen“ (siehe [SearXNG](SearXNG)).
 
+## Kosten
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `BILLING_ECB_FETCH` | `False` | EZB-Referenzkurs USD abrufen (Knopf im Admin, `mgpt-ctl fetch_ecb_rate`). Externer Abruf, daher standardmäßig aus; Kurse lassen sich immer von Hand pflegen. Siehe [Kosten und Budgets](Kosten-und-Budgets). |
+
 ## Nur bei der Installation
 
 Diese Variablen stehen **nicht** in der `.env`, sondern werden in der Umgebung von apt/dpkg gesetzt,

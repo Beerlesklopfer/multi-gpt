@@ -4,6 +4,8 @@ from django.contrib.auth.models import AbstractUser, Group
 from django.core.validators import MinValueValidator
 from django.db import models
 
+from multigpt.chat import citations
+
 
 class Role(models.Model):
     """Rechtepaket eines Kontos (Plan 8f), im Admin änderbar und erweiterbar.
@@ -15,8 +17,10 @@ class Role(models.Model):
       Liste ohne ``all_models`` heißt bewusst "kein Modell" – eine vergessene
       Auswahl öffnet so nie versehentlich alles (fail closed).
     - ``allowed_mcp_servers`` / ``all_mcp_servers``: genauso für MCP-Server.
-    - ``monthly_budget``: Monatsbudget in EUR, leer = unbegrenzt. Je Konto über
-      ``User.monthly_budget_override`` überschreibbar.
+    - ``monthly_budget``: Gesamt-Monatsbudget in EUR über alle monetären
+      Abrechnungskonten, leer = unbegrenzt. Je Konto über
+      ``User.monthly_budget_override`` überschreibbar. Budgets je
+      Abrechnungskonto: ``billing.AccountBudget``.
     - ``is_admin``: Verwaltungsrechte (Django-Admin, Seite "Familie", Verbrauch
       aller Mitglieder). Fremde Chats sieht auch ein Verwalter nicht.
     - ``key``: stabiler Schlüssel für den Code (Startrollen: admin, adult, teen,
@@ -58,6 +62,12 @@ class Role(models.Model):
     can_voice = models.BooleanField("Sprache (Aufnahme und Vorlesen)", default=False)
     can_upload_documents = models.BooleanField("Dokumente hochladen", default=False)
     can_share = models.BooleanField("Mit Gruppen teilen", default=False)
+    can_compute = models.BooleanField(
+        "Berechnungen ausführen",
+        default=False,
+        help_text="Modelle dürfen Python-Code für Rechnungen in einer abgeschotteten "
+        "Umgebung ausführen (numpy, sympy, Diagramme).",
+    )
     all_mcp_servers = models.BooleanField(
         "Alle aktiven MCP-Server",
         default=False,
@@ -71,13 +81,14 @@ class Role(models.Model):
         verbose_name="Erlaubte MCP-Server",
     )
     monthly_budget = models.DecimalField(
-        "Monatsbudget (EUR)",
+        "Monatsbudget gesamt (EUR)",
         max_digits=8,
         decimal_places=2,
         null=True,
         blank=True,
         validators=[MinValueValidator(Decimal("0"))],
-        help_text="Leer = unbegrenzt.",
+        help_text="Über alle monetären Abrechnungskonten. Leer = unbegrenzt. "
+        "Budgets je Konto: Kosten und Abrechnung › Abrechnungskonten.",
     )
     fixed_system_prompt = models.TextField(
         "Fester System-Prompt",
@@ -111,7 +122,7 @@ class User(AbstractUser):
     )
     display_name = models.CharField("Anzeigename", max_length=150, blank=True)
     monthly_budget_override = models.DecimalField(
-        "Eigenes Monatsbudget (EUR)",
+        "Eigenes Monatsbudget gesamt (EUR)",
         max_digits=8,
         decimal_places=2,
         null=True,
@@ -126,6 +137,25 @@ class User(AbstractUser):
         "sieht in der Oberfläche, dass die Option aktiv ist.",
     )
     auto_read_aloud = models.BooleanField("Antworten automatisch vorlesen", default=False)
+    # Persönliche Einstellungen zum Zitieren (Seite „Einstellungen“).
+    citation_style = models.CharField(
+        "Zitierstil",
+        max_length=10,
+        choices=citations.STYLE_CHOICES,
+        default=citations.DEFAULT_STYLE,
+    )
+    citation_short = models.BooleanField(
+        "Quellen im Antworttext als Kurzbeleg",
+        default=False,
+        help_text="Statt nur [n] erscheint im Text der Kurzbeleg, z. B. (Müller 2024, S. 12).",
+    )
+    citation_locator = models.BooleanField("Seite/Absatz anzeigen", default=True)
+    mark_unverified_links = models.BooleanField(
+        "Ungeprüfte Links markieren",
+        default=True,
+        help_text="Links in Antworten, die aus keiner Quelle und keinem Werkzeugergebnis "
+        "stammen, bekommen ein Warnsymbol.",
+    )
 
     class Meta(AbstractUser.Meta):
         swappable = "AUTH_USER_MODEL"
@@ -137,7 +167,7 @@ class User(AbstractUser):
 
     @property
     def monthly_budget(self):
-        """Wirksames Monatsbudget in EUR; None = unbegrenzt."""
+        """Wirksames Gesamt-Monatsbudget in EUR; None = unbegrenzt."""
         if self.monthly_budget_override is not None:
             return self.monthly_budget_override
         return self.role.monthly_budget if self.role_id else None

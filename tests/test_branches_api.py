@@ -157,16 +157,20 @@ def test_permissions(client, adult, ai_model, fake):
     assert switch(client, conv, message_id=q.pk).status_code == 404
     response = post(client, conv, content="x", model=ai_model.pk, edit_of=q.pk)
     assert response.status_code == 404
-    # Nur lesend geteilt: sehen ja, umschalten/bearbeiten nein.
+    # Nur lesend geteilt: sehen und (eigene Ansicht) umschalten ja, bearbeiten nein.
     group = UserGroup.objects.create(name="Lesegruppe")
     adult.groups.add(group)
     Share.objects.create(conversation=conv, group=group, can_write=False)
     assert client.get(url(conv)).status_code == 200
-    assert switch(client, conv, message_id=q.pk).status_code == 403
+    assert switch(client, conv, message_id=q.pk).status_code == 200
     response = post(client, conv, content="x", model=ai_model.pk, edit_of=q.pk)
     assert response.status_code == 403
-    # Mit Schreibrecht erlaubt.
+    # Schreiben allein genügt fürs Bearbeiten nicht (RWUD: U nötig).
     Share.objects.filter(conversation=conv).update(can_write=True)
+    response = post(client, conv, content="x", model=ai_model.pk, edit_of=q.pk)
+    assert response.status_code == 403
+    # Mit Schreiben und Bearbeiten erlaubt.
+    Share.objects.filter(conversation=conv).update(can_update=True)
     assert switch(client, conv, message_id=q.pk).status_code == 200
     events = parse_sse(post(client, conv, content="x", model=ai_model.pk, edit_of=q.pk))
     assert events[-1][0] == "done"

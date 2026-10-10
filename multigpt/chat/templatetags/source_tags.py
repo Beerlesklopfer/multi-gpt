@@ -3,12 +3,20 @@
 Titel und URLs von Webquellen sind nicht vertrauenswürdig: Sie werden nur über
 Auto-Escaping ausgegeben, verlinkt werden ausschließlich http(s)-URLs.
 Dokumentquellen verlinken immer serverseitig auf den Abschnitt (``chunk_id``).
-Gleiche Regeln wie in chat.js (Live-Anzeige aus dem SSE-Event ``sources``)."""
+Gleiche Regeln wie in chat.js (Live-Anzeige aus dem SSE-Event ``sources``).
 
+Zitieren: ``source_items`` formatiert die Quellen im Zitierstil des
+Betrachters (``sources.serialize_all``); ``citations_json`` legt Kurzbeleg,
+Eintrag und alle Stile für citations.js (Kopieren, Kurzbeleg im Text) als
+JSON in ein Datenattribut (Auto-Escaping, kein Skript im HTML)."""
+
+import json
 from urllib.parse import urlsplit
 
 from django import template
 from django.urls import reverse
+
+from ..sources import serialize_all
 
 register = template.Library()
 
@@ -90,3 +98,28 @@ def sources_head(sources):
 @register.filter
 def sources_tail(sources):
     return list(sources)[SOURCES_VISIBLE:]
+
+
+@register.simple_tag
+def source_items(sources, user):
+    """Quellen als Liste von dicts (wie im SSE-Event) plus Anzeige: ``link``,
+    ``site``, ``removed`` und ``label`` (Dokument: Eintrag im Zitierstil)."""
+    refs = list(sources)
+    items = serialize_all(refs, user)
+    for ref, item in zip(refs, items, strict=True):
+        # Quelle aus einer Sammlung, die der Betrachter nicht lesen darf: kein Link.
+        item["link"] = "" if item.get("restricted") else source_link(ref)
+        item["site"] = source_site(ref)
+        item["removed"] = source_removed(ref)
+        item["label"] = item["entry"] if _is_document(ref) else source_label(ref)
+    return items
+
+
+CITATION_KEYS = ("n", "kind", "short", "entry", "inline", "style", "formats")
+
+
+@register.filter
+def citations_json(items) -> str:
+    """Zitierdaten für ``data-citations`` (Escapen übernimmt das Template)."""
+    data = [{k: item.get(k) for k in CITATION_KEYS} for item in items]
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))

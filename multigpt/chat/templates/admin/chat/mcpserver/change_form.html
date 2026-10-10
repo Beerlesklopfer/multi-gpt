@@ -1,0 +1,22 @@
+{% extends "admin/change_form.html" %}
+{% load static admin_urls %}
+{# MCP-Server: „Jetzt prüfen“ (oben rechts) und Tabelle der Werkzeuge (chat/mcp/status.py). #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}"><link rel="stylesheet" href="{% static 'chat/admin_mcp.css' %}">{% endblock %}
+
+{% block admin_change_form_document_ready %}
+  {{ block.super }}
+  <script src="{% static 'chat/admin_submit_once.js' %}" defer></script>
+{% endblock %}
+
+{% block object-tools-items %}
+  {% if change and original.active %}
+    <li>
+      <form method="post" action="{% url 'admin:chat_mcpserver_check' original.pk|admin_urlquote %}" class="provider-check-form">
+        {% csrf_token %}
+        <button type="submit" class="provider-tool-button">Jetzt prüfen</button>
+      </form>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

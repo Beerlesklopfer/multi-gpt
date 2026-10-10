@@ -20,6 +20,7 @@ from multigpt.accounts.models import UserGroup
 from multigpt.chat import services, tooling
 from multigpt.chat.models import AIModel, Conversation, Message, Share
 from multigpt.chat.providers.base import Delta, Done, Usage
+from tests.billing_helpers import set_price
 from tests.test_api_stream import (  # noqa: F401
     OK_EVENTS,
     adult,
@@ -39,13 +40,8 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def models(provider, ai_model):
-    second = AIModel.objects.create(
-        provider=provider,
-        model_id="m2",
-        display_name="Modell Zwei",
-        price_in=Decimal("1"),
-        price_out=Decimal("4"),
-    )
+    second = AIModel.objects.create(provider=provider, model_id="m2", display_name="Modell Zwei")
+    set_price(second, "1", "4")
     third = AIModel.objects.create(provider=provider, model_id="m3", display_name="Modell Drei")
     return [ai_model, second, third]
 
@@ -141,7 +137,7 @@ def test_costs_of_all_columns_count(client, conversation, models, fake):
 def test_compare_disables_mcp_tools(client, conversation, models, fake, monkeypatch):
     models[0].supports_tools = True
     models[0].save()
-    monkeypatch.setattr(tooling, "enabled_server_ids", lambda user, ids: [42])
+    monkeypatch.setattr(tooling, "enabled_server_ids", lambda user, ids, ai_model=None: [42])
     column(client, conversation, fake, models[0], "A", content="Frage", mcp_servers=[42])
     answer = Message.objects.get(role="assistant")
     assert "servers" not in (answer.tool_state or {})

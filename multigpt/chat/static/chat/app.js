@@ -85,6 +85,47 @@ window.MultiGPT = (() => {
   return { csrfToken, errorMessage, requestJson, fillTemplate, announce };
 })();
 
+// Schriftgröße der Nachrichten: Knöpfe „A−“/„A+“ unter den Antworten
+// (chat/_message_actions.html). Stufe als CSS-Variable am <html>, im Browser gemerkt.
+(() => {
+  const STORAGE_KEY = "multigpt.fontScale";
+  const STEPS = [0.85, 0.92, 1, 1.1, 1.2, 1.35, 1.5];
+  let index = STEPS.indexOf(1);
+  try {
+    const saved = STEPS.indexOf(Number(localStorage.getItem(STORAGE_KEY)));
+    if (saved >= 0) {
+      index = saved;
+    }
+  } catch (e) {
+    // kein Zugriff auf localStorage
+  }
+  const apply = () => {
+    document.documentElement.style.setProperty("--chat-font-scale", String(STEPS[index]));
+    for (const button of document.querySelectorAll("[data-font-size]")) {
+      const step = Number(button.dataset.fontSize);
+      button.disabled = index + step < 0 || index + step >= STEPS.length;
+    }
+  };
+  apply();
+  document.addEventListener("DOMContentLoaded", apply);
+  // Nachgeladene Nachrichten (Streaming, Versionen) bekommen den Zustand beim ersten Klick
+  // bzw. über die Delegation hier.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-font-size]");
+    if (!button) {
+      return;
+    }
+    index = Math.min(STEPS.length - 1, Math.max(0, index + Number(button.dataset.fontSize)));
+    try {
+      localStorage.setItem(STORAGE_KEY, String(STEPS[index]));
+    } catch (e) {
+      // nur für diese Seite
+    }
+    apply();
+    window.MultiGPT?.announce?.(`Schriftgröße ${Math.round(STEPS[index] * 100)} %`);
+  });
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
   const toggle = document.getElementById("sidebar-toggle");
   const sidebar = document.getElementById("sidebar");
@@ -92,13 +133,47 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // Breit: Seitenleiste ein-/ausklappen (Zustand im Browser gemerkt).
+  // Schmal: als Überlagerung öffnen und schließen.
+  const wide = window.matchMedia("(min-width: 48.0625rem)");
+  const STORAGE_KEY = "multigpt.sidebarCollapsed";
   const setOpen = (open) => {
     document.body.classList.toggle("sidebar-open", open);
     toggle.setAttribute("aria-expanded", String(open));
   };
+  const setCollapsed = (collapsed) => {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+    } catch (e) {
+      // ohne Speicher: nur für diese Seite
+    }
+  };
+  const syncExpanded = () => {
+    toggle.setAttribute(
+      "aria-expanded",
+      String(
+        wide.matches
+          ? !document.body.classList.contains("sidebar-collapsed")
+          : document.body.classList.contains("sidebar-open"),
+      ),
+    );
+  };
+  try {
+    document.body.classList.toggle("sidebar-collapsed", localStorage.getItem(STORAGE_KEY) === "1");
+  } catch (e) {
+    // kein Zugriff auf localStorage
+  }
+  syncExpanded();
+  wide.addEventListener("change", syncExpanded);
 
   toggle.addEventListener("click", () => {
-    setOpen(!document.body.classList.contains("sidebar-open"));
+    if (wide.matches) {
+      setCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+      syncExpanded();
+    } else {
+      setOpen(!document.body.classList.contains("sidebar-open"));
+    }
   });
 
   // Schließen mit Escape oder Klick außerhalb der Seitenleiste.

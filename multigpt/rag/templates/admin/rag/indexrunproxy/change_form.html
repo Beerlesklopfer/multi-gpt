@@ -1,0 +1,15 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls %}
+{# Nur Metadaten; Knopf „Lauf abbrechen“ (POST) für offene Läufe. #}
+
+{% block object-tools-items %}
+  {% if original and original.is_open %}
+  <li>
+    <form method="post" action="{% url 'admin:rag_indexrunproxy_cancel' original.pk|admin_urlquote %}" class="rag-tool-form">
+      {% csrf_token %}
+      <button type="submit" class="rag-tool-button" title="Wartende Aufträge werden entfernt, laufende nach dem aktuellen Schritt beendet; fertige Dokumente bleiben">{% if original.status == "cancelling" %}Wird abgebrochen …{% else %}Lauf abbrechen{% endif %}</button>
+    </form>
+  </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

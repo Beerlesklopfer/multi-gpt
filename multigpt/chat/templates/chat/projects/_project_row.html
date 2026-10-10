@@ -1,0 +1,7 @@
+<li class="project-page-item">
+  <a href="{% url 'chat:project_detail' project.pk %}" class="project-page-link">
+    <span class="project-dot project-color-{{ project.color|default:'none' }}" aria-hidden="true"></span>
+    <span class="project-page-name">{{ project.name }}</span>
+  </a>
+  <span class="hint">{{ project.chat_count }} Chat{{ project.chat_count|pluralize:"s" }}{% if project.pinned %} · angeheftet{% endif %}</span>
+</li>

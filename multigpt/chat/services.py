@@ -67,25 +67,43 @@ import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from django.db import close_old_connections, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from multigpt.accounts import usage
-from multigpt.accounts.permissions import budget_allows, model_permitted
+from multigpt.accounts.permissions import model_permitted
+from multigpt.billing import booking as billing
+from multigpt.billing.pricing import Round, Tally
 
+from . import attachments as chat_attachments
+from . import (
+    citations,
+    images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
+    sharing,
+    tooling,
+    tools_python,  # noqa: F401 - registriert run_python (Berechnungen, M4a-10)
+    websearch,  # registriert Websuche (Kontext und Werkzeug), System-Hinweis
+)
+from . import projects as chat_projects
 from . import sources as source_refs
 from . import status as provider_status
-from . import (
-    tooling,
-    websearch,  # noqa: F401 - registriert Websuche (Kontext und Werkzeug)
+from .mcp import status as mcp_status
+from .models import (
+    AIModel,
+    Attachment,
+    ChatSettings,
+    Conversation,
+    McpServer,
+    Message,
+    ToolCall,
 )
-from .models import AIModel, Conversation, McpServer, Message, ToolCall
 from .providers import registry
 from .providers.base import ChatMessage, Delta, Done, Error, ToolCallEvent, Usage
 from .rag import chat as rag_chat  # noqa: F401 - registriert Dokumentsuche (Kontext und Werkzeug)
+from .rag import doc_tools  # noqa: F401 - registriert list_documents, document_info, read_document
 from .titles import title_from
 
 logger = logging.getLogger(__name__)
@@ -95,8 +113,6 @@ SAVE_INTERVAL = 2.0
 MAX_CONTENT_LENGTH = 100_000
 TITLE_LENGTH = 60
 GENERIC_ERROR = "Die Antwort konnte nicht erzeugt werden. Bitte später erneut versuchen."
-_MILLION = Decimal(1_000_000)
-_COST_STEP = Decimal("0.000001")
 
 
 class TurnError(Exception):
@@ -130,21 +146,25 @@ def chat_models_for(user) -> list[AIModel]:
     """Aktive Chat-Modelle aktiver Anbieter, die die Rolle von ``user`` erlaubt –
     auch solche, die das ausgeschöpfte Monatsbudget gerade sperrt.
 
-    Jedes Modell bekommt ``blocked_by_budget`` (bool). Der Budgetstand wird
+    Jedes Modell bekommt ``blocked_by_budget`` (bool), ``budget_reason`` (Text
+    je Abrechnungskonto) und ``billing_title`` (Preisinfo). Der Budgetstand wird
     dafür höchstens einmal abgefragt (nicht je Modell).
     """
-    qs = AIModel.objects.filter(
-        capability=AIModel.Capability.CHAT, active=True, provider__active=True
-    ).select_related("provider")
+    qs = (
+        AIModel.objects.filter(
+            capability=AIModel.Capability.CHAT, active=True, provider__active=True
+        )
+        .select_related("provider__billing_account")
+        .prefetch_related("mcp_servers", "prices")
+    )
     models = [m for m in qs if model_permitted(user, m)]
-    exhausted = None
     for m in models:
-        if usage.model_is_free(m):
-            m.blocked_by_budget = False
-            continue
-        if exhausted is None:
-            exhausted = not budget_allows(user, m)
-        m.blocked_by_budget = exhausted
+        m._prices_cache = list(m.prices.all())  # billing.pricing.price_at ohne Abfrage
+    reasons = usage.blocked_reasons(user, models)
+    for m in models:
+        m.budget_reason = reasons.get(m.pk, "")
+        m.blocked_by_budget = bool(m.budget_reason)
+        m.billing_title = usage.billing_title(m)
     return models
 
 
@@ -207,7 +227,14 @@ class Tree:
 
 def _current_leaf_id(conversation: Conversation, tree: Tree) -> int | None:
     """current_leaf frisch aus der DB (die Instanz kann veraltet sein). Fehlt
-    er (Altdaten, gelöschte Nachricht), gilt die neueste Nachricht."""
+    er (Altdaten, gelöschte Nachricht), gilt die neueste Nachricht.
+
+    Geteilte Chats: Für einen Empfänger (``sharing.bind_viewer``) gilt seine
+    eigene Ansicht (``ConversationView``), sonst der Hauptpfad."""
+    viewer_id = sharing.foreign_viewer_id(conversation)
+    if viewer_id is not None:
+        leaf_id = sharing.view_leaf_id(conversation, viewer_id)
+        return leaf_id if leaf_id in tree else tree.newest
     leaf_id = (
         Conversation.objects.filter(pk=conversation.pk)
         .values_list("current_leaf_id", flat=True)
@@ -218,12 +245,17 @@ def _current_leaf_id(conversation: Conversation, tree: Tree) -> int | None:
 
 
 def _load_path(ids: list[int], tree: Tree, *, prefetch: bool) -> list[Message]:
-    qs = Message.objects.filter(pk__in=ids).select_related("model")
+    qs = Message.objects.filter(pk__in=ids).select_related("model", "author")
     if prefetch:
-        qs = qs.prefetch_related("tool_calls__server", "tool_calls__attachments", "sources__chunk")
+        qs = qs.prefetch_related(
+            "tool_calls__server", "tool_calls__attachments", "sources__chunk", "attachments"
+        )
     by_id = {m.pk: m for m in qs}
     messages = [by_id[pk] for pk in ids if pk in by_id]
     for m in messages:
+        if prefetch:
+            # Hochgeladene Anhänge (ohne Dateien aus Werkzeugaufrufen).
+            m.upload_attachments = [a for a in m.attachments.all() if a.tool_call_id is None]
         m.sibling_ids = tree.siblings(m.pk)
         m.sibling_index = m.sibling_ids.index(m.pk)
         m.sibling_count = len(m.sibling_ids)
@@ -258,8 +290,9 @@ def append_message(
         parent_id = parent.pk if isinstance(parent, Message) else parent
     message = Message.objects.create(conversation=conversation, parent_id=parent_id, **fields)
     if move_leaf:
-        Conversation.objects.filter(pk=conversation.pk).update(current_leaf=message)
-        conversation.current_leaf = message
+        # Besitzer: Hauptpfad; Empfänger geteilter Chats: eigene Ansicht bzw.
+        # Vorspulen des Hauptpfads (sharing.move_leaf).
+        sharing.move_leaf(conversation, message)
     return message
 
 
@@ -275,7 +308,12 @@ def switch_branch(conversation: Conversation, message_id, *, adopt_model: bool =
     if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id not in tree:
         raise TurnError("Diese Nachricht gibt es in diesem Chat nicht.")
     leaf_id = tree.newest_leaf_below(message_id)
-    if leaf_id != _current_leaf_id(conversation, tree):
+    if sharing.foreign_viewer_id(conversation) is not None:
+        # Empfänger eines geteilten Chats: nur die eigene Ansicht, keine
+        # Rückfragen schließen (gemeinsamer Zustand bleibt unberührt).
+        if leaf_id != _current_leaf_id(conversation, tree):
+            sharing.set_view_leaf(conversation, leaf_id)
+    elif leaf_id != _current_leaf_id(conversation, tree):
         close_pending(conversation)
         Conversation.objects.filter(pk=conversation.pk).update(current_leaf_id=leaf_id)
         conversation.current_leaf_id = leaf_id
@@ -290,12 +328,22 @@ def switch_branch(conversation: Conversation, message_id, *, adopt_model: bool =
             conversation.default_model_id = model_id
 
 
-def build_system_prompt(user, conversation: Conversation) -> str | None:
-    """Fester Prompt der Rolle zuerst, dann der System-Prompt des Chats."""
+def build_system_prompt(user, conversation: Conversation, notes=()) -> str | None:
+    """Reihenfolge: Grundregeln (``ChatSettings``, leer = keine), fester Prompt
+    der Rolle, Hinweise von MultiGPT (``notes``: Quellmaterial, Websuche), dann
+    die Anweisungen des Projekts (gekennzeichnet als Nutzerinhalt,
+    chat/projects.py), zuletzt der System-Prompt des Chats."""
     parts = []
+    base = ChatSettings.base_text()
+    if base:
+        parts.append(base)
     role = user.role if getattr(user, "role_id", None) else None
     if role is not None and role.fixed_system_prompt.strip():
         parts.append(role.fixed_system_prompt.strip())
+    parts += [note for note in notes if note]
+    project_block = chat_projects.instruction_block(conversation)
+    if project_block:
+        parts.append(project_block)
     if conversation.system_prompt.strip():
         parts.append(conversation.system_prompt.strip())
     return "\n\n".join(parts) or None
@@ -308,9 +356,18 @@ def build_history(
     provider_id: int | None = None,
     with_tools: bool = False,
     leaf: Message | int | None = None,
+    vision: bool = False,
+    for_user=None,
 ) -> list[ChatMessage]:
     """Verlauf für das Modell (siehe Moduldoku zu complete/aborted): nur der
     Pfad bis ``leaf`` (Standard: angezeigter Zweig), ohne ``exclude_ids``.
+
+    ``for_user`` (Absender, geteilte Chats): Werkzeugrunden von Antworten, die
+    jemand anderes ausgelöst hat, gehen nur als Text mit (``sharing.own_rounds``).
+
+    Anhänge der Nutzernachrichten (``attachments.apply_to_history``): Bilder
+    nur mit ``vision`` und nur aus den letzten Nachrichten mit Bildern, sonst
+    Platzhalter; Dokumenttext als ``<quellmaterial>`` vor der Nachricht.
 
     Antworten mit Werkzeugrunden werden mit ``with_tools`` vollständig
     (Aufrufe, Ergebnisse) übergeben, sonst nur als Text (ohne angebotene
@@ -325,14 +382,30 @@ def build_history(
     excluded = set(exclude_ids)
     ids = [pk for pk in tree.path_to(leaf_id) if pk not in excluded]
     usable = {Message.Status.COMPLETE, Message.Status.ABORTED}
+    path = _load_path(ids, tree, prefetch=False)
+    by_message: dict[int, list[Attachment]] = {}
+    user_ids = [m.pk for m in path if m.role == Message.Role.USER]
+    if user_ids:
+        for att in Attachment.objects.filter(
+            message_id__in=user_ids, tool_call__isnull=True
+        ).order_by("created", "id"):
+            by_message.setdefault(att.message_id, []).append(att)
     history: list[ChatMessage] = []
-    for m in _load_path(ids, tree, prefetch=False):
+    with_attachments: list[tuple[Message, ChatMessage]] = []
+    for m in path:
         if m.status not in usable:
             continue
         if m.role == Message.Role.ASSISTANT:
-            history += expand_assistant(m, provider_id=provider_id, with_tools=with_tools)
-        elif m.content:
-            history.append(ChatMessage(role=m.role, content=m.content))
+            tools = with_tools and sharing.own_rounds(m, conversation, for_user)
+            history += expand_assistant(m, provider_id=provider_id, with_tools=tools)
+        elif m.content or by_message.get(m.pk):
+            item = ChatMessage(role=m.role, content=m.content)
+            history.append(item)
+            m.chat_attachments = by_message.get(m.pk, [])
+            if m.chat_attachments:
+                with_attachments.append((m, item))
+    if with_attachments:
+        chat_attachments.apply_to_history(with_attachments, vision=vision)
     return history
 
 
@@ -401,15 +474,27 @@ def expand_assistant(
 
 
 def compute_cost(ai_model: AIModel, tokens_in: int, tokens_out: int) -> Decimal | None:
-    """Kosten in Euro; Preise je 1 Mio. Tokens. Lokal 0, ohne Preise None."""
-    if ai_model.provider.is_local:
-        return Decimal(0)
-    if ai_model.price_in is None and ai_model.price_out is None:
+    """Kosten in Euro nach dem jetzt gültigen Preis (Vorschau, ohne Buchung).
+
+    Token- und Pauschalkonten (z. B. lokal) 0, ohne Preis oder Kurs None.
+    Gebucht wird über ``_book`` (billing.booking).
+    """
+    return billing.estimate_eur(ai_model, Tally([Round(tokens_in, tokens_out)]))
+
+
+def _book(turn: Turn, tally: Tally) -> Decimal | None:
+    """Antwort buchen (eine Buchung je Antwort, billing.booking); liefert den
+    Wert für ``Message.cost`` (EUR). Fehler verhindern den Abschluss nie."""
+    try:
+        entry = billing.book_answer(turn.assistant_message, turn.ai_model, tally)
+        return billing.compat_cost(entry)
+    except Exception as exc:
+        logger.error(
+            "Buchung für Antwort %s fehlgeschlagen: %s",
+            turn.assistant_message.pk,
+            type(exc).__name__,
+        )
         return None
-    price_in = ai_model.price_in or Decimal(0)
-    price_out = ai_model.price_out or Decimal(0)
-    cost = (Decimal(tokens_in) * price_in + Decimal(tokens_out) * price_out) / _MILLION
-    return cost.quantize(_COST_STEP, rounding=ROUND_HALF_UP)
 
 
 def _refresh_connection():
@@ -439,8 +524,14 @@ def prepare_turn(
     regenerate_of: int | None = None,
     options: dict | None = None,
     compare: bool = False,
+    attachments: list[int] | None = None,
+    expected_leaf: int | None = None,
 ) -> Turn:
     """Legt Nutzer- und (leere) Assistant-Nachricht an. Rechte prüft der Aufrufer.
+
+    Beide Nachrichten tragen ``author=user`` (Anzeige, Rückfragen, Budget).
+    ``expected_leaf`` (geteilte Chats): Ende, das der Absender sieht; weicht
+    es bei einer neuen Nachricht vom Stand der Datenbank ab, -> 409.
 
     - neue Nachricht: Kind des angezeigten Endes (current_leaf);
     - ``edit_of`` (pk einer Nutzernachricht dieses Chats): neue Version davon,
@@ -460,15 +551,20 @@ def prepare_turn(
     parallelen Spalten). Eine weitere Spalte (``regenerate``) wird Geschwister,
     ohne current_leaf und default_model zu ändern – angezeigt bleibt die erste
     Spalte, bis der Nutzer per ``switch_branch`` wählt.
+
+    ``attachments`` (IDs): eigene Entwürfe und beim Bearbeiten Anhänge der
+    Originalnachricht; ``None`` beim Bearbeiten übernimmt alle Anhänge der
+    Originalnachricht. Mit Anhängen darf ``content`` leer sein. Bilder an ein
+    Modell ohne ``supports_vision`` -> ``TurnError`` 409 (alles zurückgerollt).
     """
     if not regenerate:
         content = (content or "").strip()
-        if not content:
+        if not content and not attachments and edit_of is None:
             raise TurnError("Die Nachricht ist leer.")
         if len(content) > MAX_CONTENT_LENGTH:
             raise TurnError("Die Nachricht ist zu lang.")
     servers = (
-        tooling.enabled_server_ids(user, mcp_servers)
+        tooling.enabled_server_ids(user, mcp_servers, ai_model=ai_model)
         if ai_model.supports_tools and not compare
         else []
     )
@@ -481,6 +577,10 @@ def prepare_turn(
         user_message = None
         if regenerate:
             question_id = _question_for_regenerate(conversation, tree, regenerate_of)
+            if Attachment.objects.filter(
+                message_id=question_id, kind=Attachment.Kind.IMAGE, tool_call__isnull=True
+            ).exists():
+                _require_vision(ai_model)
         else:
             if edit_of is not None:
                 original = conversation.messages.filter(pk=edit_of, role=Message.Role.USER).first()
@@ -489,11 +589,33 @@ def prepare_turn(
                 parent_id = original.parent_id
             else:
                 parent_id = _current_leaf_id(conversation, tree)
+                if expected_leaf is not None and expected_leaf != parent_id:
+                    raise TurnError(sharing.STALE_MESSAGE, 409)
+            drafts, originals = _resolve_attachments(user, attachments, edit_of)
+            if not content and not (drafts or originals):
+                raise TurnError("Die Nachricht ist leer.")
+            if any(a.is_image for a in [*drafts, *originals]):
+                _require_vision(ai_model)
             close_pending(conversation)
             user_message = append_message(
-                conversation, parent=parent_id, role=Message.Role.USER, content=content
+                conversation,
+                parent=parent_id,
+                role=Message.Role.USER,
+                content=content,
+                author=user,
             )
             question_id = user_message.pk
+            for original_attachment in originals:
+                chat_attachments.copy_for_message(original_attachment, user_message)
+            if drafts:
+                Attachment.objects.filter(pk__in=[a.pk for a in drafts]).update(
+                    message=user_message, conversation=conversation
+                )
+            if not content:
+                first = (drafts or originals)[0]
+                content_for_title = first.display_name
+            else:
+                content_for_title = content
 
         assistant_message = append_message(
             conversation,
@@ -501,6 +623,7 @@ def prepare_turn(
             move_leaf=not extra_column,
             role=Message.Role.ASSISTANT,
             model=ai_model,
+            author=user,
             status=Message.Status.ABORTED,  # Platzhalter, siehe Moduldoku
             tool_state=_initial_tool_state(servers, options),
         )
@@ -509,7 +632,7 @@ def prepare_turn(
         if not extra_column:
             fields["default_model"] = ai_model
         if not conversation.title and user_message is not None:
-            fields["title"] = _title_from(content)
+            fields["title"] = _title_from(content_for_title)
         Conversation.objects.filter(pk=conversation.pk).update(**fields)
         for key, value in fields.items():
             setattr(conversation, key, value)
@@ -529,6 +652,25 @@ def prepare_turn(
         options=dict(options or {}),
         query=query,
     )
+
+
+def _resolve_attachments(user, ids, edit_of) -> tuple[list[Attachment], list[Attachment]]:
+    """Anhänge der neuen Nutzernachricht: (eigene Entwürfe, Originalanhänge)."""
+    if ids is None:
+        if edit_of is None:
+            return [], []
+        # Bearbeiten ohne Angabe: alle Anhänge der Originalnachricht übernehmen.
+        originals = Attachment.objects.filter(message_id=edit_of, tool_call__isnull=True)
+        return [], list(originals.order_by("created", "id"))
+    try:
+        return chat_attachments.resolve_for_message(user, ids, edit_of=edit_of)
+    except ValueError as exc:
+        raise TurnError(str(exc)) from None
+
+
+def _require_vision(ai_model: AIModel) -> None:
+    if not ai_model.supports_vision:
+        raise TurnError(chat_attachments.MSG_NO_VISION.format(model=ai_model.display_name), 409)
 
 
 def _initial_tool_state(servers: list[int], options: dict | None) -> dict:
@@ -691,16 +833,27 @@ def _save_partial(message_id: int, text: str):
     Message.objects.filter(pk=message_id).update(content=text)
 
 
-def _finish(turn: Turn, text: str, status: str, error: str, tokens_in: int, tokens_out: int):
+def _finish(
+    turn: Turn,
+    text: str,
+    status: str,
+    error: str,
+    tokens_in: int,
+    tokens_out: int,
+    tally: Tally | None = None,
+):
     msg = turn.assistant_message
     msg.content = text
     msg.status = status
     msg.error = error
     msg.tokens_in = tokens_in
     msg.tokens_out = tokens_out
-    msg.cost = compute_cost(turn.ai_model, tokens_in, tokens_out)
+    if tally is None:
+        tally = Tally([Round(tokens_in, tokens_out)] if tokens_in or tokens_out else [])
+    msg.cost = None
     try:
         _refresh_connection()
+        msg.cost = _book(turn, tally)  # Buchung zuerst; Message.cost kommt aus ihr
         Message.objects.filter(pk=msg.pk).update(
             content=text,
             status=status,
@@ -741,12 +894,15 @@ class _Loop:
         self.content = self.msg.content if turn.resume else ""
         self.tokens_in = self.msg.tokens_in if turn.resume else 0
         self.tokens_out = self.msg.tokens_out if turn.resume else 0
+        # Verbrauch je Anbieteraufruf mit Cache/Reasoning (Buchung, billing).
+        self.tally = billing.tally_of(self.msg) if turn.resume else Tally()
         self.stream = None
         self.paused = False
         self.bindings: dict[str, tooling.Binding] = {}
         # Quellen der Antwort (durchgehend nummeriert) und Quellmaterial-Block
         # der festen Abläufe (bleibt über eine Rückfrage hinweg erhalten).
-        self.sources = source_refs.SourceCollector(self.msg)
+        # Zitierstil des Absenders (geteilte Chats: nie der des Besitzers).
+        self.sources = source_refs.SourceCollector(self.msg, citations.prefs_for(turn.user))
         self.context = str(self.state.get("context") or "")
 
     # --- Hilfen ---
@@ -826,8 +982,16 @@ class _Loop:
         need = []
         for call in open_calls:
             if call.get("builtin"):
-                continue  # eingebaute Werkzeuge laufen ohne Rückfrage
-            server, err = tooling.resolve_server(self.turn.user, call, self.servers)
+                # Eingebaute Werkzeuge ohne Rückfrage, außer der Verwalter
+                # verlangt sie (z. B. generate_image, kostet Geld).
+                if call.get("decision") is None and tooling.builtin_needs_confirmation(
+                    call["builtin"]
+                ):
+                    need.append((call, None))
+                continue
+            server, err = tooling.resolve_server(
+                self.turn.user, call, self.servers, self.turn.ai_model
+            )
             if server is not None and call.get("decision") is None:
                 if tooling.needs_confirmation(server, call["tool"]):
                     need.append((call, server))
@@ -846,7 +1010,7 @@ class _Loop:
                 tool_call.status = ToolCall.Status.AWAITING_CONFIRMATION
                 tool_call.save(update_fields=["status"])
                 tool_calls.append((tool_call, server))
-            cost = compute_cost(self.turn.ai_model, self.tokens_in, self.tokens_out)
+            cost = _book(self.turn, self.tally)
             Message.objects.filter(pk=self.msg.pk).update(
                 content=self.content,
                 status=Message.Status.AWAITING_CONFIRMATION,
@@ -861,7 +1025,7 @@ class _Loop:
         self.paused = True
         logger.info("Antwort %s wartet auf Bestätigung (%d Aufrufe)", self.msg.pk, len(need))
         for tool_call, server in tool_calls:
-            yield "tool_call", tooling.call_event(tool_call, server.name)
+            yield "tool_call", tooling.call_event(tool_call, server.name if server else "")
         yield "confirmation_required", {"tool_call_ids": [tc.pk for tc, _ in tool_calls]}
         yield "usage", {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out}
         yield "done", {"status": Message.Status.AWAITING_CONFIRMATION}
@@ -872,7 +1036,7 @@ class _Loop:
             return
         user = self.turn.user
         # Rechte vor jedem Aufruf erneut prüfen (auch nach einer Bestätigung).
-        server, err = tooling.resolve_server(user, call, self.servers)
+        server, err = tooling.resolve_server(user, call, self.servers, self.turn.ai_model)
         decision = call.get("decision")
         if decision == "reject":
             tool_call = self._tool_call_for(call, server, ToolCall.Status.REJECTED)
@@ -901,20 +1065,18 @@ class _Loop:
         yield "tool_result", tooling.result_event(tool_call, outcome.attachment_ids)
 
     def _budget_status(self):
-        """Hinweis ab 80 % des Monatsbudgets als SSE ``status`` (Stufe warning).
+        """Hinweis ab 80 % eines Budgets als SSE ``status`` (Stufe warning).
 
         Nach den festen Abläufen, damit deren Info-Status ihn nicht verdrängt.
         Stand vor dieser Antwort; die Sperre selbst prüft ``can(USE_MODEL)``.
         """
         try:
-            if usage.budget_for(self.turn.user) is None:
-                return
-            state = usage.budget_state(self.turn.user)
+            texts = usage.warnings_for(self.turn.user, self.turn.ai_model)
         except Exception as exc:  # der Hinweis darf die Antwort nie verhindern
             logger.error("Budgetstand für Antwort %s: %s", self.msg.pk, type(exc).__name__)
             return
-        if state.level != usage.LEVEL_OK:
-            yield "status", {"text": usage.warning_text(state), "level": "warning"}
+        if texts:  # Konto des Modells und Gesamtbudget (billing.budgets)
+            yield "status", {"text": " ".join(texts), "level": "warning"}
 
     # --- Quellmaterial und eingebaute Werkzeuge (M7, M8) ---
 
@@ -948,13 +1110,27 @@ class _Loop:
             yield "sources", self.sources.event()
 
     def _execute_builtin(self, rnd: dict, call: dict):
-        """Eingebautes Werkzeug: ohne Rückfrage, ``available`` vor jedem Aufruf."""
+        """Eingebautes Werkzeug: ``available`` vor jedem Aufruf; Rückfrage nur mit
+        ``BuiltinTool.confirm`` (abgelehnt bzw. nicht bestätigt -> nicht ausgeführt)."""
+        decision = call.get("decision")
+        if decision == "reject":
+            tool_call = self._tool_call_for(call, None, ToolCall.Status.REJECTED)
+            tooling.close_call(tool_call, ToolCall.Status.REJECTED, tooling.MSG_REJECTED)
+            self._add_result(rnd, call, tooling.MSG_REJECTED, True)
+            self._persist()
+            yield "tool_result", tooling.result_event(tool_call, [])
+            return
         tool_call = self._tool_call_for(call, None, ToolCall.Status.RUNNING)
+        if tool_call.status != ToolCall.Status.RUNNING:
+            tool_call.status = ToolCall.Status.RUNNING
+            tool_call.save(update_fields=["status"])
         yield "tool_call", {**tooling.call_event(tool_call), "status": ToolCall.Status.RUNNING}
         started = time.monotonic()
         builtin = tooling.get_builtin(call.get("builtin"))
         if builtin is None or not builtin.available(self.turn.user, self.turn.ai_model):
             outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_NOT_ALLOWED, True)
+        elif decision != "approve" and tooling.builtin_needs_confirmation(builtin.name):
+            outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_NOT_CONFIRMED, True)
         else:
             try:
                 result = builtin.run(self.turn.user, call.get("arguments") or {}, self.sources)
@@ -1015,7 +1191,13 @@ class _Loop:
                 # MCP-Werkzeuge der eingeschalteten Server plus eingebaute
                 # Werkzeuge (web_search) nach Recht und Einstellung.
                 if self.servers:
-                    self.bindings = tooling.collect_tools(turn.user, self.servers)
+                    offline = []
+                    self.bindings = tooling.collect_tools(
+                        turn.user, self.servers, turn.ai_model, offline=offline
+                    )
+                    if offline:  # Hinweis statt Fehler mitten in der Antwort
+                        hint = mcp_status.offline_hint(offline)
+                        yield "status", {"text": hint, "level": "warning"}
                 self.bindings.update(tooling.builtin_bindings(turn.user, turn.ai_model))
             if turn.resume and self.state["rounds"]:
                 paused = yield from self._process_round(self.state["rounds"][-1])
@@ -1029,6 +1211,8 @@ class _Loop:
                 provider_id=provider_id,
                 with_tools=bool(specs),
                 leaf=msg,  # Pfad dieser Antwort, auch wenn inzwischen umgeschaltet wurde
+                vision=turn.ai_model.supports_vision,
+                for_user=turn.user,
             )
             if self.context:
                 # Quellmaterial nur im Verlauf an die Frage dieser Runde hängen.
@@ -1044,13 +1228,21 @@ class _Loop:
                 text = self.content.strip()
                 if text:
                     history.append(ChatMessage("assistant", text))
-            system = build_system_prompt(turn.user, turn.conversation)
-            if self.context or any(b.builtin for b in self.bindings.values()):
-                note = source_refs.SYSTEM_NOTE
-                system = f"{system}\n\n{note}" if system else note
+            notes = []
+            documents = chat_attachments.has_documents(history)
+            if self.context or documents or any(b.builtin for b in self.bindings.values()):
+                notes.append(source_refs.SYSTEM_NOTE)
+            # Websuche: Werkzeug angeboten bzw. Hinweis auf den Schalter (M8).
+            notes.append(
+                websearch.system_hint(turn.user, turn.options, "web_search" in self.bindings)
+            )
+            notes.append(websearch.pages.system_hint(self.bindings))  # fetch_url, crawl_site
+            notes.append(images.system_hint(self.bindings))  # generate_image (M9-01)
+            system = build_system_prompt(turn.user, turn.conversation, notes)
             adapter = registry.get_adapter(turn.ai_model.provider)
 
             while True:
+                sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
                 calls_so_far = int(self.state.get("model_calls", 0))
                 last = calls_so_far >= MAX_ROUNDS - 1
                 params = {}
@@ -1063,6 +1255,7 @@ class _Loop:
                 round_parts: list[str] = []
                 calls: list[ToolCallEvent] = []
                 round_in = round_out = 0
+                round_usage: Usage | None = None
                 done: Done | None = None
                 last_save = time.monotonic()
                 for event in self.stream:
@@ -1079,10 +1272,12 @@ class _Loop:
                         if time.monotonic() - last_save >= SAVE_INTERVAL:
                             _save_partial(msg.pk, self.content)
                             last_save = time.monotonic()
+                            sharing.check_turn(turn)
                     elif isinstance(event, ToolCallEvent):
                         calls.append(event)
                     elif isinstance(event, Usage):
                         round_in, round_out = event.tokens_in, event.tokens_out
+                        round_usage = event
                     elif isinstance(event, Error):
                         error = event.message or GENERIC_ERROR
                         if event.retryable and self.content.strip():
@@ -1101,6 +1296,8 @@ class _Loop:
                 _close(self.stream)
                 self.stream = None
                 self.tokens_in += round_in
+                if round_usage is not None:
+                    self.tally.add(round_usage)
                 self.tokens_out += round_out
                 if error:
                     break
@@ -1123,9 +1320,23 @@ class _Loop:
             if self.paused:
                 raise  # Zustand ist gespeichert, die Antwort wartet weiter.
             self._abort_open_calls()
-            _finish(turn, self.content, Message.Status.ABORTED, "", self.tokens_in, self.tokens_out)
+            _finish(
+                turn,
+                self.content,
+                Message.Status.ABORTED,
+                "",
+                self.tokens_in,
+                self.tokens_out,
+                self.tally,
+            )
             logger.info("Antwort %s vom Client abgebrochen", msg.pk)
             raise
+        except sharing.AccessRevoked:
+            # Widerruf greift sofort: Teiltext bleibt, Antwort gilt als abgebrochen.
+            logger.info("Antwort %s: Freigabe entzogen", msg.pk)
+            status, error = Message.Status.ABORTED, sharing.MSG_REVOKED
+            _close(self.stream)
+            self._abort_open_calls()
         except Exception as exc:
             logger.error("Stream für Antwort %s fehlgeschlagen: %s", msg.pk, type(exc).__name__)
             status, error = Message.Status.ERROR, GENERIC_ERROR
@@ -1137,7 +1348,7 @@ class _Loop:
 
         if self.paused:
             return
-        _finish(turn, self.content, status, error, self.tokens_in, self.tokens_out)
+        _finish(turn, self.content, status, error, self.tokens_in, self.tokens_out, self.tally)
         if error:
             yield "error", {"message": error}
         cost = msg.cost

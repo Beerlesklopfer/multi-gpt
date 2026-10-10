@@ -30,7 +30,8 @@ Weitere Regeln:
   damit keine Verbindung für einen anderen Namen wiederverwendet wird;
 - Gesamtzeitlimit über alle Schritte und das Lesen, Größenlimit auf den
   (entpackten) Inhalt, nur ``text/html``, ``application/xhtml+xml`` und
-  ``text/plain``.
+  ``text/plain`` (``fetch_raw`` mit eigener Liste: ``pages`` erlaubt zusätzlich
+  JSON und PDF).
 
 Die SearXNG-URL selbst ist ausgenommen; sie wird in ``searxng.py`` ohne diesen
 Schutz angesprochen, weil sie nur aus der Verwalter-Konfiguration kommt.
@@ -188,13 +189,13 @@ def _read_limited(response: httpx.Response, deadline: float, max_bytes: int) -> 
     return b"".join(chunks)
 
 
-def _request(parsed: httpx.URL, ip: str, remaining: float):
+def _request(parsed: httpx.URL, ip: str, remaining: float, user_agent: str = USER_AGENT):
     """Client und Anfrage an die geprüfte IP (Host-Header und SNI = Originalname)."""
     host = parsed.raw_host.decode("ascii")
     target = parsed.copy_with(host=ip)
     headers = {
         "Host": parsed.netloc.decode("ascii"),
-        "User-Agent": USER_AGENT,
+        "User-Agent": user_agent,
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
         "Accept-Language": "de,en;q=0.7",
     }
@@ -210,18 +211,44 @@ def _request(parsed: httpx.URL, ip: str, remaining: float):
     return client, request
 
 
-def fetch_text(url: str, *, timeout: float, max_chars: int, max_bytes: int = MAX_BYTES) -> Page:
-    """Seite abrufen und auf Text reduzieren; ``FetchError`` bei jedem Problem."""
+@dataclass(frozen=True)
+class RawPage:
+    """Rohinhalt einer Seite: endgültige URL, Inhaltstyp (ohne Parameter), Bytes."""
+
+    url: str
+    mime: str
+    content_type: str
+    body: bytes
+
+    def decoded(self) -> str:
+        return self.body.decode(_charset(self.content_type, self.body), errors="replace")
+
+
+def fetch_raw(
+    url: str,
+    *,
+    timeout: float,
+    types=TEXT_TYPES,
+    max_bytes: int = MAX_BYTES,
+    user_agent: str = USER_AGENT,
+    guard=None,
+) -> RawPage:
+    """Seite SSRF-geschützt abrufen (nur Inhaltstypen aus ``types``);
+    ``FetchError`` bei jedem Problem. Grundlage für ``fetch_text`` und
+    ``pages`` (fetch_url, crawl_site). ``guard(host)`` prüft jeden Schritt
+    (auch nach Weiterleitungen) vor der Auflösung, z. B. gesperrte Domains."""
     deadline = time.monotonic() + timeout
     current = url
     for _hop in range(MAX_REDIRECTS + 1):
         parsed = _parse(current)
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if guard is not None:
+            guard(parsed.host)
         ip = resolve_public(parsed.raw_host.decode("ascii"), port)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise FetchError(MSG_TIMEOUT)
-        client, request = _request(parsed, ip, remaining)
+        client, request = _request(parsed, ip, remaining, user_agent)
         try:
             with client:
                 response = client.send(request, stream=True)
@@ -236,7 +263,7 @@ def fetch_text(url: str, *, timeout: float, max_chars: int, max_bytes: int = MAX
                         raise FetchError(MSG_HTTP.format(status=response.status_code))
                     content_type = response.headers.get("content-type", "")
                     mime = content_type.split(";", 1)[0].strip().lower()
-                    if mime not in TEXT_TYPES:
+                    if mime not in types:
                         raise FetchError(MSG_TYPE.format(type=mime or "unbekannt"))
                     body = _read_limited(response, deadline, max_bytes)
                 finally:
@@ -245,10 +272,16 @@ def fetch_text(url: str, *, timeout: float, max_chars: int, max_bytes: int = MAX
             raise FetchError(MSG_TIMEOUT) from None
         except httpx.HTTPError:
             raise FetchError(MSG_UNREACHABLE) from None
-        decoded = body.decode(_charset(content_type, body), errors="replace")
-        if mime in HTML_TYPES:
-            title, text = html_to_text(decoded)
-        else:
-            title, text = "", normalize_text(decoded)
-        return Page(url=str(parsed), title=title[:300], text=clip(text, max_chars))
+        return RawPage(url=str(parsed), mime=mime, content_type=content_type, body=body)
     raise FetchError(MSG_REDIRECTS)
+
+
+def fetch_text(url: str, *, timeout: float, max_chars: int, max_bytes: int = MAX_BYTES) -> Page:
+    """Seite abrufen und auf Text reduzieren; ``FetchError`` bei jedem Problem."""
+    raw = fetch_raw(url, timeout=timeout, max_bytes=max_bytes)
+    decoded = raw.decoded()
+    if raw.mime in HTML_TYPES:
+        title, text = html_to_text(decoded)
+    else:
+        title, text = "", normalize_text(decoded)
+    return Page(url=raw.url, title=title[:300], text=clip(text, max_chars))

@@ -116,6 +116,7 @@ def test_section_lists_all_entries_overview_first(admin_client):
         "Dokumente",
         "Sammlungen",
         "Verzeichnisquellen",
+        "Läufe",
         "Indexierungsaufträge",
         "Einstellungen",
     ]
@@ -365,16 +366,22 @@ def test_document_single_delete_removes_file(
     assert not Document.objects.exists() and not os.path.exists(path)
 
 
-def test_document_not_editable(admin_client, coll):
+def test_document_only_citation_editable(admin_client, coll):
+    """Nur die Literaturangaben sind bearbeitbar (ragcite); Titel, Datei usw. nicht."""
     doc = make_document(coll)
     url = reverse("admin:rag_documentproxy_change", args=[doc.pk])
     page = admin_client.get(url)
     assert page.status_code == 200
     assert '<input type="file"' not in page.content.decode()
     before = Document.objects.get(pk=doc.pk)
-    response = admin_client.post(url, {"title": "Neu"})
-    assert response.status_code == 403
-    assert Document.objects.get(pk=doc.pk).title == before.title
+    response = admin_client.post(
+        url, {"title": "Neu", "bib_type": "book", "bib_authors": "Müller, Hans", "bib_date": "2024"}
+    )
+    assert response.status_code == 302
+    after = Document.objects.get(pk=doc.pk)
+    assert after.title == before.title
+    assert (after.bib_type, after.bib_authors, after.bib_date) == ("book", "Müller, Hans", "2024")
+    assert after.bib_edited
     assert admin_client.get(reverse("admin:rag_documentproxy_changelist") + "add/").status_code in (
         403,
         404,
@@ -415,11 +422,13 @@ def test_job_actions(admin_client, coll):
     assert failed_doc.status == Document.Status.ERROR
     assert failed_doc.error_text == services.CANCELLED_TEXT
 
-    # Laufender Auftrag mit frischem Lebenszeichen bleibt.
+    # Laufender Auftrag mit frischem Lebenszeichen bleibt, wird aber markiert:
+    # Der Worker beendet ihn nach dem aktuellen Schritt.
     running = index_job(failed_doc, Job.Status.RUNNING, locked_at=timezone.now())
     response = action(admin_client, "jobproxy", "cancel_action", [running.pk])
-    assert Job.objects.filter(pk=running.pk).exists()
-    assert "laufen gerade" in response.content.decode()
+    running.refresh_from_db()
+    assert running.cancel_requested
+    assert "nach dem aktuellen Schritt beendet" in response.content.decode()
 
 
 def test_job_pages_show_ids_only(admin_client, coll):
@@ -451,6 +460,10 @@ def test_settings_page_offers_reindex(admin_client, coll):
             "embedding_model": "",
             "ocr_backend": "tesseract",
             "ocr_model": "",
+            "figure_max_per_document": 50,
+            "figure_max_per_page": 10,
+            "figure_min_edge": 150,
+            "figure_max_edge": 1024,
             "chunk_tokens": 600,
             "overlap_tokens": 50,
             "top_k": 6,

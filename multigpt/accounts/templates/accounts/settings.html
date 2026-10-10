@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{# Seite „Einstellungen“: persönliche Einstellungen des eigenen Kontos, ohne JavaScript. #}
+{% block title %}Einstellungen – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="settings-title">
+    <h1 id="settings-title">Einstellungen</h1>
+    <form method="post" action="{% url 'settings' %}" class="form">
+      {% csrf_token %}
+      <h2 class="section-title">Zitieren und Quellen</h2>
+      <p class="page-intro">
+        Quellen aus Dokumenten und Webseiten werden im gewählten Stil angegeben. Andere Stile und
+        BibTeX lassen sich unter jeder Antwort über „Zitat kopieren“ wählen. Links ohne Quelle
+        werden auf Wunsch als möglicherweise erfunden markiert.
+      </p>
+      {{ form.as_div }}
+      <button type="submit" class="button button-primary">Speichern</button>
+      <a href="{% url 'chat:index' %}" class="button">Zurück zum Chat</a>
+    </form>
+
+    <h2 class="section-title">Konto</h2>
+    <p><a href="{% url 'password_change' %}">Passwort ändern</a></p>
+
+    <h2 class="section-title" id="settings-samples-title">Beispiele</h2>
+    <div class="table-scroll">
+      <table class="usage-table settings-samples" aria-labelledby="settings-samples-title">
+        <thead>
+          <tr><th scope="col">Stil</th><th scope="col">Literaturverzeichnis</th><th scope="col">Kurzbeleg</th></tr>
+        </thead>
+        <tbody>
+          {% for sample in samples %}
+            <tr><th scope="row">{{ sample.label }}</th><td>{{ sample.entry }}</td><td>{{ sample.short }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

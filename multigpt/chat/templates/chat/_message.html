@@ -1,7 +1,8 @@
 {# Eine Nachricht. Inhalt nur über Auto-Escaping; markdown.js rendert Antworten bereinigt. #}
 <article class="chat-message chat-message-{{ msg.role }}" data-message-id="{{ msg.pk }}"
          data-role="{{ msg.role }}" data-status="{{ msg.status }}">
-  <h2 class="chat-message-author">{% if msg.role == "user" %}Du{% else %}{{ msg.model.display_name|default:"Assistent" }}{% endif %}</h2>
+  {% load sharing_tags %}{# Geteilte Chats: Name statt „Du“ an fremden Nachrichten. #}
+  <h2 class="chat-message-author">{% if msg.role == "user" %}{% message_author msg %}{% else %}{{ msg.model.display_name|default:"Assistent" }}{% endif %}</h2>
   {% if msg.status == "awaiting_confirmation" %}
     {# Hinweis vor den Aufrufen, damit er vor den Knöpfen gelesen wird. #}
     {% include "chat/_tool_confirm.html" %}
@@ -16,6 +17,7 @@
     {% endwith %}
   {% endif %}
   <div class="chat-message-content"{% if msg.role == "assistant" %} data-markdown="true"{% endif %}>{{ msg.content }}</div>
+  {% include "chat/_attachment_list.html" %}
   {% if msg.role == "assistant" %}
     {% if msg.web_search_notice %}<p class="chat-message-status chat-message-status-warning">{{ msg.web_search_notice }}</p>{% endif %}
     {% include "chat/_sources.html" %}

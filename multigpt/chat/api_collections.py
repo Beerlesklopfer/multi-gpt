@@ -10,7 +10,10 @@ Endpunkte (Namespace ``chat``), Antworten als JSON, Fehler ``{"error": "<Text>"}
 - ``DELETE /api/collections/<pk>/`` – löschen samt Dokumenten (nur Besitzer),
 - ``POST /api/collections/<pk>/shares/`` ``{group, can_write}`` – freigeben/ändern,
 - ``DELETE /api/collections/<pk>/shares/`` ``{group}`` – Freigabe entziehen,
-- ``DELETE /api/documents/<pk>/`` – Dokument löschen (WRITE auf die Sammlung).
+- ``DELETE /api/documents/<pk>/`` – Dokument löschen (WRITE auf die Sammlung);
+  eine laufende Indexierung wird dabei abgebrochen,
+- ``POST /api/documents/<pk>/cancel/`` – Indexierung abbrechen (WRITE): wartend ->
+  sofort, läuft gerade -> nach dem aktuellen Schritt (``cancelling``).
 
 Rechte immer über ``can()``: kein READ -> 404 (fremde Sammlungen bleiben
 unsichtbar), READ ohne WRITE -> 403. Teilen und Löschen der Sammlung nur durch
@@ -27,7 +30,8 @@ from multigpt.accounts.models import UserGroup
 from multigpt.accounts.permissions import Action, can
 
 from .api import _error, _json_body, api_login_required
-from .models import Collection, Document, Share
+from .models import Collection, Document, IndexRun, Job, Share
+from .rag import jobs
 
 NAME_MAX_LENGTH = Collection._meta.get_field("name").max_length
 
@@ -37,6 +41,7 @@ MSG_FROM_SOURCE = (
     "Das Dokument wird aus einem Serververzeichnis eingelesen. Es verschwindet, wenn die "
     "Datei dort entfernt wird oder ein Verwalter die Verzeichnisquelle löscht."
 )
+MSG_NOT_INDEXING = "Das Dokument wird gerade nicht indexiert."
 MSG_COLLECTION_FROM_SOURCE = (
     "Die Sammlung wird aus einem Serververzeichnis eingelesen. Bitte zuerst einen Verwalter "
     "bitten, die Verzeichnisquelle zu entfernen."
@@ -123,8 +128,44 @@ def document_size(document: Document) -> int | None:
         return None
 
 
-def serialize_document(document: Document) -> dict:
-    """Ein Dokument für die Statusliste (auch vom Upload in api_documents genutzt)."""
+def cancelling_document_ids(documents) -> set[int]:
+    """IDs der Dokumente, deren laufende Indexierung abgebrochen wird."""
+    ids = [d.pk for d in documents if d.status == Document.Status.PENDING]
+    if not ids:
+        return set()
+    return {
+        (job.payload or {}).get("document_id")
+        for job in Job.objects.filter(
+            kind=Job.Kind.INDEX_DOCUMENT,
+            status=Job.Status.RUNNING,
+            cancel_requested=True,
+            payload__document_id__in=ids,
+        ).only("payload")
+    }
+
+
+def run_progress(collection: Collection) -> list[dict]:
+    """Offene Läufe der Sammlung (Fortschritt für Besitzer und Schreibberechtigte)."""
+    return [
+        {
+            "id": run.pk,
+            "kind": run.kind,
+            "status": run.status,
+            "status_label": run.get_status_display(),
+            "text": run.progress_text(),
+        }
+        for run in IndexRun.objects.filter(
+            collection=collection, status__in=IndexRun.OPEN
+        ).order_by("pk")
+    ]
+
+
+def serialize_document(document: Document, cancelling: bool = False) -> dict:
+    """Ein Dokument für die Statusliste (auch vom Upload in api_documents genutzt).
+
+    ``cancelling``: Abbruch angefordert, der Worker beendet die Indexierung
+    nach dem aktuellen Schritt.
+    """
     return {
         "id": document.pk,
         "title": document.title,
@@ -135,9 +176,18 @@ def serialize_document(document: Document) -> dict:
         "created": document.created.isoformat() if document.created else None,
         "size": document_size(document),
         "download_url": reverse("chat:document_download", args=[document.pk]),
+        # Nur für Typen, die der Browser selbst anzeigt (PDF, Text, Bilder).
+        "view_url": document_view_url(document),
         # Aus einer Verzeichnisquelle: nicht einzeln löschbar (Datei bzw. Quelle entfernen).
         "from_source": document.source_id is not None,
+        "cancelling": cancelling and document.status == Document.Status.PENDING,
     }
+
+
+def document_view_url(document: Document) -> str:
+    from .views_collections import can_view_inline, view_url  # importiert dieses Modul
+
+    return view_url(document) if can_view_inline(document) else ""
 
 
 def serialize_share(share: Share) -> dict:
@@ -232,6 +282,7 @@ def collection_detail(request, pk: int):
             return _error("Nur wer die Sammlung angelegt hat, kann sie löschen.", 403)
         if collection.directory_sources.exists():
             return _error(MSG_COLLECTION_FROM_SOURCE, 403)
+        jobs.cancel_document_jobs(collection.documents.values_list("pk", flat=True))
         with transaction.atomic():
             delete_document_files(list(collection.documents.all()))
             collection.delete()
@@ -308,7 +359,33 @@ def document_detail(request, pk: int):
         return _error(MSG_READ_ONLY, 403)
     if document.source_id is not None:
         return _error(MSG_FROM_SOURCE, 403)
+    jobs.cancel_document_jobs([document.pk])  # laufende Indexierung abbrechen
     with transaction.atomic():
         delete_document_files([document])
         document.delete()
     return JsonResponse({"deleted": True, "id": pk})
+
+
+@require_http_methods(["POST"])
+@api_login_required
+def document_cancel(request, pk: int):
+    """Indexierung eines Dokuments abbrechen (gleiche Logik wie im Admin)."""
+    document = Document.objects.select_related("collection").filter(pk=pk).first()
+    if document is None or not can(request.user, Action.READ, document.collection):
+        return _error("Dokument nicht gefunden.", 404)
+    if not can(request.user, Action.WRITE, document.collection):
+        return _error(MSG_READ_ONLY, 403)
+    if document.source_id is not None:
+        return _error(MSG_FROM_SOURCE, 403)
+    if document.status != Document.Status.PENDING:
+        return _error(MSG_NOT_INDEXING, 400)
+    removed, marked = jobs.cancel_document_jobs([document.pk])
+    if not removed and not marked:
+        # Kein offener Auftrag (z. B. von Hand gelöscht): nicht ewig „wartet“.
+        Document.objects.filter(pk=document.pk, status=Document.Status.PENDING).update(
+            status=Document.Status.ERROR, error_text=jobs.CANCELLED_DOCUMENT
+        )
+    document.refresh_from_db()
+    data = serialize_document(document, cancelling=bool(marked))
+    data["cancel"] = "cancelling" if marked else "cancelled"
+    return JsonResponse(data)

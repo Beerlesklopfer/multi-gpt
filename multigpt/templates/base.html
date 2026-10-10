@@ -6,9 +6,11 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}MultiGPT{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'chat/app.css' %}">
+  <link rel="stylesheet" href="{% static 'chat/projects.css' %}">
   <script src="{% static 'chat/app.js' %}" defer></script>
   {% if user.is_authenticated %}
     <script src="{% static 'chat/sidebar.js' %}" defer></script>
+    <script src="{% static 'chat/projects.js' %}" defer></script>
     <script src="{% static 'chat/provider_status.js' %}" defer></script>
   {% endif %}
   {% block extra_head %}{% endblock %}
@@ -29,7 +31,8 @@
       {% load usage_tags %}{% budget_banner %}
       <nav class="account" aria-label="Konto">
         <span class="username">{{ user.get_full_name|default:user.get_username }}</span>
-        <a href="{% url 'password_change' %}">Passwort ändern</a>
+        <a href="{% url 'settings' %}">Einstellungen</a>
+        <a href="{% url 'password_change' %}" class="account-password">Passwort ändern</a>
         <form method="post" action="{% url 'logout' %}" class="logout-form">
           {% csrf_token %}
           <button type="submit" class="link-button">Abmelden</button>

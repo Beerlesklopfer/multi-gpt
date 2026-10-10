@@ -55,6 +55,9 @@ MAX_LIST_PAGES = 100
 CLIENT_INFO = Implementation(name="multi-gpt", version="0.1.0")
 
 _connections: dict[int, Connection] = {}
+# Letzter HTTP-Fehlerstatus je Server (für die Statusprüfung, chat/mcp/status.py):
+# Das SDK meldet z. B. 401 und 500 nur als allgemeinen JSON-RPC-Fehler.
+http_errors: dict[int, int] = {}
 _background: set[asyncio.Task] = set()
 _reaper: asyncio.Task | None = None
 
@@ -79,7 +82,16 @@ def _errlog():
 @contextlib.asynccontextmanager
 async def _http_transport(config: ServerConfig) -> AsyncIterator[Any]:
     timeout = httpx2.Timeout(30.0, read=300.0)
-    async with httpx2.AsyncClient(headers=dict(config.headers), timeout=timeout) as http:
+
+    async def remember_status(response) -> None:
+        if response.status_code >= 400:
+            http_errors[config.pk] = response.status_code
+
+    async with httpx2.AsyncClient(
+        headers=dict(config.headers),
+        timeout=timeout,
+        event_hooks={"response": [remember_status]},
+    ) as http:
         async with streamable_http_client(config.url, http_client=http) as streams:
             yield streams
 
@@ -392,6 +404,7 @@ def _reset_after_fork() -> None:
     global _reaper
     _connections.clear()
     _background.clear()
+    http_errors.clear()
     _reaper = None
 
 

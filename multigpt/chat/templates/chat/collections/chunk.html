@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load collection_tags %}
 {# Abschnittsansicht (M7): Ziel der Quellen „Dokument, S. x“. Text nur über Auto-Escaping. #}
 {% block title %}{{ document.title }}{% if chunk.page %}, S. {{ chunk.page }}{% endif %} – MultiGPT{% endblock %}
 {% block content %}
@@ -9,13 +10,15 @@
     </p>
     <h1 id="chunk-title">{{ document.title }}</h1>
     <p class="chunk-meta">
-      {% if chunk.page %}<span>Seite {{ chunk.page }}</span> · {% endif %}<span>Abschnitt {{ chunk.position|add:1 }} von {{ chunk_count }}</span>
+      {% if chunk.page %}<span>Seite {{ chunk.page }}</span> · {% endif %}{% if chunk_location %}<span>Fundstelle: {{ chunk_location }}</span> · {% endif %}<span>Abschnitt {{ chunk.position|add:1 }} von {{ chunk_count }}</span>
+      {% document_view_url document chunk.page as doc_view_url %}{% if doc_view_url %}· <a href="{{ doc_view_url }}" target="_blank" rel="noopener">Dokument ansehen{% if chunk.page %} (S. {{ chunk.page }}){% endif %}</a>{% endif %}
       · <a href="{% url 'chat:document_download' document.pk %}" download>Dokument herunterladen</a>
     </p>
     {% if document.status != "indexed" %}
       <p class="chat-notice">Das Dokument wird gerade neu verarbeitet; der Abschnitt kann sich noch ändern.</p>
     {% endif %}
     <blockquote class="chunk-text">{{ chunk.text }}</blockquote>
+    {% if citation %}<p class="chunk-citation"><span class="sr-only">Quelle: </span>{{ citation }}</p>{% endif %}
     <nav class="chunk-nav" aria-label="Benachbarte Abschnitte">
       {% if prev_chunk_id %}<a class="button button-small" href="{% url 'chat:document_chunk' prev_chunk_id %}">‹ Vorheriger Abschnitt</a>{% endif %}
       {% if next_chunk_id %}<a class="button button-small" href="{% url 'chat:document_chunk' next_chunk_id %}">Nächster Abschnitt ›</a>{% endif %}

@@ -6,7 +6,15 @@ import pytest
 
 from multigpt.accounts.models import Role, User
 from multigpt.chat import services
-from multigpt.chat.models import AIModel, Conversation, Message, Provider
+from multigpt.chat.models import (
+    DEFAULT_BASE_INSTRUCTIONS,
+    AIModel,
+    ChatSettings,
+    Conversation,
+    Message,
+    Provider,
+)
+from tests.billing_helpers import set_price
 
 pytestmark = pytest.mark.django_db
 
@@ -21,7 +29,8 @@ def make_model(provider, **kw):
 
 
 def test_cost_with_prices(provider):
-    m = make_model(provider, price_in=Decimal("3"), price_out=Decimal("15"))
+    m = make_model(provider)
+    set_price(m, "3", "15")
     assert services.compute_cost(m, 1_000_000, 0) == Decimal("3")
     assert services.compute_cost(m, 1000, 2000) == Decimal("0.033")
 
@@ -31,13 +40,15 @@ def test_cost_without_prices_is_unknown(provider):
 
 
 def test_cost_only_one_price(provider):
-    m = make_model(provider, price_out=Decimal("1"))
+    m = make_model(provider)
+    set_price(m, None, "1")
     assert services.compute_cost(m, 500, 1_000_000) == Decimal("1")
 
 
 def test_cost_local_is_zero():
     local = Provider.objects.create(name="LM", kind="openai_compat", is_local=True)
-    m = make_model(local, price_in=Decimal("5"), price_out=Decimal("5"))
+    m = make_model(local)
+    set_price(m, "5", "5")
     assert services.compute_cost(m, 10**6, 10**6) == Decimal(0)
 
 
@@ -46,13 +57,16 @@ def test_system_prompt_order():
     user = User.objects.create_user("t", role=role)
     conv = Conversation.objects.create(user=user, system_prompt="  Chat  ")
     assert services.build_system_prompt(user, conv) == (
-        f"{role.fixed_system_prompt.strip()}\n\nChat"
+        f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{role.fixed_system_prompt.strip()}\n\nChat"
     )
 
 
 def test_system_prompt_none_when_empty():
     user = User.objects.create_user("a", role=Role.objects.get(key="adult"))
     conv = Conversation.objects.create(user=user)
+    settings = ChatSettings.load()
+    settings.base_instructions = ""  # Grundregeln geleert
+    settings.save()
     assert services.build_system_prompt(user, conv) is None
 
 

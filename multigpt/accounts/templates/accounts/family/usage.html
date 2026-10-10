@@ -18,7 +18,7 @@
         <button type="submit" class="button" data-autosubmit-button>Anzeigen</button>
       </div>
     </form>
-    <p class="page-intro">Summe {{ selected|date:"F Y" }}: <strong>{{ total_text }}</strong>. Lokale Modelle kosten nichts.</p>
+    <p class="page-intro">Summe {{ selected|date:"F Y" }}: <strong>{{ total_text }}</strong>. Lokale Modelle kosten nichts (nur Tokens gezählt). Je Mitglied erst die Abrechnungskonten, dann die Modelle.</p>
     <div class="table-scroll">
       <table class="family-table" id="family-usage">
         <thead>
@@ -36,6 +36,14 @@
               <td colspan="2">{% if is_current %}{% include "accounts/family/_budget.html" with u=row.usage %}{% endif %}</td>
               <td>{{ row.usage.spent_text }}</td>
             </tr>
+            {% for a in row.accounts %}
+              <tr class="family-usage-account">
+                <td class="family-usage-model">Konto {{ a.account }}</td>
+                <td>{{ a.answers }}</td>
+                <td>{{ a.tokens_in }} / {{ a.tokens_out }}{% if a.token_detail %} <span class="hint">({{ a.token_detail }})</span>{% endif %}</td>
+                <td>{{ a.cost_text }}</td>
+              </tr>
+            {% endfor %}
             {% for m in row.models %}
               <tr>
                 <td class="family-usage-model">{{ m.model }}{% if m.is_local %} <span class="badge">lokal</span>{% endif %}</td>

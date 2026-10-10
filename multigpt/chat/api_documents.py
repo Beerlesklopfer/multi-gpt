@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 from multigpt.accounts.permissions import Action, can
 
 from .api import api_login_required
-from .api_collections import serialize_document
+from .api_collections import cancelling_document_ids, run_progress, serialize_document
 from .models import Collection
 from .rag import upload
 
@@ -32,10 +32,13 @@ def collection_documents(request, pk: int):
         return JsonResponse(serialize_document(document), status=201)
 
     can_write = can(request.user, Action.WRITE, collection)
-    documents = collection.documents.order_by("title", "id")
+    documents = list(collection.documents.order_by("title", "id"))
+    cancelling = cancelling_document_ids(documents)
     return JsonResponse(
         {
-            "documents": [serialize_document(d) for d in documents],
+            "documents": [serialize_document(d, d.pk in cancelling) for d in documents],
+            # Fortschritt offener Läufe (z. B. Verzeichnis einlesen) für Schreibberechtigte.
+            "runs": run_progress(collection) if can_write else [],
             "can_write": can_write,
             "can_upload": can_write and can(request.user, Action.UPLOAD_DOCUMENTS),
             "max_upload_mb": upload.max_upload_bytes() // (1024 * 1024),

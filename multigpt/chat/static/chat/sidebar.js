@@ -24,8 +24,14 @@
     return document.getElementById("chat")?.dataset.conversationId || "";
   }
 
+  // Eigene Chats: Liste ohne Projekt und Listen der Projekte (projects.js).
+  const OWN_ITEMS = "#chat-list-items li.chat-item, .project-chats li.chat-item";
+
   function itemFor(id) {
-    return list()?.querySelector(`li.chat-item[data-conversation-id="${CSS.escape(String(id))}"]`);
+    const key = CSS.escape(String(id));
+    return document.querySelector(
+      OWN_ITEMS.replaceAll("li.chat-item", `li.chat-item[data-conversation-id="${key}"]`),
+    );
   }
 
   // --- Leere Liste / Filter ----------------------------------------------------
@@ -94,13 +100,16 @@
       link.textContent = title || UNTITLED;
       li.append(link, makeMenuButton(title));
     }
-    ul.prepend(li);
+    // Chats im Projekt bleiben in (bzw. kommen in) ihre Projektliste.
+    (li.parentElement || window.MultiGPT.projects?.newChatList?.() || ul).prepend(li);
     updateEmptyHints();
     return li;
   }
 
   function markActive(id) {
-    for (const link of list()?.querySelectorAll("a.chat-link") || []) {
+    for (const link of document.querySelectorAll(
+      OWN_ITEMS.replaceAll("li.chat-item", "li.chat-item a.chat-link"),
+    )) {
       const active = link.closest("li").dataset.conversationId === String(id);
       link.classList.toggle("is-active", active);
       if (active) {
@@ -236,7 +245,20 @@
     }
   }
 
-  async function setArchived(id, archived) {
+  // owner: Name des Besitzers, wenn der Chat geteilt und nicht der eigene ist
+  // (Recht „Löschen“): Archivieren wirkt dann für alle, also deutlich nachfragen.
+  async function setArchived(id, archived, owner = "") {
+    if (owner && archived) {
+      const ok = await openDialog({
+        heading: "Chat archivieren?",
+        text: `Der Chat gehört ${owner} und wird für alle archiviert.`,
+        confirmLabel: "Für alle archivieren",
+        danger: true,
+      });
+      if (!ok) {
+        return;
+      }
+    }
     try {
       await window.MultiGPT.requestJson("PATCH", detailUrl(id), { archived });
     } catch (err) {
@@ -256,10 +278,11 @@
     window.MultiGPT.announce(archived ? "Chat archiviert." : "Chat wiederhergestellt.");
   }
 
-  async function remove(id, title) {
+  async function remove(id, title, owner = "") {
+    const forAll = owner ? ` Der Chat gehört ${owner} und wird für alle gelöscht.` : "";
     const ok = await openDialog({
       heading: "Chat löschen?",
-      text: `„${title || UNTITLED}“ wird mit allen Nachrichten endgültig gelöscht. Das lässt sich nicht rückgängig machen.`,
+      text: `„${title || UNTITLED}“ wird mit allen Nachrichten endgültig gelöscht.${forAll} Das lässt sich nicht rückgängig machen.`,
       confirmLabel: "Endgültig löschen",
       danger: true,
     });
@@ -280,15 +303,17 @@
     window.MultiGPT.announce("Chat gelöscht.");
   }
 
-  function runAction(action, id, title) {
+  function runAction(action, id, title, owner = "") {
     if (action === "rename") {
       rename(id, title);
     } else if (action === "archive") {
-      setArchived(id, true);
+      setArchived(id, true, owner);
     } else if (action === "restore") {
-      setArchived(id, false);
+      setArchived(id, false, owner);
     } else if (action === "delete") {
-      remove(id, title);
+      remove(id, title, owner);
+    } else {
+      window.MultiGPT.chatActions?.[action]?.(id, title);
     }
   }
 
@@ -325,6 +350,8 @@
       ["export", "Exportieren"],
       ["delete", "Löschen"],
     ];
+    // Weitere Einträge, z. B. „In Projekt verschieben …“ (projects.js).
+    entries.splice(2, 0, ...(window.MultiGPT.chatMenuExtras?.(li) || []));
     for (const [action, label] of entries) {
       const item = document.createElement("li");
       item.setAttribute("role", "none");
@@ -415,6 +442,7 @@
           actionButton.dataset.chatAction,
           actionButton.dataset.conversationId,
           actionButton.dataset.title || "",
+          actionButton.dataset.owner || "",
         );
         return;
       }

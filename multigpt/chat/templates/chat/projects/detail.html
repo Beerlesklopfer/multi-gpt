@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{# Projektseite (M5-07): Einstellungen, Chats, Archivieren, Löschen. Nur für den Besitzer; ohne JavaScript bedienbar. #}
+{% block title %}{{ project.name }} – Projekte – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page page-wide project-page" id="project-page" aria-labelledby="project-title"
+           data-project-id="{{ project.pk }}" data-name="{{ project.name }}" data-chat-count="{{ chat_count }}">
+    <p class="breadcrumb"><a href="{% url 'chat:project_list' %}">Projekte</a></p>
+    <div class="page-header">
+      <h1 id="project-title">
+        <span class="project-dot project-color-{{ project.color|default:'none' }}" aria-hidden="true"></span>
+        {{ project.name }}
+      </h1>
+      {% if project.archived %}<span class="badge">Archiviert</span>{% endif %}
+      <div class="page-header-actions">
+        <a href="{{ new_chat_url }}" class="button button-primary">Neuer Chat im Projekt</a>
+        <form method="post" action="{% url 'chat:project_archive' project.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="archived" value="{{ project.archived|yesno:'0,1' }}">
+          <button type="submit" class="button">{% if project.archived %}Wiederherstellen{% else %}Archivieren{% endif %}</button>
+        </form>
+      </div>
+    </div>
+    {% if project.description %}<p class="project-description">{{ project.description|linebreaksbr }}</p>{% endif %}
+
+    <dl class="project-facts">
+      <dt>Standardmodell</dt>
+      <dd>{% if project_model %}{{ project_model.display_name }}{% elif project.default_model_id %}nicht verfügbar{% else %}keins (zuletzt gewähltes Modell){% endif %}</dd>
+      <dt>Sammlungen</dt>
+      <dd>{% for c in project_collections %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% empty %}keine{% endfor %}</dd>
+      <dt>Anweisungen</dt>
+      <dd>{% if project.instructions %}aktiv ({{ project.instructions|length }} Zeichen){% else %}keine{% endif %}</dd>
+    </dl>
+
+    <h2 class="section-title" id="project-chats-title">Chats ({{ chat_count }})</h2>
+    {% if project_chats_list %}
+      <ul class="project-page-list" aria-labelledby="project-chats-title">
+        {% for item in project_chats_list %}
+          <li class="project-page-item">
+            <a href="{% url 'chat:conversation' item.pk %}" class="project-page-link">{{ item.title|default:"Neuer Chat" }}</a>
+            <span class="hint">{{ item.updated|date:"d.m.Y H:i" }}{% if item.archived %} · archiviert{% endif %}{% if item.is_shared %} · geteilt{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint">Noch keine Chats. Lege mit „Neuer Chat im Projekt“ einen an oder verschiebe einen vorhandenen Chat über sein Menü (⋯) hierher.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="project-settings-title">Einstellungen</h2>
+    <form method="post" action="{% url 'chat:project_detail' project.pk %}" class="form project-form" aria-labelledby="project-settings-title">
+      {% csrf_token %}
+      {{ form.as_div }}
+      <button type="submit" class="button button-primary">Speichern</button>
+    </form>
+
+    <h2 class="section-title" id="projekt-loeschen">Projekt löschen</h2>
+    <form method="post" action="{% url 'chat:project_delete' project.pk %}" class="form project-delete-form" id="project-delete-form">
+      {% csrf_token %}
+      <fieldset class="project-delete-choice">
+        <legend>Was soll mit den {{ chat_count }} Chat{{ chat_count|pluralize:"s" }} geschehen?</legend>
+        <label><input type="radio" name="chats" value="keep" checked> Chats behalten (sie sind danach ohne Projekt)</label>
+        <label><input type="radio" name="chats" value="delete"> Chats mitlöschen (endgültig, mit allen Nachrichten und Anhängen, auch für Personen, mit denen sie geteilt sind)</label>
+      </fieldset>
+      <label class="project-delete-confirm"><input type="checkbox" name="confirm" value="1" required> Ich möchte das Projekt „{{ project.name }}“ endgültig löschen.</label>
+      <button type="submit" class="button button-danger-solid">Projekt löschen</button>
+    </form>
+  </section>
+{% endblock %}

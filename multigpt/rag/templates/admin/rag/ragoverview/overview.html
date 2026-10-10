@@ -83,6 +83,27 @@
         </tr>
         {% endif %}
         <tr>
+          <th scope="row">Abbildungen</th>
+          <td>
+            {% if data.settings.describe_figures %}
+              beschreiben mit
+              {% if figure_model %}
+                {{ figure_model.display_name }}{% if figure_model.display_name != figure_model.model_id %} <code>{{ figure_model.model_id }}</code>{% endif %} –
+                {{ figure_provider.name }}{% if not figure_provider.is_local %} (Cloud: Bilder gehen an den Anbieter){% endif %}:
+                {% if not figure_provider.active %}<span class="rag-bad">deaktiviert</span>
+                {% elif not figure_provider.check_status %}Status wird nicht geprüft
+                {% elif not figure_provider.last_checked %}noch nicht geprüft
+                {% elif figure_provider.online %}<span class="rag-ok">online</span>{% if figure_model.model_id not in figure_provider.reported_models %}, <span class="rag-bad">Modell wird nicht gemeldet</span> (in LM Studio laden){% endif %}
+                {% else %}<span class="rag-bad">offline</span>{% if figure_provider.last_error %} – {{ figure_provider.last_error }}{% endif %}
+                {% endif %}
+              {% else %}<span class="rag-bad">kein Modell gesetzt</span>{% endif %}
+              <br>höchstens {{ data.settings.figure_max_per_document }} je Dokument, {{ data.settings.figure_max_per_page }} je Seite, ab {{ data.settings.figure_min_edge }} Pixel
+            {% else %}
+              nicht beschreiben (Bilder in Dokumenten werden nicht indexiert)
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
           <th scope="row">Zerteilung</th>
           <td>{{ data.settings.chunk_tokens }} Tokens, {{ data.settings.overlap_tokens }} Überlappung</td>
         </tr>
@@ -148,10 +169,39 @@
         <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=pending">fällig</a></th><td class="num">{{ data.jobs_due }}</td></tr>
         <tr><th scope="row">wartet auf neuen Versuch</th><td class="num">{{ data.jobs_waiting }}</td></tr>
         <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=running">läuft</a></th><td class="num">{{ data.jobs_running }}</td></tr>
+        <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?cancel_requested__exact=1&amp;status__exact=running">davon wird abgebrochen</a></th><td class="num">{{ data.jobs_cancelling }}</td></tr>
         <tr><th scope="row">davon hängend</th><td class="num">{{ data.jobs_stale }}</td></tr>
         <tr><th scope="row"><a href="{% url 'admin:rag_jobproxy_changelist' %}?status__exact=failed">fehlgeschlagen</a></th><td class="num">{{ data.jobs_failed }}</td></tr>
       </table>
     </div>
+  </div>
+
+  <div class="module rag-runs" style="margin-top: 1.2em">
+    <h2>Laufende Läufe</h2>
+    {% if data.runs_open %}
+    <table>
+      <thead>
+        <tr><th scope="col">Lauf</th><th scope="col">Art</th><th scope="col">Sammlung</th><th scope="col">Status</th><th scope="col">Fortschritt</th></tr>
+      </thead>
+      <tbody>
+      {% for run in data.runs_open %}
+        <tr>
+          <td><a href="{% url 'admin:rag_indexrunproxy_change' run.pk %}">#{{ run.pk }}</a></td>
+          <td>{{ run.get_kind_display }}</td>
+          <td>{{ run.collection.name|default:"–" }}</td>
+          <td><span class="rag-status rag-status--{% if run.status == 'cancelling' %}pending{% else %}running{% endif %}">{{ run.get_status_display }}</span></td>
+          <td>{{ run.progress_text }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="help rag-hint">Kein Lauf offen.</p>
+    {% endif %}
+    <div class="rag-actions">
+      <a class="button" href="{% url 'admin:rag_indexrunproxy_changelist' %}">Alle Läufe</a>
+    </div>
+    <p class="help rag-hint">Abbrechen über „Läufe“ bzw. „Indexierungsaufträge“: Wartende Aufträge werden sofort entfernt, laufende nach dem aktuellen Schritt beendet (eine laufende Anfrage an den Anbieter wird nicht unterbrochen).</p>
   </div>
 
   <div class="module rag-sources" style="margin-top: 1.2em">
@@ -168,7 +218,7 @@
       {% for source in data.sources %}
         <tr>
           <td><a href="{% url 'admin:rag_directorysource_change' source.pk %}">{{ source.collection.name }}</a></td>
-          <td>{% if source.scan_open %}<span class="rag-status rag-status--running">wird eingelesen</span>{% elif source.active %}<span class="rag-ok">aktiv</span>{% else %}pausiert{% endif %}</td>
+          <td>{% if source.open_run %}<span class="rag-status rag-status--{% if source.open_run.status == 'cancelling' %}pending{% else %}running{% endif %}">{% if source.open_run.status == 'cancelling' %}wird abgebrochen{% else %}wird eingelesen{% endif %}</span><br><a href="{% url 'admin:rag_indexrunproxy_change' source.open_run.pk %}">{{ source.open_run.progress_text }}</a>{% elif source.scan_open %}<span class="rag-status rag-status--running">wird eingelesen</span>{% elif source.active %}<span class="rag-ok">aktiv</span>{% else %}pausiert{% endif %}</td>
           <td>{% if source.last_scan_finished %}{{ source.last_scan_finished|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</td>
           <td>{% with r=source.last_result %}{% if r %}{{ r.new|default:0 }} neu, {{ r.changed|default:0 }} geändert, {{ r.deleted|default:0 }} entfernt{% if r.skipped %}, {{ r.skipped }} übersprungen{% endif %}{% endif %}{% endwith %}{% if source.last_error %} <span class="rag-bad" title="{{ source.last_error }}">Fehler</span>{% endif %}</td>
           <td class="num">{{ source.document_total }}</td>

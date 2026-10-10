@@ -1,6 +1,6 @@
 {% extends "admin/change_form.html" %}
 {% load static admin_urls %}
-{# Sucheinstellungen (M8): Knopf „SearXNG testen“ oben rechts; prüft die gespeicherten Werte. #}
+{# Sucheinstellungen (M8): Knöpfe „SearXNG testen“ und „Abruf testen“ oben rechts; prüfen die gespeicherten Werte. #}
 
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
 
@@ -10,6 +10,13 @@
     <form method="post" action="{% url 'admin:chat_searchsettings_check' original.pk|admin_urlquote %}" class="provider-check-form">
       {% csrf_token %}
       <button type="submit" class="provider-tool-button" title="Sucht mit den gespeicherten Einstellungen nach „test“">SearXNG testen</button>
+    </form>
+  </li>
+  <li>
+    <form method="post" action="{% url 'admin:chat_searchsettings_fetch_check' original.pk|admin_urlquote %}" class="provider-check-form">
+      {% csrf_token %}
+      <input type="url" name="url" id="fetch-check-url" aria-label="Adresse zum Testen" required placeholder="https://…" size="24">
+      <button type="submit" class="provider-tool-button" title="Ruft die Adresse wie fetch_url ab (SSRF-Schutz, gesperrte Domains)">Abruf testen</button>
     </form>
   </li>
   {% endif %}

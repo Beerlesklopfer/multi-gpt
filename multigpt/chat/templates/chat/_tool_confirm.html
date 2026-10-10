@@ -1,13 +1,17 @@
 {# Rückfrage vor Werkzeugen (M4a-05/06). Aufbau wie in chat.js (buildConfirmBox). #}
+{# Geteilte Chats: bestätigen darf nur, wer die Antwort ausgelöst hat (sharing.may_confirm). #}
+{% load sharing_tags %}{% may_confirm msg as confirm_allowed %}
 <div class="tool-confirm" role="group" aria-labelledby="tool-confirm-title-{{ msg.pk }}">
   <p class="tool-confirm-title" id="tool-confirm-title-{{ msg.pk }}"><span aria-hidden="true">⚠ </span>Bestätigung nötig</p>
   <p class="tool-confirm-text">Das Modell möchte Werkzeuge ausführen, die etwas verändern oder Daten nach außen senden können. Prüfe die Argumente und entscheide je Aufruf.</p>
-  {% if can_write %}
+  {% if can_write and confirm_allowed %}
     <div class="tool-confirm-actions">
       <button type="button" class="button button-small button-primary" data-tool-confirm-all>Alle ausführen</button>
       <button type="button" class="button button-small" data-tool-reject-all>Alle ablehnen</button>
     </div>
     <noscript><p class="chat-notice">Zum Bestätigen wird JavaScript benötigt.</p></noscript>
+  {% elif can_write %}
+    <p class="hint">Nur wer diese Antwort ausgelöst hat, kann die Werkzeuge freigeben.</p>
   {% else %}
     <p class="hint">Nur wer diesen Chat bearbeiten darf, kann die Werkzeuge freigeben.</p>
   {% endif %}

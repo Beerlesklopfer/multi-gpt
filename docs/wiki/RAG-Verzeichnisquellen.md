@@ -145,7 +145,7 @@ bleibt bei Updates des Pakets erhalten. Rechte auf Home-Verzeichnisse beachten (
 | Sammlung | – | eine vorhandene Sammlung **oder** „Neue Sammlung: Name“ und „Neue Sammlung: Besitzer“ |
 | Verzeichnis | – | absoluter Pfad unter einer Wurzel aus `RAG_SOURCE_ROOTS`; wird als `realpath` gespeichert |
 | Unterordner einbeziehen | an | auch Dateien in Unterordnern einlesen |
-| Dateimuster | `*.pdf, *.docx, *.txt, *.md` | kommagetrennt; verarbeitet werden nur PDF, DOCX, TXT und MD |
+| Dateimuster | `*.pdf, *.docx, *.txt, *.md` | kommagetrennt; verarbeitet werden PDF, DOCX, TXT, MD und Bilddateien (JPG, PNG, TIFF, WEBP). Bilder nur mit passendem Muster, z. B. `*.jpg, *.png` – jedes Bild kostet OCR und, wenn eingeschaltet, einen Aufruf des Modells für Abbildungen |
 | Ausschlussmuster | `.*, ~$*, *.tmp, *.part` | kommagetrennt; gilt für Datei- und Ordnernamen und relative Pfade, z. B. `Entwürfe/*` |
 | Intervall (Minuten) | 60 | wie oft eingelesen wird, mindestens 5 |
 | aktiv | an | pausierte Quellen werden nicht eingelesen |
@@ -200,7 +200,7 @@ nicht eingehängt ist) oder enthält er mehr als `RAG_SOURCE_MAX_FILES` Dateien,
 
 ## Grenzen
 
-- Nur PDF, DOCX, TXT und MD, höchstens `DOCUMENT_MAX_UPLOAD_MB` je Datei.
+- Nur PDF, DOCX, TXT, MD und Bilddateien (JPG, PNG, TIFF, WEBP), höchstens `DOCUMENT_MAX_UPLOAD_MB` je Datei.
 - Höchstens `RAG_SOURCE_MAX_FILES` Dateien je Lauf.
 - Intervall mindestens 5 Minuten; Änderungen erscheinen also nicht sofort (außer mit „Jetzt
   einlesen“).

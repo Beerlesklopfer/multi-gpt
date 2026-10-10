@@ -139,18 +139,19 @@ def test_change_form_does_not_connect_by_default(admin_client, server, monkeypat
     monkeypatch.setattr(mcp_client, "_make_client", boom)
     url = reverse("admin:chat_mcpserver_change", args=[server.pk])
     html = admin_client.get(url).content.decode()
-    assert "Werkzeugliste abrufen" in html
+    assert "Jetzt prüfen" in html  # ersetzt den Link „Werkzeugliste abrufen“ (?tools=1)
     assert not bridge.is_running()
 
 
 @pytest.mark.django_db
 def test_change_form_shows_tool_list_with_rating(admin_client, server, inproc):
-    url = reverse("admin:chat_mcpserver_change", args=[server.pk]) + "?tools=1"
+    admin_client.post(reverse("admin:chat_mcpserver_check", args=[server.pk]))
+    url = reverse("admin:chat_mcpserver_change", args=[server.pk])
     html = admin_client.get(url).content.decode()
     assert "<code>echo</code>" in html
-    assert "ohne Rückfrage" in html
-    assert "mit Rückfrage" in html  # crash
-    assert "nicht eingestuft (Rückfrage)" in html  # z. B. add
+    assert '<option value="auto" selected>ohne Rückfrage</option>' in html  # echo
+    assert '<option value="confirm" selected>mit Rückfrage</option>' in html  # crash
+    assert '<option value="" selected>nicht eingestuft</option>' in html  # z. B. add
 
 
 @pytest.mark.django_db
@@ -158,9 +159,10 @@ def test_change_form_shows_connection_error(admin_client, server):
     bridge.shutdown()
     server.command = "/nicht/vorhanden"
     server.save()
-    url = reverse("admin:chat_mcpserver_change", args=[server.pk]) + "?tools=1"
-    html = admin_client.get(url).content.decode()
-    assert "konnte nicht gestartet werden" in html
+    response = admin_client.post(
+        reverse("admin:chat_mcpserver_check", args=[server.pk]), follow=True
+    )
+    assert "Programm nicht gefunden" in response.content.decode()
     bridge.shutdown()
 
 

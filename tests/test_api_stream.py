@@ -11,9 +11,17 @@ from django.urls import reverse
 
 from multigpt.accounts.models import Role, User, UserGroup
 from multigpt.chat import services
-from multigpt.chat.models import AIModel, Conversation, Message, Provider, Share
+from multigpt.chat.models import (
+    DEFAULT_BASE_INSTRUCTIONS,
+    AIModel,
+    Conversation,
+    Message,
+    Provider,
+    Share,
+)
 from multigpt.chat.providers import registry
 from multigpt.chat.providers.base import Delta, Done, Error, ProviderAdapter, Usage
+from tests.billing_helpers import set_price
 
 pytestmark = pytest.mark.django_db
 
@@ -86,24 +94,16 @@ def local_provider():
 
 @pytest.fixture
 def ai_model(provider):
-    return AIModel.objects.create(
-        provider=provider,
-        model_id="gpt-test",
-        display_name="GPT Test",
-        price_in=Decimal("2.5"),
-        price_out=Decimal("10"),
-    )
+    model = AIModel.objects.create(provider=provider, model_id="gpt-test", display_name="GPT Test")
+    set_price(model, "2.5", "10")  # EUR je 1 Mio. Tokens (billing)
+    return model
 
 
 @pytest.fixture
 def local_model(local_provider):
-    return AIModel.objects.create(
-        provider=local_provider,
-        model_id="llama",
-        display_name="Llama",
-        price_in=Decimal("1"),
-        price_out=Decimal("1"),
-    )
+    model = AIModel.objects.create(provider=local_provider, model_id="llama", display_name="Llama")
+    set_price(model, "1", "1")  # zählt nicht: lokales Token-Konto
+    return model
 
 
 @pytest.fixture
@@ -254,7 +254,8 @@ def test_fixed_role_prompt_comes_first(client, ai_model, fake):
     system = holder["adapter"].calls[0]["system"]
     fixed = teen.role.fixed_system_prompt.strip()
     assert fixed
-    assert system == f"{fixed}\n\nChat-Prompt"
+    # Grundregeln (ChatSettings) stehen davor.
+    assert system == f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{fixed}\n\nChat-Prompt"
     # Für das Mitglied unsichtbar: nicht im Verlauf
     assert all(fixed not in m["content"] for m in client.get(url(conv)).json())
 
@@ -395,9 +396,14 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "provider_id": local_model.provider_id,
         "is_local": True,
         "supports_tools": False,
+        "supports_vision": False,
+        "mcp_access": "none",
+        "mcp_server_ids": [],
         "online": True,
         "available": True,
         "blocked_by_budget": False,
+        "budget_reason": "",
+        "billing_title": "Konto Lokale Modelle · nur Tokens gezählt",
     }
 
 

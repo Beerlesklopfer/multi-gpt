@@ -1,0 +1,29 @@
+multi-gpt (0.3.0) unstable; urgency=medium
+
+  Vorhandene KI-Modelle stehen bei „Werkzeuge“ auf „nein“. Ohne Werkzeuge
+  bekommen sie weder Websuche noch Seitenabruf noch Dokument-Werkzeuge
+  angeboten. Nach dem Update einmalig die Fähigkeiten erkennen lassen:
+
+    sudo mgpt-ctl guess_capabilities           # Vorschau
+    sudo mgpt-ctl guess_capabilities --apply   # speichern
+
+  (oder im Admin: KI-Modelle → Aktion „Fähigkeiten automatisch erkennen“).
+  Neue Modelle bekommen die Fähigkeiten automatisch. Neue lokale Modelle
+  dürfen MCP-Werkzeuge erst nach Freigabe in der Spalte „MCP“ nutzen.
+
+  Damit Zitate Absatz und Abschnitt nennen, die Dokumente einmal neu
+  indexieren: im Admin „Alles neu indexieren“ oder
+
+    sudo mgpt-ctl reindex
+
+  Berechnungen: Modelle mit Werkzeugen können Python-Code mit numpy, sympy,
+  mpmath und matplotlib ausführen (Werkzeug run_python), abgeschottet mit
+  bubblewrap (neue Abhängigkeit). Die Unit multi-gpt.service erlaubt dafür
+  zusätzlich AF_NETLINK (nur für das Loopback-Gerät der Sandbox). Wer die Unit
+  per Drop-in überschreibt, ergänzt das bzw. lässt RestrictNamespaces= weg.
+  Recht „Berechnungen ausführen“: an für Verwalter, Erwachsene, Jugendliche.
+  Prüfen im Admin: Chat-Einstellungen → „Sandbox testen“.
+
+  Alle Verwaltungsbefehle: https://github.com/Beerlesklopfer/multi-gpt/wiki/mgpt-ctl
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 10 Oct 2026 03:30:00 +0200

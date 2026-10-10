@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     "multigpt.chat",
     # Admin-Abschnitt „Dokumente (RAG)“ (nur Proxy-Modelle auf chat).
     "multigpt.rag",
+    # Kontenrahmen, Preise, Kurse, Buchungen und Budgets je Konto (M6).
+    "multigpt.billing",
 ]
 
 MIDDLEWARE = [
@@ -95,6 +97,10 @@ if _test_template:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Kosten (multigpt/billing): EZB-Referenzkurs USD automatisch abrufen? Standard
+# aus (externer Abruf); Kurse lassen sich immer von Hand im Admin pflegen.
+BILLING_ECB_FETCH = env.bool("BILLING_ECB_FETCH", default=False)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -190,6 +196,10 @@ RAG_FAKE_EMBEDDINGS = env.bool("RAG_FAKE_EMBEDDINGS", default=False)
 # Sprachen der Texterkennung (Tesseract-Sprachpakete, z. B. "deu+eng") und
 # Wiederholungen fehlgeschlagener Hintergrundjobs.
 DOCUMENT_MAX_UPLOAD_MB = env.int("DOCUMENT_MAX_UPLOAD_MB", default=25)
+# Anhänge im Chat: Bilder bis ATTACHMENT_MAX_IMAGE_MB, Dokumente bis
+# DOCUMENT_MAX_UPLOAD_MB, höchstens ATTACHMENT_MAX_PER_MESSAGE je Nachricht.
+ATTACHMENT_MAX_IMAGE_MB = env.int("ATTACHMENT_MAX_IMAGE_MB", default=20)
+ATTACHMENT_MAX_PER_MESSAGE = env.int("ATTACHMENT_MAX_PER_MESSAGE", default=10)
 OCR_LANGUAGES = env("OCR_LANGUAGES", default="deu+eng")
 JOB_MAX_ATTEMPTS = env.int("JOB_MAX_ATTEMPTS", default=5)
 

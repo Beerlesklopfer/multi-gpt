@@ -1,0 +1,10 @@
+{% load usage_tags %}{# Budget je Abrechnungskonto (Tag account_meter); Zahlen stehen immer als Text daneben. #}
+<div class="budget-meter budget-meter-{{ state.level }}">
+  {% if meter_max %}
+    <meter min="0" max="{{ meter_max }}" low="{{ meter_low }}" high="{{ meter_low }}" optimum="0"
+           value="{{ meter_value }}" aria-label="Budget {{ state.name }}">{{ state.percent }} %</meter>
+  {% endif %}
+  <p class="budget-text">
+    {% if state.unit == "tokens" %}{{ state.spent|tokens }} von {{ state.limit|tokens }} Tokens{% else %}{{ state.spent|eur }} von {{ state.limit|eur }}{% endif %} verbraucht{% if state.percent is not None %} ({{ state.percent }} %){% endif %}.
+  </p>
+</div>

@@ -25,8 +25,10 @@ from django.utils.text import Truncator
 
 from multigpt.chat import status as provider_status
 from multigpt.chat.api_collections import delete_document_files
-from multigpt.chat.models import Chunk, Document, Provider, RagSettings
+from multigpt.chat.forms_citation import BIB_FIELDS, DocumentCitationForm
+from multigpt.chat.models import Chunk, Document, IndexRun, Job, Provider, RagSettings
 from multigpt.chat.rag import embeddings as rag_embeddings
+from multigpt.chat.rag import jobs as rag_jobs
 from multigpt.chat.rag import ocr as rag_ocr
 
 from . import crawl, services
@@ -34,6 +36,7 @@ from .models import (
     CollectionProxy,
     DirectorySource,
     DocumentProxy,
+    IndexRunProxy,
     JobProxy,
     RagOverview,
     RagSettingsProxy,
@@ -72,6 +75,34 @@ def _overview_url() -> str:
 
 def _level(level: str) -> int:
     return {"ok": messages.SUCCESS, "warning": messages.WARNING}.get(level, messages.ERROR)
+
+
+# Hinweis bei laufenden Aufträgen: HTTP-Anfragen (z. B. OCR einer Seite in LM
+# Studio, bis zu 600 s) werden nicht hart unterbrochen.
+MSG_AFTER_STEP = (
+    "{what} wird nach dem aktuellen Schritt beendet (z. B. nach der gerade gelesenen "
+    "Seite; eine laufende Anfrage an den Anbieter kann bis zu 10 Minuten dauern)."
+)
+
+
+def _run_link(run_id) -> str:
+    if run_id is None:
+        return "–"
+    url = reverse("admin:rag_indexrunproxy_change", args=[run_id])
+    return format_html('<a href="{}">#{}</a>', url, run_id)
+
+
+def _cancel_messages(admin_obj, request, removed: int, marked: int) -> None:
+    if removed:
+        admin_obj.message_user(request, f"{_jobs(removed)} abgebrochen und entfernt.")
+    if marked:
+        admin_obj.message_user(
+            request,
+            MSG_AFTER_STEP.format(what=f"{_jobs(marked)} läuft gerade und"),
+            messages.WARNING,
+        )
+    if not removed and not marked:
+        admin_obj.message_user(request, "Nichts abzubrechen.", messages.INFO)
 
 
 def _post_only(request):
@@ -138,7 +169,8 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
     def overview_view(self, request):
         self._require(request)
         cfg = RagSettings.load()
-        for model in (cfg.embedding_model, cfg.ocr_model):
+        figure_model = cfg.figure_model if cfg.describe_figures else None
+        for model in (cfg.embedding_model, cfg.ocr_model, figure_model):
             if model is not None and model.provider.active and model.provider.check_status:
                 provider_status.refresh(model.provider)  # Erreichbarkeit, höchstens alle 15 s
         data = services.overview()
@@ -152,6 +184,10 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
             "ocr": services.ocr_overview(data.settings),
             "ocr_model": ocr_model,
             "ocr_provider": ocr_model.provider if ocr_model else None,
+            "figure_model": data.settings.figure_model,
+            "figure_provider": (
+                data.settings.figure_model.provider if data.settings.figure_model else None
+            ),
             "dimensions": rag_embeddings.EMBEDDING_DIMENSIONS,
             "storage": filesizeformat(data.storage_bytes),
             "stale_minutes": int(services.jobs.STALE_AFTER.total_seconds() // 60),
@@ -162,7 +198,7 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
     def reindex_all_view(self, request):
         self._require(request)
         if request.method == "POST":
-            count = services.reindex_all()
+            count = services.reindex_all(request.user)
             self.message_user(
                 request,
                 f"{_documents(count)} zur Indexierung eingereiht. Der Worker arbeitet sie ab.",
@@ -266,6 +302,28 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
             },
         ),
         (
+            "Abbildungen",
+            {
+                "fields": [
+                    "describe_figures",
+                    "figure_model",
+                    "figure_max_per_document",
+                    "figure_max_per_page",
+                    "figure_min_edge",
+                    "figure_max_edge",
+                ],
+                "description": "Bilder und Diagramme in PDF- und Word-Dokumenten sowie "
+                "Bilddateien (JPG, PNG, TIFF, WEBP) beschreibt ein allgemeines Vision-Modell, "
+                "z. B. Qwen3-VL in LM Studio; die Beschreibung steht als „[Abbildung: …]“ im "
+                "Text und wird mit durchsucht. Je Abbildung ein Modellaufruf: Das dauert "
+                "(lokal einige Sekunden je Bild) bzw. kostet bei Cloud-Anbietern Gebühren. "
+                "Mit einem lokalen Modell bleiben die Bilder im Haus, mit einem Cloud-Modell "
+                "gehen sie an den Anbieter. Kleine Bilder, schmale Linien und Wiederholungen "
+                "(Logos) werden übersprungen. Wirkt für vorhandene Dokumente erst nach „Alles "
+                "neu indexieren“.",
+            },
+        ),
+        (
             "Zerteilung",
             {
                 "fields": ["chunk_tokens", "overlap_tokens"],
@@ -273,6 +331,16 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
             },
         ),
         ("Suche", {"fields": ["top_k", "hybrid"]}),
+        (
+            "Literaturangaben",
+            {
+                "fields": ["crossref_enabled", "crossref_mailto"],
+                "description": "Erkennt die Indexierung eine DOI (Verlags-PDFs, z. B. "
+                "Springer), kann sie fehlende Angaben bei Crossref nachschlagen. Aus "
+                "Datenschutzgründen standardmäßig aus: Crossref erfährt dabei, welche "
+                "Dokumente hier liegen.",
+            },
+        ),
     ]
 
     def has_add_permission(self, request):
@@ -303,7 +371,7 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         # Neu gewählte, gemeldete Modelle anlegen (``RagSettingsForm``).
-        for field in ("embedding_model", "ocr_model"):
+        for field in ("embedding_model", "ocr_model", "figure_model"):
             model = getattr(obj, field)
             if model is not None and model.pk is None:
                 setattr(obj, field, materialize(model))
@@ -333,13 +401,15 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
             "query_prefix",
             "chunk_tokens",
             "overlap_tokens",
+            "describe_figures",
+            "figure_model",
         }
         if change and changed and Document.objects.exists():
             self.message_user(
                 request,
                 format_html(
-                    'Modell oder Zerteilung wurden geändert. Bitte <a href="{}">alles neu '
-                    "indexieren</a>, damit alle Dokumente neu eingebettet werden.",
+                    'Modell, Zerteilung oder Abbildungen wurden geändert. Bitte <a href="{}">'
+                    "alles neu indexieren</a>, damit alle Dokumente neu eingebettet werden.",
                     reverse("admin:rag_overview_reindex_all"),
                 ),
                 messages.WARNING,
@@ -397,6 +467,9 @@ class ReindexObjectMixin:
     def _documents_for(self, obj):
         raise NotImplementedError
 
+    def _reindex(self, request, obj) -> int:
+        return services.reindex_documents(self._documents_for(obj))
+
     def get_urls(self):
         info = self.opts.app_label, self.opts.model_name
         return [
@@ -416,7 +489,7 @@ class ReindexObjectMixin:
         obj = self.get_object(request, unquote(object_id))
         if obj is None:
             raise Http404("Nicht gefunden.")
-        count = services.reindex_documents(self._documents_for(obj))
+        count = self._reindex(request, obj)
         self.message_user(request, f"{_documents(count)} zur Indexierung eingereiht.")
         info = self.opts.app_label, self.opts.model_name
         return HttpResponseRedirect(reverse("admin:{}_{}_change".format(*info), args=[obj.pk]))
@@ -443,7 +516,7 @@ class DocumentAdmin(RagAdminMixin, ReindexObjectMixin, admin.ModelAdmin):
     ]
     search_fields = ["title", "collection__name"]
     actions = ["reindex_action", "retry_action", "delete_selected"]
-    fields = [
+    readonly_fields = [
         "id",
         "title",
         "collection_name",
@@ -452,9 +525,23 @@ class DocumentAdmin(RagAdminMixin, ReindexObjectMixin, admin.ModelAdmin):
         "error_text",
         "size",
         "chunk_count",
+        "figures_described",
         "created",
     ]
-    readonly_fields = fields
+    # Literaturangaben fürs Zitieren sind bearbeitbar (ragcite), alles andere nicht.
+    form = DocumentCitationForm
+    fieldsets = [
+        (None, {"fields": readonly_fields}),
+        (
+            "Literaturangaben",
+            {
+                "fields": BIB_FIELDS,
+                "description": "Für Quellenangaben im Chat (Zitierstil je Konto). Beim "
+                "Indexieren aus Datei-Metadaten, DOI und Normnummer vorbelegt; nach dem "
+                "Speichern hier überschreibt die Indexierung nichts mehr.",
+            },
+        ),
+    ]
 
     def _documents_for(self, obj):
         return [obj]
@@ -468,9 +555,6 @@ class DocumentAdmin(RagAdminMixin, ReindexObjectMixin, admin.ModelAdmin):
         )
 
     def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
         return False
 
     @admin.display(description="Sammlung", ordering="collection__name")
@@ -514,11 +598,13 @@ class DocumentAdmin(RagAdminMixin, ReindexObjectMixin, admin.ModelAdmin):
     # Löschen: nur nach Djangos Bestätigungsseite, Datei nach dem Commit entfernen.
 
     def delete_model(self, request, obj):
+        rag_jobs.cancel_document_jobs([obj.pk])  # laufende Indexierung abbrechen
         with transaction.atomic():
             delete_document_files([obj])
             obj.delete()
 
     def delete_queryset(self, request, queryset):
+        rag_jobs.cancel_document_jobs(list(queryset.values_list("pk", flat=True)))
         with transaction.atomic():
             documents = list(queryset)
             delete_document_files(documents)
@@ -631,10 +717,12 @@ class CollectionAdmin(RagAdminMixin, ReindexObjectMixin, admin.ModelAdmin):
             f"{s.group.name} ({'schreibend' if s.can_write else 'lesend'})" for s in shares
         )
 
+    def _reindex(self, request, obj) -> int:
+        return services.reindex_collection(obj, request.user)
+
     @admin.action(description="Neu indexieren")
     def reindex_action(self, request, queryset):
-        documents = Document.objects.filter(collection__in=queryset).order_by("pk")
-        count = services.reindex_documents(list(documents))
+        count = sum(services.reindex_collection(c, request.user) for c in queryset)
         self.message_user(request, f"{_documents(count)} zur Indexierung eingereiht.")
 
 
@@ -653,9 +741,10 @@ class JobAdmin(RagAdminMixin, admin.ModelAdmin):
         "locked_at",
         "error_short",
         "document_ref",
+        "run_ref",
         "created",
     ]
-    list_filter = ["status", "kind"]
+    list_filter = ["status", "kind", "cancel_requested"]
     actions = ["retry_action", "cancel_action"]
     fields = [
         "id",
@@ -666,9 +755,16 @@ class JobAdmin(RagAdminMixin, admin.ModelAdmin):
         "locked_at",
         "last_error",
         "document_ref",
+        "run_ref",
         "created",
     ]
     readonly_fields = fields
+
+    def lookup_allowed(self, lookup, value, request=None):
+        # Link „offene Aufträge“ eines Laufs (?run__id__exact=…).
+        return lookup in ("run__id__exact", "run__id") or super().lookup_allowed(
+            lookup, value, request
+        )
 
     def get_queryset(self, request):
         # Neueste zuerst; die Liste ist vor allem zur Fehlersuche da.
@@ -681,15 +777,45 @@ class JobAdmin(RagAdminMixin, admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        # Löschen nur über „Abbrechen und löschen“ (schont laufende Aufträge).
+        # Löschen nur über „Abbrechen“ (laufende werden nach dem Schritt beendet).
         return False
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_view),
+                name="rag_jobproxy_cancel",
+            ),
+            *super().get_urls(),
+        ]
+
+    def cancel_view(self, request, object_id):
+        if denied := _post_only(request):
+            return denied
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            raise Http404("Nicht gefunden.")
+        removed, marked = services.cancel_jobs(Job.objects.filter(pk=obj.pk))
+        _cancel_messages(self, request, removed, marked)
+        if marked:
+            return HttpResponseRedirect(reverse("admin:rag_jobproxy_change", args=[obj.pk]))
+        return HttpResponseRedirect(reverse("admin:rag_jobproxy_changelist"))
 
     @admin.display(description="Status", ordering="status")
     def status_badge(self, obj):
         label = obj.get_status_display()
+        if obj.cancel_requested and obj.status == Job.Status.RUNNING:
+            label = "wird abgebrochen"
         if services.is_stale(obj):
             label += " (hängt?)"
         return _status_badge(obj.status, label)
+
+    @admin.display(description="Lauf", ordering="run")
+    def run_ref(self, obj):
+        return _run_link(obj.run_id)
 
     @admin.display(description="letzter Fehler")
     def error_short(self, obj):
@@ -717,18 +843,154 @@ class JobAdmin(RagAdminMixin, admin.ModelAdmin):
                 messages.INFO,
             )
 
-    @admin.action(description="Abbrechen und löschen")
+    @admin.action(description="Abbrechen (laufende nach dem aktuellen Schritt)")
     def cancel_action(self, request, queryset):
-        deleted, skipped = services.cancel_jobs(queryset)
-        if deleted:
-            self.message_user(request, f"{_jobs(deleted)} gelöscht.")
-        if skipped:
+        removed, marked = services.cancel_jobs(queryset)
+        _cancel_messages(self, request, removed, marked)
+
+
+# --- Läufe ------------------------------------------------------------------------
+
+
+@admin.register(IndexRunProxy)
+class IndexRunAdmin(RagAdminMixin, admin.ModelAdmin):
+    """Läufe (Verzeichnis einlesen, Neuindexierung, Upload) mit Fortschritt."""
+
+    index_order = 28
+    list_display = [
+        "id",
+        "kind",
+        "status_badge",
+        "collection_name",
+        "progress",
+        "started_by_name",
+        "started",
+        "duration_display",
+    ]
+    list_filter = ["status", "kind"]
+    actions = ["cancel_action"]
+    fields = [
+        "id",
+        "kind",
+        "status_badge",
+        "collection_name",
+        "source_ref",
+        "started_by_name",
+        "started",
+        "finished",
+        "duration_display",
+        "progress",
+        "files_found",
+        "files_checked",
+        "files_new",
+        "files_changed",
+        "files_deleted",
+        "files_skipped",
+        "docs_queued",
+        "docs_done",
+        "docs_failed",
+        "docs_cancelled",
+        "open_jobs",
+        "error_text",
+    ]
+    readonly_fields = fields
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("collection", "source", "started_by")
+            .order_by("-pk")
+        )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_view),
+                name="rag_indexrunproxy_cancel",
+            ),
+            *super().get_urls(),
+        ]
+
+    def cancel_view(self, request, object_id):
+        if denied := _post_only(request):
+            return denied
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            raise Http404("Nicht gefunden.")
+        self._cancel(request, IndexRun.objects.filter(pk=obj.pk))
+        return HttpResponseRedirect(reverse("admin:rag_indexrunproxy_change", args=[obj.pk]))
+
+    def _cancel(self, request, queryset):
+        runs, removed, marked = services.cancel_runs(queryset)
+        if not runs:
+            self.message_user(request, "Kein offener Lauf ausgewählt.", messages.INFO)
+            return
+        text = f"{runs} Lauf/Läufe abgebrochen, {_jobs(removed)} entfernt."
+        self.message_user(request, text)
+        if marked:
             self.message_user(
                 request,
-                f"{_jobs(skipped)} laufen gerade und wurden nicht gelöscht. Hängende "
-                "Aufträge über die RAG-Übersicht zurücksetzen.",
+                MSG_AFTER_STEP.format(what=f"{_jobs(marked)} läuft gerade und"),
                 messages.WARNING,
             )
+
+    @admin.action(description="Lauf abbrechen")
+    def cancel_action(self, request, queryset):
+        self._cancel(request, queryset)
+
+    @admin.display(description="Status", ordering="status")
+    def status_badge(self, obj):
+        css = {
+            IndexRun.Status.RUNNING: "running",
+            IndexRun.Status.CANCELLING: "pending",
+            IndexRun.Status.FINISHED: "done",
+            IndexRun.Status.FAILED: "failed",
+        }.get(obj.status, "")
+        return _status_badge(css, obj.get_status_display())
+
+    @admin.display(description="Sammlung", ordering="collection__name")
+    def collection_name(self, obj):
+        return obj.collection.name if obj.collection else "–"
+
+    @admin.display(description="Verzeichnisquelle")
+    def source_ref(self, obj):
+        if obj.source_id is None:
+            return "–"
+        url = reverse("admin:rag_directorysource_change", args=[obj.source_id])
+        return format_html('<a href="{}">#{}</a>', url, obj.source_id)
+
+    @admin.display(description="gestartet von")
+    def started_by_name(self, obj):
+        return _owner_name(obj.started_by) if obj.started_by else "automatisch"
+
+    @admin.display(description="Laufzeit")
+    def duration_display(self, obj):
+        return obj.duration_text()
+
+    @admin.display(description="Fortschritt")
+    def progress(self, obj):
+        return obj.progress_text()
+
+    @admin.display(description="offene Aufträge")
+    def open_jobs(self, obj):
+        count = obj.jobs.filter(status__in=rag_jobs.OPEN).count()
+        if not count:
+            return "0"
+        url = reverse("admin:rag_jobproxy_changelist")
+        return format_html('<a href="{}?run__id__exact={}">{}</a>', url, obj.pk, count)
 
 
 # --- Verzeichnisquellen (Agent crawler) -------------------------------------------
@@ -770,12 +1032,19 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
     list_display_links = ["collection_name"]
     list_filter = ["active"]
     search_fields = ["collection__name", "path"]
-    actions = ["scan_now_action", "pause_action", "activate_action", "delete_selected"]
+    actions = [
+        "scan_now_action",
+        "cancel_scan_action",
+        "pause_action",
+        "activate_action",
+        "delete_selected",
+    ]
     readonly_fields = [
         "collection_name",
         "owner",
         "path",
         "state_badge",
+        "run_progress",
         "last_scan_started",
         "last_scan_finished",
         "result_display",
@@ -819,6 +1088,7 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
                 {
                     "fields": [
                         "state_badge",
+                        "run_progress",
                         "last_scan_started",
                         "last_scan_finished",
                         "result_display",
@@ -867,7 +1137,7 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         if not change and obj.active:
-            crawl.enqueue_scan(obj)
+            crawl.enqueue_scan(obj, request.user)
             self.message_user(request, "Das Verzeichnis wird jetzt im Hintergrund eingelesen.")
 
     # Anzeige
@@ -882,6 +1152,11 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
 
     @admin.display(description="Status")
     def state_badge(self, obj):
+        run = crawl.open_run(obj)
+        if run is not None:
+            if run.status == IndexRun.Status.CANCELLING:
+                return _status_badge("pending", "wird abgebrochen")
+            return _status_badge("running", "wird eingelesen")
         if crawl.open_scan_job(obj) is not None:
             return _status_badge("running", "wird eingelesen")
         if obj.last_error:
@@ -889,6 +1164,16 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
         if not obj.active:
             return _status_badge("pending", "pausiert")
         return _status_badge("done", "aktiv")
+
+    @admin.display(description="Aktueller Lauf")
+    def run_progress(self, obj):
+        run = crawl.open_run(obj) or obj.runs.order_by("-pk").first()
+        if run is None:
+            return "–"
+        url = reverse("admin:rag_indexrunproxy_change", args=[run.pk])
+        return format_html(
+            '<a href="{}">{}</a> – {}', url, run.progress_text(), run.get_status_display()
+        )
 
     @admin.display(description="Ergebnis")
     def result_display(self, obj):
@@ -910,13 +1195,34 @@ class DirectorySourceAdmin(RagAdminMixin, admin.ModelAdmin):
         if not services.source_paths.enabled():
             self._roots_warning(request)
             return
-        created = sum(crawl.enqueue_scan(source) is not None for source in queryset)
+        created = sum(crawl.enqueue_scan(source, request.user) is not None for source in queryset)
         skipped = queryset.count() - created
         if created:
             self.message_user(request, f"{created} Verzeichnis(se) zum Einlesen eingereiht.")
         if skipped:
             self.message_user(
                 request, f"{skipped} Verzeichnis(se) werden bereits eingelesen.", messages.INFO
+            )
+
+    @admin.action(description="Einlesen abbrechen")
+    def cancel_scan_action(self, request, queryset):
+        runs = removed = marked = 0
+        for source in queryset:
+            r, rem, mark = crawl.cancel_scans(source)
+            runs, removed, marked = runs + r, removed + rem, marked + mark
+        if not (runs or removed or marked):
+            self.message_user(request, "Es wird gerade nichts eingelesen.", messages.INFO)
+            return
+        self.message_user(
+            request,
+            f"Einlesen abgebrochen ({runs} Lauf/Läufe, {_jobs(removed)} entfernt). Bereits "
+            "indexierte Dokumente bleiben; nichts wird als verschwunden gelöscht.",
+        )
+        if marked:
+            self.message_user(
+                request,
+                MSG_AFTER_STEP.format(what=f"{_jobs(marked)} läuft gerade und"),
+                messages.WARNING,
             )
 
     @admin.action(description="Pausieren")

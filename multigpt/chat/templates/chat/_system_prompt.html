@@ -1,5 +1,5 @@
-{# System-Prompt des Chats (M5-03). Der feste Prompt der Rolle erscheint hier nie. #}
-{% if has_chat_model and can_write or has_chat_model and not active_conversation %}
+{# System-Prompt des Chats (M5-03). Der feste Prompt der Rolle erscheint hier nie. Ändern: Recht U (geteilte Chats). #}
+{% if has_chat_model and can_update or has_chat_model and not active_conversation %}
   <details class="chat-settings" id="chat-settings"{% if active_conversation.system_prompt %} data-active="true"{% endif %}>
     <summary>System-Prompt{% if active_conversation.system_prompt %} <span class="badge">aktiv</span>{% endif %}</summary>
     <form class="chat-settings-form" id="system-prompt-form">

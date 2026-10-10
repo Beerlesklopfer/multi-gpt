@@ -490,9 +490,16 @@ def test_change_page_offers_reported_models(admin_client, provider):
     response = admin_client.get(reverse("admin:chat_provider_change", args=[provider.pk]))
     assert response.status_code == 200
     assert _reported_choices(response) == [
-        {"id": "gpt-4o", "capability": "chat", "exists": True},
-        {"id": "text-embedding-3-small", "capability": "embedding", "exists": False},
-        {"id": "whisper-1", "capability": "stt", "exists": False},
+        # tools/vision: Vorbelegung der Häkchen (Heuristik aus der Modell-ID).
+        {"id": "gpt-4o", "capability": "chat", "tools": True, "vision": True, "exists": True},
+        {
+            "id": "text-embedding-3-small",
+            "capability": "embedding",
+            "tools": False,
+            "vision": False,
+            "exists": False,
+        },
+        {"id": "whisper-1", "capability": "stt", "tools": False, "vision": False, "exists": False},
     ]
     html = response.content.decode()
     assert "chat/admin_model_combobox.js" in html

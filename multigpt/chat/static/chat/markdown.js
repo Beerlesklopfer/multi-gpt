@@ -5,9 +5,12 @@
 //   (eigener Renderer); DOMPurify ist die zweite, maßgebliche Schranke.
 // - Keine externen Ressourcen: Bilder werden zu Links, <img>, <style>, Formulare,
 //   Medien und eingebettete Inhalte sind verboten, ebenso style-Attribute.
-// - Links öffnen in neuem Tab mit rel="noopener noreferrer"; nur http(s),
+// - Links öffnen in neuem Tab mit rel="noopener noreferrer nofollow"; nur http(s),
 //   mailto und relative Ziele (DOMPurify entfernt javascript: u. Ä.).
 // - Code: Hervorhebung mit highlight.js (arbeitet auf Text), Kopierknopf.
+// - Formeln (LaTeX): math.js schützt sie vor marked und setzt sie nach der
+//   Bereinigung mit KaTeX in Platzhalter-Elemente (nicht durch DOMPurify).
+// - SVG-Codeblöcke: svg_preview.js zeigt sie bereinigt als <img> (data:-URL).
 // Fehlen die Bibliotheken, bleibt der Rohtext als Text stehen.
 "use strict";
 
@@ -64,7 +67,7 @@
       if (node.tagName === "A") {
         if (node.hasAttribute("href")) {
           node.setAttribute("target", "_blank");
-          node.setAttribute("rel", "noopener noreferrer");
+          node.setAttribute("rel", "noopener noreferrer nofollow");
         } else {
           node.removeAttribute("target");
         }
@@ -188,10 +191,18 @@
       el.textContent = text;
       return false;
     }
+    // Formeln (math.js) vor marked durch Platzhalter schützen und erst nach der
+    // Bereinigung setzen; Code bleibt roh.
+    const math = window.MultiGPT?.math;
     let fragment;
+    let formulas = { text: String(text ?? ""), items: [] };
     try {
-      const html = window.marked.parse(String(text ?? ""), { async: false });
+      if (math) {
+        formulas = math.protect(formulas.text, final);
+      }
+      const html = window.marked.parse(formulas.text, { async: false });
       fragment = window.DOMPurify.sanitize(html, SANITIZE_CONFIG);
+      math?.restore(fragment, formulas);
     } catch {
       el.textContent = text;
       el.classList.remove("is-markdown");
@@ -200,6 +211,11 @@
     el.replaceChildren(fragment);
     el.classList.add("is-markdown");
     decorateCodeBlocks(el, final);
+    // SVG-Codeblöcke: Bildvorschau nur als <img> (svg_preview.js).
+    window.MultiGPT?.svgPreview?.decorate(el, text, final);
+    // Kurzbeleg statt [n] und Kopierknöpfe der Quellen (citations.js).
+    window.MultiGPT?.sources?.decorate(el);
+    math?.typeset(el, formulas);
     return true;
   }
 

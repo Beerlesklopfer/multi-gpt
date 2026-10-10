@@ -12,6 +12,7 @@ from multigpt.accounts import views_family
 from multigpt.accounts.models import Role, User, UserGroup
 from multigpt.accounts.permissions import Action, can
 from multigpt.chat.models import AIModel, Conversation, Message, Provider, Share
+from tests.billing_helpers import book_stored
 
 pytestmark = pytest.mark.django_db
 
@@ -65,6 +66,7 @@ def teen_chat(teen, ai_model):
         tokens_in=10,
         tokens_out=3,
     )
+    book_stored(answer)  # Buchung wie aus dem Bestand (billing)
     Conversation.objects.filter(pk=conv.pk).update(current_leaf=answer)
     conv.refresh_from_db()
     return conv

@@ -1,0 +1,48 @@
+{# Abschnitt „Projekte“ der Seitenleiste (chat/projects.py). Einklappen und Menü (⋯) über projects.js; ohne JS führt der Name zur Projektseite. #}
+{% if sidebar_projects or not show_archived and not q %}
+<nav class="chat-list project-list" id="project-list" aria-labelledby="project-list-title"
+     data-view="{% if show_archived %}archived{% else %}active{% endif %}"
+     data-api-projects="{% url 'chat:api_projects' %}"
+     data-api-project-template="{% url 'chat:api_project_detail' 0 %}"
+     data-api-move-template="{% url 'chat:api_conversation_project' 0 %}"
+     data-project-url-template="{% url 'chat:project_detail' 0 %}"
+     data-projects-url="{% url 'chat:project_list' %}"
+     data-new-chat-url="{% url 'chat:index' %}">
+  <div class="chat-list-head">
+    <h2 class="chat-list-title" id="project-list-title">{% if show_archived %}Projekte im Archiv{% else %}Projekte{% endif %}</h2>
+    {% if not show_archived %}<a href="{% url 'chat:project_list' %}#neu" class="chat-list-switch" id="new-project-button">Neues Projekt</a>{% endif %}
+  </div>
+  <ul class="project-items" id="project-items">
+    {% for project in sidebar_projects %}
+      <li class="project-item" data-project-id="{{ project.pk }}" data-name="{{ project.name }}"
+          data-archived="{{ project.archived|yesno:'true,false' }}" data-pinned="{{ project.pinned|yesno:'true,false' }}">
+        <div class="project-row">
+          <button type="button" class="project-toggle" hidden
+                  aria-expanded="{{ project.is_open|yesno:'true,false' }}" aria-controls="project-chats-{{ project.pk }}"
+                  aria-label="Chats von „{{ project.name }}“ ein- oder ausklappen">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <a href="{% url 'chat:project_detail' project.pk %}"
+             class="project-link{% if project.pk == active_project.pk %} is-active{% endif %}"
+             {% if project.pk == active_project.pk %}aria-current="page"{% endif %}>
+            <span class="project-dot project-color-{{ project.color|default:'none' }}" aria-hidden="true"></span>
+            <span class="project-name">{{ project.name }}</span>
+          </a>
+          <button type="button" class="project-menu-button" hidden
+                  aria-haspopup="menu" aria-expanded="false"
+                  aria-label="Aktionen für Projekt „{{ project.name }}“">&#8943;</button>
+        </div>
+        <ul class="chat-list-items project-chats" id="project-chats-{{ project.pk }}" data-project-chats="{{ project.pk }}"
+            {% if not project.is_open %}hidden{% endif %}>
+          {% for item in project.sidebar_chats %}{% include "chat/projects/_chat_item.html" %}{% endfor %}
+          {% if project.more_count %}
+            <li class="project-chats-note"><a href="{% url 'chat:project_detail' project.pk %}">{{ project.more_count }} weitere …</a></li>
+          {% elif not project.sidebar_chats %}
+            <li class="project-chats-note hint">Noch keine Chats.</li>
+          {% endif %}
+        </ul>
+      </li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}

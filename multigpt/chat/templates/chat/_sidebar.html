@@ -15,10 +15,11 @@
 <form class="chat-search" id="chat-search" role="search" method="get" action="{{ request.path }}">
   <label for="chat-search-input" class="sr-only">{% if show_archived %}Archiv durchsuchen{% else %}Chats durchsuchen{% endif %}</label>
   <input type="search" id="chat-search-input" name="q" value="{{ q }}" maxlength="100"
-         placeholder="{% if show_archived %}Archiv durchsuchen …{% else %}Titel suchen …{% endif %}" autocomplete="off">
+         placeholder="{% if show_archived %}Archiv durchsuchen …{% else %}Titel oder Projekt suchen …{% endif %}" autocomplete="off">
   {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
   <button type="submit" class="sr-only">Suchen</button>
 </form>
+{% include "chat/projects/_sidebar_projects.html" %}
 <div class="chat-list-head">
   <h2 class="chat-list-title" id="chat-list-title">{% if show_archived %}Archiv{% else %}Chats{% endif %}</h2>
   {% if show_archived %}
@@ -34,3 +35,4 @@
      data-export-template="{% url 'chat:conversation_export' 0 %}">
   {% include "chat/_chat_list.html" %}
 </nav>
+{% include "chat/_shared_list.html" %}

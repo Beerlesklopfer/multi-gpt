@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET
 
 from multigpt.accounts.permissions import Action, can, supervised_conversation_owner
 
-from . import services
+from . import attachments, projects, services, sharing
 from .models import Conversation, Message
 from .websearch import web_search_available
 
@@ -28,15 +28,20 @@ def _page_context(request, conversation=None):
         "active_conversation": conversation,
         "has_chat_model": _has_chat_model(request.user),
         "web_search_available": web_search_available(request.user),
+        # Anhänge: Dateiauswahl und Vorprüfung im Browser (maßgeblich prüft der Server).
+        "attachment_limits": attachments.limits(),
+        # Projekt (M5-07): Kopfzeile, Vorauswahl Modell und Sammlungen, „Neuer Chat im Projekt“.
+        **projects.page_context(request, conversation),
     }
 
 
 def _readable_conversation(request, pk) -> Conversation:
     """Chat laden; ohne READ-Recht 404 (Existenz fremder Chats bleibt verborgen)."""
-    conv = get_object_or_404(Conversation.objects.select_related("default_model"), pk=pk)
+    conv = get_object_or_404(Conversation.objects.select_related("default_model", "project"), pk=pk)
     if not can(request.user, Action.READ, conv):
         raise Http404
-    return conv
+    # Geteilte Chats: angezeigter Zweig je Betrachter (sharing.py).
+    return sharing.bind_viewer(conv, request.user)
 
 
 @login_required
@@ -74,6 +79,8 @@ def conversation(request, pk):
             "supervised_owner": supervised_conversation_owner(request.user, conv),
         }
     )
+    # Geteilte Chats (RWUD): Rechte, Hinweis „Geteilt von …“, Verfasser.
+    context.update(sharing.page_context(request.user, conv))
     return render(request, "chat/conversation.html", context)
 
 
@@ -87,6 +94,7 @@ def conversation_messages(request, pk):
         "chat_messages": _path_with_versions(conv),
         "can_write": can(request.user, Action.WRITE, conv),
     }
+    context.update(sharing.page_context(request.user, conv))
     response = render(request, "chat/_messages.html", context)
     response["Cache-Control"] = "private, no-store"
     return response
@@ -111,19 +119,30 @@ def _status_note(msg: Message) -> str:
     return ""
 
 
-def render_export(conversation: Conversation) -> str:
+def render_export(conversation: Conversation, viewer=None) -> str:
     """Sichtbarer Verlauf als Markdown. Ohne festen Rollen-Prompt (nur der
-    eigene System-Prompt des Chats), nur der angezeigte Zweig (Versionen)."""
+    eigene System-Prompt des Chats), nur der angezeigte Zweig (Versionen).
+    ``viewer``: In geteilten Chats stehen Namen statt „Du“ an fremden Nachrichten."""
+    show_authors = viewer is not None and (
+        sharing.is_shared(conversation) or sharing.has_other_authors(conversation)
+    )
+    owner_name = sharing.display_name(conversation.user) if show_authors else ""
     title = " ".join((conversation.title or "Neuer Chat").split())
     now = timezone.localtime()
     lines = [f"# {title}", "", f"Exportiert aus MultiGPT am {now:%d.%m.%Y um %H:%M} Uhr.", ""]
+    # Projekt nur für den Besitzer (Empfänger sehen fremde Projekte nicht).
+    project = conversation.project if conversation.project_id else None
+    if project is not None and (viewer is None or viewer.pk == conversation.user_id):
+        lines[-1:-1] = [f"Projekt: {' '.join(project.name.split())}", ""]
     if conversation.system_prompt.strip():
         lines += ["## System-Prompt", ""]
         lines += [f"> {line}".rstrip() for line in conversation.system_prompt.strip().splitlines()]
         lines.append("")
     for msg in services.visible_messages(conversation):
         if msg.role == Message.Role.USER:
-            author = "Du"
+            author = sharing.author_label(
+                msg, viewer, conversation.user_id, owner_name, show_authors
+            )
         else:
             author = msg.model.display_name if msg.model else "Assistent"
         stamp = timezone.localtime(msg.created)
@@ -141,7 +160,9 @@ def render_export(conversation: Conversation) -> str:
 def export_markdown(request, pk):
     """Chat als Markdown-Download. Lesen genügt (auch geteilte Chats)."""
     conv = _readable_conversation(request, pk)
-    response = HttpResponse(render_export(conv), content_type="text/markdown; charset=utf-8")
+    response = HttpResponse(
+        render_export(conv, request.user), content_type="text/markdown; charset=utf-8"
+    )
     response["Content-Disposition"] = f'attachment; filename="{export_filename(conv)}"'
     response["Cache-Control"] = "private, no-store"
     return response

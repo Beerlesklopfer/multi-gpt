@@ -27,13 +27,14 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.db import DatabaseError, connection, transaction
 from django.db.models import Exists, F, OuterRef, Q
 from pgvector.django import CosineDistance
 
+from .. import citations
 from ..models import SEARCH_CONFIG, Chunk, Collection, RagSettings, Share
 from .embeddings import embed_query
 
@@ -57,6 +58,14 @@ class Hit:
     page: int | None
     text: str
     score: float
+    # Fundstelle von–bis und Literaturangaben des Dokuments (citations.Reference).
+    page_end: int | None = None
+    paragraph: int | None = None
+    paragraph_end: int | None = None
+    section: str = ""
+    section_title: str = ""
+    section_end: str = ""
+    biblio: dict = field(default_factory=dict)
 
 
 def _usable(user) -> bool:
@@ -202,6 +211,13 @@ def search(
                 page=chunk.page,
                 text=chunk.text,
                 score=round(score, 6),
+                page_end=chunk.page_end,
+                paragraph=chunk.paragraph,
+                paragraph_end=chunk.paragraph_end,
+                section=chunk.section,
+                section_title=chunk.section_title,
+                section_end=chunk.section_end,
+                biblio=citations.reference_from_document(chunk.document).to_dict(),
             )
         )
     return hits

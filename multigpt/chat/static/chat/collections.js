@@ -1,6 +1,7 @@
 // MultiGPT – Sammlungen (M7, RAG): anlegen, umbenennen, löschen, teilen,
 // Dokumente hochladen (mehrere, mit Fortschritt, Drag & Drop), Status mit
-// automatischer Aktualisierung, Dokumente löschen.
+// automatischer Aktualisierung, Dokumente löschen, Indexierung abbrechen,
+// Fortschritt offener Läufe.
 // Kein Inline-JS. Namen, Titel und Fehlertexte sind Nutzerdaten und werden nur
 // als Text eingesetzt (textContent), nie als HTML. Rechte prüft der Server.
 "use strict";
@@ -280,6 +281,68 @@
         p.textContent = String(doc.error_text);
         cell.append(p);
       }
+      if (doc.cancelling) {
+        const p = document.createElement("p");
+        p.className = "document-note";
+        p.textContent = "Wird abgebrochen …";
+        cell.append(p);
+      }
+    }
+
+    // Knöpfe je Zeile: Ansehen, Herunterladen, bei „wartet“ Abbrechen, Löschen.
+    function fillActions(cell, doc) {
+      cell.replaceChildren();
+      if (doc.view_url) {
+        const view = document.createElement("a");
+        view.className = "button button-small";
+        view.href = String(doc.view_url);
+        view.target = "_blank";
+        view.rel = "noopener";
+        view.textContent = "Ansehen";
+        cell.append(view, " ");
+      }
+      if (doc.download_url) {
+        const link = document.createElement("a");
+        link.className = "button button-small";
+        link.href = String(doc.download_url);
+        link.setAttribute("download", "");
+        link.textContent = "Herunterladen";
+        cell.append(link);
+      }
+      if (canWrite && !doc.from_source) {
+        if (doc.status === "pending" && !doc.cancelling) {
+          const cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.className = "button button-small";
+          cancel.dataset.documentCancel = String(doc.id);
+          cancel.textContent = "Abbrechen";
+          cell.append(" ", cancel);
+        }
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "button button-small button-danger";
+        del.dataset.documentDelete = String(doc.id);
+        del.textContent = "Löschen";
+        cell.append(" ", del);
+      }
+    }
+
+    function renderRuns(runs) {
+      const list = document.getElementById("collection-runs");
+      if (!list) {
+        return;
+      }
+      const items = Array.isArray(runs) ? runs : [];
+      list.replaceChildren(
+        ...items.map((run) => {
+          const li = document.createElement("li");
+          li.dataset.runId = String(run.id);
+          li.textContent =
+            String(run.text ?? "") + (run.status === "cancelling" ? " – wird abgebrochen" : "");
+          return li;
+        }),
+      );
+      list.hidden = items.length === 0;
     }
 
     function buildRow(doc) {
@@ -306,22 +369,7 @@
       date.append(time);
       const actions = document.createElement("td");
       actions.className = "document-actions";
-      if (doc.download_url) {
-        const link = document.createElement("a");
-        link.className = "button button-small";
-        link.href = String(doc.download_url);
-        link.setAttribute("download", "");
-        link.textContent = "Herunterladen";
-        actions.append(link);
-      }
-      if (canWrite && !doc.from_source) {
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "button button-small button-danger";
-        del.dataset.documentDelete = String(doc.id);
-        del.textContent = "Löschen";
-        actions.append(" ", del);
-      }
+      fillActions(actions, doc);
       tr.append(title, status, size, date, actions);
       return tr;
     }
@@ -329,8 +377,16 @@
     function upsert(doc) {
       const existing = body.querySelector(`tr[data-document-id="${CSS.escape(String(doc.id))}"]`);
       if (existing) {
+        const changed =
+          existing.dataset.status !== String(doc.status) ||
+          existing.dataset.cancelling !== String(Boolean(doc.cancelling));
         existing.dataset.status = String(doc.status);
+        existing.dataset.cancelling = String(Boolean(doc.cancelling));
         fillStatus(existing.querySelector(".document-status"), doc);
+        const cell = existing.querySelector(".document-actions");
+        if (changed && cell && !cell.contains(document.activeElement)) {
+          fillActions(cell, doc);
+        }
         return existing;
       }
       const row = buildRow(doc);
@@ -346,7 +402,11 @@
     }
 
     function hasPending() {
-      return Boolean(body.querySelector('tr.document-row[data-status="pending"]'));
+      const runs = document.getElementById("collection-runs");
+      return (
+        Boolean(body.querySelector('tr.document-row[data-status="pending"]')) ||
+        Boolean(runs && !runs.hidden)
+      );
     }
 
     async function refresh() {
@@ -367,6 +427,9 @@
       }
       for (const doc of docs) {
         upsert(doc);
+      }
+      if (!Array.isArray(data)) {
+        renderRuns(data.runs);
       }
       updateEmpty();
     }
@@ -418,11 +481,51 @@
       }
     });
 
-    for (const button of body.querySelectorAll("[data-document-delete]")) {
+    for (const button of body.querySelectorAll("[data-document-delete], [data-document-cancel]")) {
       button.hidden = false;
     }
 
+    async function cancelIndexing(button) {
+      const row = button.closest("tr");
+      const title = row?.querySelector(".document-title")?.textContent || "";
+      const ok = await dialog({
+        heading: "Indexierung abbrechen?",
+        text: `„${title}“ wird nicht weiter indexiert. Läuft die Verarbeitung gerade, endet sie nach dem aktuellen Schritt (z. B. der gerade gelesenen Seite).`,
+        confirmLabel: "Abbrechen",
+        danger: true,
+      });
+      if (!ok) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        const doc = await requestJson(
+          "POST",
+          fillTemplate(page.dataset.apiCancelTemplate, button.dataset.documentCancel),
+        );
+        const updated = upsert(doc);
+        const cell = updated?.querySelector(".document-actions");
+        if (cell) {
+          fillActions(cell, doc);
+        }
+        announce(
+          doc.cancel === "cancelling"
+            ? `„${title}“ wird nach dem aktuellen Schritt abgebrochen.`
+            : `Indexierung von „${title}“ abgebrochen.`,
+        );
+        schedule();
+      } catch (err) {
+        button.disabled = false;
+        announce(`Abbrechen fehlgeschlagen: ${err.message}`, true);
+      }
+    }
+
     body.addEventListener("click", async (event) => {
+      const cancelButton = event.target.closest("[data-document-cancel]");
+      if (cancelButton) {
+        await cancelIndexing(cancelButton);
+        return;
+      }
       const button = event.target.closest("[data-document-delete]");
       if (!button) {
         return;

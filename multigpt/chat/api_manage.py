@@ -7,18 +7,20 @@ api.py als ``{"error": "<Text>"}``.
 Rechte (immer über ``can()``):
 
 - kein READ -> 404 (fremde Chats bleiben unsichtbar),
-- READ ohne WRITE (Freigabe nur lesend) -> 403,
-- Titel und System-Prompt: WRITE genügt (auch Freigabe mit Schreibrecht),
-- Archivieren und Löschen: zusätzlich nur der Besitzer. Das Archiv ist die
-  eigene Chatliste des Besitzers, Löschen ist endgültig – beides soll ein
-  Gruppenmitglied mit Schreibrecht nicht für den Besitzer entscheiden.
+- Titel und System-Prompt: UPDATE (Besitzer oder Freigabe mit „Bearbeiten“),
+- Archivieren und Löschen: DELETE (Besitzer oder Freigabe mit „Löschen“). Es
+  wirkt für alle; die Oberfläche fragt bei fremden Chats deutlich nach
+  („Der Chat gehört … und wird für alle gelöscht.“),
+- sonst 403. Freigaben selbst verwaltet nur der Besitzer (api_sharing.py).
 """
 
+from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from multigpt.accounts.permissions import Action, can
 
+from . import attachments as chat_attachments
 from .api import _error, _json_body, api_login_required
 from .models import Conversation
 
@@ -65,20 +67,26 @@ def conversation_detail(request, pk: int):
     conversation = Conversation.objects.filter(pk=pk).first()
     if conversation is None or not can(request.user, Action.READ, conversation):
         return _error("Chat nicht gefunden.", 404)
-    if not can(request.user, Action.WRITE, conversation):
+    may_update = can(request.user, Action.UPDATE, conversation)
+    may_delete = can(request.user, Action.DELETE, conversation)
+    if not (may_update or may_delete):
         return _error("Du darfst diesen Chat nur lesen.", 403)
-    is_owner = conversation.user_id == request.user.pk
 
     if request.method == "DELETE":
-        if not is_owner:
-            return _error("Nur wer den Chat angelegt hat, kann ihn löschen.", 403)
-        conversation.delete()
+        if not may_delete:
+            return _error("Du darfst diesen Chat nicht löschen.", 403)
+        with transaction.atomic():
+            # Dateien der Anhänge nach dem Commit entfernen (Plan 9: Datenschutz).
+            chat_attachments.delete_conversation_files(conversation)
+            conversation.delete()
         return JsonResponse({"deleted": True, "id": pk})
 
     data = _json_body(request)
     if data is None:
         return _error("Ungültige Anfrage.", 400)
     fields = {}
+    if ("title" in data or "system_prompt" in data) and not may_update:
+        return _error("Du darfst diesen Chat nicht bearbeiten.", 403)
     if "title" in data:
         title, err = _clean_title(data["title"])
         if err:
@@ -92,8 +100,8 @@ def conversation_detail(request, pk: int):
     if "archived" in data:
         if not isinstance(data["archived"], bool):
             return _error("Ungültiger Wert für „archiviert“.", 400)
-        if not is_owner:
-            return _error("Nur wer den Chat angelegt hat, kann ihn archivieren.", 403)
+        if not may_delete:
+            return _error("Du darfst diesen Chat nicht archivieren.", 403)
         fields["archived"] = data["archived"]
     if not fields:
         return _error("Keine Änderung angegeben.", 400)

@@ -16,6 +16,7 @@ from django.urls import reverse
 from multigpt.accounts.models import Role, User
 from multigpt.chat import services, sources, tooling, websearch
 from multigpt.chat.models import (
+    DEFAULT_BASE_INSTRUCTIONS,
     AIModel,
     Conversation,
     Message,
@@ -281,7 +282,8 @@ def test_without_switch_no_search(client, conversation, ai_model, search_setting
     assert "status" not in names(events)
     assert calls[0]["messages"][-1].content == QUESTION
     assert calls[0]["tools"] is None
-    assert not calls[0]["system"]
+    # Modell ohne Werkzeuge, Schalter aus: Grundregeln und Hinweis auf den Schalter.
+    assert calls[0]["system"] == f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{websearch.HINT_SWITCH}"
 
 
 def test_regenerate_with_web_search_uses_question(
@@ -395,7 +397,7 @@ def test_web_search_tool_in_loop(client, conversation, tool_model, search_settin
     assert [s["n"] for s in events[3][1]["sources"]] == [1, 2, 3]
 
     first = calls[0]
-    assert [t.name for t in first["tools"]] == ["web_search"]
+    assert [t.name for t in first["tools"]] == ["web_search", "fetch_url", "crawl_site"]
     assert sources.SYSTEM_NOTE in first["system"]
     result = calls[1]["messages"][-1]
     assert result.role == "tool" and result.name == "web_search"
@@ -409,12 +411,14 @@ def test_web_search_tool_in_loop(client, conversation, tool_model, search_settin
     assert msg.sources.count() == 3
     data = client.get(reverse("chat:api_messages", args=[conversation.pk])).json()
     assert data[-1]["tool_calls"][0]["server"] == "Websuche"
-    assert data[-1]["sources"][0] == {
+    # Teilmenge: serialize liefert zusätzlich Zitierangaben (entry, short, formats, …).
+    expected = {
         "n": 1,
         "kind": "web",
         "title": "Wetter Berlin",
         "url": "https://wetter.example/berlin",
     }
+    assert expected.items() <= data[-1]["sources"][0].items()
 
 
 def test_tool_and_fixed_search_share_numbering(
@@ -532,6 +536,8 @@ def test_context_survives_confirmation_pause(
         known_tools=["echo"],
         tools_requiring_confirmation=["echo"],
     )
+    tool_model.mcp_access = AIModel.McpAccess.ALL
+    tool_model.save()
     from multigpt.chat import mcp
     from multigpt.chat.providers.base import ToolSpec
 
@@ -609,6 +615,11 @@ def test_admin_save_validates_url(admin_client):
         "max_results": "5",
         "fetch_pages": "3",
         "timeout_seconds": "10",
+        "fetch_url_enabled": "on",
+        "crawl_enabled": "on",
+        "crawl_max_pages": "10",
+        "crawl_time_seconds": "30",
+        "blocked_domains": "",
     }
     response = admin_client.post(url, data)
     assert response.status_code == 200

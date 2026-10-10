@@ -14,8 +14,8 @@ Grundlage (gelesen 2026-10-09):
   Gedanken-Zusammenfassungen; ``functionCall`` mit ``name``/``args``),
   ``candidates[].finishReason`` (``STOP``, ``MAX_TOKENS``, ``SAFETY`` …),
   ``promptFeedback.blockReason`` bei blockierter Anfrage, ``usageMetadata``
-  mit ``promptTokenCount``, ``candidatesTokenCount``, ``thoughtsTokenCount``,
-  ``toolUsePromptTokenCount``.
+  mit ``promptTokenCount`` (inkl. ``cachedContentTokenCount``),
+  ``candidatesTokenCount``, ``thoughtsTokenCount``, ``toolUsePromptTokenCount``.
 - Fehler: HTTP-Status mit ``{"error": {"code", "message", "status",
   "details"}}``; ein ungültiger Key kommt als 400 mit ``reason``
   ``API_KEY_INVALID``. Mitten im Stream kann ein Chunk mit ``error`` kommen.
@@ -45,12 +45,26 @@ generate-content/thought-signatures):
   rekonstruierte Aufrufe ohne Signatur nennt die Doku den Platzhalter
   ``skip_thought_signature_validator``.
 
+Bilderzeugung (M9-01, gelesen 2026-10-10; ai.google.dev/api/generate-content,
+ai.google.dev/gemini-api/docs/image-generation): ``generateContent`` mit
+``generationConfig.responseModalities`` ``["TEXT", "IMAGE"]`` und
+``imageConfig.aspectRatio`` (z. B. ``1:1``, ``2:3``, ``3:2``). Bilder kommen als
+Teile mit ``inlineData`` (``mimeType``, base64 ``data``); Gedanken-Teile
+(``thought: true``) werden übergangen. Sperren: ``promptFeedback.blockReason``
+oder ``finishReason`` ``IMAGE_SAFETY``, ``IMAGE_PROHIBITED_CONTENT``,
+``SAFETY`` u. a.; ``NO_IMAGE`` bzw. kein Bildteil -> „kein Bild geliefert“.
+Tokens aus ``usageMetadata`` (Bildausgabe zählt in ``candidatesTokenCount``).
+Bildmodelle laut Doku z. B. ``gemini-2.5-flash-image``, ``gemini-3-pro-image``,
+``gemini-3.1-flash-image``; Imagen ist abgeschaltet. Der Leitfaden zeigt
+inzwischen die Interactions-API (``response_format`` mit ``aspect_ratio``).
+
 Hinweis: Google stellt daneben die neuere Interactions-API vor; dieser
 Adapter nutzt bewusst die etablierte ``generateContent``-Schnittstelle.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from collections.abc import Iterator
@@ -60,16 +74,21 @@ import httpx
 
 from .base import (
     FINISH_TOOL_CALLS,
+    MSG_IMAGE_TOO_LARGE,
     MSG_INTERRUPTED,
     MSG_INVALID_MODEL_LIST,
     MSG_KEY_EXPIRED,
+    MSG_NO_IMAGE,
     MSG_STREAM_ERROR,
     MSG_TOOL_ARGUMENTS,
     ChatMessage,
+    ContentBlocked,
     Delta,
     Done,
     Error,
     Event,
+    GeneratedImage,
+    ImageResult,
     ProviderAdapter,
     ProviderError,
     ProviderHTTPError,
@@ -81,13 +100,22 @@ from .base import (
     group_turns,
     http_error_message,
     is_key_expired,
+    is_unreachable,
     new_tool_call_id,
     normalize_tools,
+    orientation,
     provider_error_code,
     sse_data,
     tool_schema,
 )
-from .openai_compat import LIST_TIMEOUT, STREAM_TIMEOUT
+from .openai_compat import (
+    IMAGE_MAX_RESPONSE_BYTES,
+    IMAGE_TIMEOUT,
+    LIST_TIMEOUT,
+    MSG_EMPTY_IMAGE_PROMPT,
+    MSG_INVALID_IMAGE_ANSWER,
+    STREAM_TIMEOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +160,19 @@ _FINISH_ERRORS = {
     "malformed_function_call": MSG_MALFORMED_CALL,
     "unexpected_tool_call": MSG_MALFORMED_CALL,
     "missing_thought_signature": MSG_MISSING_SIGNATURE,
+}
+# Bilderzeugung (M9-01): Format -> ``imageConfig.aspectRatio``; finishReason
+# bzw. blockReason, die eine Sperre durch den Inhaltsfilter bedeuten.
+_ASPECT_RATIOS = {"square": "1:1", "portrait": "2:3", "landscape": "3:2"}
+_IMAGE_BLOCKED = {
+    "SAFETY",
+    "PROHIBITED_CONTENT",
+    "BLOCKLIST",
+    "SPII",
+    "RECITATION",
+    "IMAGE_SAFETY",
+    "IMAGE_PROHIBITED_CONTENT",
+    "IMAGE_RECITATION",
 }
 # Platzhalter laut Doku für Aufrufe, deren Signatur nicht mehr vorliegt.
 DUMMY_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
@@ -230,6 +271,43 @@ class GoogleAdapter(ProviderAdapter):
                 self._log("Modellliste", type(exc).__name__)
             raise ProviderError(error.message) from None
 
+    # --- Bilderzeugung (M9-01) ------------------------------------------------
+
+    def generate_image(self, model_id: str, prompt: str, **params) -> ImageResult:
+        """Gemini-Bildmodell über ``generateContent`` mit Bildausgabe (siehe
+        ``_image_body``); ein Bild je Anfrage, ``quality``/``background`` entfallen."""
+        if not (prompt or "").strip():
+            raise ProviderError(MSG_EMPTY_IMAGE_PROMPT)
+        url = f"{self.base_url}/models/{_model_path(model_id)}:generateContent"
+        try:
+            with httpx.Client(timeout=IMAGE_TIMEOUT) as client:
+                response = client.post(
+                    url, headers=self._headers(), json=_image_body(prompt, params)
+                )
+        except Exception as exc:
+            self._log("Bilderzeugung", type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            raise ProviderError(
+                error.message, retryable=error.retryable, unreachable=is_unreachable(exc)
+            ) from None
+        if response.status_code != 200:
+            status, reason = _parse_error(response.content)
+            self._log(f"Bilderzeugung HTTP {response.status_code}", f"{status}/{reason}")
+            message, retryable = _http_error(response.status_code, reason, response.content)
+            raise ProviderHTTPError(
+                message,
+                response.status_code,
+                retryable=retryable or status in _RETRYABLE_STATUSES,
+                expired=is_key_expired(response.status_code, response.content),
+            )
+        if len(response.content) > IMAGE_MAX_RESPONSE_BYTES:
+            raise ProviderError(MSG_IMAGE_TOO_LARGE)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
+        return _parse_image_answer(payload)
+
     # --- Streaming -----------------------------------------------------------
 
     def _build_body(
@@ -326,6 +404,68 @@ class GoogleAdapter(ProviderAdapter):
             yield exception_to_error(exc, started=started)
 
 
+def _image_body(prompt: str, params: dict) -> dict:
+    """Nur Text hinein, Text und Bild heraus; Format als Seitenverhältnis."""
+    aspect = _ASPECT_RATIOS[orientation(params.get("size") or "")]
+    return {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {"aspectRatio": aspect},
+        },
+    }
+
+
+def _parse_image_answer(payload) -> ImageResult:
+    """Bilder aus ``candidates[0].content.parts[].inlineData``; Sperren aus
+    ``promptFeedback.blockReason`` bzw. ``finishReason`` -> ``ContentBlocked``."""
+    if not isinstance(payload, dict):
+        raise ProviderError(MSG_INVALID_IMAGE_ANSWER)
+    feedback = payload.get("promptFeedback")
+    if isinstance(feedback, dict) and feedback.get("blockReason"):
+        raise ContentBlocked()
+    candidates = payload.get("candidates")
+    candidate = candidates[0] if isinstance(candidates, list) and candidates else {}
+    if not isinstance(candidate, dict):
+        raise ProviderError(MSG_INVALID_IMAGE_ANSWER)
+    finish = str(candidate.get("finishReason") or "").upper()
+    if finish in _IMAGE_BLOCKED:
+        raise ContentBlocked()
+    images = []
+    content = candidate.get("content")
+    parts = content.get("parts") if isinstance(content, dict) else None
+    for part in parts if isinstance(parts, list) else []:
+        if not isinstance(part, dict) or part.get("thought"):
+            continue  # Gedanken-Bilder (Entwürfe) nicht übernehmen
+        inline = part.get("inlineData") or part.get("inline_data")
+        if not isinstance(inline, dict):
+            continue
+        mime_type = str(inline.get("mimeType") or inline.get("mime_type") or "")
+        data = inline.get("data")
+        if not mime_type.startswith("image/") or not isinstance(data, str):
+            continue
+        try:
+            images.append(GeneratedImage(base64.b64decode(data, validate=True), mime_type))
+        except (ValueError, TypeError) as exc:
+            raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
+    if not images:
+        raise ProviderError(MSG_NO_IMAGE)
+    meta = payload.get("usageMetadata")
+    usage = None
+    if isinstance(meta, dict):
+
+        def count(key: str) -> int:
+            value = meta.get(key)
+            return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+        usage = Usage(
+            tokens_in=count("promptTokenCount"),
+            tokens_out=count("candidatesTokenCount") + count("thoughtsTokenCount"),
+            reasoning=count("thoughtsTokenCount"),
+        )
+    return ImageResult(images, usage)
+
+
 def _declaration(tool: ToolSpec) -> dict:
     declaration = {"name": tool.name, "parametersJsonSchema": tool_schema(tool)}
     if tool.description:
@@ -394,6 +534,8 @@ def _turn_payload(turn: Turn, calls: dict[str, ToolCallEvent]) -> dict:
         if native_id:
             response["id"] = native_id
         parts.append({"functionResponse": response})
+    for image in turn.images:
+        parts.append({"inlineData": {"mimeType": image.mime_type, "data": image.base64()}})
     if turn.text:
         parts.append({"text": turn.text})
     return {"role": "user", "parts": parts}
@@ -504,10 +646,14 @@ class _ChunkParser:
             value = meta.get(key)
             return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
-        # Nachdenk-Tokens werden als Ausgabe abgerechnet.
+        # Nachdenk-Tokens werden als Ausgabe abgerechnet. promptTokenCount
+        # enthält die gecachten Tokens (cachedContentTokenCount).
+        tokens_in = count("promptTokenCount") + count("toolUsePromptTokenCount")
         self.usage = Usage(
-            tokens_in=count("promptTokenCount") + count("toolUsePromptTokenCount"),
+            tokens_in=tokens_in,
             tokens_out=count("candidatesTokenCount") + count("thoughtsTokenCount"),
+            cached_read=min(count("cachedContentTokenCount"), tokens_in),
+            reasoning=count("thoughtsTokenCount"),
         )
 
     def end_of_stream(self) -> Iterator[Event]:

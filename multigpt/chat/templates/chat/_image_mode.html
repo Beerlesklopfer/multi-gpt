@@ -1,0 +1,27 @@
+{% load image_tags %}{% image_mode_config as image_mode %}
+{% comment %}Modus „Bild“ (M9-01, image_mode.js): Die Nachricht geht direkt an das Bildmodell.
+Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online).{% endcomment %}
+{% if image_mode.available %}
+  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}">
+    <label class="tool-switch image-mode-switch" for="image-mode-toggle">
+      <input type="checkbox" id="image-mode-toggle" aria-describedby="image-mode-hint">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
+      <span>Bild erzeugen</span>
+    </label>
+    <span class="sr-only" id="image-mode-hint">Die Nachricht geht als Bildbeschreibung direkt an das Bildmodell {{ image_mode.model_name }}, ohne Chatmodell. Bilder kosten Geld.</span>
+    <span class="image-mode-options" id="image-mode-options" hidden>
+      <label class="image-mode-field"><span>Format</span>
+        <select id="image-mode-format">
+          {% for value, label in image_mode.formats %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="image-mode-field"><span>Qualität</span>
+        <select id="image-mode-quality">
+          {% for value, label in image_mode.qualities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <span class="image-mode-model">mit {{ image_mode.model_name }}</span>
+    </span>
+  </div>
+  {{ image_mode.patterns|json_script:"image-request-patterns" }}
+{% endif %}

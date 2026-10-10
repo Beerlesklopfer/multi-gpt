@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{# Projekte (M5-07): eigene Projekte, privat. Namen nur über Auto-Escaping. #}
+{% block title %}Projekte – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page page-wide projects-page" aria-labelledby="projects-title">
+    <h1 id="projects-title">Projekte</h1>
+    <p class="page-intro">
+      Ein Projekt fasst Chats zusammen. Seine Anweisungen gelten in allen Chats des Projekts,
+      Standardmodell und Sammlungen sind dort vorausgewählt. Projekte sieht nur du.
+    </p>
+    {% if can_create %}
+      <form method="post" action="{% url 'chat:project_list' %}" class="inline-form" id="neu">
+        {% csrf_token %}
+        <label for="{{ form.name.id_for_label }}">Neues Projekt</label>
+        {% if form.name.errors %}<p class="form-error" role="alert">{{ form.name.errors|join:" " }}</p>{% endif %}
+        <div class="inline-form-row">
+          <input type="text" name="name" id="{{ form.name.id_for_label }}" maxlength="200" required
+                 autocomplete="off" placeholder="z. B. Umzug 2027" value="{{ form.name.value|default:'' }}">
+          <button type="submit" class="button button-primary">Anlegen</button>
+        </div>
+      </form>
+    {% endif %}
+
+    <h2 class="section-title">Eigene Projekte</h2>
+    {% if active_projects %}
+      <ul class="project-page-list">
+        {% for project in active_projects %}{% include "chat/projects/_project_row.html" %}{% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint">Du hast noch kein Projekt angelegt.</p>
+    {% endif %}
+
+    {% if archived_projects %}
+      <h2 class="section-title">Archivierte Projekte</h2>
+      <ul class="project-page-list">
+        {% for project in archived_projects %}{% include "chat/projects/_project_row.html" %}{% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+{% endblock %}

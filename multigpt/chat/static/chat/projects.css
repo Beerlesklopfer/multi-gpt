@@ -1,0 +1,381 @@
+/* MultiGPT – Projekte (M5-07): Seitenleiste, Projektseite, Dialoge.
+   Farben über die Variablen aus app.css, damit Dark Mode mitkommt. */
+
+:root {
+  --project-blue: #2f6fdb;
+  --project-green: #1a7f37;
+  --project-yellow: #b08800;
+  --project-orange: #d4650b;
+  --project-red: #c62828;
+  --project-purple: #7b3fc4;
+  --project-gray: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --project-blue: #5b8ff0;
+    --project-green: #4cc27a;
+    --project-yellow: #e3c04a;
+    --project-orange: #f08c3a;
+    --project-red: #ff7a7a;
+    --project-purple: #b48cf2;
+    --project-gray: #9aa1ab;
+  }
+}
+
+/* Farbpunkt */
+
+.project-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  vertical-align: middle;
+}
+
+.project-color-blue { background: var(--project-blue); border-color: var(--project-blue); }
+.project-color-green { background: var(--project-green); border-color: var(--project-green); }
+.project-color-yellow { background: var(--project-yellow); border-color: var(--project-yellow); }
+.project-color-orange { background: var(--project-orange); border-color: var(--project-orange); }
+.project-color-red { background: var(--project-red); border-color: var(--project-red); }
+.project-color-purple { background: var(--project-purple); border-color: var(--project-purple); }
+.project-color-gray { background: var(--project-gray); border-color: var(--project-gray); }
+
+/* Seitenleiste */
+
+.project-items {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.project-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius);
+}
+
+.project-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.project-toggle .icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+
+.project-toggle[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+
+.project-toggle:hover {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+.project-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.4rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.project-link:hover {
+  background: var(--bg-surface);
+}
+
+.project-link.is-active {
+  background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.project-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-menu-button {
+  flex-shrink: 0;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.project-row:hover .project-menu-button,
+.project-row:focus-within .project-menu-button,
+.project-menu-button[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.project-menu-button:hover {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+@media (hover: none) {
+  .project-menu-button {
+    opacity: 1;
+  }
+}
+
+.project-chats {
+  margin: 0.1rem 0 0.3rem 1.1rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--border);
+}
+
+.project-chats-note {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.project-chats-note.hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Chat-Kopfzeile und neuer Chat im Projekt */
+
+.project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.project-badge:hover {
+  text-decoration: underline;
+}
+
+.project-new-chat-note {
+  margin: 0;
+  padding: 0.6rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Projektseite */
+
+.project-page h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.project-page h1 .project-dot {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.project-page .page-header-actions form {
+  margin: 0;
+}
+
+.project-description {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.project-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 1rem 0;
+}
+
+.project-facts dt {
+  font-weight: 600;
+}
+
+.project-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+}
+
+.project-page-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-page-item:last-child {
+  border-bottom: 0;
+}
+
+.project-page-item .hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.project-page-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-form textarea,
+.project-form select,
+.project-form input[type="text"] {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.project-form textarea {
+  resize: vertical;
+}
+
+.project-form #id_collections,
+.project-form #id_collections > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.project-form #id_collections label,
+.project-form input[type="checkbox"] + label,
+.project-form label:has(input[type="checkbox"]) {
+  font-weight: normal;
+}
+
+.project-form div:has(> input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.project-delete-form {
+  padding: 1rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--error-bg);
+}
+
+.project-delete-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.project-delete-choice legend {
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.project-delete-choice label,
+.project-delete-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: normal;
+}
+
+.project-delete-confirm {
+  margin-bottom: 0.75rem;
+}
+
+.project-delete-choice input,
+.project-delete-confirm input {
+  margin-top: 0.25rem;
+}
+
+/* Dialoge */
+
+.project-dialog .project-delete-choice label {
+  flex-direction: row;
+  font-weight: normal;
+}
+
+.project-dialog select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: normal;
+}
+
+@media (max-width: 48rem) {
+  .project-page .page-header-actions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .project-facts {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+
+  .project-facts dd {
+    margin-bottom: 0.4rem;
+  }
+}

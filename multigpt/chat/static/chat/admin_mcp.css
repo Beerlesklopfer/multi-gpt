@@ -1,0 +1,14 @@
+/* MultiGPT – Admin: Status und Werkzeuge der MCP-Server (chat/mcp/status.py). */
+.mcp-state { white-space: nowrap; }
+.mcp-state.mcp-online { color: var(--message-success-fg, inherit); font-weight: 600; }
+.mcp-state.mcp-offline { color: var(--error-fg); font-weight: 600; }
+.mcp-state.mcp-unchecked,
+.mcp-state.mcp-inactive { color: var(--body-quiet-color); }
+.mcp-unrated { color: var(--message-warning-fg, inherit); }
+table.mcp-tools { width: 100%; margin-top: 0.5em; }
+table.mcp-tools td { vertical-align: top; }
+table.mcp-tools td:nth-child(2) { max-width: 36em; overflow-wrap: anywhere; }
+table.mcp-tools code { overflow-wrap: anywhere; }
+table.mcp-tools tr.mcp-tool-new td { background: var(--message-warning-bg); }
+.mcp-tool-note { color: var(--body-quiet-color); font-size: 0.75rem; }
+.mcp-tools-gone { color: var(--error-fg); }

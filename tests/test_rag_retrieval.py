@@ -574,17 +574,27 @@ def test_chat_with_collections_adds_marked_context_and_sources(
     assert names(events)[:4] == ["start", "status", "sources", "delta"]
     assert events[1][1]["text"] == "Durchsuche Dokumente …"
     expected_url = reverse("chat:document_chunk", args=[mietvertrag.pk])
-    assert events[2][1] == {
-        "sources": [
-            {"n": 1, "kind": "document", "title": "Mietvertrag", "url": expected_url, "page": 3}
-        ]
+    [source] = events[2][1]["sources"]
+    assert {k: source[k] for k in ("n", "kind", "title", "url", "page")} == {
+        "n": 1,
+        "kind": "document",
+        "title": "Mietvertrag",
+        "url": expected_url,
+        "page": 3,
     }
+    # Zitierangaben im Stil des Kontos (Voreinstellung DIN ISO 690), siehe test_rag_citation.
+    assert source["location"] == "S. 3" and source["style"] == "din"
     # Kontext: klar als Quellmaterial markiert, an der Nutzerfrage, nicht im System-Prompt.
     question = calls[0]["messages"][-1]
     assert question.role == "user"
     assert question.content.startswith("<quellmaterial>")
     assert "nicht vertrauenswürdig" in question.content
-    assert '<quelle n="1" art="dokument" titel="Mietvertrag" seite="3">' in question.content
+    doc_id = mietvertrag.document_id
+    assert (
+        f'<quelle n="1" art="dokument" titel="Mietvertrag" dokument_id="{doc_id}" seite="3" '
+        'fundstelle="S. 3"'
+    ) in question.content
+    assert "[1] Mietvertrag, S. 3" in question.content
     assert "Die Kaution beträgt drei Monatsmieten." in question.content
     assert question.content.endswith("Frage des Nutzers:\nWie hoch ist die Kaution?")
     assert sources.SYSTEM_NOTE in calls[0]["system"]

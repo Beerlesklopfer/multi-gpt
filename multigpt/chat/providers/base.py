@@ -51,10 +51,26 @@ class ToolCallEvent:
 
 @dataclass(frozen=True)
 class Usage:
-    """Tokenverbrauch der Anfrage."""
+    """Tokenverbrauch der Anfrage (Kosten: multigpt/billing).
+
+    Einheitlich über alle Adapter: ``tokens_in`` ist die *gesamte* Eingabe
+    einschließlich ``cached_read`` und der Cache-Schreibtokens, ``tokens_out``
+    die gesamte Ausgabe einschließlich ``reasoning`` (Nachdenk-Tokens werden als
+    Ausgabe abgerechnet). Die Teilmengen sind 0, wenn der Anbieter sie nicht
+    meldet. ``cache_write`` sind Schreibtokens mit 5 Minuten Haltezeit bzw.
+    ohne Angabe, ``cache_write_1h`` die mit 1 Stunde (Anthropic).
+    ``units``: Gebühren je Einheit, z. B. ``{"web_search": 2}`` (Suchaufrufe
+    beim Anbieter, Schlüssel siehe ``billing.models.UNITS``).
+    """
 
     tokens_in: int
     tokens_out: int
+    # Abwärtskompatibel: Vergleiche (==) prüfen weiter nur die beiden Summen.
+    cached_read: int = field(default=0, compare=False)
+    cache_write: int = field(default=0, compare=False)
+    cache_write_1h: int = field(default=0, compare=False)
+    reasoning: int = field(default=0, compare=False)
+    units: dict = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True)
@@ -105,9 +121,68 @@ class ToolSpec:
     parameters: dict
 
 
+@dataclass(frozen=True)
+class ImagePart:
+    """Ein Bild als Teil einer Nutzernachricht (Bild-Eingabe).
+
+    ``data`` sind die Rohbytes (vom Server neu kodiert, ohne Metadaten),
+    ``mime_type`` ist ``image/png``, ``image/jpeg``, ``image/webp`` oder
+    ``image/gif``; ``name`` dient nur Logs und Platzhaltern.
+    """
+
+    mime_type: str
+    data: bytes
+    name: str = ""
+
+    def base64(self) -> str:
+        import base64
+
+        return base64.b64encode(self.data).decode("ascii")
+
+    def data_uri(self) -> str:
+        return f"data:{self.mime_type};base64,{self.base64()}"
+
+
+@dataclass(frozen=True)
+class GeneratedImage:
+    """Ein erzeugtes Bild (M9-01): Rohbytes wie vom Anbieter geliefert.
+
+    Neu kodiert (ohne Metadaten) wird erst beim Speichern (``chat.images``).
+    ``revised_prompt``: vom Anbieter umgeschriebene Beschreibung, sonst leer.
+    """
+
+    data: bytes
+    mime_type: str = "image/png"
+    revised_prompt: str = ""
+
+
+@dataclass(frozen=True)
+class ImageResult:
+    """Ergebnis von ``generate_image``: Bilder und – falls gemeldet – Tokens."""
+
+    images: list[GeneratedImage]
+    usage: Usage | None = None
+
+
+def orientation(size: str) -> str:
+    """``square``, ``landscape`` oder ``portrait`` zu einer Größe ``WxH``
+    (ungültig bzw. ``auto``: ``square``)."""
+    width, _, height = str(size or "").lower().partition("x")
+    try:
+        w, h = int(width), int(height)
+    except ValueError:
+        return "square"
+    if w == h:
+        return "square"
+    return "landscape" if w > h else "portrait"
+
+
 @dataclass
 class ChatMessage:
     """Eine Nachricht im Verlauf.
+
+    - ``user``: ``content`` und optional ``images`` (Bild-Eingabe, nur an
+      Modelle mit ``supports_vision``); die Adapter stellen Bilder vor den Text.
 
     - ``assistant``: ``content`` (Text, darf leer sein) und optional
       ``tool_calls`` sowie ``provider_state`` aus ``Done.provider_state``.
@@ -123,6 +198,7 @@ class ChatMessage:
     name: str | None = None
     is_error: bool = False
     provider_state: dict | None = None
+    images: list[ImagePart] = field(default_factory=list)
 
 
 def normalize_tools(tools: Iterable[ToolSpec | dict] | None) -> list[ToolSpec]:
@@ -242,6 +318,10 @@ class Turn:
             m.content for m in self.messages if m.role != "tool" and (m.content or "").strip()
         )
 
+    @property
+    def images(self) -> list[ImagePart]:
+        return [image for m in self.messages if m.role == "user" for image in m.images]
+
 
 def sse_data(line: str) -> str | None:
     """Inhalt einer SSE-``data:``-Zeile, sonst None (Leerzeile, Kommentar,
@@ -275,14 +355,17 @@ def alternate_turns(messages: list[ChatMessage]) -> tuple[list[ChatMessage], lis
             if text.strip():
                 system_parts.append(text.strip())
             continue
-        if message.role not in ("user", "assistant") or not text.strip():
+        images = list(message.images) if message.role == "user" else []
+        if message.role not in ("user", "assistant") or not (text.strip() or images):
             continue
         if not turns and message.role != "user":
             continue
         if turns and turns[-1].role == message.role:
-            turns[-1] = ChatMessage(message.role, f"{turns[-1].content}\n\n{text}")
+            previous = turns[-1]
+            merged = "\n\n".join(t for t in (previous.content, text) if t.strip())
+            turns[-1] = ChatMessage(message.role, merged, images=[*previous.images, *images])
         else:
-            turns.append(ChatMessage(message.role, text))
+            turns.append(ChatMessage(message.role, text, images=images))
     return turns, system_parts
 
 
@@ -309,7 +392,7 @@ def group_turns(messages: list[ChatMessage]) -> tuple[list[Turn], list[str]]:
                 continue
             role = "assistant"
         elif message.role == "user":
-            if not text.strip():
+            if not text.strip() and not message.images:
                 continue
             role = "user"
         elif message.role == "tool":
@@ -438,6 +521,23 @@ class ProviderError(Exception):
         super().__init__(message)
         self.retryable = retryable or unreachable
         self.unreachable = unreachable
+
+
+MSG_CONTENT_BLOCKED = (
+    "Der Anbieter hat die Bildanfrage wegen seiner Inhaltsrichtlinien abgelehnt. "
+    "Bitte die Beschreibung umformulieren."
+)
+MSG_NO_IMAGE = "Der Anbieter hat kein Bild geliefert."
+MSG_IMAGE_TOO_LARGE = "Das erzeugte Bild ist zu groß."
+
+
+class ContentBlocked(ProviderError):
+    """Der Inhaltsfilter des Anbieters hat die Anfrage bzw. das Ergebnis abgelehnt
+    (z. B. OpenAI ``moderation_blocked``, Gemini ``IMAGE_SAFETY``). Nicht
+    wiederholbar; der Text ist fest, nie der des Anbieters."""
+
+    def __init__(self, message: str = MSG_CONTENT_BLOCKED):
+        super().__init__(message, retryable=False)
 
 
 def is_unreachable(exc: BaseException) -> bool:
@@ -728,6 +828,11 @@ class ProviderAdapter:
             return False
         return True
 
+    def model_capabilities(self, timeout: float = 2) -> dict:
+        """Vom Anbieter selbst gemeldete Fähigkeiten je Modell-ID
+        (``capabilities.Detected``); ``{}``, wenn er keine meldet. Nie eine Ausnahme."""
+        return {}
+
     def embed(
         self, model_id: str, texts: list[str], dimensions: int | None = None
     ) -> list[list[float]]:
@@ -758,7 +863,15 @@ class ProviderAdapter:
     def speak(self, model_id: str, text: str, voice: str | None = None):
         raise NotImplementedError
 
-    def generate_image(self, model_id: str, prompt: str, **params):
+    def generate_image(self, model_id: str, prompt: str, **params) -> ImageResult:
+        """Bild erzeugen (M9-01), nicht streamend.
+
+        ``params``: ``size`` (``WxH``, z. B. ``1024x1536``), ``quality``
+        (``low``/``medium``/``high``/``auto``), ``background``
+        (``transparent``/``opaque``/``auto``), ``n``. Was ein Anbieter nicht
+        kann, lässt er weg. Fehler als ``ProviderError`` (deutscher Text ohne
+        Key und ohne Rohtext), Inhaltsfilter als ``ContentBlocked``.
+        """
         raise NotImplementedError
 
     def edit_image(self, model_id: str, image, prompt: str, **params):

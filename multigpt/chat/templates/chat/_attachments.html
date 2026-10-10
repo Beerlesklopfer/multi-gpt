@@ -1,0 +1,15 @@
+{% comment %}Anhänge der neuen Nachricht (attachments.js): Vorschauleiste, Hinweis bei Modellen ohne
+Bildverständnis, Dateiauswahl (mobil auch Kamera) und Ablagezone für Drag&Drop.
+Der Büroklammer-Knopf steht in der Eingabezeile (_chat.html).{% endcomment %}
+<ul class="attach-tray" id="attach-tray" aria-label="Anhänge der Nachricht" hidden></ul>
+<p class="attach-vision-hint chat-message-status chat-message-status-warning" id="attach-vision-hint" hidden></p>
+<p class="sr-only" id="attach-live" aria-live="polite"></p>
+<input type="file" id="attach-input" class="attach-input" multiple accept="{{ attachment_limits.accept }}"
+       tabindex="-1" aria-hidden="true" hidden>
+<div class="attach-drop" id="attach-drop" hidden>
+  <div class="attach-drop-inner">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
+    <p class="attach-drop-title">Dateien hier ablegen</p>
+    <p class="attach-drop-hint">Bilder (PNG, JPEG, WebP, GIF) und Dokumente (PDF, DOCX, TXT, MD, CSV)</p>
+  </div>
+</div>

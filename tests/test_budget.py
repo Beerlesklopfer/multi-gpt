@@ -20,6 +20,7 @@ from multigpt.chat import services
 from multigpt.chat.models import AIModel, Attachment, Conversation, Message, Provider
 from multigpt.chat.providers import registry
 from multigpt.chat.providers.base import Delta, Done, ProviderAdapter, Usage
+from tests.billing_helpers import book_stored, set_price
 
 pytestmark = pytest.mark.django_db
 
@@ -45,13 +46,11 @@ def local_provider():
 
 @pytest.fixture
 def paid_model(provider):
-    return AIModel.objects.create(
-        provider=provider,
-        model_id="gpt-paid",
-        display_name="Bezahlmodell",
-        price_in=Decimal("2.5"),
-        price_out=Decimal("10"),
+    model = AIModel.objects.create(
+        provider=provider, model_id="gpt-paid", display_name="Bezahlmodell"
     )
+    set_price(model, "2.5", "10")
+    return model
 
 
 @pytest.fixture
@@ -62,13 +61,11 @@ def unpriced_model(provider):
 @pytest.fixture
 def local_model(local_provider):
     # Preise beim lokalen Anbieter zählen nicht: lokal ist immer kostenfrei.
-    return AIModel.objects.create(
-        provider=local_provider,
-        model_id="llama",
-        display_name="Llama lokal",
-        price_in=Decimal("1"),
-        price_out=Decimal("1"),
+    model = AIModel.objects.create(
+        provider=local_provider, model_id="llama", display_name="Llama lokal"
     )
+    set_price(model, "1", "1")
+    return model
 
 
 @pytest.fixture
@@ -99,6 +96,8 @@ def add_cost(user, amount, *, model=None, when=None, conversation=None, parent=N
     )
     if when is not None:
         Message.objects.filter(pk=msg.pk).update(created=when)
+        msg.created = when
+    book_stored(msg)  # Buchung wie aus dem Bestand (billing)
     return msg
 
 
@@ -186,12 +185,14 @@ def test_spent_includes_versions_attachments_and_archived_chats(teen, adult, pai
     # Neu erzeugen: zweite Version derselben Frage zählt auch
     second = add_cost(teen, "0.25", conversation=conv, parent=question, model=paid_model)
     add_cost(teen, None, conversation=conv, parent=question)  # ohne Preise: 0
-    Attachment.objects.create(
-        message=second,
-        kind=Attachment.Kind.IMAGE,
-        file="x.png",
-        generated_by_model=paid_model,
-        cost=Decimal("0.04"),
+    book_stored(
+        attachment=Attachment.objects.create(
+            message=second,
+            kind=Attachment.Kind.IMAGE,
+            file="x.png",
+            generated_by_model=paid_model,
+            cost=Decimal("0.04"),
+        )
     )
     archived = Conversation.objects.create(user=teen, archived=True)
     add_cost(teen, "1.00", conversation=archived)
@@ -207,7 +208,7 @@ def test_spent_is_one_aggregate_per_table(teen, django_assert_num_queries):
     conv = Conversation.objects.create(user=teen)
     for _ in range(20):
         add_cost(teen, "0.01", conversation=conv)
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(1):  # eine Aggregation über die Buchungen
         assert usage.spent(teen) == Decimal("0.20")
 
 
@@ -223,7 +224,7 @@ def test_usage_by_model_and_monthly_totals(
         ("Llama lokal", 1, 1000, Decimal("0")),
     ]
     assert rows[1]["is_local"] is True
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(1):
         months = usage.monthly_totals(teen, 12)
     assert len(months) == 12
     assert months[0]["cost"] == Decimal("0.50")
@@ -276,12 +277,19 @@ def test_levels(teen, amount, level):
 
 
 def test_model_is_free():
-    local = Provider(name="L", kind=Provider.Kind.OPENAI_COMPAT, is_local=True)
-    cloud = Provider(name="C", kind=Provider.Kind.OPENAI_COMPAT)
-    assert usage.model_is_free(AIModel(provider=local, price_in=Decimal(5)))
-    assert usage.model_is_free(AIModel(provider=cloud))
-    assert usage.model_is_free(AIModel(provider=cloud, price_in=Decimal(0), price_out=Decimal(0)))
-    assert not usage.model_is_free(AIModel(provider=cloud, price_out=Decimal("0.1")))
+    local = Provider.objects.create(name="L", kind=Provider.Kind.OPENAI_COMPAT, is_local=True)
+    cloud = Provider.objects.create(name="C", kind=Provider.Kind.OPENAI_COMPAT)
+
+    def model(provider, model_id, *prices):
+        m = AIModel.objects.create(provider=provider, model_id=model_id, display_name=model_id)
+        if prices:
+            set_price(m, *prices)
+        return m
+
+    assert usage.model_is_free(model(local, "l", 5, None))
+    assert usage.model_is_free(model(cloud, "none"))
+    assert usage.model_is_free(model(cloud, "zero", 0, 0))
+    assert not usage.model_is_free(model(cloud, "paid", None, "0.1"))
 
 
 def test_exhausted_budget_allows_only_free_models(teen, paid_model, unpriced_model, local_model):
@@ -349,9 +357,8 @@ def test_exhausted_account_can_only_use_local_models_via_api(
 
 
 def test_not_permitted_model_keeps_generic_error(client, teen, provider, fake):
-    other = AIModel.objects.create(
-        provider=provider, model_id="x", display_name="X", price_in=Decimal(1)
-    )
+    other = AIModel.objects.create(provider=provider, model_id="x", display_name="X")
+    set_price(other, 1)
     client.force_login(teen)
     conv = Conversation.objects.create(user=teen)
     response = post_message(client, conv, content="Hallo", model=other.pk)

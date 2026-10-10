@@ -16,6 +16,17 @@ def _test_settings(settings, tmp_path):
     }
 
 
+@pytest.fixture(autouse=True)
+def _no_sandbox(monkeypatch):
+    """Werkzeug run_python (M4a-10) standardmäßig nicht anbieten: Ob bubblewrap
+    läuft, hängt vom Rechner ab, und viele Tests prüfen genaue Werkzeuglisten.
+    tests/test_python_tool.py überschreibt diese Fixture."""
+    from multigpt.chat import sandbox
+
+    off = sandbox.Status(False, "Im Test abgeschaltet.")
+    monkeypatch.setattr(sandbox, "status", lambda refresh=False: off)
+
+
 @pytest.fixture
 def password():
     return "Geheim-Test-1234"

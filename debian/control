@@ -23,7 +23,8 @@ Depends: ${misc:Depends},
          poppler-utils,
          tesseract-ocr,
          tesseract-ocr-deu,
-         tesseract-ocr-eng
+         tesseract-ocr-eng,
+         bubblewrap
 Suggests: postgresql (>= 17),
           postgresql-17-pgvector | postgresql-pgvector
 Description: MultiGPT - local multi-AI chat system for the family

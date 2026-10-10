@@ -14,6 +14,7 @@
            data-api-documents="{% url 'chat:api_collection_documents' collection.pk %}"
            data-api-shares="{% url 'chat:api_collection_shares' collection.pk %}"
            data-api-document-template="{% url 'chat:api_document_detail' 0 %}"
+           data-api-cancel-template="{% url 'chat:api_document_cancel' 0 %}"
            data-poll="{{ has_pending|yesno:'true,false' }}">
     <p class="breadcrumb"><a href="{% url 'chat:collection_list' %}">Sammlungen</a></p>
     <header class="page-header">
@@ -78,9 +79,9 @@
       <form class="upload-form" id="upload-form" data-max-bytes="{{ max_upload_bytes }}" hidden>
         <label class="upload-drop" id="upload-drop" for="upload-input">
           <span class="upload-drop-title">Dokumente hochladen</span>
-          <span class="upload-drop-hint">Dateien hierher ziehen oder auswählen – PDF, Word (DOCX), Text (TXT) oder Markdown (MD), höchstens {{ max_upload_mb }} MB je Datei.</span>
+          <span class="upload-drop-hint">Dateien hierher ziehen oder auswählen – PDF, Word (DOCX), Text (TXT), Markdown (MD) oder Bilder (JPG, PNG, TIFF, WEBP), höchstens {{ max_upload_mb }} MB je Datei.</span>
           <input type="file" id="upload-input" name="file" multiple
-                 accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown">
+                 accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.tif,.tiff,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/jpeg,image/png,image/tiff,image/webp">
         </label>
         <ul class="upload-list" id="upload-list" aria-live="polite" aria-label="Hochladen"></ul>
       </form>
@@ -88,6 +89,13 @@
       <p class="hint">Für dein Konto ist das Hochladen von Dokumenten nicht freigegeben.</p>
     {% endif %}
     <noscript><p class="chat-notice">Zum Hochladen und Löschen wird JavaScript benötigt.</p></noscript>
+
+    {% if can_write %}
+      {# Fortschritt offener Läufe (z. B. Verzeichnis einlesen); abbrechen nur in der Verwaltung. #}
+      <ul class="collection-runs chat-notice" id="collection-runs" aria-live="polite"{% if not runs %} hidden{% endif %}>
+        {% for run in runs %}<li data-run-id="{{ run.id }}">{{ run.text }}{% if run.status == "cancelling" %} – wird abgebrochen{% endif %}</li>{% endfor %}
+      </ul>
+    {% endif %}
 
     <h2 class="section-title" id="documents-title">Dokumente</h2>
     <p class="hint" id="documents-empty"{% if documents %} hidden{% endif %}>Noch keine Dokumente in dieser Sammlung.</p>
@@ -109,12 +117,18 @@
               <td class="document-status">
                 <span class="status-badge status-{{ doc.status }}">{{ doc.get_status_display }}</span>
                 {% if doc.status == "error" and doc.error_text %}<p class="document-error">{{ doc.error_text }}</p>{% elif doc.status == "pending" and doc.error_text %}<p class="document-note">{{ doc.error_text }}</p>{% endif %}
+                {% if doc.cancelling %}<p class="document-note">Wird abgebrochen …</p>{% endif %}
               </td>
               <td class="col-size">{% if doc.size is not None %}{{ doc.size|filesizeformat }}{% endif %}</td>
               <td class="col-date"><time datetime="{{ doc.created|date:'c' }}">{{ doc.created|date:"d.m.Y H:i" }}</time></td>
               <td class="document-actions">
+                {% document_view_url doc as doc_view_url %}{% if doc_view_url %}<a class="button button-small" href="{{ doc_view_url }}" target="_blank" rel="noopener">Ansehen</a>{% endif %}
                 <a class="button button-small" href="{% url 'chat:document_download' doc.pk %}" download>Herunterladen</a>
+                {% if can_write %}<a class="button button-small" href="{% url 'chat:document_citation' doc.pk %}">Literaturangaben</a>{% endif %}
                 {% if can_write and not doc.source_id %}
+                  {% if doc.status == "pending" and not doc.cancelling %}
+                    <button type="button" class="button button-small" data-document-cancel="{{ doc.pk }}" hidden>Abbrechen</button>
+                  {% endif %}
                   <button type="button" class="button button-small button-danger" data-document-delete="{{ doc.pk }}" hidden>Löschen</button>
                 {% endif %}
               </td>

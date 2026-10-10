@@ -13,13 +13,18 @@ Regeln:
   einzige Ausnahme ist die Einsicht, siehe unten).
 - Alles andere kommt aus der Rolle des Kontos. Ohne Rolle: nichts.
 - READ/WRITE auf Chats und Sammlungen: Besitzer, oder eine Freigabe (``Share``)
-  an eine Gruppe, in der das Konto Mitglied ist; WRITE braucht ``can_write``.
+  an eine Gruppe, in der das Konto Mitglied ist, bzw. bei Chats auch direkt an
+  das Konto; WRITE braucht ``can_write``. UPDATE/DELETE (nur Chats, RWUD):
+  ``can_update``/``can_delete``. Über eine Freigabe gibt es W/U/D nur für
+  Konten, die chatten dürfen (Recht CHAT). Wer einen Chat „aus seiner Liste
+  entfernt“ hat (``Share.left_by``), für den gilt die Freigabe nicht mehr.
 - Einsicht (M6-05): READ (nie WRITE) auf Chats eines Jugendlichen-Kontos mit
   ``allow_supervision`` für Konten mit MANAGE_FAMILY, siehe ``supervision_active``.
 
-Budget (M6-03): ``budget_allows()`` wird bei USE_MODEL mit Modell aufgerufen.
-Ist das Monatsbudget ausgeschöpft, sind nur noch kostenfreie Modelle erlaubt
-(lokale Anbieter oder ohne Preise, siehe ``usage.model_is_free``).
+Budget (M6-03, M6-10): ``budget_allows()`` wird bei USE_MODEL mit Modell
+aufgerufen. Ist das Budget eines Abrechnungskontos ausgeschöpft, sind dessen
+Modelle gesperrt; beim Gesamtbudget alle kostenpflichtigen (Modelle ohne Preis,
+Token- und Pauschalkonten bleiben frei, sofern deren Kontingent reicht).
 ``model_permitted()`` prüft dasselbe ohne Budget (Modellauswahl: gesperrte
 Modelle ausgrauen statt ausblenden; Fehlertext unterscheiden).
 """
@@ -36,7 +41,8 @@ from .models import Role
 
 class Action(enum.StrEnum):
     """Prüfbare Aktionen. Mit Objekt: USE_MODEL (AIModel), USE_MCP_SERVER
-    (McpServer), READ/WRITE (Conversation oder Collection)."""
+    (McpServer), READ/WRITE (Conversation oder Collection), UPDATE/DELETE
+    (Conversation; bei Sammlungen nur der Besitzer)."""
 
     CHAT = "chat"
     USE_MODEL = "use_model"
@@ -45,9 +51,12 @@ class Action(enum.StrEnum):
     VOICE = "voice"
     UPLOAD_DOCUMENTS = "upload_documents"
     SHARE = "share"
+    COMPUTE = "compute"
     USE_MCP_SERVER = "use_mcp_server"
     READ = "read"
     WRITE = "write"
+    UPDATE = "update"
+    DELETE = "delete"
     MANAGE_FAMILY = "manage_family"
     VIEW_USAGE_ALL = "view_usage_all"
     ADMIN = "admin"
@@ -60,6 +69,7 @@ _ROLE_FLAGS = {
     Action.VOICE: "can_voice",
     Action.UPLOAD_DOCUMENTS: "can_upload_documents",
     Action.SHARE: "can_share",
+    Action.COMPUTE: "can_compute",
 }
 
 _ADMIN_ACTIONS = {Action.MANAGE_FAMILY, Action.VIEW_USAGE_ALL, Action.ADMIN}
@@ -72,19 +82,17 @@ _OWNER_FIELDS = {
 
 
 def budget_allows(user, ai_model) -> bool:
-    """Monatsbudget ausgeschöpft -> nur noch kostenfreie (lokale) Modelle.
+    """Budget des Abrechnungskontos bzw. Gesamtbudget ausgeschöpft -> Modell gesperrt.
 
-    Wird bei ``can(user, Action.USE_MODEL, ai_model)`` aufgerufen. Kostenfreie
-    Modelle und Konten ohne Budget brauchen keine Datenbankabfrage.
+    Wird bei ``can(user, Action.USE_MODEL, ai_model)`` aufgerufen. Gesperrt
+    sind nur die Modelle des betroffenen Kontos (Gesamtbudget: alle
+    kostenpflichtigen), siehe ``billing.budgets.blocked_reason``.
     """
     from . import usage
 
-    if ai_model is None or usage.model_is_free(ai_model):
+    if ai_model is None:
         return True
-    budget = usage.budget_for(user)
-    if budget is None:
-        return True
-    return usage.spent(user) < budget
+    return not usage.blocked_reason(user, ai_model)
 
 
 def model_permitted(user, ai_model) -> bool:
@@ -164,7 +172,25 @@ def _can_supervise(user, obj) -> bool:
     return supervision_active(obj.user)
 
 
-def _can_access(user, obj, write: bool) -> bool:
+# Recht -> Feld der Freigabe (RWUD; READ braucht nur irgendeine Freigabe).
+_SHARE_FLAGS = {
+    Action.WRITE: "can_write",
+    Action.UPDATE: "can_update",
+    Action.DELETE: "can_delete",
+}
+
+
+def applicable_shares(user, obj):
+    """Freigaben von ``obj``, die für ``user`` gelten: an eine seiner Gruppen
+    oder (Chats) direkt an ihn, ohne die, aus denen er sich ausgetragen hat."""
+    from django.db.models import Q
+
+    return obj.shares.filter(Q(group__in=user.groups.values("pk")) | Q(user=user)).exclude(
+        left_by=user
+    )
+
+
+def _can_access(user, obj, action) -> bool:
     if obj is None:
         return False
     owner_field = _OWNER_FIELDS.get(obj._meta.label_lower)
@@ -172,11 +198,17 @@ def _can_access(user, obj, write: bool) -> bool:
         return False
     if getattr(obj, f"{owner_field}_id") == user.pk:
         return True
-    if not write and _can_supervise(user, obj):
+    if action is Action.READ and _can_supervise(user, obj):
         return True
-    shares = obj.shares.filter(group__in=user.groups.values("pk"))
-    if write:
-        shares = shares.filter(can_write=True)
+    is_conversation = obj._meta.label_lower == "chat.conversation"
+    if action in (Action.UPDATE, Action.DELETE) and not is_conversation:
+        return False  # Sammlungen: umbenennen/löschen nur der Besitzer
+    shares = applicable_shares(user, obj)
+    if action is not Action.READ:
+        # Ändern über eine Freigabe nur für Konten, die chatten dürfen.
+        if is_conversation and not can(user, Action.CHAT):
+            return False
+        shares = shares.filter(**{_SHARE_FLAGS[action]: True})
     return shares.exists()
 
 
@@ -186,8 +218,8 @@ def can(user, action, obj=None) -> bool:
     if user is None or not user.is_authenticated or not user.is_active:
         return False
 
-    if action in (Action.READ, Action.WRITE):
-        return _can_access(user, obj, write=action is Action.WRITE)
+    if action in (Action.READ, Action.WRITE, Action.UPDATE, Action.DELETE):
+        return _can_access(user, obj, action)
 
     role = _role(user)
     if role is None and not user.is_superuser:

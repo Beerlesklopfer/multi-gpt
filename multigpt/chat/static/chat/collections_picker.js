@@ -29,12 +29,20 @@
     }
   }
 
+  // Sammlungen des Projekts (data-project-collections, chat/projects.py): Vorauswahl,
+  // solange für den Chat noch keine eigene Auswahl gemerkt ist.
+  function projectSelection() {
+    const raw = document.getElementById("chat")?.dataset.projectCollections || "";
+    return new Set(raw.split(",").filter(Boolean));
+  }
+
   function readSelection(conversationId) {
-    if (!conversationId) {
-      return new Set();
+    const stored = conversationId ? storageGet(STORAGE_PREFIX + conversationId) : null;
+    if (stored === null) {
+      return projectSelection();
     }
     try {
-      const ids = JSON.parse(storageGet(STORAGE_PREFIX + conversationId) || "[]");
+      const ids = JSON.parse(stored || "[]");
       return new Set(Array.isArray(ids) ? ids.map(String) : []);
     } catch {
       return new Set();
@@ -62,7 +70,9 @@
         return; // neuer Chat: wird gespeichert, sobald er eine ID hat
       }
       const ids = selected();
-      storageSet(STORAGE_PREFIX + id, ids.length ? JSON.stringify(ids) : null);
+      // Im Projekt auch eine leere Auswahl merken, sonst käme die Vorauswahl zurück.
+      const keep = ids.length || projectSelection().size;
+      storageSet(STORAGE_PREFIX + id, keep ? JSON.stringify(ids) : null);
     }
 
     function render(collections) {
@@ -92,7 +102,11 @@
       manage.textContent = "Verwalten";
       list.append(manage);
       fieldset.hidden = !collections.length;
-      save(); // nicht mehr lesbare Sammlungen fallen aus der gespeicherten Auswahl
+      // Nicht mehr lesbare Sammlungen fallen aus der gespeicherten Auswahl; eine
+      // reine Projekt-Vorauswahl wird dabei nicht festgeschrieben.
+      if (storageGet(STORAGE_PREFIX + conversationId()) !== null) {
+        save();
+      }
     }
 
     async function load() {

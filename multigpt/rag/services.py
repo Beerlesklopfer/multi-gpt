@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.utils import timezone
 
-from multigpt.chat.models import Chunk, Collection, Document, Job, RagSettings
+from multigpt.chat.models import Chunk, Collection, Document, IndexRun, Job, RagSettings
 from multigpt.chat.rag import extract, jobs
 from multigpt.chat.rag import ocr as rag_ocr
 
@@ -22,7 +22,7 @@ from .models import DirectorySource
 # der Worker vermutlich nicht (er fragt alle paar Sekunden nach Arbeit).
 WORKER_SILENT_AFTER = timedelta(minutes=2)
 
-CANCELLED_TEXT = "Indexierung in der Verwaltung abgebrochen."
+CANCELLED_TEXT = jobs.CANCELLED_DOCUMENT
 
 
 def document_id_of(job: Job) -> int | None:
@@ -57,6 +57,7 @@ class Overview:
     jobs_running: int
     jobs_failed: int
     jobs_stale: int
+    jobs_cancelling: int
     last_heartbeat: datetime | None
     last_done_job: Job | None
     oldest_due: datetime | None
@@ -65,6 +66,7 @@ class Overview:
     sources: list = field(default_factory=list)
     sources_enabled: bool = False
     source_documents: int = 0
+    runs_open: list = field(default_factory=list)
 
 
 def storage_usage() -> tuple[int, int]:
@@ -93,6 +95,7 @@ def overview(now=None) -> Overview:
         waiting=Count("pk", filter=Q(status=Job.Status.PENDING, run_after__gt=now)),
         running=Count("pk", filter=Q(status=Job.Status.RUNNING)),
         failed=Count("pk", filter=Q(status=Job.Status.FAILED)),
+        cancelling=Count("pk", filter=Q(status=Job.Status.RUNNING, cancel_requested=True)),
         stale=Count(
             "pk",
             filter=Q(status=Job.Status.RUNNING, locked_at__lt=now - jobs.STALE_AFTER),
@@ -124,6 +127,7 @@ def overview(now=None) -> Overview:
         jobs_running=job_counts["running"],
         jobs_failed=job_counts["failed"],
         jobs_stale=job_counts["stale"],
+        jobs_cancelling=job_counts["cancelling"],
         last_heartbeat=heartbeat,
         last_done_job=Job.objects.filter(status=Job.Status.DONE).order_by("-pk").first(),
         oldest_due=oldest_due,
@@ -132,10 +136,20 @@ def overview(now=None) -> Overview:
     result.sources = source_overview()
     result.sources_enabled = source_paths.enabled()
     result.source_documents = Document.objects.filter(source__isnull=False).count()
+    result.runs_open = open_runs()
     result.document_states = [
         (value, label, by_status.get(value, 0)) for value, label in Document.Status.choices
     ]
     return result
+
+
+def open_runs(**filters) -> list[IndexRun]:
+    """Offene Läufe (laufend oder wird abgebrochen), neueste zuerst."""
+    return list(
+        IndexRun.objects.filter(status__in=IndexRun.OPEN, **filters)
+        .select_related("collection", "source", "started_by")
+        .order_by("-pk")
+    )
 
 
 def source_overview() -> list[DirectorySource]:
@@ -151,8 +165,12 @@ def source_overview() -> list[DirectorySource]:
         .annotate(document_total=Count("documents"))
         .order_by("collection__name", "pk")
     )
+    runs = {}
+    for run in IndexRun.objects.filter(source__isnull=False, status__in=IndexRun.OPEN):
+        runs.setdefault(run.source_id, run)
     for item in items:
-        item.scan_open = item.pk in open_ids
+        item.scan_open = item.pk in open_ids or item.pk in runs
+        item.open_run = runs.get(item.pk)
     return items
 
 
@@ -181,15 +199,16 @@ def ocr_overview(cfg: RagSettings) -> OcrOverview:
 # --- Aktionen ----------------------------------------------------------------
 
 
-def reindex_documents(documents) -> int:
+def reindex_documents(documents, run: IndexRun | None = None) -> int:
     """Dokumente zur Indexierung einreihen (wie ``make reindex``).
 
     Fehlgeschlagene Aufträge dieser Dokumente sind damit überholt und werden
-    entfernt, damit die Warteschlange nur noch Offenes zeigt.
+    entfernt, damit die Warteschlange nur noch Offenes zeigt. Mit ``run``
+    hängen die Aufträge an diesem Lauf; er endet, wenn alle erledigt sind.
     """
     ids = []
     for document in documents:
-        jobs.enqueue_index(document)
+        jobs.enqueue_index(document, run)
         ids.append(document.pk)
     if ids:
         Job.objects.filter(
@@ -197,11 +216,25 @@ def reindex_documents(documents) -> int:
             status=Job.Status.FAILED,
             payload__document_id__in=ids,
         ).delete()
+    if run is not None:
+        jobs.check_run(run.pk)  # leer -> sofort beendet
     return len(ids)
 
 
-def reindex_all() -> int:
-    return reindex_documents(list(Document.objects.order_by("pk")))
+def _user(user):
+    return user if user is not None and user.is_authenticated else None
+
+
+def reindex_all(user=None) -> int:
+    run = IndexRun.objects.create(kind=IndexRun.Kind.REINDEX_ALL, started_by=_user(user))
+    return reindex_documents(list(Document.objects.order_by("pk")), run)
+
+
+def reindex_collection(collection: Collection, user=None) -> int:
+    run = IndexRun.objects.create(
+        kind=IndexRun.Kind.REINDEX_COLLECTION, collection=collection, started_by=_user(user)
+    )
+    return reindex_documents(list(collection.documents.order_by("pk")), run)
 
 
 def retry_errors(documents) -> int:
@@ -273,33 +306,20 @@ def is_stale(job: Job, now=None) -> bool:
 
 
 def cancel_jobs(queryset) -> tuple[int, int]:
-    """Aufträge löschen; laufende (mit frischem Lebenszeichen) bleiben.
-
-    Hat ein Dokument danach keinen offenen Auftrag mehr und wartete es noch,
-    bekommt es den Status „Fehler“ mit Hinweis, statt ewig zu warten.
-    Rückgabe: (gelöscht, übersprungen).
+    """Aufträge abbrechen (Admin): wartende, hängende, erledigte und
+    fehlgeschlagene sofort entfernen; laufende markieren – der Worker beendet
+    sie nach dem aktuellen Schritt. Rückgabe ``(entfernt, markiert)``.
     """
-    now = timezone.now()
-    deleted = skipped = 0
-    doc_ids = set()
-    with transaction.atomic():
-        for job in queryset.select_for_update():
-            if job.status == Job.Status.RUNNING and not is_stale(job, now):
-                skipped += 1
-                continue
-            if job.kind == Job.Kind.INDEX_DOCUMENT and document_id_of(job) is not None:
-                doc_ids.add(document_id_of(job))
-            job.delete()
-            deleted += 1
-        if doc_ids:
-            still_open = {
-                document_id_of(j)
-                for j in Job.objects.filter(
-                    kind=Job.Kind.INDEX_DOCUMENT,
-                    status__in=[Job.Status.PENDING, Job.Status.RUNNING],
-                )
-            }
-            Document.objects.filter(
-                pk__in=doc_ids - still_open, status=Document.Status.PENDING
-            ).update(status=Document.Status.ERROR, error_text=CANCELLED_TEXT)
-    return deleted, skipped
+    return jobs.cancel_jobs(queryset.values_list("pk", flat=True), remove_finished=True)
+
+
+def cancel_runs(queryset) -> tuple[int, int, int]:
+    """Läufe abbrechen. Rückgabe ``(abgebrochene Läufe, Aufträge entfernt, markiert)``."""
+    runs = removed = marked = 0
+    for run_id in queryset.filter(status__in=IndexRun.OPEN).values_list("pk", flat=True):
+        outcome = jobs.cancel_run(run_id)
+        if outcome is not None:
+            runs += 1
+            removed += outcome[0]
+            marked += outcome[1]
+    return runs, removed, marked

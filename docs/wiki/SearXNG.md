@@ -156,6 +156,112 @@ curl -i 'http://<host>:<port>/search?q=test&format=json'
 MultiGPT schickt bei der Suche den User-Agent `MultiGPT/<version> (Websuche)`,
 `Accept: application/json` und `Accept-Language` gleich der eingestellten Sprache (bei `all`: `de`).
 
+## Wenn das Modell sagt, es könne nicht suchen
+
+Antworten wie „Ich kann leider nicht in Echtzeit im Internet suchen“ haben meist einen dieser Gründe:
+
+- **Der Schalter „Websuche“ ist aus, und das Modell kann keine Werkzeuge.** Dann sucht niemand.
+  Mit dem Schalter sucht MultiGPT *vor* der Antwort und gibt die Treffer als Quellmaterial mit;
+  das geht mit jedem Modell. Bei Modellen ohne Werkzeuge zeigt das Eingabefeld unter dem Schalter
+  den Hinweis „Dieses Modell kann nicht selbst suchen – mit dem Schalter sucht MultiGPT vorab“.
+- **Das Modell kann Werkzeuge, ist aber nicht so eingetragen.** Selbst suchen (Werkzeug
+  `web_search`) kann ein Modell nur mit dem Häkchen **„Werkzeuge“** am KI-Modell. In der
+  Modellauswahl stehen solche Modelle mit dem Zusatz „· Werkzeuge“. Siehe
+  [Anbieter und Modelle](Anbieter-und-Modelle): Neue Modelle bekommen das Häkchen automatisch
+  (Meldung von LM Studio bzw. Liste bekannter Modelle), bestehende über die Admin-Aktion
+  **„Fähigkeiten automatisch erkennen (Werkzeuge, Bilder)“** oder
+  `mgpt-ctl guess_capabilities --apply`.
+
+MultiGPT sagt dem Modell im System-Prompt in einem festen Satz (ohne persönliche Daten), was
+gilt: Ist das Werkzeug angeboten, dass es `web_search` für aktuelle Fakten nutzen soll. Ist die
+Websuche für den Nutzer eingerichtet, für diese Antwort aber weder der Schalter an noch das
+Werkzeug angeboten (Modell ohne Werkzeuge), dass es auf den Schalter „Websuche“
+hinweisen soll, statt zu behaupten, es gebe keine Suche.
+
+## Seiten abrufen und Websites durchsuchen
+
+Die Suche liefert nur Treffer. Damit ein Modell eine bestimmte Seite selbst lesen kann, gibt es zwei
+eingebaute Werkzeuge. Sie lesen nur und laufen ohne Rückfrage:
+
+- **`fetch_url(url, offset)`** ruft eine Seite ab und gibt ihren lesbaren Text zurück. Unterstützt
+  werden HTML, Text, JSON und PDF. Bei PDF wird nur die Textebene gelesen, ohne Texterkennung;
+  gescannte PDFs werden mit einer Meldung abgelehnt. Die Ausgabe ist auf etwa 12 000 Zeichen
+  begrenzt. Ist die Seite länger, steht ein Hinweis dabei, und das Modell liest mit `offset` weiter.
+- **`crawl_site(url, max_pages, same_site, path_prefix)`** folgt von einer Startseite aus den Links
+  derselben Website. Es arbeitet in Breitensuche mit einer Linktiefe von höchstens 2 und liest
+  höchstens 20 Seiten. Zurück kommen je Seite Titel, URL und ein kurzer Auszug, für die wichtigsten
+  Seiten (Startseite zuerst) auch der Text, insgesamt etwa 20 000 Zeichen. `same_site=false` erlaubt
+  zusätzlich Subdomains derselben Domain, nie fremde Websites. `path_prefix` (z. B. `/docs/`)
+  beschränkt die Durchsuchung auf einen Bereich.
+
+Jede gelesene Seite wird eine nummerierte Quelle [n] mit Titel, URL und Abrufdatum. Der Text geht
+wie bei der Suche als nicht vertrauenswürdiges Quellmaterial an das Modell.
+
+**Voraussetzungen:** Der Nutzer hat das Recht „Websuche“, „Websuche aktiv“ ist eingeschaltet, und das
+Modell hat das Häkchen „Werkzeuge“. Eine SearXNG-URL ist für die beiden Werkzeuge nicht nötig.
+
+**Mit dem Schalter „Websuche“ und ohne Werkzeuge:** Enthält die Frage Links, ruft MultiGPT bis zu
+drei davon vor der Antwort ab, zusätzlich zur Suche. Damit funktioniert „Fasse diese Seite
+zusammen: https://…“ mit jedem Modell. Eine nicht abrufbare Seite wird dem Modell als solche
+genannt.
+
+**Regeln beim Abruf:**
+
+- Es gilt derselbe Schutz wie beim Abruf von Suchtreffern: nur `http`/`https`, keine Adressen im
+  Heimnetz (auch nicht über Weiterleitungen), Größen- und Zeitgrenzen.
+- `crawl_site` beachtet `robots.txt` mit dem User-Agent `MultiGPT (+Familien-Instanz)`. Fehlt die
+  Datei oder ist sie nicht abrufbar, ist der Abruf erlaubt. Zwischen zwei Abrufen beim selben
+  Rechner wartet es mindestens eine halbe Sekunde (bzw. `Crawl-delay`, höchstens 2 s).
+- Formulare werden nie abgeschickt. URLs werden vereinheitlicht: Fragmente (`#…`) und
+  Tracking-Parameter (`utm_*`, `fbclid`, `gclid`, Sitzungs-IDs …) fallen weg. Je Pfad folgt es
+  höchstens drei Varianten mit anderer Query. Bilder, Videos, Archive, Programme, Office-Dateien und
+  PDFs überspringt es.
+- `fetch_url` ist ein einzelner Abruf wie im Browser und prüft `robots.txt` nicht.
+
+**Einstellungen** im Admin unter **„Sucheinstellungen“**, Abschnitt „Seiten abrufen und Websites
+durchsuchen“:
+
+| Feld | Bedeutung |
+|---|---|
+| **Seiten abrufen (fetch_url)** | Standard an. Schaltet auch den Abruf von Links aus der Frage ab. |
+| **Websites durchsuchen (crawl_site)** | Standard an |
+| **Seiten je Durchsuchung** | Standard 10 (1–20) |
+| **Zeitlimit Durchsuchung (s)** | Standard 30 (5–120). Danach zählen die bis dahin gelesenen Seiten. |
+| **Gesperrte Domains** | Eine Domain je Zeile. Subdomains sind eingeschlossen, `example.com` sperrt also auch `www.example.com`. Gilt auch nach Weiterleitungen und für Suchtreffer. |
+
+**„Abruf testen“** (oben rechts neben „SearXNG testen“) ruft eine eingegebene Adresse mit diesen
+Regeln ab und meldet Titel und Textlänge oder den Grund, warum der Abruf nicht geht.
+
+## Erfundene Links
+
+Ohne Möglichkeit nachzusehen erfinden Modelle gern Fakten: Foren, Discord-Server, Mitgliederzahlen,
+Treffen, Zitate, und zwar mit Links, die es nicht gibt. MultiGPT begegnet dem auf drei Wegen:
+
+1. **Grundregeln für alle Modelle.** Vor jedem Chat geht an jedes Modell als erster Teil des
+   System-Prompts:
+   *„Erfinde keine URLs, Zahlen, Namen, Ereignisse oder Zitate. Nenne Links nur, wenn sie aus
+   Quellmaterial oder Werkzeugergebnissen stammen. Wenn du etwas nicht überprüfen kannst, sag das
+   ausdrücklich und biete an, mit der Websuche nachzusehen.“*
+   Der Text ist ein Standard, den jede Installation per Migration bekommt. Ändern oder leeren kann
+   man ihn im Admin unter **„Chat“ → „Chat-Einstellungen“** im Feld **„Grundregeln für alle
+   Modelle“**. Ein leeres Feld bedeutet: keine Grundregeln. Ein Update überschreibt einen geänderten
+   Text nicht. Reihenfolge im System-Prompt: Grundregeln, fester Prompt der Rolle, Hinweise von
+   MultiGPT (Quellmaterial, Websuche), Projekt-Anweisungen, System-Prompt des Chats.
+2. **Werkzeuge zum Nachsehen.** Mit `fetch_url`, `crawl_site` und `web_search` kann das Modell Links
+   prüfen, statt sie zu vermuten.
+3. **Markierung ungeprüfter Links.** Links in einer Antwort, deren Adresse bzw. Rechnername in keiner
+   Quelle dieser Antwort, keinem Werkzeugergebnis und nicht in der Frage vorkommt, bekommen ein
+   Warnsymbol ⚠. Der Hinweistext lautet „Link stammt nicht aus einer Quelle dieser Antwort –
+   möglicherweise erfunden“. Unter der Antwort steht dann „Diese Antwort enthält Links ohne Quelle“
+   mit dem Knopf **„Belege prüfen“**. Er schaltet die Websuche ein und schreibt eine Prüfbitte mit
+   den Links ins Eingabefeld. Gesendet wird erst, wenn der Nutzer selbst sendet. Die Prüfung läuft
+   nur im Browser, ohne Netzaufruf. Abschalten lässt sie sich unter **Einstellungen** →
+   „Ungeprüfte Links markieren“. Alle Links in Antworten tragen `rel="noopener noreferrer
+   nofollow"`.
+
+Eine Markierung heißt nicht, dass der Link falsch ist, sondern nur, dass er aus keiner Quelle der
+Antwort stammt.
+
 ## Fehlersuche
 
 | Meldung beim Test / Symptom | Ursache | Abhilfe |

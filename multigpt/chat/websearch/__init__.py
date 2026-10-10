@@ -11,6 +11,8 @@ Seitenabruf mit SSRF-Schutz, Aufbereitung als nummeriertes Quellmaterial.
   eingebaute Werkzeug ``web_search`` (``tooling.register_builtin``) – beide
   registrieren sich beim Import dieses Pakets
 - ``check(cfg)``: „SearXNG testen“ im Admin
+- ``pages``: eingebaute Werkzeuge ``fetch_url`` und ``crawl_site``, URLs aus der
+  Frage im festen Ablauf (siehe dort)
 
 **Kontextformat (Entscheidung):** Das Quellmaterial wird an die *Nutzerfrage*
 dieser Runde angehängt (nur im Verlauf an das Modell, nicht in der DB-Nachricht),
@@ -32,9 +34,12 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+import httpx
+
 from multigpt.accounts.permissions import Action, can
 
 from ..providers.base import short_error
+from . import pages
 from .base import FetchError, SearchBackend, SearchError, SearchHit
 from .fetch import Page, fetch_text
 from .searxng import SearxngBackend
@@ -52,6 +57,7 @@ __all__ = [
     "get_settings",
     "make_query",
     "search",
+    "system_hint",
     "web_search_available",
     "to_entries",
 ]
@@ -124,8 +130,10 @@ def search(query: str, cfg=None) -> list[SearchHit]:
     return backend_for(cfg).search(query, limit=cfg.max_results)
 
 
-def _fetch(hit: SearchHit, timeout: float) -> Material:
+def _fetch(hit: SearchHit, timeout: float, blocked=()) -> Material:
     try:
+        if pages.is_blocked(httpx.URL(hit.url).host, blocked):
+            return Material(hit, note=pages.MSG_BLOCKED_DOMAIN)
         page = fetch_text(hit.url, timeout=timeout, max_chars=PAGE_CHARS)
     except FetchError as exc:
         return Material(hit, note=str(exc))
@@ -149,7 +157,10 @@ def gather(query: str, cfg=None, *, fetch: bool = True) -> list[Material]:
     fetched: list[Material] = []
     if count:
         with ThreadPoolExecutor(max_workers=count) as pool:
-            fetched = list(pool.map(lambda h: _fetch(h, cfg.timeout_seconds), hits[:count]))
+            blocked = pages.blocked_domains(cfg)
+            fetched = list(
+                pool.map(lambda h: _fetch(h, cfg.timeout_seconds, blocked), hits[:count])
+            )
     materials = fetched + [Material(h) for h in hits[count:]]
     logger.info(
         "Websuche: %d Treffer, %d Seiten mit Text, %d blockiert/fehlgeschlagen",
@@ -189,6 +200,34 @@ def failure_note(reason: str) -> str:
     )
 
 
+# Feste Sätze im System-Prompt (ohne Nutzerdaten). Ohne sie behaupten Modelle
+# oft, sie könnten grundsätzlich nicht im Internet suchen.
+HINT_TOOL = (
+    "Dir steht das Werkzeug web_search für aktuelle Informationen zur Verfügung; nutze es, "
+    "wenn die Frage aktuelle oder überprüfbare Fakten braucht."
+)
+HINT_SWITCH = (
+    "Für diese Antwort ist keine Websuche aktiv. Wenn aktuelle Informationen nötig sind, "
+    "weise den Nutzer darauf hin, dass er den Schalter ‚Websuche‘ im Eingabefeld "
+    "einschalten kann."
+)
+
+
+def system_hint(user, options, tool_offered: bool) -> str:
+    """Satz für den System-Prompt einer Antwort, sonst ``""``.
+
+    - Werkzeug ``web_search`` angeboten: ``HINT_TOOL``.
+    - Websuche für ``user`` verfügbar, aber weder Schalter an noch Werkzeug
+      (Modell ohne Werkzeuge, Vergleich): ``HINT_SWITCH``.
+    - Schalter an: nichts (das Quellmaterial hat eigene Hinweise).
+    """
+    if tool_offered:
+        return HINT_TOOL
+    if (options or {}).get("web_search"):
+        return ""
+    return HINT_SWITCH if web_search_available(user) else ""
+
+
 def fixed_search(turn, sources):
     """Fester Ablauf vor dem ersten Anbieteraufruf (Schalter „Websuche“).
 
@@ -200,6 +239,12 @@ def fixed_search(turn, sources):
 
     if not (turn.options or {}).get("web_search"):
         return tooling.ContextResult()
+    # URLs in der Frage (höchstens 3) zusätzlich zur Suche abrufen – so geht
+    # „Fasse diese Seite zusammen: https://…“ auch ohne Werkzeuge.
+    page_entries, page_notes = [], []
+    if pages.urls_in_text(turn.query):
+        yield "status", {"text": "Rufe Seiten aus der Frage ab …", "level": "info"}
+        page_entries, page_notes = pages.fixed_entries(turn.query, sources)
     yield "status", {"text": "Suche im Web …", "level": "info"}
     try:
         materials = gather(turn.query)
@@ -211,11 +256,19 @@ def fixed_search(turn, sources):
         logger.error("Websuche für Antwort %s: %s", sources.message.pk, type(exc).__name__)
     else:
         if materials:
-            return tooling.ContextResult(entries=to_entries(materials, sources))
+            return tooling.ContextResult(
+                entries=page_entries + to_entries(materials, sources), notes=page_notes
+            )
         reason = "keine Treffer"
     notice = f"Websuche fehlgeschlagen: {reason}. Die Antwort entsteht ohne Webquellen."
+    if page_entries:
+        notice = (
+            f"Websuche fehlgeschlagen: {reason}. Die Antwort nutzt nur die Seiten aus der Frage."
+        )
     yield "status", {"text": notice, "level": "warning"}
-    return tooling.ContextResult(notes=[failure_note(reason)], notice=notice)
+    return tooling.ContextResult(
+        entries=page_entries, notes=page_notes + [failure_note(reason)], notice=notice
+    )
 
 
 # --- Eingebautes Werkzeug web_search (M8-04) ------------------------------------------
@@ -277,6 +330,7 @@ def _register():
         )
     )
     tooling.register_context_provider(TOOL_NAME, fixed_search)
+    pages.register()  # fetch_url und crawl_site (nach web_search)
 
 
 # --- Admin: „SearXNG testen“ -----------------------------------------------------------------

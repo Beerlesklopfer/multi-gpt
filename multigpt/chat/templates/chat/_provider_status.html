@@ -14,3 +14,14 @@
     {% endfor %}
   </ul>
 {% endif %}
+{# Nur Verwalter: zuletzt offline geprüfte MCP-Server (chat/mcp/status.py), Link in den Admin. #}
+{% if status_mcp %}
+  <ul class="provider-status mcp-status" aria-label="Status der MCP-Server (nur Verwalter)">
+    {% for s in status_mcp %}
+      <li class="provider-status-item" data-online="false" title="MCP-Server {{ s.name }} offline – {{ s.error }}">
+        <span class="status-dot" aria-hidden="true"></span>
+        <a class="provider-status-text" href="{% url 'admin:chat_mcpserver_change' s.id %}">MCP {{ s.name }} offline – {{ s.error_short }}</a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

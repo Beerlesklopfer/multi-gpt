@@ -2,7 +2,9 @@
 
 Fehler vor dem Stream kommen immer als JSON ``{"error": "<Text>"}``.
 Fremde Chats (kein READ) -> 404, damit ihre Existenz nicht sichtbar wird;
-lesbar, aber ohne Schreibrecht -> 403.
+lesbar, aber ohne Schreibrecht -> 403. Geteilte Chats (RWUD, sharing.py):
+Senden und Neu erzeugen brauchen W, Bearbeiten (``edit_of``) zusätzlich U;
+Versionen umschalten genügt R (eigene Ansicht je Konto).
 """
 
 import json
@@ -13,11 +15,14 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from multigpt.accounts import usage
-from multigpt.accounts.permissions import Action, can, model_permitted
+from multigpt.accounts.permissions import Action, applicable_shares, can, model_permitted
 
-from . import services, status, tooling, websearch
+from . import api_images, projects, services, sharing, status, tooling, websearch
+from . import attachments as chat_attachments
 from . import sources as source_refs
+from .mcp import status as mcp_status
 from .models import AIModel, Conversation, Message, ToolCall
+from .providers.base import short_error
 from .rag import chat as rag_chat
 from .rag import search as rag_search
 
@@ -54,7 +59,8 @@ def _get_conversation(request, pk: int) -> Conversation | None:
     conversation = Conversation.objects.filter(pk=pk).first()
     if conversation is None or not can(request.user, Action.READ, conversation):
         return None
-    return conversation
+    # Geteilte Chats: angezeigter Zweig und neue Nachrichten je Betrachter.
+    return sharing.bind_viewer(conversation, request.user)
 
 
 def _get_chat_model(user, raw) -> tuple[AIModel | None, JsonResponse | None]:
@@ -78,7 +84,8 @@ def _model_denied(user, ai_model: AIModel) -> JsonResponse | None:
     if can(user, Action.USE_MODEL, ai_model):
         return None
     if model_permitted(user, ai_model):
-        return _error(usage.BUDGET_EXHAUSTED_MESSAGE, 403)
+        # Text je Abrechnungskonto bzw. Gesamtbudget (billing.budgets).
+        return _error(usage.blocked_reason(user, ai_model) or usage.BUDGET_EXHAUSTED_MESSAGE, 403)
     return _error("Dieses Modell steht dir nicht zur Verfügung.", 403)
 
 
@@ -95,7 +102,8 @@ def _serialize_tool_call(tool_call: ToolCall) -> dict:
     }
 
 
-def _serialize_message(message: Message) -> dict:
+def _serialize_message(message: Message, user=None) -> dict:
+    """``user``: Betrachter; bestimmt den Zitierstil der Quellen."""
     return {
         "id": message.pk,
         "role": message.role,
@@ -110,11 +118,14 @@ def _serialize_message(message: Message) -> dict:
         "sibling_index": message.sibling_index,
         "sibling_count": message.sibling_count,
         "tool_calls": [_serialize_tool_call(tc) for tc in message.tool_calls.all()],
-        "sources": [
-            source_refs.serialize(src, n) for n, src in enumerate(message.sources.all(), start=1)
-        ],
+        "sources": source_refs.serialize_all(message.sources.all(), user),
         "notices": message.notices,
         "web_search_notice": message.web_search_notice,
+        "attachments": [
+            chat_attachments.serialize(a)
+            for a in getattr(message, "upload_attachments", None)
+            or [a for a in message.attachments.all() if a.tool_call_id is None]
+        ],
     }
 
 
@@ -130,11 +141,25 @@ def _serialize_model(m: AIModel) -> dict:
         "provider_id": m.provider_id,
         "is_local": m.provider.is_local,
         "supports_tools": m.supports_tools,
+        "supports_vision": m.supports_vision,
+        # MCP-Freigabe des Verwalters: None = alle Server der Rolle, sonst die
+        # erlaubten IDs (leer bei „kein“). Durchgesetzt wird auf dem Server.
+        "mcp_access": m.mcp_access,
+        "mcp_server_ids": (
+            None
+            if m.mcp_access == AIModel.McpAccess.ALL
+            else sorted(s.pk for s in m.mcp_servers.all())
+            if m.mcp_access == AIModel.McpAccess.SELECTED
+            else []
+        ),
         # Nach dem letzten gespeicherten Status (M4-03); nicht-lokale immer True.
         "online": online,
         "available": available,
         # Monatsbudget ausgeschöpft und Modell kostenpflichtig (M6-03): ausgrauen.
         "blocked_by_budget": getattr(m, "blocked_by_budget", False),
+        "budget_reason": getattr(m, "budget_reason", ""),
+        # Abrechnungskonto und Preis, dezent als title in der Auswahl.
+        "billing_title": getattr(m, "billing_title", ""),
     }
 
 
@@ -151,10 +176,18 @@ def models_list(request):
 @api_login_required
 def mcp_servers_list(request):
     """Aktive MCP-Server, die das Konto nutzen darf. Voreinstellung nach Rolle
-    (Plan 8g): Alle erlaubten Server sind eingeschaltet."""
+    (Plan 8g): Alle erlaubten Server sind eingeschaltet, außer zuletzt offline
+    geprüften (``online`` false, Ursache in ``error``; gespeicherter Stand, kein
+    Netzaufruf)."""
     return JsonResponse(
         [
-            {"id": s.pk, "name": s.name, "default_enabled": True}
+            {
+                "id": s.pk,
+                "name": s.name,
+                "default_enabled": not mcp_status.known_offline(s),
+                "online": not mcp_status.known_offline(s),
+                "error": s.last_error if mcp_status.known_offline(s) else None,
+            }
             for s in tooling.available_servers(request.user)
         ],
         safe=False,
@@ -169,16 +202,17 @@ def provider_status(request):
 
 
 def _check_model_reachable(ai_model: AIModel) -> JsonResponse | None:
-    """Lokales Modell: Anbieter online und Modell gemeldet? Sonst Fehler (M4-05)."""
+    """Anbieter online und (lokal) Modell gemeldet? Sonst Fehler (M4-05)."""
     provider = ai_model.provider
-    if not (provider.is_local and provider.check_status):
+    if not (provider.check_status or status.known_offline(provider)):
         return None
-    status.refresh(provider)  # nur bei Status älter als 15 s ein Netzaufruf
+    status.refresh(provider)  # nur bei veraltetem Status ein Netzaufruf
     online, available = status.model_state(ai_model)
     if not online:
+        cause = short_error(provider.last_error)
         return _error(
-            f"{provider.name} ist offline. Bitte ein anderes Modell wählen "
-            "oder es später erneut versuchen.",
+            f"{provider.name} ist offline{f' ({cause})' if cause else ''}. Bitte ein anderes "
+            "Modell wählen oder es später erneut versuchen.",
             503,
         )
     if not available:
@@ -203,7 +237,15 @@ def conversation_create(request):
         default_model, err = _get_chat_model(request.user, data["default_model"])
         if err:
             return err
-    conversation = Conversation.objects.create(user=request.user, default_model=default_model)
+    # „Neuer Chat im Projekt“ (chat/projects.py): nur eigene Projekte.
+    project = None
+    if data.get("project") is not None:
+        project = projects.get_own_project(request.user, data["project"])
+        if project is None:
+            return _error(projects.MSG_NOT_FOUND, 404)
+    conversation = Conversation.objects.create(
+        user=request.user, default_model=default_model, project=project
+    )
     return JsonResponse(
         {
             "id": conversation.pk,
@@ -221,13 +263,14 @@ def messages(request, pk: int):
     if conversation is None:
         return _error("Chat nicht gefunden.", 404)
     if request.method == "GET":
-        return _path_response(conversation)
+        return _path_response(conversation, request.user)
     return _stream(request, conversation)
 
 
-def _path_response(conversation: Conversation) -> JsonResponse:
+def _path_response(conversation: Conversation, user=None) -> JsonResponse:
     path = services.visible_messages(conversation)
-    return JsonResponse([_serialize_message(m) for m in path], safe=False)
+    user = user or conversation.user
+    return JsonResponse([_serialize_message(m, user) for m in path], safe=False)
 
 
 def _optional_pk(data: dict, key: str) -> tuple[int | None, bool]:
@@ -244,12 +287,17 @@ def _optional_pk(data: dict, key: str) -> tuple[int | None, bool]:
 @api_login_required
 def branch(request, pk: int):
     """Version umschalten: ``{"message_id": <pk>}`` -> current_leaf = neuestes
-    Blatt unter dieser Nachricht; Antwort wie GET messages. Ändert den
-    gemeinsamen Zustand des Chats, braucht also Schreibrecht."""
+    Blatt unter dieser Nachricht; Antwort wie GET messages. Beim Besitzer ist
+    das der Hauptpfad; Empfänger eines geteilten Chats schalten nur ihre eigene
+    Ansicht um (``sharing``), dafür genügt Lesen. ``adopt_model`` ändert das
+    Standardmodell des Chats und braucht Schreibrecht."""
     conversation = _get_conversation(request, pk)
     if conversation is None:
         return _error("Chat nicht gefunden.", 404)
-    if not can(request.user, Action.WRITE, conversation):
+    if conversation.user_id == request.user.pk:
+        pass  # Besitzer: Hauptpfad
+    elif not applicable_shares(request.user, conversation).exists():
+        # z. B. Einsicht durch Verwalter: nur lesen, keine eigene Ansicht
         return _error("Du darfst in diesem Chat nicht schreiben.", 403)
     data = _json_body(request)
     if data is None:
@@ -259,11 +307,13 @@ def branch(request, pk: int):
     adopt_model = data.get("adopt_model", False)
     if not valid or message_id is None or not isinstance(adopt_model, bool):
         return _error("Ungültige Anfrage.", 400)
+    if adopt_model and not can(request.user, Action.WRITE, conversation):
+        return _error("Du darfst in diesem Chat nicht schreiben.", 403)
     try:
         services.switch_branch(conversation, message_id, adopt_model=adopt_model)
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
-    return _path_response(conversation)
+    return _path_response(conversation, request.user)
 
 
 def _parse_collections(user, raw) -> tuple[list[int], JsonResponse | None]:
@@ -300,6 +350,16 @@ def _stream(request, conversation: Conversation):
     data = _json_body(request)
     if data is None:
         return _error("Ungültige Anfrage.", 400)
+    if data.get("image") is not None:
+        # Modus „Bild“ (M9-01): direkt an das Bildmodell, ohne Chatmodell.
+        return api_images.stream(
+            request,
+            conversation,
+            data,
+            error=_error,
+            event_stream=_event_stream,
+            parse_pk=_optional_pk,
+        )
     raw_model = data.get("model", conversation.default_model_id)
     ai_model, err = _get_chat_model(user, raw_model)
     if err:
@@ -309,12 +369,26 @@ def _stream(request, conversation: Conversation):
         return err
     regenerate = data.get("regenerate") is True
     content = data.get("content")
+    attachment_ids = data.get("attachments")
+    if attachment_ids is not None and not (
+        isinstance(attachment_ids, list)
+        and all(isinstance(x, int) and not isinstance(x, bool) for x in attachment_ids)
+    ):
+        return _error("Ungültige Auswahl der Anhänge.", 400)
+    if regenerate and attachment_ids:
+        return _error("Ungültige Anfrage.", 400)
+    if content is None and attachment_ids:
+        content = ""
     if not regenerate and not isinstance(content, str):
         return _error("Die Nachricht ist leer.", 400)
     edit_of, valid_edit = _optional_pk(data, "edit_of")
     regenerate_of, valid_regen = _optional_pk(data, "message_id") if regenerate else (None, True)
-    if not (valid_edit and valid_regen) or (regenerate and edit_of is not None):
+    # leaf: Ende, das der Absender sieht (geteilte Chats, Gleichzeitigkeit -> 409).
+    expected_leaf, valid_leaf = _optional_pk(data, "leaf")
+    if not (valid_edit and valid_regen and valid_leaf) or (regenerate and edit_of is not None):
         return _error("Ungültige Anfrage.", 400)
+    if edit_of is not None and not can(user, Action.UPDATE, conversation):
+        return _error("Du darfst in diesem Chat keine Nachrichten bearbeiten.", 403)
     mcp_servers = data.get("mcp_servers")
     if mcp_servers is not None and not (
         isinstance(mcp_servers, list)
@@ -349,6 +423,8 @@ def _stream(request, conversation: Conversation):
             regenerate_of=regenerate_of,
             options={"web_search": web_search, "collections": collections},
             compare=compare,
+            attachments=None if regenerate else attachment_ids,
+            expected_leaf=expected_leaf,
         )
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
@@ -384,6 +460,8 @@ def tool_confirm(request, pk: int):
     message = services.pending_message(conversation)
     if message is None:
         return _error("In diesem Chat wartet keine Rückfrage.", 409)
+    if not sharing.may_confirm(user, message, conversation):
+        return _error("Nur wer diese Antwort ausgelöst hat, kann die Werkzeuge freigeben.", 403)
     ai_model = message.model
     if ai_model is None:
         return _error("Das Modell dieser Antwort gibt es nicht mehr.", 409)

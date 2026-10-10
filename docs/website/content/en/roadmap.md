@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 description: "MultiGPT's milestones and their status."
-lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. So far milestones 1 to 8 are done, including 4a (MCP tools). Images (9), voice (10), music (11) and operations (12) are still open."
+lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. So far milestones 1 to 8 are done, including 4a (MCP tools). Images (9), voice (10), music (11), operations (12) and the scratchpad (13) are still open."
 menus:
   main:
     weight: 40

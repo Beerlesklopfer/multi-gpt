@@ -162,3 +162,16 @@
   [milestones.note]
     de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist jetzt ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
     en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS now ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. Still open: backup, a complete guide and verified upgrade and removal."
+
+[[milestones]]
+  id = "13"
+  status = "planned"
+  [milestones.title]
+    de = "Scratchpad"
+    en = "Scratchpad"
+  [milestones.text]
+    de = "Material aus Chats, eigenen Dokumenten, dem Web, Werkzeugen, Bildern und Notizen sammeln, jeweils mit Herkunft und Zitierangabe, und daraus ein belegtes Gesamtdokument erzeugen. Das Modell schreibt nur aus den gesammelten Einträgen. Kurzbelege und Literaturverzeichnis setzt MultiGPT im gewählten Zitierstil, wörtliche Zitate werden gegen die Quelle geprüft. Export als Markdown, DOCX und PDF. Dazu ein Kontextmenü im Chat mit „Ins Scratchpad“, Nachfragen, Schnellaktionen und eigenen Prompt-Vorlagen."
+    en = "Collect material from chats, your own documents, the web, tools, images and notes, each with its origin and citation data, and turn it into a fully referenced document. The model writes only from the collected entries. MultiGPT sets the in-text citations and the bibliography in the chosen citation style and checks verbatim quotes against the source. Export as Markdown, DOCX and PDF. Plus a context menu in the chat with “add to scratchpad”, follow-up questions, quick actions and your own prompt templates."
+  [milestones.note]
+    de = "Neu eingeplant. Das Kontextmenü und die Prompt-Vorlagen kommen zuerst, das Scratchpad dockt an die Projekte an."
+    en = "Newly planned. The context menu and prompt templates come first; the scratchpad attaches to projects."

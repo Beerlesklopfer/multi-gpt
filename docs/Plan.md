@@ -56,6 +56,7 @@ multi-gpt/
 ├── manage.py
 ├── multigpt/            # Django-Projekt: settings, urls, wsgi, Projekt-Templates; alle Django-Apps liegen darunter
 │   ├── accounts/        # User (erweitert AbstractUser), UserGroup (erweitert auth.Group), Role, can()
+│   ├── scratchpad/      # Scratchpad und Gesamtdokument (M13, Abschnitt 8h)
 │   └── chat/            # App-Label chat: Modelle, Views, Templates, Static
 │       ├── providers/   # base.py, openai_compat.py, anthropic.py, google.py
 │       └── mcp/         # MCP-Client, Loop-Thread, Werkzeugschleife, Rechteprüfung
@@ -72,15 +73,21 @@ multi-gpt/
 
 | Modell | Felder (Kern) | Zweck |
 |---|---|---|
-| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, online, last_checked, last_online, last_error, reported_models | Ein Anbieterzugang |
-| `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order, price_in / price_out (optional) | Ein auswählbares Modell |
-| `Conversation` | user, title, default_model, system_prompt, current_leaf (Ende des angezeigten Zweigs), created, updated, archived | Ein Chat, gespeichert als Baum von Nachrichten |
-| `Message` | conversation, parent (vorherige Nachricht, null für die erste), role, content, model, tokens_in, tokens_out, cost (Momentaufnahme), status (`complete` / `aborted` / `error` / `awaiting_confirmation`; `superseded` nur noch für Altdaten), error, tool_state (Zwischenrunden der Werkzeugschleife inkl. `provider_state`), created | Eine Nachricht. Nachrichten mit gleichem `parent` sind Versionen (Geschwister): Bearbeiten einer eigenen Nachricht und „Neu erzeugen“ legen eine neue Version an, ältere bleiben erhalten und zählen im Verbrauch |
+| `Provider` | name, kind (`openai_compat` / `anthropic` / `google`), base_url, api_key (verschlüsselt, optional), active, is_local, check_status, online, last_checked, last_online, last_error, reported_models, billing_account | Ein Anbieterzugang, gehört zu genau einem Abrechnungskonto |
+| `AIModel` | provider, model_id, display_name, capability (`chat` / `image` / `embedding` / `stt` / `tts`), supports_tools, can_edit_images, active, sort_order | Ein auswählbares Modell; Preise in `ModelPrice` |
+| `BillingAccount` (`billing`) | name, kind (`monetary` / `tokens` / `flat`), currency (`EUR` / `USD`, nur monetär), note, active | Abrechnungskonto; bündelt einen oder mehrere Anbieter |
+| `ModelPrice` (`billing`) | ai_model, valid_from, input, cached_input, cache_write, cache_write_1h, output (je 1 Mio. Tokens, Kontowährung), long_context_threshold, long_* , unit_prices (JSON je Einheit), note | Preisversion eines Modells; gilt bis zur nächsten |
+| `ExchangeRate` (`billing`) | date, usd_eur, source (`manual` / `ecb`) | Kurs USD → EUR ab dem Tag |
+| `UsageEntry` (`billing`) | kind (`answer` / `attachment` / `tool`), account, user (Verfasser), ai_model, model_name, message, attachment (beide `SET_NULL`), created, tokens_in, tokens_out, cached_read, cache_write, cache_write_1h, reasoning, requests, units, rounds, amount, currency, amount_eur, rate, rate_date, price, legacy | Buchung; Grundlage für Verbrauch und Budgets |
+| `AccountBudget` (`billing`) | account, role oder user, monthly_budget (EUR, monetär), monthly_tokens (Token-Konten) | Budget bzw. Kontingent je Konto; Nutzer vor Rolle |
+| `Conversation` | user, title, default_model, system_prompt, project (optional, `SET_NULL`), current_leaf (Ende des angezeigten Zweigs), created, updated, archived | Ein Chat, gespeichert als Baum von Nachrichten |
+| `Project` | owner, name, description, instructions (zusätzlicher System-Prompt aller Chats im Projekt), default_model (optional), collections (Standard-Sammlungen), color, pinned, archived, created, updated | Gruppiert Chats eines Kontos mit gemeinsamen Vorgaben; privat für den Besitzer |
+| `Message` | conversation, parent (vorherige Nachricht, null für die erste), role, content, model, author, tokens_in, tokens_out, cost (EUR-Momentaufnahme aus der Buchung), status (`complete` / `aborted` / `error` / `awaiting_confirmation`; `superseded` nur noch für Altdaten), error, tool_state (Zwischenrunden der Werkzeugschleife inkl. `provider_state`), created | Eine Nachricht. Nachrichten mit gleichem `parent` sind Versionen (Geschwister): Bearbeiten einer eigenen Nachricht und „Neu erzeugen“ legen eine neue Version an, ältere bleiben erhalten und zählen im Verbrauch |
 | `Preset` (optional) | user, name, system_prompt | Wiederverwendbare Rollen |
 | `Attachment` | message, kind (`image` / `audio` / `file`), file, generated_by_model, source_image (Verweis auf das Ausgangsbild), cost | Erzeugte Bilder, Audio, Anhänge |
 | `Collection` | owner, name | Eine Wissenssammlung für RAG |
 | `Share` | Ziel (`Conversation` oder `Collection`), group, can_write | Freigabe an eine Gruppe, lesend oder schreibend |
-| `Role` | key (`admin` / `adult` / `teen` / `guest`, stabil), name, is_admin, all_models, allowed_models, all_mcp_servers, allowed_mcp_servers, can_web_search, can_images, can_voice, can_upload_documents, can_share, monthly_budget, fixed_system_prompt | Rechtepaket, im Admin änderbar. Eine leere Liste erlaubt nichts, „alle“ nur über `all_models` bzw. `all_mcp_servers` |
+| `Role` | key (`admin` / `adult` / `teen` / `guest`, stabil), name, is_admin, all_models, allowed_models, all_mcp_servers, allowed_mcp_servers, can_web_search, can_images, can_voice, can_upload_documents, can_share, monthly_budget (Gesamtbudget EUR über alle monetären Konten), fixed_system_prompt | Rechtepaket, im Admin änderbar. Eine leere Liste erlaubt nichts, „alle“ nur über `all_models` bzw. `all_mcp_servers` |
 | `McpServer` | name, transport (`stdio` / `http`), command oder url, credentials (verschlüsselt, JSON mit `env` / `headers` / `bearer_token`), active, tools_requiring_confirmation, known_tools, timeout_seconds | Ein angebundener MCP-Server |
 | `ToolCall` | message, server, tool, provider_call_id, arguments, result, status (`awaiting_confirmation` / `rejected` / `running` / `ok` / `error` / `timeout`), duration | Protokoll jedes Werkzeugaufrufs |
 | `User` (`accounts.User`) | erweitert Djangos `AbstractUser` (`AUTH_USER_MODEL`): role, display_name, monthly_budget_override (optional), allow_supervision, auto_read_aloud; Sperren über `is_active` | Ein Familienkonto mit Rolle |
@@ -89,10 +96,17 @@ multi-gpt/
 | `Chunk` | document, position, text, page, embedding (`vector`) | Textabschnitt mit Vektor |
 | `Job` | kind, payload, status, attempts, created | Warteschlange für den Worker |
 | `SourceRef` | message, kind (`web` / `document`), title, url oder chunk | Quellenangaben einer Antwort |
+| `Scratchpad` (M13) | owner, project (optional, eindeutig), title, citation_style (leer = Projekt bzw. Konto), ibid (an/aus), created, updated | Sammelstelle je Projekt bzw. eine persönliche je Konto |
+| `ScratchSource` (M13) | scratchpad, key (stabil, z. B. `mueller2024`), fingerprint (eindeutig je Scratchpad), kind (`document` / `web` / `ai` / `tool` / `attachment` / `manual`), csl (`citations.Reference` als JSON), document, message, tool_call, attachment (alle optional, `SET_NULL`), url | Ein zitierbares Werk, je Scratchpad einmal (Dedup im Literaturverzeichnis) |
+| `ScratchItem` (M13) | scratchpad, source (leer bei Notiz), origin (`answer` / `document` / `web` / `note` / `image` / `tool` / `upload` / `paste`), text_kind (`quote` / `paraphrase` / `own` / `ai`), text, comment, page, page_end, paragraph, paragraph_end, section, section_end, locator_text, attachment, provenance (JSON), snapshot, verified, tags, outline_section, position, created_by, created, updated | Ein Eintrag mit Herkunft, Textart und Fundstelle |
+| `OutlineSection` (M13) | scratchpad, parent, position, title, brief | Gliederung |
+| `ScratchDraft` / `DraftSection` (M13) | Entwurf: scratchpad, title, style; Abschnittsversion: draft, outline_section, version, text (Marker `[@item:n]`), model, cost, checks (JSON), created_by, is_current | Gesamtdokument mit Versionen je Abschnitt |
+| `Preset` (erweitert in M13) | user, project (optional), name, kind (`system` / `selection`), text (Platzhalter `{auswahl}`, `{quelle}`), web_search, document_search, send_now, sort_order, active | System-Prompt-Vorlagen und Prompt-Bausteine fürs Kontextmenü |
 
 Regeln:
 - Modell-IDs werden **nicht hart kodiert**, sondern im Admin gepflegt. Zusätzlich `make sync-models`, das die Modellliste beim Anbieter abfragt, soweit dessen API das anbietet.
 - Jeder Nutzer sieht nur seine eigenen Chats. Jede View filtert nach `request.user`.
+- Ein Chat gehört höchstens einem Projekt, immer einem des Chat-Besitzers. System-Prompt in dieser Reihenfolge: Grundregeln, fester Prompt der Rolle, Hinweise von MultiGPT, Anweisungen des Projekts (als Nutzerinhalt gekennzeichnet), System-Prompt des Chats.
 - Angezeigt, exportiert und an das Modell geschickt wird immer nur der Pfad von der ersten Nachricht bis `current_leaf`. Umschalten der Version setzt `current_leaf` auf das neueste Blatt des gewählten Zweigs.
 - Private Inhalte (Chats, Nachrichten, Dokumente, Anhänge) zeigt auch der Django-Admin nur als Metadaten an, ohne Inhalt. Sie lassen sich dort weder ändern noch löschen.
 - Ein Konto ohne ausdrücklich gewählte Rolle bekommt `guest`, ein Superuser `admin`. So führt eine vergessene Auswahl zu zu wenig Rechten, nie zu zu vielen.
@@ -123,7 +137,7 @@ Umsetzung mit `httpx` direkt gegen die HTTP-APIs (wenige Abhängigkeiten, einhei
 ## 8. Funktionen v1
 
 1. Login/Logout, Passwort ändern.
-2. Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche im Titel.
+2. Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche im Titel. Chats lassen sich zu Projekten gruppieren (Anweisungen, Standardmodell und Sammlungen je Projekt, wie in ChatGPT bzw. Claude).
 3. Chatansicht: Modellauswahl pro Nachricht, gestreamte Antwort, Abbrechen-Knopf, Antwort neu erzeugen, eigene Nachricht bearbeiten (wie in ChatGPT). Bearbeiten und Neu erzeugen erzeugen Versionen; an jeder Nachricht mit mehreren Versionen schaltet „‹ 1/2 ›“ den Zweig um. Kopierknopf an Nachrichten.
 4. Markdown-Darstellung mit Code-Hervorhebung und Kopierknopf (Bibliotheken lokal eingebunden, Ausgabe bereinigt).
 5. System-Prompt pro Chat.
@@ -147,6 +161,7 @@ Umsetzung mit `httpx` direkt gegen die HTTP-APIs (wenige Abhängigkeiten, einhei
     - **Stufe 1:** Eingebaute Werkzeuge `search_chats` / `read_chat`, Volltextsuche nur über eigene und geteilte Chats.
     - **Stufe 2:** Suche nach Bedeutung über pgvector. Offen ist, ob die Embeddings über OpenAI oder lokal über LM Studio entstehen.
     - **Stufe 3:** „Erinnerungen“, die das Modell vorschlägt. Gespeichert wird erst nach Bestätigung, je Mitglied einsehbar und löschbar, für Rollen schaltbar.
+20. **Scratchpad** (M13, geplant am 2026-10-10): Material aus allen Quellen sammeln und daraus ein belegtes Gesamtdokument erzeugen, dazu ein Kontextmenü im Chat und Prompt-Vorlagen (Abschnitt 8h).
 
 Später (v2): Bilder als Eingabe an Modelle, Presets.
 
@@ -217,7 +232,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 
 - **Durchsetzung:** Rechte werden serverseitig in jeder View und vor jedem Anbieteraufruf geprüft, zentral über eine Funktion `can(user, action, obj=None)`. Ausblenden in der Oberfläche reicht nicht.
 - **Fester System-Prompt:** Hat eine Rolle einen, wird er jedem Chat vorangestellt und ist für das Mitglied weder sichtbar änderbar noch abschaltbar.
-- **Budgets:** Monatsbudget je Rolle, je Mitglied überschreibbar. Bei 80 % ein Hinweis, bei 100 % sind kostenpflichtige Modelle bis zum Monatswechsel gesperrt. Lokale Modelle aus LM Studio bleiben nutzbar.
+- **Budgets:** Kontenrahmen (M6-06 bis M6-10): Jeder Anbieter gehört zu einem Abrechnungskonto (monetär in EUR/USD, nur Tokens wie LM Studio, Pauschale). Budgets je Konto und Rolle bzw. Mitglied: monetär in EUR, Token-Konten als Token-Kontingent, Pauschalkonten ohne Budget. Dazu ein Gesamtbudget (EUR) je Rolle, je Mitglied überschreibbar. Bei 80 % ein Hinweis, bei 100 % sind die Modelle des betroffenen Kontos (beim Gesamtbudget alle kostenpflichtigen) bis zum Monatswechsel gesperrt.
 - **Gruppen:** Sammlungen (RAG) und einzelne Chats lassen sich mit Gruppen teilen, lesend oder mit Schreibrecht. Standardgruppe "Familie" enthält alle Mitglieder.
 - **Privatsphäre:** Chats sind privat. Auch Verwalter sehen fremde Chats nicht in der Oberfläche, nur Verbrauchszahlen. Eine Einsicht in Chats von Jugendlichen-Konten ist als Option je Konto vorgesehen, standardmäßig aus, und wird dem betroffenen Mitglied in der Oberfläche angezeigt.
 - **Verwaltung:** Eigene Seite "Familie" für Verwalter: Konten anlegen und sperren, Rolle zuweisen, Passwort zurücksetzen, Gruppen pflegen, Verbrauch je Mitglied.
@@ -237,6 +252,35 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 - **Rechte:** `Role.allowed_mcp_servers` legt fest, wer welche Server nutzen darf. Prüfung über `can()` vor jedem Aufruf.
 - **Rückfrage:** Werkzeuge, die etwas verändern oder nach außen senden, stehen in `tools_requiring_confirmation` und werden erst nach Bestätigung des Nutzers im Chat ausgeführt. Neue, unbekannte Werkzeuge eines Servers gelten bis zur Einstufung durch den Verwalter als rückfragepflichtig.
 - **Dateizugriff:** Mitgelieferte Server arbeiten nur in einem Arbeitsordner je Nutzer unter `MEDIA_ROOT`.
+
+## 8h. Scratchpad und Gesamtdokument
+
+Im Scratchpad sammelt der Nutzer Material aus Chats, eigenen Dokumenten, dem Web, Werkzeugen, Bildern, Uploads und eigenen Notizen. Daraus erzeugt er ein belegtes Gesamtdokument. Arbeitspakete: Implementierung M13.
+
+- **Kontextmenü im Chat** (vorab lieferbar): auf markiertem Text in Antworten, Nutzernachrichten, Quellen, Dokumentabschnitten und Vergleichsspalten. Öffnen per Rechtsklick, über eine schwebende Leiste bei Auswahl (Handy) oder die Kontextmenü-Taste bzw. Umschalt+F10. Umschalt+Rechtsklick öffnet das Browsermenü. Einträge:
+  - „Ins Scratchpad“ (als Zitat, als Notiz, in Abschnitt …)
+  - „Im Eingabefeld zitieren“, „Nachfragen …“
+  - Schnellaktionen (Erklären, Vereinfachen, Übersetzen, Belege suchen, Gegenargumente)
+  - eigene Prompt-Vorlagen mit `{auswahl}`
+  - Kopieren mit Quellenangabe, Suchen im Web bzw. in Dokumenten
+- **Eintrag:** Text oder Bild mit Herkunft (Antwort, Dokument, Web, Notiz, Bild, Werkzeug, Upload, Zwischenablage), Textart (wörtliches Zitat, Paraphrase, eigene Formulierung, KI-Formulierung), Quelle mit Fundstelle, Tags, Reihenfolge und Gliederungsabschnitt. Herkunft, Fundstelle und Snapshot des Originals setzt der Server, nicht der Browser.
+- **Zitieren für alle Quellenarten:** `citations.Reference` ist die gemeinsame, CSL-ähnliche Darstellung, im eigenen Code.
+  - Neue Arten: KI-Antwort (nach den aktuellen Empfehlungen von APA und MLA, Chicago nur im Text), persönliche Mitteilung, Werkzeug- bzw. Datenergebnis.
+  - Gleiche Quellen erscheinen im Literaturverzeichnis einmal, über einen Fingerprint und einen stabilen Schlüssel.
+  - „ebd.“ setzt nur DIN.
+  - Paraphrasen tragen ihre Fundstelle, bei DIN und Harvard mit „vgl.“.
+  - Export auch als BibTeX bzw. CSL-JSON.
+- **Gesamtdokument:**
+  1. Gliederung festlegen oder vorschlagen lassen.
+  2. Einträge zuordnen (Vorschlag lokal über Embeddings).
+  3. Je Abschnitt schreibt ein Modell **nur aus den zugeordneten Einträgen**, mit Belegen [n] auf Einträge und ohne Werkzeuge.
+  4. Der Server setzt Kurzbelege und das Literaturverzeichnis im Stil von Scratchpad, Projekt oder Konto.
+  5. Er prüft wörtliche Zitate gegen den Quelltext und markiert Fehlbelege, unbelegte Aussagen und Lücken.
+  
+  Jeder Abschnitt lässt sich überarbeiten, jede Fassung bleibt als Version erhalten.
+- **Export:** Markdown (auch Pandoc-kompatibel mit `.bib`), DOCX über python-docx und PDF über WeasyPrint aus HTML, ohne Netzabrufe.
+- **Projekte:** Je Projekt gibt es ein Scratchpad, das die Projektfreigabe (RWUD) erbt. Dazu hat jedes Konto ein persönliches Scratchpad.
+- **Datenschutz:** Die Inhalte gehören dem Nutzer, Verwalter sehen nur Metadaten. Quellmaterial gilt als nicht vertrauenswürdig: Es wird markiert und gelangt nie in den System-Prompt. Bilder werden ohne Metadaten gespeichert.
 
 ## 9. Sicherheit
 
@@ -289,6 +333,7 @@ Im Betrieb ersetzt das Paket die früheren Ziele `service-install` und `update`:
 10. **Sprache:** Aufnahme → Text, Antwort → Vorlesen. *Abnahme: funktioniert über HTTPS im Browser an PC und Handy.*
 11. **Musik** (neu eingeplant am 2026-10-09, Umfang wird noch geklärt, siehe offene Frage 6).
 12. **Betrieb:** Worker-Unit, nginx mit TLS, Backup, README mit Installationsanleitung, Upgrade und Purge des Pakets geprüft.
+13. **Scratchpad** (neu eingeplant am 2026-10-10, Abschnitt 8h, offene Frage 7): Kontextmenü im Chat und Prompt-Vorlagen (vorab lieferbar), Zitieren für alle Quellenarten, Sammeln mit Herkunft, Gliederung, belegtes Gesamtdokument mit Versionen und Prüfung, Export als Markdown, DOCX und PDF, Andocken an Projekte. *Abnahme: Aus einer Antwort, einem PDF-Abschnitt, einer Webquelle, einer Notiz und einem Bild entsteht ein Dokument mit geprüften Zitaten, Kurzbelegen im Stil des Kontos und einem Literaturverzeichnis ohne doppelte Quellen; eine unbelegte Aussage ist markiert; DOCX und PDF lassen sich öffnen.*
 
 Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 eingerichtet, TLS spätestens vor Meilenstein 10.
 
@@ -322,4 +367,19 @@ Hinweis zur Reihenfolge: PostgreSQL mit pgvector wird schon in Meilenstein 1 ein
 5. ~~Wer gehört zur Familie?~~ **Geklärt (2026-10-09):** Zwei Erwachsene und Jugendliche. Die vier Startrollen (Verwalter, Erwachsener, Jugendlicher, Gast) passen.
 5a. ~~Einsicht in Jugendlichen-Chats?~~ **Geklärt (2026-10-09):** Nur als Option je Konto, standardmäßig aus, für das Mitglied sichtbar angezeigt (Feld `allow_supervision` an `accounts.User`).
 6. **Musik (M11):** Was genau soll der Meilenstein leisten? Zum Beispiel Musik mit KI-Modellen erzeugen (welcher Anbieter?), eine Musiksammlung auf dem NAS durchsuchen und abspielen, Songtexte und Akkorde, Musik erkennen?
+7. **Scratchpad (M13)**, jeweils mit Empfehlung:
+   - 7a: ein Scratchpad je Projekt plus ein persönliches je Konto? Empfehlung: ja.
+   - 7b: mehrere Gesamtdokumente je Scratchpad? Empfehlung: ja.
+   - 7c: „Ins Scratchpad“ aus einem nur lesend geteilten Chat? Empfehlung: ja, mit Rücklink nur bei Leserecht.
+   - 7d: KI-Antworten im Literaturverzeichnis? Empfehlung: je Stil, dazu „Verwendete KI-Werkzeuge“.
+   - 7e: „ebd.“? Empfehlung: nur DIN, abschaltbar.
+   - 7f: PDF über WeasyPrint statt Pandoc + LaTeX? Empfehlung: ja.
+   - 7g: Fußnoten-Stile? Empfehlung: später.
+   - 7h: Einsicht in Jugendlichen-Konten auch für Scratchpads? Empfehlung: nein.
+   - 7i: KI-Belegprüfung standardmäßig? Empfehlung: aus, per Knopf.
+   - 7j: eigenes Kontextmenü standardmäßig an? Empfehlung: ja, abschaltbar.
+   - 7k: Prompt-Vorlagen je Projekt teilen? Empfehlung: ja.
+   - 7l: Crossref für manuelle Quellen? Empfehlung: ja, am vorhandenen Schalter.
+   
+   Details: Implementierung Abschnitt 6.
 5b. ~~Eine Familie oder mehrere Haushalte?~~ **Geklärt (2026-10-09):** Eine Familie pro Installation, keine Mandantentrennung (siehe Nicht-Ziele).

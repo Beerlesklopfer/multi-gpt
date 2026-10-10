@@ -268,6 +268,8 @@
               setNote(col, data.text, data.level === "warning" ? "warning" : null);
             }
           } else if (event === "sources") {
+            // Quellenliste mit Zitieren wie im Einzelchat (citations.js).
+            window.MultiGPT.sources?.render(col.article, data.sources);
             const count = Array.isArray(data.sources) ? data.sources.length : 0;
             if (count && col.note.hidden) {
               setNote(col, count === 1 ? "1 Quelle" : `${count} Quellen`, null);
@@ -348,6 +350,7 @@
       textarea.value = "";
       view.autosize();
       userEl = view.appendMessage("user", "Du", text);
+      window.MultiGPT.attachments?.commit(userEl); // Anhänge gelten für alle Spalten
       resetPanel();
       columns = models.map(createColumn);
       columnsEl.append(...columns.map((c) => c.article));
@@ -424,6 +427,7 @@
         userEl.remove();
         userEl = null;
         resetPanel();
+        window.MultiGPT.attachments?.restore();
         if (!textarea.value) {
           textarea.value = text;
           view.autosize();

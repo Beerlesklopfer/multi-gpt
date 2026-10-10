@@ -1,6 +1,7 @@
 """Formular der RAG-Einstellungen mit Auswahl aus den gemeldeten Modellen (M7-09).
 
-Die Auswahl „Embedding-Modell“ und „OCR-Modell“ zeigt je aktivem Anbieter die
+Die Auswahl „Embedding-Modell“, „OCR-Modell“ und „Modell für Abbildungen“ zeigt je
+aktivem Anbieter die
 vorhandenen ``AIModel``-Einträge und zusätzlich die vom Anbieter bei der
 letzten Prüfung **gemeldeten** Modelle (``Provider.reported_models``), die noch
 nicht angelegt sind („(neu)“). Wird ein neues gewählt, legt ``materialize``
@@ -25,12 +26,14 @@ from multigpt.chat.rag.embeddings import suggested_prefixes
 
 EMBEDDING = "embedding"
 OCR = "ocr"
+FIGURE = "figure"
 MODEL_ID_MAX_LENGTH = AIModel._meta.get_field("model_id").max_length
 NOT_FOR_OCR = {
     AIModel.Capability.EMBEDDING,
     AIModel.Capability.TTS,
     AIModel.Capability.STT,
     AIModel.Capability.IMAGE,
+    AIModel.Capability.MUSIC,
 }
 MSG_INVALID = "Dieses Modell steht nicht (mehr) zur Auswahl. Bitte die Seite neu laden."
 
@@ -50,6 +53,23 @@ def _fits(purpose: str, capability: str) -> bool:
     return capability not in NOT_FOR_OCR
 
 
+def _figure_candidate(provider: Provider, model: AIModel | None, model_id: str) -> bool:
+    """Abbildungen: nur OpenAI-kompatible Anbieter (``describe_image``); bei
+    Cloud-Anbietern nur Modelle mit Bild-Eingabe bzw. Vision-Muster in der ID."""
+    if provider.kind != Provider.Kind.OPENAI_COMPAT:
+        return False
+    if provider.is_local:
+        return True
+    return bool((model is not None and model.supports_vision) or VISION_PATTERN.search(model_id))
+
+
+def is_figure_recommended(model: AIModel | None, model_id: str) -> bool:
+    """Allgemeines Vision-Modell (nicht olmOCR, das nur Text liest)."""
+    if is_olmocr(model_id):
+        return False
+    return bool((model is not None and model.supports_vision) or VISION_PATTERN.search(model_id))
+
+
 def is_olmocr(model_id: str) -> bool:
     return bool(OLMOCR_PATTERN.search(model_id or ""))
 
@@ -60,6 +80,8 @@ def _offer_new(purpose: str, provider: Provider, model_id: str) -> bool:
         return False
     if purpose == OCR and not provider.is_local:
         return bool(VISION_PATTERN.search(model_id))
+    if purpose == FIGURE:
+        return _figure_candidate(provider, None, model_id)
     return True
 
 
@@ -75,14 +97,16 @@ def _label(provider: Provider, model: AIModel | None, model_id: str) -> str:
 
 
 def model_choices(purpose: str, current: AIModel | None = None) -> list:
-    """Gruppierte Auswahl für ``embedding`` oder ``ocr``.
+    """Gruppierte Auswahl für ``embedding``, ``ocr`` oder ``figure``.
 
     Reihenfolge: bei OCR zuerst die Gruppe „Empfohlen“ mit allen olmOCR-Modellen
     (vorhanden und gemeldet, über alle Anbieter), dann je Anbieter – lokale
     (LM Studio) vor Cloud-Anbietern. Neue OCR-Kandidaten von Cloud-Anbietern
     nur mit Vision-/OCR-Muster in der ID; angelegte Modelle bleiben wählbar.
     Das aktuell gesetzte Modell steht immer in der Liste, auch wenn sein
-    Anbieter deaktiviert ist.
+    Anbieter deaktiviert ist. Bei Abbildungen stehen allgemeine Vision-Modelle
+    unter „Empfohlen“; angeboten werden nur OpenAI-kompatible Anbieter, bei
+    Cloud-Anbietern nur Modelle mit Bild-Eingabe bzw. Vision-Muster in der ID.
     """
     provider_ids = set(Provider.objects.filter(active=True).values_list("pk", flat=True))
     if current is not None:
@@ -99,7 +123,10 @@ def model_choices(purpose: str, current: AIModel | None = None) -> list:
         options = []
         for model in existing.values():
             selected = current is not None and model.pk == current.pk
-            if selected or (provider.active and _fits(purpose, model.capability)):
+            fits = _fits(purpose, model.capability) and (
+                purpose != FIGURE or _figure_candidate(provider, model, model.model_id)
+            )
+            if selected or (provider.active and fits):
                 options.append(
                     (model.model_id, f"m{model.pk}", _label(provider, model, model.model_id))
                 )
@@ -116,6 +143,8 @@ def model_choices(purpose: str, current: AIModel | None = None) -> list:
         rest = []
         for model_id, value, label in options:
             if purpose == OCR and is_olmocr(model_id):
+                recommended.append((value, label))
+            elif purpose == FIGURE and is_figure_recommended(existing.get(model_id), model_id):
                 recommended.append((value, label))
             else:
                 rest.append((value, label))
@@ -164,13 +193,15 @@ def resolve_choice(purpose: str, value: str) -> AIModel | None:
         capability = (
             AIModel.Capability.EMBEDDING if purpose == EMBEDDING else AIModel.Capability.CHAT
         )
-        # Embedding-Modelle aktiv; OCR-Modelle nur für OCR (für den Chat inaktiv).
+        # Embedding-Modelle aktiv; OCR-Modelle und Modelle für Abbildungen nur
+        # dafür (für den Chat inaktiv).
         return AIModel(
             provider=provider,
             model_id=model_id,
             display_name=model_id,
             capability=capability,
             active=purpose == EMBEDDING,
+            supports_vision=purpose == FIGURE,
         )
     raise ValidationError(MSG_INVALID)
 
@@ -186,6 +217,7 @@ def materialize(model: AIModel | None) -> AIModel | None:
             "display_name": model.display_name,
             "capability": model.capability,
             "active": model.active,
+            "supports_vision": model.supports_vision,
         },
     )
     return saved
@@ -208,6 +240,12 @@ class RagSettingsForm(forms.ModelForm):
         required=False,
         help_text=_field("ocr_model").help_text
         + " Neu gewählte Modelle werden nur für OCR angelegt (für den Chat inaktiv).",
+    )
+    figure_model = forms.ChoiceField(
+        label="Modell für Abbildungen",
+        required=False,
+        help_text=_field("figure_model").help_text
+        + " Neu gewählte Modelle werden nur dafür angelegt (für den Chat inaktiv).",
     )
     # strip=False: Die Präfixe enden auf ein Leerzeichen („search_query: “).
     document_prefix = forms.CharField(
@@ -234,10 +272,18 @@ class RagSettingsForm(forms.ModelForm):
             "ocr_backend",
             "ocr_model",
             "ocr_fallback_tesseract",
+            "describe_figures",
+            "figure_model",
+            "figure_max_per_document",
+            "figure_max_per_page",
+            "figure_min_edge",
+            "figure_max_edge",
             "chunk_tokens",
             "overlap_tokens",
             "top_k",
             "hybrid",
+            "crossref_enabled",
+            "crossref_mailto",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -245,8 +291,11 @@ class RagSettingsForm(forms.ModelForm):
         instance = self.instance
         embedding = instance.embedding_model if instance.embedding_model_id else None
         ocr = instance.ocr_model if instance.ocr_model_id else None
+        figure = instance.figure_model if instance.figure_model_id else None
         self.fields["embedding_model"].choices = model_choices(EMBEDDING, embedding)
         self.fields["ocr_model"].choices = model_choices(OCR, ocr)
+        self.fields["figure_model"].choices = model_choices(FIGURE, figure)
+        self.initial["figure_model"] = f"m{figure.pk}" if figure else ""
         self.initial["embedding_model"] = f"m{embedding.pk}" if embedding else ""
         # Noch kein OCR-Modell gesetzt: olmOCR (falls vorhanden) vorauswählen.
         self.initial["ocr_model"] = (
@@ -258,6 +307,9 @@ class RagSettingsForm(forms.ModelForm):
 
     def clean_ocr_model(self):
         return resolve_choice(OCR, self.cleaned_data.get("ocr_model") or "")
+
+    def clean_figure_model(self):
+        return resolve_choice(FIGURE, self.cleaned_data.get("figure_model") or "")
 
     def clean(self):
         cleaned = super().clean()

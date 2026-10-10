@@ -1,0 +1,18 @@
+{# „Mit mir geteilt“ (sharing.py): Chats anderer Konten. Ohne Aktionsmenü; Kopie und Austragen im Chat. #}
+{% if shared_conversations %}
+  <nav class="chat-list shared-chat-list" id="shared-chat-list" aria-labelledby="shared-chat-list-title">
+    <h2 class="chat-list-title" id="shared-chat-list-title">Mit mir geteilt</h2>
+    <ul class="chat-list-items">
+      {% for item in shared_conversations %}
+        <li class="chat-item chat-item-shared" data-conversation-id="{{ item.pk }}" data-title="{{ item.title }}">
+          <a href="{% url 'chat:conversation' item.pk %}"
+             class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
+             {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>
+            <span class="chat-link-title">{{ item.title|default:"Neuer Chat" }}</span>
+            <span class="chat-link-owner">von {{ item.user }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </nav>
+{% endif %}

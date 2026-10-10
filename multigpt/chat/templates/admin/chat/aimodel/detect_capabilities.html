@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+{# Vorschau der Admin-Aktion „Fähigkeiten automatisch erkennen“; gespeichert wird erst mit „Übernehmen“. #}
+
+{% block bodyclass %}{{ block.super }} app-chat model-aimodel detect-capabilities{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Fähigkeiten automatisch erkennen
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>Erkannt nach Meldung von LM Studio (lokale Anbieter) bzw. nach der Modell-ID.
+     Diese Modelle weichen ab; {{ unchanged }} weitere passen bereits.
+     Übernehmen ändert nur die angezeigten Felder.</p>
+  <table>
+    <thead><tr><th scope="col">Modell</th><th scope="col">Anbieter</th><th scope="col">Quelle</th><th scope="col">Änderung</th></tr></thead>
+    <tbody>
+    {% for change in changes %}
+      <tr>
+        <td>{{ change.model.display_name }} <small>({{ change.model.model_id }})</small></td>
+        <td>{{ change.model.provider.name }}</td>
+        <td>{% if change.detected.source == "lmstudio" %}LM Studio{% else %}Modell-ID{% endif %}</td>
+        <td>{{ change.describe }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form method="post">
+    {% csrf_token %}
+    {% for pk in selected %}<input type="hidden" name="_selected_action" value="{{ pk }}">{% endfor %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="apply" value="1">
+    <div class="submit-row">
+      <input type="submit" class="default" value="Übernehmen">
+      <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

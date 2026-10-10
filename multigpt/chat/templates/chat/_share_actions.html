@@ -1,0 +1,10 @@
+{# Knopf „Teilen“ im Kopf der Chatansicht (nur Besitzer mit Recht SHARE); den Dialog baut sharing.js. #}
+{% if can_manage_shares %}
+  <button type="button" class="button button-small share-open-button" id="share-open" hidden
+          aria-haspopup="dialog"
+          data-api-shares="{% url 'chat:api_conversation_shares' active_conversation.pk %}"
+          data-api-share-template="{% url 'chat:api_conversation_share_detail' active_conversation.pk 0 %}">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>
+    <span>Teilen</span>{% if chat_is_shared %}<span class="sr-only"> (geteilt)</span>{% endif %}
+  </button>
+{% endif %}

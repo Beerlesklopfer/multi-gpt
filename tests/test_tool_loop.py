@@ -122,7 +122,11 @@ def provider():
 @pytest.fixture
 def ai_model(provider):
     return AIModel.objects.create(
-        provider=provider, model_id="claude-test", display_name="Claude", supports_tools=True
+        provider=provider,
+        model_id="claude-test",
+        display_name="Claude",
+        supports_tools=True,
+        mcp_access=AIModel.McpAccess.ALL,
     )
 
 
@@ -637,7 +641,10 @@ def test_mcp_servers_endpoint_by_role(client, server):
     McpServer.objects.create(name="Aus", transport="stdio", command="x", active=False)
     client.force_login(make_user("adult", "erwachsen"))
     data = client.get(reverse("chat:api_mcp_servers")).json()
-    assert data == [{"id": server.pk, "name": "Test", "default_enabled": True}]
+    # online/error: gespeicherter Status (chat/mcp/status.py), ungeprüft gilt als verfügbar.
+    assert data == [
+        {"id": server.pk, "name": "Test", "default_enabled": True, "online": True, "error": None}
+    ]
     client.force_login(make_user("teen", "jugend"))
     assert client.get(reverse("chat:api_mcp_servers")).json() == []
     Role.objects.get(key="teen").allowed_mcp_servers.add(server)

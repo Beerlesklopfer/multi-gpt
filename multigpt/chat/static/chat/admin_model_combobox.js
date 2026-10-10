@@ -1,7 +1,7 @@
 /* MultiGPT – Admin: Combobox für „Modell-ID“ in der Modell-Tabelle eines Anbieters.
  *
  * Die zuletzt vom Anbieter gemeldeten Modelle kommen als JSON aus dem Element
- * #reported-model-choices ([{id, capability, exists}] bzw. {by_provider: {...}}). Jedes Feld *-model_id
+ * #reported-model-choices ([{id, capability, tools, vision, exists}] bzw. {by_provider: {...}}). Jedes Feld *-model_id
  * bekommt einen Knopf ▾, der eine filterbare Liste öffnet. Die Auswahl setzt die
  * Modell-ID und schlägt die Fähigkeit vor; der Anzeigename folgt jeder Änderung
  * der Modell-ID (change).
@@ -134,6 +134,8 @@
         item.setAttribute("role", "option");
         item.dataset.value = choice.id;
         item.dataset.capability = choice.capability || "";
+        item.dataset.tools = String(choice.tools === true);
+        item.dataset.vision = String(choice.vision === true);
         item.textContent = choice.id;
         if (choice.exists) {
           var badge = document.createElement("span");
@@ -174,6 +176,11 @@
       input.value = value;
       var capability = fieldOf(input, "capability");
       if (capability && item.dataset.capability) capability.value = item.dataset.capability;
+      // Häkchen der Fähigkeiten-Matrix vorbelegen (Schätzung aus der Modell-ID).
+      var tools = fieldOf(input, "supports_tools");
+      if (tools) tools.checked = item.dataset.tools === "true";
+      var vision = fieldOf(input, "supports_vision");
+      if (vision) vision.checked = item.dataset.vision === "true";
       setExpanded(false);
       input.dispatchEvent(new Event("change", { bubbles: true }));
       input.focus();

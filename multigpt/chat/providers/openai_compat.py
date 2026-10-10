@@ -33,6 +33,20 @@ text-embedding-3 und neuer, kürzt den Vektor und behält die Normierung) und
 ``encoding_format`` ``float``. Antwort ``data[]`` mit ``embedding`` und
 ``index``, dazu ``usage.prompt_tokens``.
 
+Bilderzeugung (M9-01, gelesen 2026-10-10,
+developers.openai.com/api/docs/api-reference/images/create):
+``POST /images/generations`` mit ``model``, ``prompt``, ``n`` (1–10), ``size``
+(``1024x1024``, ``1536x1024``, ``1024x1536``, ``auto``; gpt-image-2 und
+neuer auch freie ``WxH``), ``quality`` (``low``/``medium``/``high``/``auto``),
+``background`` (``transparent`` nur mit ``output_format`` png/webp),
+``output_format`` (png/jpeg/webp), ``moderation`` (auto/low). GPT-Image-Modelle
+liefern immer ``data[].b64_json``; ``response_format`` (url/b64_json) gilt nur
+für DALL·E. Antwort zusätzlich ``usage`` mit ``input_tokens``,
+``output_tokens``, ``input_tokens_details`` (text/image). Ablehnung durch den
+Inhaltsfilter: HTTP 400 mit ``code`` ``moderation_blocked`` (Typ
+``image_generation_user_error``; DALL·E: ``content_policy_violation``) –
+eigene Meldung, nie der Text des Anbieters.
+
 Sicherheit (Plan 9): Der API-Key steht nur im Authorization-Header. Er
 erscheint weder in Logs noch in Fehlermeldungen; Fehlertexte der Anbieter
 werden nicht weitergereicht (OpenAI nennt bei 401 Teile des Keys).
@@ -49,19 +63,25 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from ..capabilities import Detected, from_lmstudio
 from .base import (
     FINISH_TOOL_CALLS,
+    MSG_IMAGE_TOO_LARGE,
     MSG_INTERRUPTED,
     MSG_INVALID_MODEL_LIST,
+    MSG_NO_IMAGE,
     MSG_STREAM_ERROR,
     MSG_TIMEOUT,
     MSG_UNEXPECTED,
     MSG_UNREACHABLE,
     ChatMessage,
+    ContentBlocked,
     Delta,
     Done,
     Error,
     Event,
+    GeneratedImage,
+    ImageResult,
     ProviderAdapter,
     ProviderError,
     ProviderHTTPError,
@@ -74,6 +94,7 @@ from .base import (
     is_unreachable,
     new_tool_call_id,
     normalize_tools,
+    orientation,
     pair_tool_messages,
     parse_tool_arguments,
     provider_error_code,
@@ -116,7 +137,16 @@ MSG_EMPTY_IMAGE = "Es wurde kein Bild übergeben."
 MSG_INVALID_VISION_ANSWER = (
     "Der Anbieter hat eine unerwartete Antwort auf die Bildanfrage geliefert."
 )
+MSG_INVALID_IMAGE_ANSWER = MSG_INVALID_VISION_ANSWER
 MSG_VISION_TRUNCATED = "Die Antwort des Modells wurde wegen der Längenbegrenzung abgeschnitten."
+
+# Bilderzeugung (M9-01): GPT Image braucht für große Bilder in hoher Qualität
+# leicht ein bis zwei Minuten. Antwort mit base64 (1536x1024 PNG ≈ 3–4 MB).
+IMAGE_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
+IMAGE_MAX_RESPONSE_BYTES = 80 * 1024 * 1024
+IMAGE_QUALITIES = ("low", "medium", "high", "auto")
+_DALLE3_SIZES = {"square": "1024x1024", "landscape": "1792x1024", "portrait": "1024x1792"}
+MSG_EMPTY_IMAGE_PROMPT = "Bitte beschreiben, welches Bild erzeugt werden soll."
 
 # Diese Felder setzt der Adapter selbst; ``params`` darf sie nicht überschreiben.
 _RESERVED_PARAMS = {"model", "messages", "stream", "stream_options", "tools", "tool_choice"}
@@ -236,6 +266,30 @@ class OpenAICompatAdapter(ProviderAdapter):
         except Exception:
             return False
         return True
+
+    def model_capabilities(self, timeout: float = 2) -> dict[str, Detected]:
+        """Fähigkeiten, die LM Studio selbst meldet; ``{}``, wenn das nicht geht.
+
+        LM Studio (ab 0.3.16) liefert neben ``/v1/models`` unter ``/api/v0/models``
+        je Modell ``type`` (llm, vlm, embeddings) und ``capabilities``
+        (z. B. ``["tool_use"]``). Die Adresse liegt an der Server-Wurzel, also
+        Basis-URL ohne ``/v1``. Andere Server (Ollama, vLLM) antworten mit 404.
+        """
+        root = self.base_url.removesuffix("/v1")
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.get(f"{root}/api/v0/models", headers=self._headers())
+            if response.status_code != 200:
+                return {}
+            data = response.json().get("data") or []
+        except Exception:
+            return {}
+        result = {}
+        for item in data if isinstance(data, list) else []:
+            detected = from_lmstudio(item)
+            if detected is not None and item.get("id"):
+                result[str(item["id"])] = detected
+        return result
 
     # --- Embeddings (M7) ------------------------------------------------------
 
@@ -369,6 +423,47 @@ class OpenAICompatAdapter(ProviderAdapter):
             raise error
         return content
 
+    # --- Bilderzeugung (M9-01) ------------------------------------------------
+
+    def generate_image(self, model_id: str, prompt: str, **params) -> ImageResult:
+        """``POST /images/generations``; Bilder als ``b64_json`` (nie eine URL
+        nachladen: kein Abruf fremder Adressen, siehe Moduldoku)."""
+        if not (prompt or "").strip():
+            raise ProviderError(MSG_EMPTY_IMAGE_PROMPT)
+        body = _image_body(model_id, prompt, params)
+        try:
+            with httpx.Client(timeout=IMAGE_TIMEOUT) as client:
+                response = client.post(
+                    f"{self.base_url}/images/generations", headers=self._headers(), json=body
+                )
+        except Exception as exc:
+            self._log("Bilderzeugung", type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            raise ProviderError(
+                error.message, retryable=error.retryable, unreachable=is_unreachable(exc)
+            ) from None
+        if response.status_code != 200:
+            detail = _error_code(response.content)
+            self._log(f"Bilderzeugung HTTP {response.status_code}", detail)
+            if response.status_code == 400 and _is_moderation(detail):
+                raise ContentBlocked()
+            message, retryable = http_error_message(response.status_code, response.content)
+            if response.status_code == 404 and detail.endswith("/model_not_found"):
+                message = _model_not_found(model_id)
+            raise ProviderHTTPError(
+                message,
+                response.status_code,
+                retryable=retryable,
+                expired=is_key_expired(response.status_code, response.content),
+            )
+        if len(response.content) > IMAGE_MAX_RESPONSE_BYTES:
+            raise ProviderError(MSG_IMAGE_TOO_LARGE)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
+        return _parse_images(payload)
+
     # --- Streaming -----------------------------------------------------------
 
     def _build_body(
@@ -459,6 +554,75 @@ class OpenAICompatAdapter(ProviderAdapter):
             yield exception_to_error(exc, started=started)
 
 
+def _is_moderation(detail: str) -> bool:
+    """Inhaltsfilter: ``moderation_blocked`` (GPT Image) bzw.
+    ``content_policy_violation`` (DALL·E) in ``type/code``."""
+    return any(code in detail for code in ("moderation_blocked", "content_policy_violation"))
+
+
+def _image_body(model_id: str, prompt: str, params: dict) -> dict:
+    """Anfrage je Modellfamilie: GPT Image kennt ``quality`` low/medium/high/auto,
+    ``background`` und ``output_format``, liefert immer base64; DALL·E braucht
+    ``response_format=b64_json`` und hat eigene Größen und Qualitätsstufen."""
+    size = str(params.get("size") or "1024x1024")
+    quality = str(params.get("quality") or "auto")
+    body = {"model": model_id, "prompt": prompt, "n": int(params.get("n") or 1)}
+    lowered = model_id.lower()
+    if lowered.startswith("dall-e"):
+        body["response_format"] = "b64_json"
+        if lowered.startswith("dall-e-3"):
+            body["size"] = _DALLE3_SIZES[orientation(size)]
+            body["quality"] = "hd" if quality == "high" else "standard"
+            body["n"] = 1  # DALL·E 3 erzeugt nur ein Bild je Anfrage
+        else:
+            body["size"] = "1024x1024"
+        return body
+    body["size"] = size
+    if quality in IMAGE_QUALITIES:
+        body["quality"] = quality
+    background = params.get("background")
+    if background in ("transparent", "opaque"):
+        body["background"] = background
+    # PNG: verlustfrei, mit Transparenz; MultiGPT kodiert ohnehin neu.
+    body["output_format"] = "png"
+    return body
+
+
+def _parse_images(payload) -> ImageResult:
+    """``data[].b64_json`` (+ ``revised_prompt``), ``usage.input_tokens``/``output_tokens``."""
+    try:
+        items = payload.get("data")
+    except AttributeError as exc:
+        raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
+    if not isinstance(items, list):
+        raise ProviderError(MSG_INVALID_IMAGE_ANSWER)
+    fmt = str(payload.get("output_format") or "png").lower()
+    mime_type = {"jpeg": "image/jpeg", "jpg": "image/jpeg", "webp": "image/webp"}.get(
+        fmt, "image/png"
+    )
+    images = []
+    for item in items:
+        data = item.get("b64_json") if isinstance(item, dict) else None
+        if not isinstance(data, str) or not data:
+            continue  # nur URL: wird bewusst nicht nachgeladen
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (ValueError, TypeError) as exc:
+            raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
+        revised = item.get("revised_prompt")
+        images.append(GeneratedImage(raw, mime_type, revised if isinstance(revised, str) else ""))
+    if not images:
+        raise ProviderError(MSG_NO_IMAGE)
+    usage = None
+    raw_usage = payload.get("usage")
+    if isinstance(raw_usage, dict):
+        usage = Usage(
+            tokens_in=_count(raw_usage, "input_tokens"),
+            tokens_out=_count(raw_usage, "output_tokens"),
+        )
+    return ImageResult(images, usage)
+
+
 def _embed_batches(texts: list[str]) -> Iterator[list[str]]:
     batch: list[str] = []
     size = 0
@@ -518,6 +682,15 @@ def _message_payload(message: ChatMessage) -> dict:
         if message.is_error:
             content = f"Fehler: {content}"
         return {"role": "tool", "tool_call_id": message.tool_call_id or "", "content": content}
+    if message.role == "user" and message.images:
+        # Inhaltsteile: Bilder (data-URI, detail Standard „auto“), danach der Text.
+        parts: list[dict] = [
+            {"type": "image_url", "image_url": {"url": image.data_uri()}}
+            for image in message.images
+        ]
+        if (message.content or "").strip():
+            parts.append({"type": "text", "text": message.content})
+        return {"role": "user", "content": parts}
     return {"role": message.role, "content": message.content}
 
 
@@ -528,6 +701,37 @@ def _tool_choice(choice) -> str | dict | None:
     if choice in ("auto", "none", "required"):
         return choice
     return {"type": "function", "function": {"name": choice}}
+
+
+def _count(data, key: str) -> int:
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def usage_from(usage: dict) -> Usage:
+    """``usage`` der Chat Completions -> ``Usage``.
+
+    ``prompt_tokens`` enthält die gecachten Tokens
+    (``prompt_tokens_details.cached_tokens``), ``completion_tokens`` die
+    Reasoning-Tokens (``completion_tokens_details.reasoning_tokens``). Neuere
+    Modelle (ab GPT-5.6) melden zusätzlich Cache-Schreiben
+    (``prompt_tokens_details.cache_write_tokens``, Preis 1,25 × Eingabe). LM
+    Studio und andere kompatible Server melden oft nur die beiden Summen; dann
+    bleiben die Teilmengen 0.
+    """
+    tokens_in = _count(usage, "prompt_tokens")
+    tokens_out = _count(usage, "completion_tokens")
+    details = usage.get("prompt_tokens_details")
+    cached = min(_count(details, "cached_tokens"), tokens_in)
+    return Usage(
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cached_read=cached,
+        cache_write=min(_count(details, "cache_write_tokens"), tokens_in - cached),
+        reasoning=min(
+            _count(usage.get("completion_tokens_details"), "reasoning_tokens"), tokens_out
+        ),
+    )
 
 
 class _ChunkParser:
@@ -570,10 +774,7 @@ class _ChunkParser:
             return
         usage = chunk.get("usage")
         if isinstance(usage, dict):
-            self.usage = Usage(
-                tokens_in=int(usage.get("prompt_tokens") or 0),
-                tokens_out=int(usage.get("completion_tokens") or 0),
-            )
+            self.usage = usage_from(usage)
         for choice in chunk.get("choices") or []:
             if not isinstance(choice, dict) or choice.get("index", 0) != 0:
                 continue

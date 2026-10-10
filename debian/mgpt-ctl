@@ -4,6 +4,9 @@
 #   mgpt-ctl migrate
 #   mgpt-ctl createsuperuser
 #   mgpt-ctl check --deploy
+#   mgpt-ctl guess_capabilities [--apply]   (nach dem Update auf 0.3 einmalig)
+#
+# Alle Befehle: https://github.com/Beerlesklopfer/multi-gpt/wiki/mgpt-ctl
 #
 # Läuft immer als Systemnutzer multi-gpt: als root wird per runuser
 # gewechselt, andere Nutzer werden abgewiesen. Liest /etc/multi-gpt/.env

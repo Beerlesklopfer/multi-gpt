@@ -15,7 +15,7 @@ from django.http import JsonResponse
 
 from multigpt.accounts.permissions import Action, can
 
-from ..models import Collection, Document
+from ..models import Collection, Document, IndexRun
 from . import extract, jobs
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,10 @@ def upload_document(request, collection: Collection) -> tuple[Document | None, J
             # Der Speichername ist zufällig (document_upload_to), nur die Endung bleibt.
             document.file.save(upload.name, upload, save=False)
             document.save()
-            jobs.enqueue_index(document)
+            run = IndexRun.objects.create(
+                kind=IndexRun.Kind.UPLOAD, collection=collection, started_by=request.user
+            )
+            jobs.enqueue_index(document, run)
     except Exception:
         if document.file.name:
             document.file.delete(save=False)

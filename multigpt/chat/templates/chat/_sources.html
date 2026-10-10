@@ -1,14 +1,17 @@
 {% load source_tags %}
-{% comment %}Quellen einer Antwort (M8, Websuche). Titel und URLs sind nicht vertrauenswürdig: nur
-Auto-Escaping, verlinkt werden nur http(s)-URLs. Aufbau wie in chat.js (renderSources).{% endcomment %}
+{% comment %}Quellen einer Antwort (M8 Web, M7 Dokumente). Titel und URLs sind nicht vertrauenswürdig: nur
+Auto-Escaping, verlinkt werden nur http(s)-URLs. Dokumentquellen erscheinen im Zitierstil des
+Betrachters mit Fundstelle; data-citations (JSON, escaped) nutzt citations.js für „Zitat kopieren“,
+„Literaturverzeichnis kopieren“ und den Kurzbeleg im Text. Aufbau wie in citations.js (render).{% endcomment %}
 {% with sources=msg.sources.all %}
   {% if sources %}
-    <section class="message-sources" aria-labelledby="message-sources-{{ msg.pk }}">
+    {% source_items sources user as items %}
+    <section class="message-sources" aria-labelledby="message-sources-{{ msg.pk }}" data-citations="{{ items|citations_json }}">
       <h3 class="message-sources-title" id="message-sources-{{ msg.pk }}">Quellen</h3>
       <ol class="message-sources-list">
-        {% for src in sources|sources_head %}{% include "chat/_source.html" %}{% endfor %}
+        {% for src in items|sources_head %}{% include "chat/_source.html" %}{% endfor %}
       </ol>
-      {% with rest=sources|sources_tail %}
+      {% with rest=items|sources_tail %}
         {% if rest %}
           <details class="message-sources-more">
             <summary>Weitere Quellen ({{ rest|length }})</summary>

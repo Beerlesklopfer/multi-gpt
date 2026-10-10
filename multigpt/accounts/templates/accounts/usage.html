@@ -7,7 +7,8 @@
     <h1 id="usage-title">Mein Verbrauch</h1>
     <p class="page-intro">
       Kosten sind Schätzungen nach den hinterlegten Preisen zum Zeitpunkt der Antwort.
-      Alle Versionen einer Antwort zählen mit. Lokale Modelle kosten nichts.
+      Alle Versionen einer Antwort zählen mit. Lokale Modelle kosten nichts; bei ihnen
+      zählen nur die Tokens.
     </p>
 
     <h2 class="section-title" id="usage-month-title">Aktueller Monat: {{ month_label }}</h2>
@@ -15,8 +16,69 @@
     {% if warning_text %}
       <p class="budget-notice budget-notice-{{ state.level }}" role="status">{{ warning_text }}</p>
     {% endif %}
+    {% for a in account_states %}
+      <h3 class="usage-account-budget">Budget {{ a.name }}</h3>
+      {% account_meter a %}
+      {% if a.warning_text %}<p class="budget-notice budget-notice-{{ a.level }}" role="status">{{ a.warning_text }}</p>{% endif %}
+    {% endfor %}
 
-    <h2 class="section-title" id="usage-models-title">Je Modell im {{ month_label }}</h2>
+    <form method="get" class="inline-form usage-month-form">
+      <label for="usage-month">Monat für die Tabellen</label>
+      <div class="inline-form-row">
+        <select id="usage-month" name="monat">
+          {% for value, label in month_options %}
+            <option value="{{ value }}"{% if value == selected %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="button">Anzeigen</button>
+      </div>
+    </form>
+
+    <h2 class="section-title" id="usage-accounts-title">Je Abrechnungskonto im {{ selected_label }}</h2>
+    {% if account_rows %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="usage-accounts-title">
+          <thead>
+            <tr>
+              <th scope="col">Konto</th>
+              <th scope="col" class="num">Antworten</th>
+              <th scope="col" class="num">Eingabe</th>
+              <th scope="col" class="num">Ausgabe</th>
+              <th scope="col" class="num">Cache gelesen / geschrieben</th>
+              <th scope="col" class="num">davon Reasoning</th>
+              <th scope="col" class="num">Betrag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in account_rows %}
+              <tr>
+                <th scope="row">
+                  {{ row.account }}
+                  <span class="usage-provider">{% if row.kind == "tokens" %}nur Tokens{% elif row.kind == "flat" %}Pauschale{% else %}{{ row.currency }}{% endif %}</span>
+                </th>
+                <td class="num">{{ row.answers|tokens }}{% if row.files %} <span class="usage-provider">+ {{ row.files|tokens }} Datei{{ row.files|pluralize:"en" }}</span>{% endif %}</td>
+                <td class="num">{{ row.tokens_in|tokens }}</td>
+                <td class="num">{{ row.tokens_out|tokens }}</td>
+                <td class="num">{{ row.cached_read|tokens }} / {{ row.cache_write|tokens }}</td>
+                <td class="num">{{ row.reasoning|tokens }}</td>
+                <td class="num">
+                  {% if row.kind == "monetary" %}
+                    {{ row.amount|amount:row.currency }}{% if row.currency != "EUR" %} <span class="usage-provider">= {{ row.eur|eur }}{% if row.eur_missing %}, {{ row.eur_missing }}× Kurs fehlt{% endif %}</span>{% endif %}
+                    {% if row.unpriced %}<span class="usage-provider">{{ row.unpriced }}× ohne Preis</span>{% endif %}
+                  {% elif row.kind == "flat" %}
+                    <span class="usage-provider">{{ row.requests|tokens }} Anfragen</span>
+                  {% else %}–{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="hint">In diesem Monat gibt es keine Buchungen.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="usage-models-title">Je Modell im {{ selected_label }}</h2>
     {% if model_rows %}
       <div class="table-scroll">
         <table class="usage-table" aria-labelledby="usage-models-title">
@@ -49,7 +111,7 @@
               <td></td>
               <td class="num">{{ total_tokens_in|tokens }}</td>
               <td class="num">{{ total_tokens_out|tokens }}</td>
-              <td class="num">{{ state.spent|eur }}</td>
+              <td class="num">{{ total_cost|eur }}</td>
             </tr>
           </tfoot>
         </table>

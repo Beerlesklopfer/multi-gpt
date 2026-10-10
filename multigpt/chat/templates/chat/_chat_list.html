@@ -5,7 +5,7 @@
         data-archived="{{ item.archived|yesno:'true,false' }}">
       <a href="{% url 'chat:conversation' item.pk %}"
          class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
-         {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}</a>
+         {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}{% if item.is_shared %}{% include "chat/_shared_icon.html" %}{% endif %}</a>
       <button type="button" class="chat-item-menu-button" hidden
               aria-haspopup="menu" aria-expanded="false"
               aria-label="Aktionen für „{{ item.title|default:'Neuer Chat' }}“">&#8943;</button>

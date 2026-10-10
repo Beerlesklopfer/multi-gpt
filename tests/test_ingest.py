@@ -106,7 +106,8 @@ def test_detect_kind_uppercase_extension():
         ((DATA / "sample.docx").read_bytes(), "x.pdf", "passt nicht zur Dateiendung"),
         (b"MZ\x90\x00\x03\x00\x00\x00", "programm.exe", "nicht unterstützt"),
         (b"\x7fELF\x02\x01\x01\x00\x00\x00", "text.txt", "nicht unterstützt"),
-        (b"\x89PNG\r\n\x1a\n\x00\x00", "bild.md", "nicht unterstützt"),
+        (b"\x89PNG\r\n\x1a\n\x00\x00", "bild.md", "passt nicht zur Dateiendung"),
+        (b"GIF89a\x01\x00\x01\x00", "bild.gif", "nicht unterstützt"),
         (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "alt.docx", ".doc"),
         (b"ohne Endung", "README", "nicht unterstützt"),
     ],
@@ -408,9 +409,9 @@ def test_upload_wrong_type_despite_pdf_extension(client, owner, collection, medi
 @pytest.mark.django_db
 def test_upload_unsupported_extension(client, owner, collection, media):
     client.force_login(owner)
-    response = _post(client, collection, "bild.png", data=b"\x89PNG\r\n\x1a\n")
+    response = _post(client, collection, "bild.gif", data=b"GIF89a\x01\x00\x01\x00")
     assert response.status_code == 415
-    assert "Erlaubt sind: PDF, DOCX, TXT, MD" in response.json()["error"]
+    assert "Erlaubt sind: PDF, DOCX, TXT, MD, JPG, PNG, TIFF, WEBP" in response.json()["error"]
 
 
 @pytest.mark.django_db

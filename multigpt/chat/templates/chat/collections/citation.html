@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{# Literaturangaben eines Dokuments (Zitieren). Nur mit Schreibrecht; Werte nur über Auto-Escaping, ohne JavaScript. #}
+{% block title %}Literaturangaben: {{ document.title }} – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page page-wide citation-page" aria-labelledby="citation-title">
+    <p class="breadcrumb">
+      <a href="{% url 'chat:collection_list' %}">Sammlungen</a> ›
+      <a href="{% url 'chat:collection_detail' collection.pk %}">{{ collection.name }}</a>
+    </p>
+    <h1 id="citation-title">Literaturangaben: {{ document.title }}</h1>
+    <p class="page-intro">
+      Diese Angaben erscheinen in den Quellen unter Antworten, im gewählten Zitierstil. Beim
+      Indexieren werden leere Felder aus der Datei vorbelegt (Titel, Autor, Jahr, DOI, Normnummer);
+      nach dem Speichern hier ändert die Indexierung nichts mehr. Nicht jede Art braucht jedes Feld:
+      Sammelwerk und Herausgeber gehören zu Kapiteln und Tagungsbeiträgen, Zeitschrift, Band und Heft zu
+      Artikeln, Normnummer und herausgebende Stelle zu Normen (Ausgabedatum unter „Jahr bzw. Datum“,
+      z. B. 2015-11).
+    </p>
+    <form method="post" action="{% url 'chat:document_citation' document.pk %}" class="form citation-form">
+      {% csrf_token %}
+      {{ form.as_div }}
+      <button type="submit" class="button button-primary">Speichern</button>
+      <a href="{% url 'chat:collection_detail' collection.pk %}" class="button">Zurück zur Sammlung</a>
+    </form>
+
+    <h2 class="section-title" id="citation-preview-title">Vorschau (gespeicherte Angaben)</h2>
+    <div class="table-scroll">
+      <table class="usage-table" aria-labelledby="citation-preview-title">
+        <thead>
+          <tr><th scope="col">Stil</th><th scope="col">Literaturverzeichnis</th><th scope="col">Kurzbeleg</th></tr>
+        </thead>
+        <tbody>
+          {% for row in preview %}
+            <tr><th scope="row">{{ row.label }}</th><td>{{ row.entry }}</td><td>{{ row.short }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <h3 class="section-title">BibTeX</h3>
+    <pre class="citation-bibtex">{{ bibtex }}</pre>
+    <p class="page-intro">
+      Hinweis: Normen (DIN, ISO …) und Verlagstexte sind urheberrechtlich geschützt. Ihre Lizenz
+      erlaubt die gemeinsame Nutzung in der Familie unter Umständen nicht.
+    </p>
+  </section>
+{% endblock %}

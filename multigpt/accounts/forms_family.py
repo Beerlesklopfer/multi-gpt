@@ -51,7 +51,7 @@ class RoleForm(forms.Form):
 
 class BudgetForm(forms.Form):
     monthly_budget_override = forms.DecimalField(
-        label="Eigenes Monatsbudget (EUR)",
+        label="Eigenes Monatsbudget gesamt (EUR)",
         required=False,
         min_value=Decimal("0"),
         max_digits=8,

@@ -1,0 +1,10 @@
+{# Chat in einem Projekt (Seitenleiste); gleiche Struktur wie chat/_chat_list.html, Menü (⋯) aus sidebar.js. #}
+<li class="chat-item" data-conversation-id="{{ item.pk }}" data-title="{{ item.title }}"
+    data-archived="{{ item.archived|yesno:'true,false' }}" data-project-id="{{ item.project_id }}">
+  <a href="{% url 'chat:conversation' item.pk %}"
+     class="chat-link{% if item.pk == active_conversation.pk %} is-active{% endif %}"
+     {% if item.pk == active_conversation.pk %}aria-current="page"{% endif %}>{{ item.title|default:"Neuer Chat" }}{% if item.is_shared %}{% include "chat/_shared_icon.html" %}{% endif %}</a>
+  <button type="button" class="chat-item-menu-button" hidden
+          aria-haspopup="menu" aria-expanded="false"
+          aria-label="Aktionen für „{{ item.title|default:'Neuer Chat' }}“">&#8943;</button>
+</li>

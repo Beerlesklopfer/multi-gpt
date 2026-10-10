@@ -38,6 +38,7 @@ from datetime import timedelta
 from django.db.models import Q
 from django.utils import timezone
 
+from . import detect
 from .models import AIModel, Provider
 from .providers import registry
 from .providers.base import CHECK_UNEXPECTED, CheckResult
@@ -46,40 +47,59 @@ logger = logging.getLogger(__name__)
 
 CACHE_SECONDS = 15
 CHECK_TIMEOUT = 2.0
+# Cloud-Anbieter ohne ``check_status``, deren letzte Prüfung fehlschlug (z. B.
+# Key abgelaufen): seltener neu prüfen, bis sie wieder online sind.
+OFFLINE_RECHECK_SECONDS = 60
 
 
-def _stale_filter(now):
-    return Q(last_checked__isnull=True) | Q(last_checked__lt=now - timedelta(seconds=CACHE_SECONDS))
+def _stale_filter(now, seconds: int = CACHE_SECONDS):
+    return Q(last_checked__isnull=True) | Q(last_checked__lt=now - timedelta(seconds=seconds))
 
 
-def _claim(provider_id: int) -> bool:
+def _claim(provider_id: int, seconds: int = CACHE_SECONDS) -> bool:
     """Prüfrecht per bedingtem UPDATE erwerben (siehe Moduldoku)."""
     now = timezone.now()
-    return Provider.objects.filter(_stale_filter(now), pk=provider_id).update(last_checked=now) == 1
+    return (
+        Provider.objects.filter(_stale_filter(now, seconds), pk=provider_id).update(
+            last_checked=now
+        )
+        == 1
+    )
 
 
-def _capability_for(model_id: str) -> str:
-    # LM Studio meldet unter /v1/models auch Embedding-Modelle; die gehören
-    # nicht in die Chat-Auswahl.
-    if "embed" in model_id.lower():
-        return AIModel.Capability.EMBEDDING
-    return AIModel.Capability.CHAT
+def known_offline(provider: Provider) -> bool:
+    """Ohne ``check_status``, aber zuletzt (Admin-Prüfung, Neuprüfung) offline."""
+    return not provider.check_status and provider.last_checked is not None and not provider.online
+
+
+def _claim_for(provider: Provider) -> bool:
+    if provider.check_status:
+        return _claim(provider.pk)
+    if known_offline(provider):
+        return _claim(provider.pk, OFFLINE_RECHECK_SECONDS)
+    return False
 
 
 def _sync_local_models(provider: Provider, model_ids: list[str]) -> int:
-    """Neu gemeldete Modelle eines lokalen Anbieters anlegen; Anzahl neuer."""
+    """Neu gemeldete Modelle eines lokalen Anbieters anlegen; Anzahl neuer.
+
+    Fähigkeiten (Hauptart, Werkzeuge, Bilder) nach Meldung von LM Studio
+    (``/api/v0/models``, ein Abruf nur wenn es neue Modelle gibt), sonst
+    Heuristik; Embedding-Modelle gehören so nicht in die Chat-Auswahl.
+    Bestehende Modelle bleiben unverändert.
+    """
     existing = set(provider.ai_models.values_list("model_id", flat=True))
     max_len = AIModel._meta.get_field("model_id").max_length
-    new = [
-        AIModel(
-            provider=provider,
-            model_id=model_id,
-            display_name=model_id,
-            capability=_capability_for(model_id),
-            active=True,
-        )
-        for model_id in model_ids
+    model_ids = [
+        model_id
+        for model_id in dict.fromkeys(model_ids)
         if model_id not in existing and len(model_id) <= max_len
+    ]
+    if not model_ids:
+        return 0
+    found = detect.detect(provider, model_ids)
+    new = [
+        detect.new_model(provider, model_id, found[model_id], active=True) for model_id in model_ids
     ]
     # ignore_conflicts: Ein paralleler Abgleich (z. B. sync-models) darf nicht stören.
     AIModel.objects.bulk_create(new, ignore_conflicts=True)
@@ -137,7 +157,7 @@ def force_check(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckResu
 def refresh(provider: Provider) -> Provider:
     """Prüft ``provider``, falls sein Status älter als 15 s ist und kein anderer
     Aufruf gerade prüft. Gibt den aktuellen Stand aus der DB zurück."""
-    if provider.check_status and _claim(provider.pk):
+    if _claim_for(provider):
         check_provider(provider)
     provider.refresh_from_db(
         fields=["online", "last_online", "last_checked", "reported_models", "last_error"]
@@ -146,12 +166,16 @@ def refresh(provider: Provider) -> Provider:
 
 
 def refresh_all() -> list[Provider]:
-    """Alle aktiven Anbieter mit ``check_status``, bei Bedarf geprüft."""
-    providers = list(Provider.objects.filter(active=True, check_status=True))
+    """Alle aktiven Anbieter mit ``check_status`` sowie zuletzt offline geprüfte
+    Cloud-Anbieter, bei Bedarf geprüft."""
+    offline = Q(check_status=False, last_checked__isnull=False, online=False)
+    providers = list(Provider.objects.filter(Q(check_status=True) | offline, active=True))
     for provider in providers:
-        if _claim(provider.pk):
+        if _claim_for(provider):
             check_provider(provider)
-    return list(Provider.objects.filter(active=True, check_status=True).order_by("name", "pk"))
+    # Dieselben Anbieter neu lesen: Ein wieder erreichbarer Cloud-Anbieter
+    # erscheint so einmal als online, bevor er aus der Liste fällt.
+    return list(Provider.objects.filter(pk__in=[p.pk for p in providers]).order_by("name", "pk"))
 
 
 def invalidate(provider_id: int) -> None:
@@ -162,14 +186,19 @@ def invalidate(provider_id: int) -> None:
 def model_state(ai_model: AIModel) -> tuple[bool, bool]:
     """(online, available) eines Modells nach dem letzten gespeicherten Status.
 
-    Nur lokale Anbieter mit Statusprüfung können offline oder nicht verfügbar
-    sein; alle anderen gelten als online und verfügbar.
+    - Lokale Anbieter mit Statusprüfung: offline bzw. nicht verfügbar, wenn das
+      Modell nicht gemeldet wird (nicht geladen).
+    - Andere Anbieter: offline, wenn die letzte Prüfung fehlschlug (z. B. Key
+      abgelaufen oder abgelehnt); sonst online und verfügbar.
     """
     provider = ai_model.provider
-    if not (provider.is_local and provider.check_status):
-        return True, True
-    online = provider.online
-    return online, online and ai_model.model_id in (provider.reported_models or [])
+    if provider.is_local and provider.check_status:
+        online = provider.online
+        return online, online and ai_model.model_id in (provider.reported_models or [])
+    if provider.check_status or known_offline(provider):
+        online = bool(provider.online)
+        return online, online
+    return True, True
 
 
 def serialize(provider: Provider) -> dict:

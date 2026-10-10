@@ -123,6 +123,30 @@ def _with_cost_text(rows: list[dict]) -> list[dict]:
     return rows
 
 
+def _with_account_text(rows: list[dict]) -> list[dict]:
+    """Anzeigetexte je Abrechnungskonto: monetär Kontowährung (und EUR),
+    Token-Konten Tokens mit Cache/Reasoning, Pauschalkonten nur gezählt."""
+    for row in rows:
+        detail = []
+        if row["cached_read"] or row["cache_write"]:
+            detail.append(f"Cache {row['cached_read']}/{row['cache_write']}")
+        if row["reasoning"]:
+            detail.append(f"Reasoning {row['reasoning']}")
+        row["token_detail"] = ", ".join(detail)
+        if row["kind"] == "monetary":
+            text = usage.format_amount(row["amount"], row["currency"])
+            if row["currency"] != "EUR":
+                text += f" = {usage.format_eur(row['eur'])}"
+                if row["eur_missing"]:
+                    text += f" ({row['eur_missing']}× Kurs fehlt)"
+            row["cost_text"] = text
+        elif row["kind"] == "flat":
+            row["cost_text"] = f"Pauschale, {row['requests']} Anfragen"
+        else:
+            row["cost_text"] = "nur Tokens"
+    return rows
+
+
 # --- Übersicht ------------------------------------------------------------------
 
 
@@ -165,6 +189,8 @@ def member_detail(request, pk):
         "editable": not (member.is_superuser and not request.user.is_superuser),
         "usage": _budget_row(member, spent or Decimal("0")),
         "model_usage": _with_cost_text(usage.usage_by_model(member, start, end)),
+        "account_usage": _with_account_text(usage.usage_by_account(member, start, end)),
+        "account_states": usage.account_states(member),
         "month_start": start,
         "role_form": RoleForm(initial={"role": member.role_id}),
         "budget_form": BudgetForm(
@@ -448,6 +474,9 @@ def usage_all(request):
     by_member: dict[int, list[dict]] = {}
     for row in _with_cost_text(usage.usage_by_model(None, start, end, by_user=True)):
         by_member.setdefault(row["user_id"], []).append(row)
+    accounts_by_member: dict[int, list[dict]] = {}
+    for row in _with_account_text(usage.usage_by_account(None, start, end, by_user=True)):
+        accounts_by_member.setdefault(row["user_id"], []).append(row)
     rows = []
     total = Decimal("0")
     for member in members:
@@ -458,6 +487,7 @@ def usage_all(request):
                 "member": member,
                 "usage": _budget_row(member, member_spent),
                 "models": by_member.get(member.pk, []),
+                "accounts": accounts_by_member.get(member.pk, []),
             }
         )
     context = {

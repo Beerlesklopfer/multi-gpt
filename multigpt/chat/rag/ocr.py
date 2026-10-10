@@ -220,7 +220,8 @@ def _table_to_text(match: re.Match) -> str:
         parser.close()
     except Exception:  # noqa: BLE001 - kaputtes HTML: Tags einfach entfernen
         return html.unescape(re.sub(r"<[^>]+>", " ", match.group(0)))
-    return "\n" + "\n".join(" | ".join(row) for row in parser.rows) + "\n"
+    # Eigener Absatz (Leerzeilen davor und danach, wichtig für die Absatzzählung).
+    return "\n\n" + "\n".join(" | ".join(row) for row in parser.rows) + "\n\n"
 
 
 def parse_olmocr(raw: str) -> OlmOcrPage:

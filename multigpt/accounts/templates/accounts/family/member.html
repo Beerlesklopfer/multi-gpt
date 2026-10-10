@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load usage_tags %}
 {% load static %}
 {# Ein Konto in „Familie“ (M6-04, M6-05). Aktionen per POST mit CSRF, family.js fragt bei Sperren und Passwort nach. #}
 {% block title %}{{ member }} – Familie – MultiGPT{% endblock %}
@@ -17,7 +18,29 @@
       <dt>Gruppen</dt><dd>{% for group in groups %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}keine{% endfor %}</dd>
       <dt>Letzte Anmeldung</dt><dd>{% if member.last_login %}{{ member.last_login|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</dd>
       <dt>Verbrauch {{ month_start|date:"F Y" }}</dt><dd>{% include "accounts/family/_budget.html" with u=usage %}</dd>
+      {% for a in account_states %}
+        <dt>Budget {{ a.name }}</dt><dd><span class="family-budget family-budget-{{ a.level }}"><span class="family-budget-text">{% if a.unit == "tokens" %}{{ a.spent|tokens }} von {{ a.limit|tokens }} Tokens{% else %}{{ a.spent|eur }} von {{ a.limit|eur }}{% endif %}{% if a.level == "exhausted" %} · ausgeschöpft{% elif a.level == "warning" %} · über 80 %{% endif %}</span></span></dd>
+      {% endfor %}
     </dl>
+
+    {% if account_usage %}
+      <div class="table-scroll">
+        <table class="family-table family-table-compact">
+          <caption class="sr-only">Verbrauch je Abrechnungskonto im laufenden Monat</caption>
+          <thead><tr><th scope="col">Konto</th><th scope="col">Antworten</th><th scope="col">Tokens (ein/aus)</th><th scope="col">Betrag</th></tr></thead>
+          <tbody>
+            {% for row in account_usage %}
+              <tr>
+                <td>{{ row.account }}</td>
+                <td>{{ row.answers }}</td>
+                <td>{{ row.tokens_in }} / {{ row.tokens_out }}{% if row.token_detail %} <span class="hint">({{ row.token_detail }})</span>{% endif %}</td>
+                <td>{{ row.cost_text }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
 
     {% if model_usage %}
       <div class="table-scroll">
@@ -61,7 +84,7 @@
             {% csrf_token %}
             <label for="{{ budget_form.monthly_budget_override.id_for_label }}">{{ budget_form.monthly_budget_override.label }}</label>
             <div class="inline-form-row">{{ budget_form.monthly_budget_override }}<button type="submit" class="button">Budget speichern</button></div>
-            <span class="hint">Leer = Budget der Rolle{% if member.role.monthly_budget is not None %} ({{ member.role.monthly_budget }} €){% else %} (unbegrenzt){% endif %}.</span>
+            <span class="hint">Leer = Budget der Rolle{% if member.role.monthly_budget is not None %} ({{ member.role.monthly_budget }} €){% else %} (unbegrenzt){% endif %}. Gilt über alle Abrechnungskonten; Budgets je Konto im Admin unter „Kosten und Abrechnung“.</span>
           </form>
         </section>
 

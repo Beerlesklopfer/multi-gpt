@@ -254,12 +254,14 @@ def test_source_domain_and_label():
 
 
 def test_static_js_has_no_html_injection_for_sources():
-    """chat.js setzt Quellentitel nur als Text (kein innerHTML)."""
+    """chat.js/citations.js setzen Quellentitel nur als Text (kein innerHTML)."""
     from pathlib import Path
 
     from django.conf import settings
 
-    js = (Path(settings.BASE_DIR) / "multigpt/chat/static/chat/chat.js").read_text()
+    static = Path(settings.BASE_DIR) / "multigpt/chat/static/chat"
+    assert "innerHTML" not in (static / "chat.js").read_text()
+    js = (static / "citations.js").read_text()
     assert "innerHTML" not in js
     assert 'rel = "noopener noreferrer nofollow"' in js
 

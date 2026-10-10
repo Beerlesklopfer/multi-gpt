@@ -1,10 +1,16 @@
-"""Verbrauch und Monatsbudgets (Plan 8, 8a, 8f; M6-02, M6-03).
+"""Verbrauch und Monatsbudgets (Plan 8, 8a, 8f; M6-02, M6-03, M6-10).
 
-Grundlage sind die Momentaufnahmen ``Message.cost`` und ``Attachment.cost``
-(Euro, zum Zeitpunkt der Antwort bzw. Erzeugung festgehalten). Gezählt wird
-alles, was in den Chats eines Kontos liegt – auch ältere Versionen
-(Bearbeiten, Neu erzeugen), abgebrochene Antworten und archivierte Chats.
-Lokale Modelle haben Kosten 0, Modelle ohne Preise ``NULL`` (zählt als 0).
+Grundlage sind die Buchungen (``billing.UsageEntry``, Kontenrahmen siehe
+multigpt/billing): eine je Antwort, Anhang bzw. Gebühr, mit Tokens, Betrag in
+Kontowährung und in EUR. Gebucht wird auf das Konto, das die Antwort ausgelöst
+hat (``Message.author``; in geteilten Chats also der Absender), bei Altdaten
+ohne Verfasser auf den Besitzer des Chats – auch ältere Versionen (Bearbeiten,
+Neu erzeugen), abgebrochene Antworten, archivierte und gelöschte Chats.
+Token- und Pauschalkonten (z. B. lokal) kosten nichts, Modelle ohne Preis
+zählen 0. Beträge, deren Kurs fehlte, zählen geschätzt (nie 0).
+
+Dieses Modul bleibt die Fassade für Oberfläche und Rechte; Budgets je Konto
+und die Sperre stehen in ``billing.budgets``.
 
 Monate sind Kalendermonate in Europe/Berlin: Eine Antwort am 1. um 00:30
 Ortszeit gehört schon zum neuen Monat, auch wenn sie in UTC noch im alten liegt.
@@ -20,20 +26,20 @@ from dataclasses import asdict, dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, DecimalField, Q, Sum, Value
+from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
+from multigpt.billing import budgets
+
 USAGE_TIME_ZONE = ZoneInfo("Europe/Berlin")
-WARNING_RATIO = Decimal("0.8")
+WARNING_RATIO = budgets.WARNING_RATIO
 
-LEVEL_OK = "ok"
-LEVEL_WARNING = "warning"
-LEVEL_EXHAUSTED = "exhausted"
+LEVEL_OK = budgets.LEVEL_OK
+LEVEL_WARNING = budgets.LEVEL_WARNING
+LEVEL_EXHAUSTED = budgets.LEVEL_EXHAUSTED
 
-BUDGET_EXHAUSTED_MESSAGE = (
-    "Monatsbudget ausgeschöpft – bis zum Monatsende sind nur lokale Modelle nutzbar."
-)
+BUDGET_EXHAUSTED_MESSAGE = budgets.TOTAL_EXHAUSTED_MESSAGE
 
 MONTH_NAMES = (
     "Januar",
@@ -91,17 +97,28 @@ def month_label(start: dt.datetime | dt.date) -> str:
     return f"{MONTH_NAMES[start.month - 1]} {start.year}"
 
 
+def month_choice(raw: str, months: int = 12, now=None) -> tuple[list[dt.date], dt.date]:
+    """Auswahl „JJJJ-MM“ aus den letzten ``months`` Monaten: (Optionen, gewählt).
+
+    Unbekannte Werte ergeben den laufenden Monat (kein Fehler, kein Zugriff
+    auf beliebige Zeiträume).
+    """
+    current, _ = month_bounds(now)
+    options = [dt.date(*_add_months(current.year, current.month, -i), 1) for i in range(months)]
+    selected = next((o for o in options if raw == f"{o:%Y-%m}"), options[0])
+    return options, selected
+
+
 # --- Summen ----------------------------------------------------------------------
 
 
-def _user_filter(prefix: str, user) -> Q:
-    """Filter auf den Besitzer der Chats: ein Konto, mehrere (ids/QuerySet) oder alle."""
-    field = f"{prefix}conversation__user"
+def _user_filter(user) -> Q:
+    """Filter auf das zahlende Konto der Buchung: ein Konto, mehrere (ids/QuerySet) oder alle."""
     if user is None:
         return Q()
     if hasattr(user, "pk") and not hasattr(user, "model"):
-        return Q(**{field: user.pk})
-    return Q(**{f"{field}__in": user})
+        return Q(user_id=user.pk)
+    return Q(user__in=user)
 
 
 def _range(field: str, start, end) -> Q:
@@ -113,162 +130,193 @@ def _range(field: str, start, end) -> Q:
     return q
 
 
-def _sum(field: str):
-    return Coalesce(Sum(field), Value(_ZERO), output_field=_MONEY)
+def _entries(user, start, end):
+    from multigpt.billing.models import UsageEntry
+
+    return UsageEntry.objects.filter(_user_filter(user) & _range("created", start, end))
+
+
+def _money_sums() -> dict:
+    """EUR-Summe (bekannt) und Summe der Beträge ohne EUR (Kurs fehlte)."""
+    return {
+        "eur": Coalesce(Sum("amount_eur"), Value(_ZERO), output_field=_MONEY),
+        "unknown": Coalesce(
+            Sum("amount", filter=Q(amount_eur__isnull=True)), Value(_ZERO), output_field=_MONEY
+        ),
+    }
+
+
+class _Rate:
+    """Ersatzkurs für Beträge ohne EUR, höchstens eine Abfrage (budgets.fallback_rate)."""
+
+    def __init__(self):
+        self.value = None
+
+    def eur(self, row) -> Decimal:
+        total = Decimal(row["eur"])
+        if row["unknown"]:
+            if self.value is None:
+                self.value = budgets.fallback_rate()
+            total += Decimal(row["unknown"]) * self.value
+        return total
 
 
 def spent(user, month: dt.datetime | dt.date | None = None) -> Decimal:
-    """Kosten (Euro) aller Chats von ``user`` im Kalendermonat von ``month``.
+    """Kosten (EUR) von ``user`` im Kalendermonat von ``month`` über alle Konten.
 
-    Summe aus ``Message.cost`` und ``Attachment.cost`` inkl. aller Versionen.
+    Summe der Buchungen (Antworten aller Versionen, Anhänge, Gebühren). Beträge
+    ohne Kurs zählen geschätzt (``budgets.fallback_rate``), nie als 0.
     """
-    from multigpt.chat.models import Attachment, Message
-
     start, end = month_bounds(month)
-    messages = Message.objects.filter(
-        _user_filter("", user) & _range("created", start, end)
-    ).aggregate(total=_sum("cost"))["total"]
-    attachments = Attachment.objects.filter(
-        _user_filter("message__", user) & _range("created", start, end)
-    ).aggregate(total=_sum("cost"))["total"]
-    return Decimal(messages) + Decimal(attachments)
+    row = _entries(user, start, end).aggregate(**_money_sums())
+    return _Rate().eur(row)
 
 
 def spent_by_user(users, start: dt.datetime, end: dt.datetime) -> dict[int, Decimal]:
-    """{user_id: Kosten} für mehrere Konten im Zeitraum (je Tabelle eine Abfrage).
+    """{user_id: Kosten (EUR)} für mehrere Konten im Zeitraum (eine Abfrage).
 
     ``users``: Konten, ids oder QuerySet; None = alle. Konten ohne Verbrauch fehlen.
     """
-    from multigpt.chat.models import Attachment, Message
-
-    totals: dict[int, Decimal] = {}
-    rows = (
-        Message.objects.filter(_user_filter("", users) & _range("created", start, end))
-        .values("conversation__user")
-        .annotate(total=_sum("cost"))
-    )
-    for row in rows:
-        uid = row["conversation__user"]
-        totals[uid] = totals.get(uid, _ZERO) + Decimal(row["total"])
-    rows = (
-        Attachment.objects.filter(_user_filter("message__", users) & _range("created", start, end))
-        .values("message__conversation__user")
-        .annotate(total=_sum("cost"))
-    )
-    for row in rows:
-        uid = row["message__conversation__user"]
-        totals[uid] = totals.get(uid, _ZERO) + Decimal(row["total"])
-    return totals
+    rate = _Rate()
+    rows = _entries(users, start, end).values("user_id").annotate(**_money_sums())
+    return {row["user_id"]: rate.eur(row) for row in rows if row["user_id"] is not None}
 
 
 def usage_by_model(
     user, start: dt.datetime | None, end: dt.datetime | None, *, by_user: bool = False
 ) -> list[dict]:
-    """Verbrauch je Modell (optional je Konto und Modell) im Zeitraum.
+    """Verbrauch je Modell (optional je Nutzer und Modell) im Zeitraum.
 
     ``user``: ein Konto, mehrere (ids/QuerySet) oder None (alle; nur für
     Verwalter mit VIEW_USAGE_ALL). Zeilen: ``model_id`` (None = gelöschtes
-    Modell), ``model``, ``provider``, ``is_local``, ``answers`` (Antworten,
-    alle Versionen), ``tokens_in``, ``tokens_out``, ``files`` (erzeugte
-    Dateien, z. B. Bilder), ``cost`` – teuerste zuerst. Mit ``by_user`` zusätzlich
-    ``user_id``.
+    Modell), ``model``, ``provider``, ``is_local``, ``account``, ``answers``
+    (Antworten, alle Versionen), ``tokens_in``, ``tokens_out``, ``files``
+    (erzeugte Dateien, z. B. Bilder), ``cost`` (EUR) – teuerste zuerst. Mit
+    ``by_user`` zusätzlich ``user_id``.
     """
-    from multigpt.chat.models import Attachment, Message
+    from multigpt.billing.models import UsageEntry
 
-    rows: dict[tuple, dict] = {}
-
-    def row_for(key: tuple, model_id, name, provider, is_local, user_id):
-        if key not in rows:
-            rows[key] = {
-                "model_id": model_id,
-                "model": name or "Gelöschtes Modell",
-                "provider": provider or "",
-                "is_local": bool(is_local),
+    rate = _Rate()
+    user_field = ["user_id"] if by_user else []
+    rows = (
+        _entries(user, start, end)
+        .values(
+            *user_field,
+            "ai_model",
+            "model_name",
+            "ai_model__display_name",
+            "ai_model__provider__name",
+            "ai_model__provider__is_local",
+            "account__name",
+        )
+        .annotate(
+            answers=Count("pk", filter=Q(kind=UsageEntry.Kind.ANSWER)),
+            files=Count("pk", filter=Q(kind=UsageEntry.Kind.ATTACHMENT)),
+            tokens_in=Coalesce(Sum("tokens_in"), 0),
+            tokens_out=Coalesce(Sum("tokens_out"), 0),
+            **_money_sums(),
+        )
+    )
+    result: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.get("user_id"), r["ai_model"], r["account__name"])
+        row = result.setdefault(
+            key,
+            {
+                "model_id": r["ai_model"],
+                "model": r["ai_model__display_name"] or r["model_name"] or "Gelöschtes Modell",
+                "provider": r["ai_model__provider__name"] or "",
+                "is_local": bool(r["ai_model__provider__is_local"]),
+                "account": r["account__name"],
                 "answers": 0,
                 "tokens_in": 0,
                 "tokens_out": 0,
                 "files": 0,
                 "cost": _ZERO,
-            }
-            if by_user:
-                rows[key]["user_id"] = user_id
-        return rows[key]
+            },
+        )
+        if by_user:
+            row["user_id"] = r["user_id"]
+        for name in ("answers", "files", "tokens_in", "tokens_out"):
+            row[name] += r[name]
+        row["cost"] += rate.eur(r)
+    return sorted(result.values(), key=lambda r: (-r["cost"], -r["tokens_out"], r["model"]))
 
-    user_field = ["conversation__user"] if by_user else []
-    messages = (
-        Message.objects.filter(
-            _user_filter("", user) & _range("created", start, end) & Q(role=Message.Role.ASSISTANT)
-        )
-        .values(
-            *user_field,
-            "model",
-            "model__display_name",
-            "model__provider__name",
-            "model__provider__is_local",
-        )
+
+def usage_by_account(user, start, end, *, by_user: bool = False) -> list[dict]:
+    """Verbrauch je Abrechnungskonto (optional je Nutzer) im Zeitraum, eine Abfrage.
+
+    Zeilen: ``account_id``, ``account``, ``kind`` (monetary | tokens | flat),
+    ``currency``, ``answers``, ``files``, ``requests``, ``tokens_in``,
+    ``tokens_out``, ``cached_read``, ``cache_write`` (5 Min. + 1 Std.),
+    ``reasoning``, ``amount`` (Kontowährung, nur bepreiste Buchungen), ``eur``
+    (bekannt), ``eur_missing`` (Buchungen ohne Kurs), ``unpriced`` (monetär
+    ohne Preis). Mit ``by_user`` zusätzlich ``user_id``.
+    """
+    from multigpt.billing.models import UsageEntry
+
+    user_field = ["user_id"] if by_user else []
+    rows = (
+        _entries(user, start, end)
+        .values(*user_field, "account_id", "account__name", "account__kind", "account__currency")
         .annotate(
-            answers=Count("pk"),
+            answers=Count("pk", filter=Q(kind=UsageEntry.Kind.ANSWER)),
+            files=Count("pk", filter=Q(kind=UsageEntry.Kind.ATTACHMENT)),
+            requests=Coalesce(Sum("requests"), 0),
             tokens_in=Coalesce(Sum("tokens_in"), 0),
             tokens_out=Coalesce(Sum("tokens_out"), 0),
-            cost=_sum("cost"),
+            cached_read=Coalesce(Sum("cached_read"), 0),
+            cache_write=Coalesce(Sum(F("cache_write") + F("cache_write_1h")), 0),
+            reasoning=Coalesce(Sum("reasoning"), 0),
+            amount_sum=Sum("amount"),
+            eur_sum=Sum("amount_eur"),
+            eur_missing=Count("pk", filter=Q(amount__isnull=False, amount_eur__isnull=True)),
+            unpriced=Count(
+                "pk", filter=Q(account__kind="monetary", amount__isnull=True, legacy=False)
+            ),
         )
+        .order_by("account__name")
     )
-    for m in messages:
-        uid = m.get("conversation__user")
-        r = row_for(
-            (uid, m["model"]),
-            m["model"],
-            m["model__display_name"],
-            m["model__provider__name"],
-            m["model__provider__is_local"],
-            uid,
+    result = []
+    for r in rows:
+        result.append(
+            {
+                **({"user_id": r["user_id"]} if by_user else {}),
+                "account_id": r["account_id"],
+                "account": r["account__name"],
+                "kind": r["account__kind"],
+                "currency": r["account__currency"],
+                **{
+                    k: r[k]
+                    for k in (
+                        "answers",
+                        "files",
+                        "requests",
+                        "tokens_in",
+                        "tokens_out",
+                        "cached_read",
+                        "cache_write",
+                        "reasoning",
+                        "eur_missing",
+                        "unpriced",
+                    )
+                },
+                "amount": r["amount_sum"],
+                "eur": r["eur_sum"],
+            }
         )
-        r["answers"] += m["answers"]
-        r["tokens_in"] += m["tokens_in"]
-        r["tokens_out"] += m["tokens_out"]
-        r["cost"] += Decimal(m["cost"])
-
-    user_field = ["message__conversation__user"] if by_user else []
-    attachments = (
-        Attachment.objects.filter(
-            _user_filter("message__", user)
-            & _range("created", start, end)
-            & (Q(cost__isnull=False) | Q(generated_by_model__isnull=False))
-        )
-        .values(
-            *user_field,
-            "generated_by_model",
-            "generated_by_model__display_name",
-            "generated_by_model__provider__name",
-            "generated_by_model__provider__is_local",
-        )
-        .annotate(files=Count("pk"), cost=_sum("cost"))
-    )
-    for a in attachments:
-        uid = a.get("message__conversation__user")
-        r = row_for(
-            (uid, a["generated_by_model"]),
-            a["generated_by_model"],
-            a["generated_by_model__display_name"],
-            a["generated_by_model__provider__name"],
-            a["generated_by_model__provider__is_local"],
-            uid,
-        )
-        r["files"] += a["files"]
-        r["cost"] += Decimal(a["cost"])
-
-    return sorted(rows.values(), key=lambda r: (-r["cost"], -r["tokens_out"], r["model"]))
+    return result
 
 
 def monthly_totals(user, months: int = 12, now: dt.datetime | None = None) -> list[dict]:
     """Kosten der letzten ``months`` Kalendermonate (inkl. laufendem), neueste zuerst.
 
     Zeilen: ``start`` (aware, Europe/Berlin), ``year``, ``month``, ``label``,
-    ``cost``, ``tokens_in``, ``tokens_out``, ``answers``. Monate ohne Verbrauch
-    sind mit 0 enthalten. Gruppiert wird in der Datenbank (TruncMonth in
-    Europe/Berlin).
+    ``cost`` (EUR), ``tokens_in``, ``tokens_out``, ``answers``. Monate ohne
+    Verbrauch sind mit 0 enthalten. Gruppiert wird in der Datenbank
+    (TruncMonth in Europe/Berlin).
     """
-    from multigpt.chat.models import Attachment, Message
+    from multigpt.billing.models import UsageEntry
 
     current, end = month_bounds(now)
     first = month_start(*_add_months(current.year, current.month, -(months - 1)))
@@ -291,34 +339,25 @@ def monthly_totals(user, months: int = 12, now: dt.datetime | None = None) -> li
             value = value.astimezone(USAGE_TIME_ZONE) if timezone.is_aware(value) else value
         return value.year, value.month
 
-    messages = (
-        Message.objects.filter(_user_filter("", user) & _range("created", first, end))
+    rate = _Rate()
+    rows = (
+        _entries(user, first, end)
         .annotate(period=TruncMonth("created", tzinfo=USAGE_TIME_ZONE))
         .values("period")
         .annotate(
-            cost=_sum("cost"),
             tokens_in=Coalesce(Sum("tokens_in"), 0),
             tokens_out=Coalesce(Sum("tokens_out"), 0),
-            answers=Count("pk", filter=Q(role=Message.Role.ASSISTANT)),
+            answers=Count("pk", filter=Q(kind=UsageEntry.Kind.ANSWER)),
+            **_money_sums(),
         )
     )
-    for m in messages:
+    for m in rows:
         row = result.get(local_key(m["period"]))
         if row is not None:
-            row["cost"] += Decimal(m["cost"])
+            row["cost"] += rate.eur(m)
             row["tokens_in"] += m["tokens_in"]
             row["tokens_out"] += m["tokens_out"]
             row["answers"] += m["answers"]
-    attachments = (
-        Attachment.objects.filter(_user_filter("message__", user) & _range("created", first, end))
-        .annotate(period=TruncMonth("created", tzinfo=USAGE_TIME_ZONE))
-        .values("period")
-        .annotate(cost=_sum("cost"))
-    )
-    for a in attachments:
-        row = result.get(local_key(a["period"]))
-        if row is not None:
-            row["cost"] += Decimal(a["cost"])
     return list(result.values())
 
 
@@ -326,7 +365,7 @@ def monthly_totals(user, months: int = 12, now: dt.datetime | None = None) -> li
 
 
 def budget_for(user) -> Decimal | None:
-    """Wirksames Monatsbudget (Euro): Konto-Override vor Rolle; None = unbegrenzt."""
+    """Wirksames Gesamt-Monatsbudget (EUR): Konto-Override vor Rolle; None = unbegrenzt."""
     return user.monthly_budget
 
 
@@ -354,17 +393,11 @@ class BudgetState:
 
 
 def level_for(spent_amount: Decimal, budget: Decimal | None) -> str:
-    if budget is None:
-        return LEVEL_OK
-    if spent_amount >= budget:  # Budget 0: sofort nur noch kostenfreie Modelle
-        return LEVEL_EXHAUSTED
-    if spent_amount >= budget * WARNING_RATIO:
-        return LEVEL_WARNING
-    return LEVEL_OK
+    return budgets.level_for(spent_amount, budget)
 
 
 def budget_state(user, now: dt.datetime | None = None) -> BudgetState:
-    """Stand des laufenden Monats: Verbrauch, Budget, Anteil und Stufe."""
+    """Gesamtbudget im laufenden Monat: Verbrauch (alle Konten), Budget, Anteil, Stufe."""
     budget = budget_for(user)
     amount = spent(user, now)
     if budget is None:
@@ -375,21 +408,47 @@ def budget_state(user, now: dt.datetime | None = None) -> BudgetState:
     return BudgetState(amount, budget, ratio, level_for(amount, budget), remaining)
 
 
-def model_is_free(ai_model) -> bool:
-    """Verursacht das Modell keine Kosten? Lokaler Anbieter oder keine Preise (bzw. 0).
+def account_states(user, now: dt.datetime | None = None) -> list:
+    """Budgets je Abrechnungskonto (ohne Gesamt), siehe ``billing.budgets.AccountState``."""
+    return list(budgets.snapshot(user, now).accounts.values())
 
-    Begründung: Kosten entstehen im System nur über die hinterlegten Preise
-    (``services.compute_cost``). Ein Modell ohne Preise erhöht den Verbrauch nie –
+
+def model_is_free(ai_model) -> bool:
+    """Verursacht das Modell keine Kosten? Token-/Pauschalkonto (z. B. lokal) oder
+    ohne gültigen Preis.
+
+    Begründung: Kosten entstehen nur über die hinterlegten Preise
+    (``billing.ModelPrice``). Ein Modell ohne Preis erhöht den Verbrauch nie –
     es zu sperren, schützte das Budget nicht. Damit Cloud-Modelle nicht
     versehentlich frei bleiben, müssen Verwalter Preise eintragen (Admin).
     """
-    if ai_model.provider.is_local:
-        return True
-    return not (ai_model.price_in or ai_model.price_out)
+    return budgets.is_free(ai_model)
+
+
+def blocked_reason(user, ai_model) -> str:
+    """Warum das Budget das Modell gerade sperrt (Konto bzw. gesamt); leer = frei."""
+    return budgets.blocked_reason(user, ai_model)
+
+
+def blocked_reasons(user, ai_models) -> dict[int, str]:
+    return budgets.blocked_reasons(user, ai_models)
+
+
+def warnings_for(user, ai_model) -> list[str]:
+    """Hinweise ab 80 % für das Konto des Modells und das Gesamtbudget."""
+    return budgets.warnings_for(user, ai_model)
+
+
+def billing_title(ai_model) -> str:
+    """Preisinfo und Kontoname für den title der Modellauswahl."""
+    from multigpt.billing.booking import account_of
+    from multigpt.billing.pricing import describe, price_at
+
+    return describe(price_at(ai_model), account_of(ai_model.provider))
 
 
 def warning_text(state: BudgetState) -> str:
-    """Hinweis für Oberfläche und SSE-Status; leer bei Stufe ok."""
+    """Hinweis zum Gesamtbudget für Oberfläche und SSE-Status; leer bei Stufe ok."""
     if state.level == LEVEL_EXHAUSTED:
         return BUDGET_EXHAUSTED_MESSAGE
     if state.level == LEVEL_WARNING:
@@ -412,3 +471,18 @@ def format_eur(value) -> str:
     text = f"{value.quantize(places, rounding=ROUND_HALF_UP):,}"
     text = text.replace(",", " ").replace(".", ",")
     return f"{text} €"
+
+
+def format_tokens(value) -> str:
+    """Ganzzahl mit Tausenderpunkten: 12345 -> „12.345 Tokens“."""
+    try:
+        return f"{int(value):,} Tokens".replace(",", ".")
+    except (TypeError, ValueError):
+        return "–"
+
+
+def format_amount(value, currency: str) -> str:
+    """Betrag in Kontowährung: EUR wie ``format_eur``, USD „1,23 $“."""
+    if currency != "USD":
+        return format_eur(value)
+    return format_eur(value).replace(" €", " $")

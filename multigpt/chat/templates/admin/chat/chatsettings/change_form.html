@@ -1,0 +1,17 @@
+{% extends "admin/change_form.html" %}
+{% load static admin_urls %}
+{# Chat-Einstellungen: Knopf „Sandbox testen“ oben rechts (Berechnungen, M4a-10); prüft die Sandbox mit festem Testcode. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'chat/admin_provider.css' %}">{% endblock %}
+
+{% block object-tools-items %}
+  {% if original %}
+  <li>
+    <form method="post" action="{% url 'admin:chat_chatsettings_sandbox_test' original.pk|admin_urlquote %}" class="provider-check-form">
+      {% csrf_token %}
+      <button type="submit" class="provider-tool-button" title="Rechnet print(1+1) in der Sandbox und versucht Netz- und Dateizugriffe">Sandbox testen</button>
+    </form>
+  </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

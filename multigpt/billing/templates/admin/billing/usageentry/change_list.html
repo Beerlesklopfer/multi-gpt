@@ -1,0 +1,18 @@
+{% extends "admin/change_list.html" %}
+{# Buchungen: CSV-Export je Monat bzw. Konto (UsageEntryAdmin.csv_view). #}
+{% block object-tools %}
+  <form method="get" action="{% url 'admin:billing_usageentry_csv' %}" class="billing-csv-form">
+    <label for="csv-month">Monat</label>
+    <select id="csv-month" name="monat">
+      <option value="">alle</option>
+      {% for value, label in csv_months %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+    <label for="csv-account">Konto</label>
+    <select id="csv-account" name="konto">
+      <option value="">alle</option>
+      {% for account in csv_accounts %}<option value="{{ account.pk }}">{{ account.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="button">Als CSV exportieren</button>
+  </form>
+  {{ block.super }}
+{% endblock %}

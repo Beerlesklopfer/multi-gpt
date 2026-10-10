@@ -8,16 +8,30 @@
   <script src="{% static 'chat/vendor/marked/marked.umd.js' %}" defer></script>
   <script src="{% static 'chat/vendor/dompurify/purify.min.js' %}" defer></script>
   <script src="{% static 'chat/vendor/highlight/highlight.min.js' %}" defer></script>
+  <link rel="stylesheet" href="{% static 'chat/vendor/katex/katex.min.css' %}">
+  <script src="{% static 'chat/vendor/katex/katex.min.js' %}" defer></script>
+  <script src="{% static 'chat/vendor/katex/contrib/mhchem.min.js' %}" defer></script>
+  <script src="{% static 'chat/math.js' %}" defer></script>
+  <script src="{% static 'chat/svg_preview.js' %}" defer></script>
   <script src="{% static 'chat/markdown.js' %}" defer></script>
+  <script src="{% static 'chat/citations.js' %}" defer></script>
   <script src="{% static 'chat/collections_picker.js' %}" defer></script>
+  <script src="{% static 'chat/attachments.js' %}" defer></script>
   <script src="{% static 'chat/chat.js' %}" defer></script>
+  <script src="{% static 'chat/tool_code.js' %}" defer></script>
+  <script src="{% static 'chat/image_mode.js' %}" defer></script>
   <script src="{% static 'chat/compare.js' %}" defer></script>
+  <script src="{% static 'chat/input_options.js' %}" defer></script>
+  <script src="{% static 'chat/sharing.js' %}" defer></script>
 {% endblock %}
 {% block content %}
   <section class="chat" id="chat"
            aria-labelledby="chat-title"
            data-conversation-id="{{ active_conversation.pk|default_if_none:'' }}"
-           data-default-model="{{ active_conversation.default_model_id|default_if_none:'' }}"
+           data-default-model="{% firstof active_conversation.default_model_id project_default_model_id '' %}"
+           data-project-id="{{ chat_project.pk|default_if_none:'' }}"
+           data-project-collections="{{ project_collection_ids }}"
+           data-mark-links="{{ request.user.mark_unverified_links|yesno:'true,false' }}"
            data-conversation-url-template="{% url 'chat:conversation' 0 %}"
            data-api-conversations="{% url 'chat:api_conversations' %}"
            data-api-models="{% url 'chat:api_models' %}"
@@ -26,38 +40,51 @@
            data-api-mcp-servers="{% url 'chat:api_mcp_servers' %}"
            data-api-tool-confirm-template="{% url 'chat:api_tool_confirm' 0 %}"
            data-api-branch-template="{% url 'chat:api_branch' 0 %}"
+           data-api-attachments="{% url 'chat:api_attachments' %}"
+           data-api-attachment-template="{% url 'chat:api_attachment_detail' 0 %}"
            data-messages-fragment-template="{% url 'chat:conversation_messages' 0 %}">
     {% if active_conversation %}
       <header class="chat-header">
         <h1 class="chat-header-title" id="chat-title">{% block chat_title %}Neuer Chat{% endblock %}</h1>
         {% if active_conversation.archived %}<span class="badge">Archiviert</span>{% endif %}
+        {% if chat_project %}{% include "chat/projects/_chat_badge.html" %}{% endif %}
         {% if supervised_owner %}<a class="badge badge-supervision" href="{% url 'family:member' supervised_owner.pk %}">Einsicht: Chat von {{ supervised_owner }} (nur lesen)</a>{% endif %}
         <div class="chat-header-actions">
-          {% if can_write %}
+          {% if can_update %}
             <button type="button" class="button button-small" hidden
                     data-chat-action="rename" data-conversation-id="{{ active_conversation.pk }}"
                     data-title="{{ active_conversation.title }}">Umbenennen</button>
           {% endif %}
+          {% if is_owner and not supervised_owner %}
+            {# Projekt zuordnen (projects.js über sidebar.js, Aktion move-project). #}
+            <button type="button" class="button button-small" hidden
+                    data-chat-action="move-project" data-conversation-id="{{ active_conversation.pk }}"
+                    data-title="{{ active_conversation.title }}" data-project-id="{{ active_conversation.project_id|default_if_none:'' }}">Projekt …</button>
+          {% endif %}
           <a class="button button-small" href="{% url 'chat:conversation_export' active_conversation.pk %}"
              download>Exportieren</a>
-          {% if is_owner %}
+          {% include "chat/_share_actions.html" %}
+          {% if can_delete %}
+            {# Geteilte Chats: data-owner -> Rückfrage „gehört … und wird für alle …“ (sidebar.js). #}
             {% if active_conversation.archived %}
               <button type="button" class="button button-small" hidden
                       data-chat-action="restore" data-conversation-id="{{ active_conversation.pk }}"
-                      data-title="{{ active_conversation.title }}">Wiederherstellen</button>
+                      data-title="{{ active_conversation.title }}"{% if not is_owner %} data-owner="{{ chat_owner_name }}"{% endif %}>Wiederherstellen</button>
             {% else %}
               <button type="button" class="button button-small" hidden
                       data-chat-action="archive" data-conversation-id="{{ active_conversation.pk }}"
-                      data-title="{{ active_conversation.title }}">Archivieren</button>
+                      data-title="{{ active_conversation.title }}"{% if not is_owner %} data-owner="{{ chat_owner_name }}"{% endif %}>Archivieren</button>
             {% endif %}
             <button type="button" class="button button-small button-danger" hidden
                     data-chat-action="delete" data-conversation-id="{{ active_conversation.pk }}"
-                    data-title="{{ active_conversation.title }}">Löschen</button>
+                    data-title="{{ active_conversation.title }}"{% if not is_owner %} data-owner="{{ chat_owner_name }}"{% endif %}>Löschen</button>
           {% endif %}
         </div>
       </header>
+      {% include "chat/_share_banner.html" %}
     {% else %}
       <h1 class="sr-only" id="chat-title">Neuer Chat</h1>
+      {% if chat_project %}<p class="project-new-chat-note">Neuer Chat im Projekt {% include "chat/projects/_chat_badge.html" %}</p>{% endif %}
     {% endif %}
     {% include "chat/_system_prompt.html" %}
     <div class="chat-history" id="chat-history" tabindex="-1">
@@ -85,54 +112,84 @@
     {% elif active_conversation and not can_write %}
       <p class="chat-notice">Du kannst diesen Chat nur lesen.</p>
     {% else %}
-      <form class="chat-input" id="chat-form" aria-label="Nachricht senden">
-        <div class="chat-input-model">
-          <label for="model-select">Modell</label>
-          <select id="model-select" name="model" disabled>
-            <option value="">Modelle werden geladen …</option>
-          </select>
-          {% include "chat/_compare_picker.html" %}
-          {% if web_search_available %}
-            {# Websuche (M8): Zustand merkt chat.js im Browser; gesendet wird web_search true/false. #}
-            <label class="tool-switch web-search-switch" for="web-search-toggle">
-              <input type="checkbox" id="web-search-toggle" name="web_search"
-                     aria-describedby="web-search-hint">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>
-              <span>Websuche</span>
-            </label>
-            <span class="sr-only" id="web-search-hint">Sucht vor der Antwort im Web und zeigt die Quellen unter der Antwort.</span>
-          {% endif %}
+      <form class="chat-input" id="chat-form" aria-label="Nachricht senden"
+            data-max-image-bytes="{{ attachment_limits.max_image_bytes }}"
+            data-max-document-bytes="{{ attachment_limits.max_document_bytes }}"
+            data-max-attachments="{{ attachment_limits.max_per_message }}">
+        {# Ein-/Ausblenden der Optionszeilen (input_options.js); ausgeblendet zeigt die Leiste die Auswahl kompakt. #}
+        <div class="chat-input-options-bar">
+          <button type="button" class="input-options-toggle" id="input-options-toggle"
+                  aria-expanded="true" aria-controls="chat-input-options" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 15l6-6 6 6"/></svg>
+            <span class="input-options-toggle-label">Eingabeoptionen ausblenden</span>
+          </button>
+          <p class="input-options-summary" id="input-options-summary" hidden></p>
         </div>
-        {# Schalter je MCP-Server (M4a-06); chat.js zeigt sie nur bei werkzeugfähigem Modell. #}
-        <fieldset class="chat-input-tools" id="tool-servers" hidden>
-          <legend>Werkzeuge</legend>
-          <div class="chat-input-tools-list" id="tool-servers-list"></div>
-        </fieldset>
-        {# Sammlungen für die Dokumentsuche (M7); collections_picker.js zeigt sie, wenn es lesbare gibt. #}
-        {% rag_search_ready as search_ready %}
-        <fieldset class="chat-input-tools collection-picker" id="collection-picker" hidden
-                  data-search-ready="{{ search_ready|yesno:'true,false' }}"
-                  data-api-collections="{% url 'chat:api_collections' %}"
-                  data-manage-url="{% url 'chat:collection_list' %}">
-          <legend>Dokumente</legend>
-          <div class="chat-input-tools-list" id="collection-picker-list"></div>
-        </fieldset>
-        <div class="chat-input-row">
-          <label for="message-input" class="sr-only">Nachricht</label>
-          <div class="chat-input-field">
-            <textarea id="message-input" name="content" rows="2"
-                      aria-describedby="message-input-hint"
-                      placeholder="Nachricht eingeben …"></textarea>
-            {# Kopierknopf der Eingabe; chat.js blendet ihn ein und schaltet ihn je nach Inhalt frei. #}
-            <button type="button" class="icon-button input-copy-button" id="input-copy-button"
-                    aria-label="Eingabe kopieren" title="Eingabe kopieren" disabled hidden>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
-              <span class="input-copy-done" aria-hidden="true" hidden>Kopiert</span>
+        <div class="chat-input-options" id="chat-input-options">
+          <div class="chat-input-model">
+            <label for="model-select">Modell</label>
+            <select id="model-select" name="model" disabled>
+              <option value="">Modelle werden geladen …</option>
+            </select>
+            {% include "chat/_compare_picker.html" %}
+            {% if web_search_available %}
+              {# Websuche (M8): Zustand merkt chat.js im Browser; gesendet wird web_search true/false. #}
+              <label class="tool-switch web-search-switch" for="web-search-toggle">
+                <input type="checkbox" id="web-search-toggle" name="web_search"
+                       aria-describedby="web-search-hint">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>
+                <span>Websuche</span>
+              </label>
+              <span class="sr-only" id="web-search-hint">Sucht vor der Antwort im Web und zeigt die Quellen unter der Antwort.</span>
+              {# chat.js zeigt das bei Modellen ohne Werkzeuge (kein web_search-Werkzeug). #}
+              <span class="web-search-model-hint" id="web-search-model-hint" hidden>Dieses Modell kann nicht selbst suchen – mit dem Schalter sucht MultiGPT vorab</span>
+            {% endif %}
+            {% include "chat/_image_mode.html" %}
+          </div>
+          {# Schalter je MCP-Server (M4a-06); chat.js zeigt sie nur bei werkzeugfähigem Modell. #}
+          <fieldset class="chat-input-tools" id="tool-servers" hidden>
+            <legend>Werkzeuge</legend>
+            <div class="chat-input-tools-list" id="tool-servers-list"></div>
+            <p class="chat-input-tools-hint" id="tool-servers-hint" hidden>Für dieses Modell sind keine MCP-Werkzeuge freigegeben.</p>
+          </fieldset>
+          {# Sammlungen für die Dokumentsuche (M7); collections_picker.js zeigt sie, wenn es lesbare gibt. #}
+          {% rag_search_ready as search_ready %}
+          <fieldset class="chat-input-tools collection-picker" id="collection-picker" hidden
+                    data-search-ready="{{ search_ready|yesno:'true,false' }}"
+                    data-api-collections="{% url 'chat:api_collections' %}"
+                    data-manage-url="{% url 'chat:collection_list' %}">
+            <legend>Dokumente</legend>
+            <div class="chat-input-tools-list" id="collection-picker-list"></div>
+          </fieldset>
+        </div>
+        {% include "chat/_attachments.html" %}
+        <label for="message-input" class="sr-only">Nachricht</label>
+        <div class="chat-input-field">
+          <textarea id="message-input" name="content" rows="2"
+                    aria-describedby="message-input-hint"
+                    placeholder="Nachricht eingeben …"></textarea>
+          {# Kopierknopf der Eingabe; chat.js blendet ihn ein und schaltet ihn je nach Inhalt frei. #}
+          <button type="button" class="icon-button input-copy-button" id="input-copy-button"
+                  aria-label="Eingabe kopieren" title="Eingabe kopieren" disabled hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+            <span class="input-copy-done" aria-hidden="true" hidden>Kopiert</span>
+          </button>
+          {# Knopfleiste im Feld: links Anhänge (attachments.js), rechts Senden bzw. Stopp (chat.js). #}
+          <div class="chat-input-toolbar">
+            <button type="button" class="icon-button attach-button" id="attach-button"
+                    aria-label="Datei oder Bild anhängen" aria-describedby="attach-button-hint"
+                    title="Datei oder Bild anhängen">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-2.8-2.8l7.9-7.9"/></svg>
+            </button>
+            <span class="sr-only" id="attach-button-hint">Bilder lassen sich auch mit Strg+V einfügen oder in den Chat ziehen.</span>
+            <button type="submit" class="send-button" id="send-button" data-state="send"
+                    aria-label="Senden" title="Senden" disabled>
+              <svg class="icon send-icon-send" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+              <svg class="icon send-icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
             </button>
           </div>
-          <button type="submit" class="button button-primary" id="send-button" disabled>Senden</button>
         </div>
-        <p class="sr-only" id="message-input-hint">Enter sendet, Shift+Enter fügt einen Zeilenumbruch ein.</p>
+        <p class="sr-only" id="message-input-hint">Enter sendet, Shift+Enter fügt einen Zeilenumbruch ein. Bilder aus der Zwischenablage werden mit Strg+V als Anhang eingefügt.</p>
         <noscript><p class="chat-notice">Zum Senden wird JavaScript benötigt.</p></noscript>
       </form>
     {% endif %}

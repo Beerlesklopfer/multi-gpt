@@ -10,7 +10,7 @@ Einzige eigene Tabelle: ``DirectorySource`` (Verzeichnisquellen, Agent crawler).
 from django.core.validators import MinValueValidator
 from django.db import models
 
-from multigpt.chat.models import Collection, Document, Job, RagSettings
+from multigpt.chat.models import Collection, Document, IndexRun, Job, RagSettings
 
 
 class RagOverview(RagSettings):
@@ -48,6 +48,13 @@ class JobProxy(Job):
         verbose_name_plural = "Indexierungsaufträge"
 
 
+class IndexRunProxy(IndexRun):
+    class Meta:
+        proxy = True
+        verbose_name = "Lauf"
+        verbose_name_plural = "Läufe"
+
+
 # --- Verzeichnisquellen (Agent crawler) -----------------------------------------
 
 DEFAULT_INCLUDE_PATTERNS = "*.pdf, *.docx, *.txt, *.md"
@@ -74,8 +81,10 @@ class DirectorySource(models.Model):
         "Dateimuster",
         max_length=500,
         default=DEFAULT_INCLUDE_PATTERNS,
-        help_text="Kommagetrennt, z. B. „*.pdf, *.docx“. Nur PDF, DOCX, TXT und MD werden "
-        "verarbeitet.",
+        help_text="Kommagetrennt, z. B. „*.pdf, *.docx“. Verarbeitet werden PDF, DOCX, TXT, "
+        "MD und Bilddateien (JPG, PNG, TIFF, WEBP); Bilder nur, wenn ein Muster sie "
+        "einschließt (z. B. „*.jpg, *.png“) – jedes Bild kostet OCR und ggf. einen "
+        "Modellaufruf.",
     )
     exclude_patterns = models.CharField(
         "Ausschlussmuster",

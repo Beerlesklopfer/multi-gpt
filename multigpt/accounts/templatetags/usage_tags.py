@@ -1,10 +1,12 @@
 """Verbrauch in Templates (M6): Euro-Format, Budgetbalken, Hinweis in der Kopfzeile.
 
-``{% budget_banner %}`` fragt den Verbrauch nur ab, wenn das Konto ein Budget
-hat (zwei Aggregat-Abfragen je Seite); ohne Budget keine Abfrage.
+``{% budget_banner %}`` fragt die Budgets ab (eine Abfrage) und den Verbrauch
+nur, wenn das Konto ein Budget hat (eine Aggregat-Abfrage je Seite).
 """
 
 from django import template
+
+from multigpt.billing import budgets
 
 from .. import usage
 
@@ -28,19 +30,26 @@ def tokens(value) -> str:
 
 @register.inclusion_tag("accounts/_budget_banner.html", takes_context=True)
 def budget_banner(context):
-    """Hinweis ab 80 % des Monatsbudgets (gelb) bzw. bei ausgeschöpftem Budget."""
+    """Hinweis ab 80 % eines Budgets (gelb) bzw. bei ausgeschöpftem Budget.
+
+    Maßgeblich ist das am stärksten ausgeschöpfte Budget (gesamt oder je
+    Abrechnungskonto, billing.budgets); bei einem Konto steht dessen Name dabei.
+    """
     request = context.get("request")
     user = getattr(request, "user", None)
-    if user is None or not user.is_authenticated or usage.budget_for(user) is None:
+    if user is None or not user.is_authenticated:
         return {"budget_level": usage.LEVEL_OK}
-    state = usage.budget_state(user)
+    state = budgets.snapshot(user).worst()
+    if state is None or state.level == usage.LEVEL_OK:
+        return {"budget_level": usage.LEVEL_OK}
+    suffix = f" ({state.name})" if state.account is not None else ""
     return {
         "budget_level": state.level,
-        "budget_text": usage.warning_text(state),
+        "budget_text": state.warning_text(),
         "budget_short": (
-            "Budget ausgeschöpft"
+            "Budget ausgeschöpft" + suffix
             if state.level == usage.LEVEL_EXHAUSTED
-            else f"Budget zu {state.percent} % verbraucht"
+            else f"Budget zu {state.percent} % verbraucht" + suffix
         ),
     }
 
@@ -68,3 +77,22 @@ def bar_value(value, maximum) -> str:
         return f"{min(float(value) / float(maximum), 1.0):.4f}"
     except (TypeError, ValueError, ZeroDivisionError):
         return "0"
+
+
+@register.filter
+def amount(value, currency) -> str:
+    """Betrag in Kontowährung („1,23 $“ bzw. „1,23 €“)."""
+    return usage.format_amount(value, currency)
+
+
+@register.inclusion_tag("accounts/_account_meter.html")
+def account_meter(state):
+    """Balken für ein Budget je Abrechnungskonto (EUR oder Tokens)."""
+    ctx = {"state": state}
+    if state.limit is not None and state.limit > 0:
+        ctx.update(
+            meter_max=str(state.limit),
+            meter_value=str(min(state.spent, state.limit)),
+            meter_low=str(state.limit * usage.WARNING_RATIO),
+        )
+    return ctx

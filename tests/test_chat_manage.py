@@ -11,7 +11,14 @@ from django.urls import reverse
 
 from multigpt.accounts.models import Role, User, UserGroup
 from multigpt.chat import services
-from multigpt.chat.models import AIModel, Conversation, Message, Provider, Share
+from multigpt.chat.models import (
+    DEFAULT_BASE_INSTRUCTIONS,
+    AIModel,
+    Conversation,
+    Message,
+    Provider,
+    Share,
+)
 from multigpt.chat.titles import title_from
 from multigpt.chat.views import export_filename
 
@@ -63,10 +70,10 @@ def patch(client, pk, payload):
     return client.patch(detail_url(pk), data=json.dumps(payload), content_type="application/json")
 
 
-def share(conv, user, can_write):
-    group = UserGroup.objects.create(name=f"Gruppe {user.username} {can_write}")
+def share(conv, user, can_write, can_update=False):
+    group = UserGroup.objects.create(name=f"Gruppe {user.username} {can_write} {can_update}")
     user.groups.add(group)
-    Share.objects.create(conversation=conv, group=group, can_write=can_write)
+    Share.objects.create(conversation=conv, group=group, can_write=can_write, can_update=can_update)
 
 
 # --- Umbenennen, Archivieren, Löschen --------------------------------------------
@@ -172,8 +179,18 @@ def test_shared_read_only_cannot_change(client, conv, ben):
     assert 'id="system-prompt-form"' not in html
 
 
-def test_shared_writer_can_rename_but_not_archive_or_delete(client, conv, ben):
+def test_shared_writer_without_update_cannot_rename(client, conv, ben):
+    # RWUD (Chats teilen): Umbenennen und System-Prompt brauchen U, nicht W.
     share(conv, ben, can_write=True)
+    client.force_login(ben)
+    assert patch(client, conv.pk, {"title": "Gemeinsam"}).status_code == 403
+    assert patch(client, conv.pk, {"system_prompt": "Kurz bitte"}).status_code == 403
+    html = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
+    assert 'data-chat-action="rename"' not in html
+
+
+def test_shared_updater_can_rename_but_not_archive_or_delete(client, conv, ben):
+    share(conv, ben, can_write=True, can_update=True)
     client.force_login(ben)
     assert patch(client, conv.pk, {"title": "Gemeinsam"}).status_code == 200
     assert patch(client, conv.pk, {"system_prompt": "Kurz bitte"}).status_code == 200
@@ -288,7 +305,9 @@ def test_fixed_role_prompt_invisible_but_sent(client, ai_model):
     assert FIXED_PROMPT not in response.content.decode()
     # Beim Modell kommt er an, vor dem Chat-Prompt.
     conv.refresh_from_db()
-    assert services.build_system_prompt(teen, conv) == f"{FIXED_PROMPT}\n\nNeu"
+    assert services.build_system_prompt(teen, conv) == (
+        f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{FIXED_PROMPT}\n\nNeu"
+    )
 
 
 # --- Export ------------------------------------------------------------------------

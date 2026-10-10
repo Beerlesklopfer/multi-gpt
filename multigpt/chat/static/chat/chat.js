@@ -13,7 +13,6 @@
 (() => {
   const STORAGE_KEY = "multigpt.lastModel";
   const WEB_SEARCH_KEY = "multigpt.webSearch";
-  const SOURCES_VISIBLE = 3; // wie templatetags/source_tags.py
   const SCROLL_STICK_PX = 48;
   const TITLE_MAX = 60;
   const RESULT_DISPLAY_CHARS = 4000;
@@ -121,26 +120,6 @@
     } catch {
       return String(args);
     }
-  }
-
-  // --- Quellen (M8) ------------------------------------------------------------
-  // Gleiche Regeln wie templatetags/source_tags.py.
-
-  function sourceUrl(raw) {
-    if (typeof raw !== "string") {
-      return null;
-    }
-    try {
-      const url = new URL(raw.trim());
-      return (url.protocol === "http:" || url.protocol === "https:") && url.hostname ? url : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function sourceDomain(url) {
-    const host = url ? url.hostname : "";
-    return host.startsWith("www.") ? host.slice(4) : host;
   }
 
   // --- SSE aus einem fetch-Stream lesen -----------------------------------------
@@ -311,88 +290,11 @@
     }
 
     // --- Quellen unter der laufenden Antwort (M8) ---
-    // Aufbau wie chat/_sources.html; jedes Event "sources" ersetzt die Liste.
-
-    // Webquelle: Link nur bei http(s), Domain daneben. Dokumentquelle (M7): nur
-    // eigene, relative Pfade ("/…", nicht "//…"), Seite im Text, keine Domain.
-    function buildSourceItem(source) {
-      const item = document.createElement("li");
-      item.className = "message-source";
-      const raw = typeof source.url === "string" ? source.url.trim() : "";
-      const title = String(source.title ?? "").replace(/\s+/g, " ").trim();
-      let href = "";
-      let site = "";
-      let label;
-      if (source.kind === "document") {
-        href = raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "";
-        const page = Number(source.page);
-        label = `${title || "Dokument"}${Number.isInteger(page) && page > 0 ? `, S. ${page}` : ""}`;
-      } else {
-        const url = sourceUrl(raw);
-        href = url ? url.href : "";
-        site = sourceDomain(url);
-        label = title || site || raw || "Quelle";
-      }
-      if (href) {
-        const link = document.createElement("a");
-        link.className = "message-source-link";
-        link.href = href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer nofollow";
-        link.textContent = label;
-        const hint = document.createElement("span");
-        hint.className = "sr-only";
-        hint.textContent = " (öffnet in neuem Tab)";
-        link.append(hint);
-        item.append(link);
-        if (site) {
-          const domain = document.createElement("span");
-          domain.className = "message-source-domain";
-          domain.textContent = site;
-          item.append(" ", domain);
-        }
-      } else {
-        const text = document.createElement("span");
-        text.className = "message-source-link";
-        text.textContent = label;
-        item.append(text);
-      }
-      return item;
-    }
+    // Aufbau, Kopierknöpfe und Kurzbeleg in citations.js (wie chat/_sources.html);
+    // jedes Event "sources" ersetzt die Liste.
 
     function renderSources(article, sources) {
-      article.querySelector(".message-sources")?.remove();
-      const list = (Array.isArray(sources) ? sources : []).filter((s) => s && typeof s === "object");
-      if (!list.length) {
-        return;
-      }
-      list.sort((a, b) => (Number(a.n) || 0) - (Number(b.n) || 0));
-      const section = document.createElement("section");
-      section.className = "message-sources";
-      const titleId = `message-sources-${article.dataset.messageId || "neu"}`;
-      section.setAttribute("aria-labelledby", titleId);
-      const heading = document.createElement("h3");
-      heading.className = "message-sources-title";
-      heading.id = titleId;
-      heading.textContent = "Quellen";
-      const head = document.createElement("ol");
-      head.className = "message-sources-list";
-      head.append(...list.slice(0, SOURCES_VISIBLE).map(buildSourceItem));
-      section.append(heading, head);
-      const rest = list.slice(SOURCES_VISIBLE);
-      if (rest.length) {
-        const more = document.createElement("details");
-        more.className = "message-sources-more";
-        const summary = document.createElement("summary");
-        summary.textContent = `Weitere Quellen (${rest.length})`;
-        const tail = document.createElement("ol");
-        tail.className = "message-sources-list";
-        tail.start = SOURCES_VISIBLE + 1;
-        tail.append(...rest.map(buildSourceItem));
-        more.append(summary, tail);
-        section.append(more);
-      }
-      article.querySelector(".chat-message-content").after(section);
+      window.MultiGPT.sources?.render(article, sources);
     }
 
     // --- Werkzeugaufrufe (M4a-06) ---
@@ -764,10 +666,12 @@
       if (!sendButton) {
         return;
       }
-      sendButton.textContent = active ? "Abbrechen" : "Senden";
-      sendButton.classList.toggle("button-stop", active);
-      sendButton.classList.toggle("button-primary", !active);
-      sendButton.disabled = !active && !modelsReady;
+      // Runder Knopf im Eingabefeld: Pfeil (Senden) bzw. Quadrat (Antwort stoppen).
+      const label = active ? "Antwort stoppen" : "Senden";
+      sendButton.dataset.state = active ? "stop" : "send";
+      sendButton.setAttribute("aria-label", label);
+      sendButton.title = label;
+      updateSendButton();
       if (modelSelect) {
         modelSelect.disabled = active || !modelsReady;
       }
@@ -785,6 +689,16 @@
       updateMessageActions();
     }
 
+    // Senden nur mit Text oder Anhang; Stoppen geht immer, solange etwas läuft.
+    function updateSendButton() {
+      if (!sendButton) {
+        return;
+      }
+      const hasInput =
+        Boolean(textarea?.value.trim()) || (window.MultiGPT.attachments?.count() ?? 0) > 0;
+      sendButton.disabled = !controller && (!modelsReady || !hasInput);
+    }
+
     function returnFocus() {
       const active = document.activeElement;
       if (!active || active === document.body || active === sendButton || !active.isConnected) {
@@ -797,7 +711,8 @@
     // Chat in der Seitenleiste eintragen bzw. nach oben holen (sidebar.js).
     function markSidebar(conv, text) {
       const sidebar = window.MultiGPT.sidebar;
-      if (!sidebar) {
+      // Mit mir geteilter Chat (sharing.js): gehört nicht in die eigene Liste.
+      if (!sidebar || window.MultiGPT.sharing?.isForeign()) {
         return;
       }
       const item = sidebar.upsertItem({ id: conv.id, url: conv.url, title: conv.title || "" });
@@ -876,6 +791,9 @@
         let label = model.display_name;
         if (model.blocked_by_budget === true) {
           label += " (Budget ausgeschöpft)";
+        } else if (!model.is_local && model.online === false) {
+          // Cloud-Anbieter mit fehlgeschlagener Prüfung (z. B. Key abgelaufen).
+          label += " (offline)";
         } else if (model.is_local) {
           if (model.online === false) {
             label += " (lokal, offline)";
@@ -885,13 +803,24 @@
             label += " (lokal, online)";
           }
         }
+        if (model.supports_tools === true) {
+          label += " · Werkzeuge"; // kann selbst suchen bzw. Werkzeuge aufrufen
+        }
         const option = new Option(label, String(model.id));
         option.dataset.name = model.display_name;
         option.dataset.tools = String(model.supports_tools === true);
-        if (model.is_local) {
+        // Vom Verwalter freigegebene MCP-Server: "all" oder IDs (leer = keine).
+        option.dataset.mcp = Array.isArray(model.mcp_server_ids)
+          ? model.mcp_server_ids.join(",")
+          : "all";
+        // Bildfähigkeit (Anhänge, attachments.js); unbekannt zählt als ja.
+        option.dataset.vision = String(model.supports_vision !== false);
+        if (model.is_local || model.online === false) {
           option.className = isAvailable(model) ? "model-online" : "model-offline";
         }
         option.disabled = !isAvailable(model);
+        // Abrechnungskonto und Preis bzw. Sperrgrund je Konto (billing), dezent.
+        option.title = [model.budget_reason, model.billing_title].filter(Boolean).join(" – ");
         return option;
       };
       const nodes = [];
@@ -919,8 +848,9 @@
 
       modelsReady = usable.length > 0;
       if (!modelsReady && models.some((m) => m.blocked_by_budget === true)) {
+        const reason = models.find((m) => m.blocked_by_budget === true)?.budget_reason;
         setStatus(
-          "Monatsbudget ausgeschöpft – bis zum Monatsende sind nur lokale Modelle nutzbar. Zurzeit ist kein lokales Modell erreichbar.",
+          `${reason || "Monatsbudget ausgeschöpft."} Zurzeit ist kein anderes Modell erreichbar.`,
           true,
         );
       } else if (!modelsReady) {
@@ -942,10 +872,28 @@
       return modelSelect?.selectedOptions[0]?.dataset.tools === "true";
     }
 
-    // Nur sichtbar, wenn es Server gibt und das gewählte Modell Werkzeuge kann.
+    // Nur sichtbar, wenn es Server gibt und das gewählte Modell Werkzeuge kann;
+    // davon nur die für das Modell freigegebenen Server (Prüfung auf dem Server).
     function updateToolSwitches() {
+      const tools = modelSupportsTools();
       if (toolFieldset) {
-        toolFieldset.hidden = !mcpServers.length || !modelSupportsTools();
+        const mcp = modelSelect?.selectedOptions[0]?.dataset.mcp ?? "all";
+        const allowed = mcp === "all" ? null : new Set(mcp.split(",").filter(Boolean));
+        let shown = 0;
+        for (const input of toolSwitchList.querySelectorAll("input")) {
+          const ok = !allowed || allowed.has(input.value);
+          input.closest("label").hidden = !ok;
+          shown += ok ? 1 : 0;
+        }
+        toolFieldset.hidden = !mcpServers.length || !tools;
+        const hint = document.getElementById("tool-servers-hint");
+        if (hint) {
+          hint.hidden = shown > 0;
+        }
+      }
+      const searchHint = document.getElementById("web-search-model-hint");
+      if (searchHint) {
+        searchHint.hidden = !modelSelect?.value || tools;
       }
     }
 
@@ -978,6 +926,17 @@
           const text = document.createElement("span");
           text.textContent = String(server.name ?? "");
           label.append(input, text);
+          // Zuletzt offline geprüft (chat/mcp/status.py): ausgegraut, Ursache im Tooltip;
+          // seine Werkzeuge bietet der Server dem Modell ohnehin nicht an.
+          if (server.online === false) {
+            input.checked = false;
+            input.disabled = true;
+            label.classList.add("is-offline");
+            text.textContent += " (offline)";
+            label.title = server.error
+              ? `${server.name} ist offline – ${server.error}`
+              : `${server.name} ist offline.`;
+          }
           return label;
         }),
       );
@@ -989,7 +948,10 @@
       if (!toolFieldset || toolFieldset.hidden) {
         return null;
       }
-      return Array.from(toolSwitchList.querySelectorAll("input:checked"), (i) => Number(i.value));
+      return Array.from(
+        toolSwitchList.querySelectorAll("label:not([hidden]) input:checked"),
+        (i) => Number(i.value),
+      );
     }
 
     // Ergänzt Werkzeugauswahl und Websuche (nur wenn der Schalter angezeigt wird).
@@ -1000,7 +962,9 @@
         result.web_search = webSearchToggle.checked;
       }
       // Sammlungen für die Dokumentsuche (M7, collections_picker.js).
-      return window.MultiGPT.collectionPicker?.extend(result) ?? result;
+      const withCollections = window.MultiGPT.collectionPicker?.extend(result) ?? result;
+      // Anhänge der neuen Nachricht (attachments.js; nicht bei Neu erzeugen/Bearbeiten).
+      return window.MultiGPT.attachments?.extend(withCollections) ?? withCollections;
     }
 
     // --- Schalter Websuche (M8) ---
@@ -1021,11 +985,12 @@
         return currentConversation();
       }
       const model = selectedModel();
-      const response = await postJson(
-        urls.conversations,
-        model ? { default_model: model.id } : {},
-        signal,
-      );
+      const payload = model ? { default_model: model.id } : {};
+      // „Neuer Chat im Projekt“ (Startseite mit ?projekt=…, projects.js).
+      if (chat.dataset.projectId) {
+        payload.project = Number(chat.dataset.projectId);
+      }
+      const response = await postJson(urls.conversations, payload, signal);
       if (!response.ok) {
         throw new Error(await errorMessage(response));
       }
@@ -1150,6 +1115,9 @@
           if (!opts.onUndo && !textarea.value) {
             textarea.value = opts.restoreText;
             autosize();
+          }
+          if (!opts.onUndo) {
+            window.MultiGPT.attachments?.restore();
           }
         }
         for (const el of replaced) {
@@ -1326,8 +1294,8 @@
       if (controller || !modelsReady) {
         return;
       }
-      const text = textarea.value;
-      if (!text.trim()) {
+      const attachments = window.MultiGPT.attachments;
+      if (!textarea.value.trim() && !attachments?.count()) {
         textarea.focus();
         return;
       }
@@ -1335,6 +1303,14 @@
       const compare = window.MultiGPT.compare;
       if (compare?.pending()) {
         setStatus("Bitte zuerst eine Antwort wählen („Mit dieser Antwort weiter“).", true);
+        return;
+      }
+      // Laufende Uploads abwarten, Bildfähigkeit des Modells prüfen.
+      if (attachments && !(await attachments.beforeSend())) {
+        return;
+      }
+      const text = textarea.value;
+      if (controller || (!text.trim() && !attachments?.count())) {
         return;
       }
       if (compare?.isActive()) {
@@ -1347,13 +1323,23 @@
         modelSelect.focus();
         return;
       }
+      // Modus „Bild“ bzw. Hinweis bei Bildwunsch ohne Werkzeuge (image_mode.js, M9-01).
+      const imageMode = window.MultiGPT.imageMode;
+      if (imageMode && !imageMode.beforeSend(text)) {
+        return;
+      }
       storageSet(STORAGE_KEY, String(model.id));
+      // Geteilte Chats (sharing.js): angezeigtes Ende mitsenden, veraltet -> 409.
+      const leaf = window.MultiGPT.sharing?.leafId() ?? null;
       const userEl = appendMessage("user", "Du", text);
-      const assistantEl = appendMessage("assistant", model.name, "");
+      attachments?.commit(userEl);
+      const assistantEl = appendMessage("assistant", imageMode?.label() || model.name, "");
       textarea.value = "";
       autosize();
       scrollToBottom();
-      await runStream(withTools({ content: text, model: model.id }), assistantEl, {
+      const payload = { content: text, model: model.id, ...(leaf ? { leaf } : {}) };
+      const full = withTools(payload);
+      await runStream(imageMode?.extend(full) ?? full, assistantEl, {
         userEl,
         restoreText: text,
       });
@@ -1525,8 +1511,9 @@
       if (!editing) {
         return;
       }
-      const { article, box } = editing;
+      const { article, box, attachTray } = editing;
       editing = null;
+      attachTray?.close();
       box.remove();
       article.classList.remove("is-editing");
       article.querySelector(".chat-message-content").hidden = false;
@@ -1536,7 +1523,7 @@
       }
     }
 
-    function openEditor(article, text) {
+    function openEditor(article, text, restoredAttachments) {
       closeEditor(false);
       const content = article.querySelector(".chat-message-content");
       const box = node("form", "message-editor");
@@ -1565,7 +1552,10 @@
       content.hidden = true;
       content.after(box);
       article.classList.add("is-editing");
-      editing = { article, box };
+      // Anhänge der Nachricht: sichtbar, entfernbar, neue hinzufügbar (attachments.js).
+      const attachTray =
+        window.MultiGPT.attachments?.attachEditor(article, box, area, restoredAttachments) || null;
+      editing = { article, box, attachTray };
       updateMessageActions();
 
       const resize = () => {
@@ -1601,8 +1591,9 @@
       if (!modelsReady) {
         return;
       }
-      const text = area.value;
-      if (!text.trim()) {
+      const box = editing?.box;
+      const attachTray = editing?.attachTray;
+      if (!area.value.trim() && !attachTray?.count()) {
         area.focus();
         return;
       }
@@ -1612,18 +1603,40 @@
         modelSelect.focus();
         return;
       }
+      // Laufende Uploads abwarten; der Editor kann inzwischen geschlossen sein.
+      if (attachTray && !(await attachTray.ready())) {
+        return;
+      }
+      if (controller || !box || editing?.box !== box) {
+        return;
+      }
+      const text = area.value;
+      if (!text.trim() && !attachTray?.count()) {
+        area.focus();
+        return;
+      }
+      const attachmentIds = attachTray ? attachTray.ids() : null;
+      const shown = attachTray ? attachTray.attachments() : null;
+      const kept = attachTray ? attachTray.release() : null;
       storageSet(STORAGE_KEY, String(model.id));
       closeEditor(false);
       const replaced = hideFrom(article);
       const userEl = appendMessage("user", "Du", text);
+      if (shown) {
+        window.MultiGPT.attachments.showInMessage(userEl, shown);
+      }
       const assistantEl = appendMessage("assistant", model.name, "");
       scrollToBottom();
       sendButton.focus();
-      await runStream(
-        withTools({ content: text, model: model.id, edit_of: Number(article.dataset.messageId) }),
-        assistantEl,
-        { userEl, replaced, onUndo: () => openEditor(article, text) },
-      );
+      const payload = { content: text, model: model.id, edit_of: Number(article.dataset.messageId) };
+      if (attachmentIds) {
+        payload.attachments = attachmentIds;
+      }
+      await runStream(withTools(payload), assistantEl, {
+        userEl,
+        replaced,
+        onUndo: () => openEditor(article, text, kept),
+      });
     }
 
     log.addEventListener("click", (event) => {
@@ -1651,6 +1664,7 @@
       textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight + 2}px`;
       updateInputCopy();
+      updateSendButton();
     }
 
     // --- Eingabe kopieren ---
@@ -1802,6 +1816,7 @@
       }
     });
     textarea.addEventListener("input", autosize);
+    document.addEventListener("multigpt:attachments-changed", updateSendButton);
     if (inputCopyButton) {
       inputCopyButton.hidden = !markdown?.copyText;
       inputCopyButton.addEventListener("click", copyInput);

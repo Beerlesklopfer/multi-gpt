@@ -10,13 +10,30 @@ Hier stehen Anleitungen zu Diensten, die MultiGPT ergänzen.
 
 ## Anleitungen
 
+- [Projekte](Projekte): Chats gruppieren, Anweisungen, Standardmodell und Sammlungen je Projekt,
+  verschieben, Archiv, Löschen mit oder ohne Chats
+- [Chats teilen](Chats-teilen): Chats mit Konten oder Gruppen teilen, Rechte Lesen, Schreiben,
+  Bearbeiten, Löschen (RWUD), Kopie, Kosten und Datenschutz
+- [Anbieter und Modelle](Anbieter-und-Modelle): Fähigkeiten-Matrix (Werkzeuge, Bilder, MCP),
+  automatische Erkennung, welche Modelle MCP-Server nutzen dürfen
+- [MCP-Server](MCP): Server anlegen oder aus JSON importieren, Online-Status und Ursachen,
+  Werkzeuge einstufen (mit/ohne Rückfrage), Freigabe je Modell
+- [Bilder erzeugen](Bilder): Bildmodell einrichten (z. B. OpenAI `gpt-image-1`), Werkzeug
+  `generate_image`, Modus „Bild“, Hinweis bei Modellen ohne Werkzeuge, Kosten je Bild
+- [Berechnungen](Berechnungen): Werkzeug `run_python` (numpy, sympy, mpmath, Diagramme mit
+  matplotlib), Sandbox mit bubblewrap, Grenzen, „Sandbox testen“, Fehlersuche
+- [Kosten und Budgets](Kosten-und-Budgets): Kontenrahmen (Geld, nur Tokens, Pauschale),
+  Preise mit Historie, Wechselkurse, Budgets je Konto, Beispiele für Anthropic, OpenAI und LM Studio
 - [Fragen an eigene Dokumente (RAG)](RAG): Sammlungen, Upload, Status, Auswahl im Chat, Quellen
   und Datenschutz
   - [RAG einrichten](RAG-Einrichtung): Embedding-Modell, LM Studio, OCR, Worker, Neu-Indexieren
     und Fehlersuche
   - [Verzeichnisquellen](RAG-Verzeichnisquellen): NAS-Ordner regelmäßig in eine Sammlung
     einlesen
+  - [Zitieren](Zitieren): Zitierstile, Fundstelle (Abschnitt, Seite, Absatz),
+    Literaturangaben pflegen, Normen und Verlagstexte
 - [Konfiguration](Konfiguration): alle Schlüssel in `/etc/multi-gpt/.env` mit Standardwerten und Bedeutung
+- [mgpt-ctl](mgpt-ctl): alle Verwaltungsbefehle; **nach dem Update auf 0.3 einmalig** `sudo mgpt-ctl guess_capabilities --apply`
 - [nginx und TLS](nginx-und-TLS): was das Paket für nginx einrichtet, Hostname und Zertifikat
   ändern, Standard-Server, Upload-Grenze und Fehlersuche
 - [SearXNG als Such-Backend](SearXNG): wozu MultiGPT eine Suchmaschine braucht, welche Variante

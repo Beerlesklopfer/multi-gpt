@@ -344,3 +344,75 @@ def test_unreachable_before_text_stays_error(client, conversation, lmstudio, lla
     mock.post(f"{BASE}/chat/completions").mock(side_effect=httpx.ConnectError("refused"))
     events = sse_events(post(client, conversation, content="Hallo", model=llama.pk))
     assert events[-1][1] == {"status": "error"}
+
+
+# --- Cloud-Anbieter mit fehlgeschlagener Prüfung --------------------------------------
+
+CLOUD = "http://cloud.test/v1"
+
+
+@pytest.fixture
+def cloud_offline():
+    """Cloud-Anbieter ohne ``check_status``, letzte Prüfung (Admin) fehlgeschlagen."""
+    provider = Provider.objects.create(
+        name="OpenAI", kind=Provider.Kind.OPENAI_COMPAT, base_url=CLOUD, api_key="sk-x"
+    )
+    Provider.objects.filter(pk=provider.pk).update(
+        online=False,
+        last_checked=timezone.now(),
+        last_error="API-Key abgelaufen (HTTP 401): Bitte beim Anbieter einen neuen Key erzeugen.",
+    )
+    provider.refresh_from_db()
+    return provider
+
+
+@pytest.fixture
+def gpt(cloud_offline):
+    return AIModel.objects.create(provider=cloud_offline, model_id="gpt-5.5", display_name="GPT")
+
+
+def test_cloud_offline_model_greyed(client, adult, gpt):
+    (model,) = client.get(reverse("chat:api_models")).json()
+    assert model["online"] is False
+    assert model["available"] is False
+
+
+def test_cloud_never_checked_counts_as_online(client, adult):
+    provider = Provider.objects.create(name="Neu", kind="openai_compat")
+    AIModel.objects.create(provider=provider, model_id="m", display_name="M")
+    (model,) = client.get(reverse("chat:api_models")).json()
+    assert (model["online"], model["available"]) == (True, True)
+
+
+def test_send_to_offline_cloud_model_rejected(client, conversation, gpt, mock):
+    route = mock.get(f"{CLOUD}/models").mock(return_value=httpx.Response(401, json={}))
+    response = post(client, conversation, content="Hallo", model=gpt.pk)
+    assert response.status_code == 503
+    assert response.json()["error"].startswith("OpenAI ist offline (API-Key abgelaufen (HTTP 401))")
+    assert route.call_count == 0  # Neuprüfung erst nach 60 s
+    assert not Message.objects.filter(conversation=conversation).exists()
+
+
+def test_offline_cloud_rechecked_and_recovers(client, adult, cloud_offline, gpt, mock):
+    route = mock.get(f"{CLOUD}/models").mock(return_value=models_response("gpt-5.5"))
+    # Innerhalb von 60 s keine Neuprüfung, Anbieter erscheint offline in der Statusleiste.
+    (entry,) = get_status(client)
+    assert (entry["name"], entry["online"]) == ("OpenAI", False)
+    assert route.call_count == 0
+    Provider.objects.filter(pk=cloud_offline.pk).update(
+        last_checked=timezone.now() - timedelta(seconds=status.OFFLINE_RECHECK_SECONDS + 1)
+    )
+    (entry,) = get_status(client)
+    assert route.call_count == 1
+    assert entry["online"] is True  # einmal als „jetzt online“ gemeldet …
+    assert get_status(client) == []  # … danach nicht mehr in der Statusleiste
+    (model,) = client.get(reverse("chat:api_models")).json()
+    assert model["available"] is True
+
+
+def test_online_cloud_without_check_status_not_polled(client, adult, mock):
+    provider = Provider.objects.create(name="Gemini", kind="openai_compat", base_url=CLOUD)
+    Provider.objects.filter(pk=provider.pk).update(online=True, last_checked=timezone.now())
+    route = mock.get(f"{CLOUD}/models").mock(return_value=models_response())
+    assert get_status(client) == []
+    assert route.call_count == 0

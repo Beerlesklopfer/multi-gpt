@@ -18,6 +18,12 @@ IDs und Zahlen, nie Datei- oder Pfadnamen.
 
 Periodik: ``enqueue_due_scans`` prüft im Worker einmal je Minute, welche aktiven
 Quellen fällig sind, und reiht je Quelle höchstens einen offenen Scan-Job ein.
+
+Läufe: Jeder Scan ist ein ``IndexRun`` (Art „Verzeichnis einlesen“); der
+Scan-Job und alle Indexierungsjobs, die er erzeugt, hängen daran. Solange ein
+Lauf der Quelle offen ist (auch wenn nur noch Indexierungsjobs laufen), entsteht
+kein neuer. Abbruch: Der Scan endet an der nächsten Datei; dann wird nichts als
+„verschwunden“ gelöscht (nicht gesehene Dateien sind nur nicht gescannt).
 """
 
 import fnmatch
@@ -35,7 +41,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from multigpt.chat.models import Document, Job
+from multigpt.chat.models import Document, IndexRun, Job
 from multigpt.chat.rag import extract, jobs, upload
 
 from . import paths
@@ -58,6 +64,8 @@ MSG_TRUNCATED = (
 )
 MSG_SOURCE_GONE = "Verzeichnisquelle nicht mehr vorhanden."
 MSG_TOO_BIG = "Die Datei ist zu groß (höchstens {mb} MB)."
+# Fortschritt des Laufs alle so viele Dateien speichern.
+PROGRESS_EVERY = 20
 
 
 def max_files() -> int:
@@ -213,17 +221,47 @@ def _hash_and_check(fh, name: str) -> tuple[str, int, datetime]:
     return digest.hexdigest(), st.st_size, mtime_of(st)
 
 
+def _save_progress(run_id: int | None, result: ScanResult, found: int, checked: int) -> None:
+    """Zähler des Laufs schreiben (nur solange er offen ist: danach eingefroren)."""
+    if run_id is None:
+        return
+    IndexRun.objects.filter(pk=run_id, status__in=IndexRun.OPEN).update(
+        files_found=found,
+        files_checked=checked,
+        files_new=result.new,
+        files_changed=result.changed,
+        files_deleted=result.deleted,
+        files_skipped=result.skipped,
+    )
+
+
+def _requeue_cancelled(doc: Document, run: IndexRun | None) -> None:
+    """Unveränderte Datei, deren Indexierung abgebrochen wurde: erneut einreihen."""
+    if doc.status == Document.Status.ERROR and doc.error_text == jobs.CANCELLED_DOCUMENT:
+        jobs.enqueue_index(doc, run)
+
+
 def scan_source(
-    source: DirectorySource, should_stop: Callable[[], bool] | None = None
+    source: DirectorySource,
+    should_stop: Callable[[], bool] | None = None,
+    *,
+    run: IndexRun | None = None,
+    result: ScanResult | None = None,
 ) -> ScanResult:
     """Quelle einlesen. Wirft ``SourcePathError`` (Quelle unzulässig/unlesbar),
-    ``_EmptyDirectory`` oder ``extract.Interrupted``."""
+    ``_EmptyDirectory`` oder ``extract.Interrupted``.
+
+    Mit ``run`` hängen die Indexierungsjobs am Lauf, der Fortschritt wird dort
+    mitgeschrieben. ``result`` wird fortlaufend gefüllt (auch bei Abbruch).
+    """
     should_stop = should_stop or (lambda: False)
-    result = ScanResult()
+    result = result if result is not None else ScanResult()
+    run_id = run.pk if run is not None else None
     base = paths.check_directory(source.path)
     entries, walk_errors, truncated, empty = list_files(source, base)
     result.errors += walk_errors
     result.truncated = truncated
+    _save_progress(run_id, result, len(entries), 0)
 
     existing = {d.source_path: d for d in Document.objects.filter(source=source)}
     if empty and existing:
@@ -231,8 +269,11 @@ def scan_source(
 
     limit = upload.max_upload_bytes()
     seen: set[str] = set()
-    for entry in entries:
+    for checked, entry in enumerate(entries):
+        if checked and checked % PROGRESS_EVERY == 0:
+            _save_progress(run_id, result, len(entries), checked)
         if should_stop():
+            _save_progress(run_id, result, len(entries), checked)
             raise extract.Interrupted
         doc = existing.get(entry.rel)
         if entry.size > limit or entry.size == 0:
@@ -241,6 +282,7 @@ def scan_source(
         if doc is not None and doc.source_size == entry.size and doc.source_mtime == entry.mtime:
             seen.add(entry.rel)
             result.unchanged += 1
+            _requeue_cancelled(doc, run)
             continue
         try:
             with paths.open_file(base, entry.rel) as fh:
@@ -258,6 +300,7 @@ def scan_source(
         if doc is not None and doc.source_sha256 == sha:
             Document.objects.filter(pk=doc.pk).update(source_size=size, source_mtime=mtime)
             result.unchanged += 1
+            _requeue_cancelled(doc, run)
             continue
         with transaction.atomic():
             if doc is None:
@@ -277,36 +320,49 @@ def scan_source(
                     source_size=size, source_mtime=mtime, source_sha256=sha
                 )
                 result.changed += 1
-            jobs.enqueue_index(doc)
+            jobs.enqueue_index(doc, run)
 
+    # Abbruch nach der letzten Datei: nichts als „verschwunden“ löschen.
+    if should_stop():
+        _save_progress(run_id, result, len(entries), len(entries))
+        raise extract.Interrupted
     if not truncated:
         gone = [d.pk for rel, d in existing.items() if rel not in seen]
         if gone:
+            # Laufende Indexierungen dieser Dokumente abbrechen, wartende entfernen.
+            jobs.cancel_document_jobs(gone)
             with transaction.atomic():
-                Job.objects.filter(
-                    kind=Job.Kind.INDEX_DOCUMENT,
-                    status=Job.Status.PENDING,
-                    payload__document_id__in=gone,
-                ).delete()
                 result.deleted = (
                     Document.objects.filter(pk__in=gone, source=source)
                     .delete()[1]
                     .get(Document._meta.label, 0)
                 )
+    _save_progress(run_id, result, len(entries), len(entries))
     return result
 
 
-def run_scan(source: DirectorySource, should_stop: Callable[[], bool] | None = None) -> str:
-    """Einlesen mit Buchführung an der Quelle; Rückgabe: Notiz für den Job."""
+def run_scan(
+    source: DirectorySource,
+    should_stop: Callable[[], bool] | None = None,
+    run: IndexRun | None = None,
+) -> str:
+    """Einlesen mit Buchführung an der Quelle; Rückgabe: Notiz für den Job.
+
+    ``extract.Interrupted`` (Worker beendet oder Abbruch) wird weitergereicht;
+    die Quelle bekommt dann kein neues Ergebnis.
+    """
     DirectorySource.objects.filter(pk=source.pk).update(last_scan_started=timezone.now())
     error = ""
     result = None
     try:
-        result = scan_source(source, should_stop)
+        result = scan_source(source, should_stop, run=run, result=ScanResult())
     except SourcePathError as exc:
         error = exc.message
     except _EmptyDirectory:
         error = MSG_EMPTY_DIR
+    if result is None and run is not None:
+        # Nichts eingelesen: Der Lauf endet als „fehlgeschlagen“.
+        IndexRun.objects.filter(pk=run.pk).update(error_text=error)
     if result is not None:
         if result.truncated:
             error = MSG_TRUNCATED.format(limit=max_files())
@@ -347,8 +403,10 @@ def run_scan_job(job: Job, should_stop: Callable[[], bool]) -> str:
         DirectorySource.objects.filter(pk=source_id).first() if isinstance(source_id, int) else None
     )
     if source is None:
+        if job.run_id is not None:
+            IndexRun.objects.filter(pk=job.run_id).update(error_text=MSG_SOURCE_GONE)
         return MSG_SOURCE_GONE
-    return run_scan(source, should_stop)
+    return run_scan(source, should_stop, job.run)
 
 
 # --- Einreihen und Periodik -------------------------------------------------------
@@ -366,15 +424,66 @@ def open_scan_job(source: DirectorySource) -> Job | None:
     )
 
 
-def enqueue_scan(source: DirectorySource) -> Job | None:
-    """Scan-Job anlegen, sofern für die Quelle keiner offen ist (sonst None)."""
+def open_run(source: DirectorySource) -> IndexRun | None:
+    """Offener Lauf (läuft oder wird abgebrochen) der Quelle."""
+    return (
+        IndexRun.objects.filter(source_id=source.pk, status__in=IndexRun.OPEN)
+        .order_by("-pk")
+        .first()
+    )
+
+
+def enqueue_scan(source: DirectorySource, user=None) -> Job | None:
+    """Lauf und Scan-Job anlegen, sofern für die Quelle keiner offen ist (sonst None).
+
+    Offen ist ein Lauf, solange sein Scan oder einer seiner Indexierungsjobs
+    noch aussteht. ``user``: wer „Jetzt einlesen“ gewählt hat (leer bei Periodik).
+    """
+    # Läufe ohne offene Aufträge (z. B. Aufträge von Hand gelöscht) abschließen.
+    for run_id in IndexRun.objects.filter(
+        source_id=source.pk, status__in=IndexRun.OPEN
+    ).values_list("pk", flat=True):
+        jobs.check_run(run_id)
     with transaction.atomic():
         # Zeilensperre auf die Quelle: parallele Aufrufe (Worker-Periodik und
-        # „Jetzt einlesen“ im Admin) legen nie zwei offene Jobs an.
+        # „Jetzt einlesen“ im Admin) legen nie zwei offene Läufe an.
         locked = DirectorySource.objects.select_for_update().filter(pk=source.pk).first()
-        if locked is None or open_scan_job(locked) is not None:
+        if locked is None or open_scan_job(locked) is not None or open_run(locked) is not None:
             return None
-        return Job.objects.create(kind=Job.Kind.SCAN_DIRECTORY, payload={"source_id": source.pk})
+        run = IndexRun.objects.create(
+            kind=IndexRun.Kind.DIRECTORY_SCAN,
+            source=locked,
+            collection_id=locked.collection_id,
+            started_by=user if user is not None and user.is_authenticated else None,
+        )
+        return Job.objects.create(
+            kind=Job.Kind.SCAN_DIRECTORY, payload={"source_id": source.pk}, run=run
+        )
+
+
+def cancel_scans(source: DirectorySource) -> tuple[int, int, int]:
+    """Offene Läufe und Scan-Jobs der Quelle abbrechen.
+
+    Rückgabe ``(läufe, entfernt, markiert)``.
+    """
+    runs = removed = marked = 0
+    for run_id in IndexRun.objects.filter(
+        source_id=source.pk, status__in=IndexRun.OPEN
+    ).values_list("pk", flat=True):
+        outcome = jobs.cancel_run(run_id)
+        if outcome is not None:
+            runs += 1
+            removed += outcome[0]
+            marked += outcome[1]
+    # Scan-Jobs ohne Lauf (von vor der Einführung der Läufe).
+    legacy = Job.objects.filter(
+        kind=Job.Kind.SCAN_DIRECTORY,
+        status__in=jobs.OPEN,
+        run__isnull=True,
+        payload__source_id=source.pk,
+    ).values_list("pk", flat=True)
+    r, m = jobs.cancel_jobs(list(legacy))
+    return runs, removed + r, marked + m
 
 
 def is_due(source: DirectorySource, now=None) -> bool:

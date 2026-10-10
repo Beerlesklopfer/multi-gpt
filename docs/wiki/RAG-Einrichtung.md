@@ -1,7 +1,7 @@
 # RAG einrichten (Betrieb)
 
 Diese Seite beschreibt, was ein Verwalter für die Dokumentsuche einrichten muss: Embedding-Modell,
-Texterkennung (OCR), den Worker und die Fehlersuche. Was Nutzer mit Sammlungen tun, steht unter
+Texterkennung (OCR), das Beschreiben von Abbildungen, den Worker und die Fehlersuche. Was Nutzer mit Sammlungen tun, steht unter
 [Fragen an eigene Dokumente](RAG), das Anbinden von NAS-Ordnern unter
 [Verzeichnisquellen](RAG-Verzeichnisquellen).
 
@@ -21,7 +21,8 @@ Texterkennung (OCR), den Worker und die Fehlersuche. Was Nutzer mit Sammlungen t
 | **Weboberfläche** (`multi-gpt.service`) | Upload, Sammlungen, Suche im Chat |
 | **Worker** (`multi-gpt-worker.service`) | liest hochgeladene Dokumente, OCR, Zerteilung, Embeddings |
 | **Embedding-Modell** | rechnet Text in Vektoren um, für Indexierung und jede Suchanfrage |
-| **OCR** | liest gescannte PDF-Seiten ohne Textebene: olmOCR über LM Studio (Tesseract auf Wunsch als Ersatz) oder Tesseract auf dem Server |
+| **OCR** | liest gescannte PDF-Seiten ohne Textebene und Bilddateien: olmOCR über LM Studio (Tesseract auf Wunsch als Ersatz) oder Tesseract auf dem Server |
+| **Abbildungen** (optional) | ein allgemeines Vision-Modell beschreibt Bilder und Diagramme in PDF und DOCX sowie Bilddateien; die Beschreibung wird mit durchsucht |
 | **PostgreSQL mit pgvector** | speichert Abschnitte und Vektoren, sucht per HNSW-Index und Volltext |
 
 Ohne eingerichtetes Embedding-Modell lassen sich Dokumente zwar hochladen, sie werden aber nicht
@@ -107,6 +108,17 @@ auf Wunsch die Texterkennung. LM Studio muss dafür in MultiGPT als Anbieter ein
 |---|---|---|
 | Embeddings | `text-embedding-nomic-embed-text-v1.5` (GGUF von `nomic-ai/nomic-embed-text-v1.5-GGUF`) | 768 Dimensionen, passt zur Datenbank |
 | OCR | `allenai/olmocr-2-7b` (GGUF-Variante von `allenai/olmOCR-2-7B-1025`) | Vision-Modell, laut Modellseite ca. 5 GB Speicher |
+| Abbildungen (optional) | `qwen/qwen3-vl-8b` (Qwen3-VL-8B, GGUF oder MLX) | allgemeines Vision-Modell, laut Modellseite ab 6 GB Speicher; Alternativen: `google/gemma-3-12b` (ab 11 GB) oder Qwen2.5-VL-7B-Instruct |
+
+olmOCR eignet sich nur zum Lesen von Text, nicht zum Beschreiben von Abbildungen; dafür ein
+allgemeines Vision-Modell nehmen. Empfohlen ist Qwen3-VL-8B: aktuell, in LM Studio als
+`qwen/qwen3-vl-8b` mit Bild-Eingabe gelistet und für Diagramme mit Achsen und Beschriftungen
+gut geeignet. Wer wenig Speicher hat, nimmt `qwen/qwen3-vl-4b`.
+
+**Speicher:** Sind nomic-embed, olmOCR und das Vision-Modell gleichzeitig geladen, braucht LM
+Studio zusammen grob 12 GB (mit Gemma 3 12B statt Qwen3-VL-8B rund 17 GB) Grafik- bzw.
+Arbeitsspeicher, dazu Platz für den Kontext. Reicht der Speicher nicht, entweder ein kleineres
+Vision-Modell wählen oder das Beschreiben der Abbildungen ausgeschaltet lassen.
 
 **Modelle dauerhaft laden.** In LM Studio werden Modelle, die erst bei der ersten Anfrage
 geladen werden (JIT), standardmäßig nach 60 Minuten ohne Nutzung wieder entladen, und „Auto-Evict“
@@ -122,16 +134,19 @@ lms ls
 # Fehlt ein Modell: herunterladen (fragt bei mehreren Treffern nach)
 lms get nomic-embed-text-v1.5
 lms get allenai/olmocr-2-7b
+lms get qwen/qwen3-vl-8b          # nur für „Abbildungen beschreiben“
 
 # Laden, ohne --ttl; <schlüssel> aus der Ausgabe von "lms ls" übernehmen
 lms load <schlüssel-nomic-embed>
 lms load <schlüssel-olmocr>
+lms load <schlüssel-qwen3-vl>     # nur für „Abbildungen beschreiben“
 
 # Prüfen, was geladen ist
 lms ps
 ```
 
-Typische Schlüssel sind `text-embedding-nomic-embed-text-v1.5` und `allenai/olmocr-2-7b`. Nach
+Typische Schlüssel sind `text-embedding-nomic-embed-text-v1.5`, `allenai/olmocr-2-7b` und
+`qwen/qwen3-vl-8b`. Nach
 einem Neustart des LM-Studio-Rechners mit `lms ps` prüfen und bei Bedarf erneut laden.
 
 **Ohne Bildschirm betreiben (headless):** Entweder den Dienst `llmster` installieren und mit
@@ -154,6 +169,11 @@ Chat entstehen mit einem Hinweis ohne Dokumentquellen.
 | OCR-Verfahren | Tesseract (auf dem Server) | oder „olmOCR (Vision-Modell, z. B. über LM Studio)“ |
 | OCR-Modell | leer | Vision-Modell für olmOCR, Pflicht bei olmOCR |
 | Tesseract als Ersatz | an | ist das OCR-Modell nicht erreichbar, liest Tesseract die Seite |
+| Abbildungen beschreiben | aus | Bilder in PDF/DOCX und Bilddateien von einem Vision-Modell beschreiben lassen |
+| Modell für Abbildungen | leer | allgemeines Vision-Modell (z. B. `qwen/qwen3-vl-8b`), Pflicht, wenn eingeschaltet; nur OpenAI-kompatible Anbieter wie LM Studio |
+| Abbildungen je Dokument / je Seite (höchstens) | 50 / 10 | weitere Abbildungen werden übersprungen |
+| Mindestgröße (Pixel) | 150 | kürzere Kante; kleinere Bilder (Symbole, Logos) werden übersprungen |
+| Bildgröße für das Modell (Pixel) | 1024 | längste Kante; größere Bilder werden vor dem Senden verkleinert |
 | Abschnittsgröße (Tokens) | 800 | 100 bis 4000 |
 | Überlappung (Tokens) | 100 | kleiner als die Abschnittsgröße |
 | Treffer je Frage | 6 | so viele Abschnitte gehen als Quellen an das Modell (1 bis 20) |
@@ -164,6 +184,16 @@ zeigt die schon angelegten Modelle und dazu die Modelle, die der Anbieter meldet
 in MultiGPT angelegt sind, als „LM Studio · `<id>` (neu)“. Ein solches Modell wird beim
 Speichern angelegt. Die OCR-Felder stehen im Abschnitt „Texterkennung (OCR)“. Ein nur für OCR
 angelegtes Modell ist für den Chat inaktiv, wird für die Texterkennung aber trotzdem genutzt.
+
+Die Felder für Abbildungen stehen im Abschnitt „Abbildungen“. Die Auswahl „Modell für
+Abbildungen“ zeigt allgemeine Vision-Modelle unter „Empfohlen“; angeboten werden nur
+OpenAI-kompatible Anbieter (LM Studio, OpenAI), bei Cloud-Anbietern nur Modelle mit
+Bild-Eingabe. Ein dafür neu angelegtes Modell ist für den Chat inaktiv. **Kosten und
+Datenschutz:** Je Abbildung entsteht ein Modellaufruf – lokal einige Sekunden je Bild, bei
+Cloud-Anbietern Gebühren. Mit einem lokalen Modell bleiben die Bilder im Haus, mit einem
+Cloud-Modell gehen sie an den Anbieter. Die RAG-Übersicht zeigt, ob die Beschreibung an ist,
+welches Modell sie nutzt und ob es geladen ist; beim Dokument im Admin steht die Zahl der
+beschriebenen Abbildungen.
 
 **Prüfen:** Unten im Formular stehen die Knöpfe **„Speichern und Embedding testen“** und
 **„Speichern und OCR testen“**. Sie speichern die angezeigten Werte und testen dann genau diese.
@@ -176,7 +206,9 @@ gespeicherten Einstellungen.
 ## 5. Nach einem Modellwechsel: „Alles neu indexieren“
 
 Vektoren verschiedener Modelle passen nicht zueinander. Nach einem Wechsel des Embedding-Modells,
-der Präfixe oder der Zerteilung deshalb alle Dokumente neu indexieren. MultiGPT erinnert nach dem
+der Präfixe oder der Zerteilung deshalb alle Dokumente neu indexieren. Dasselbe gilt, wenn das
+Beschreiben der Abbildungen ein- oder ausgeschaltet oder sein Modell gewechselt wird – sonst
+gilt die Änderung nur für neu hochgeladene Dokumente. MultiGPT erinnert nach dem
 Speichern mit einem Hinweis daran.
 
 - Im Admin: **„Dokumente (RAG)“ → „RAG-Übersicht“ → „Alles neu indexieren“** und bestätigen.
@@ -303,6 +335,18 @@ sudo mgpt-ctl reindex --errors-only
 - Bei olmOCR: „Speichern und OCR testen“ in den Einstellungen nutzen, mit `lms ps` prüfen, ob
   `allenai/olmocr-2-7b` geladen ist.
 
+### Abbildungen fehlen oder Dokumente warten
+
+- Abbildungen werden nur beschrieben, wenn „Abbildungen beschreiben“ an ist, und erst für
+  Dokumente, die danach (neu) indexiert werden. Übersprungen werden kleine Bilder, schmale
+  Linien, Wiederholungen (z. B. ein Logo auf jeder Seite), Bilder über den Obergrenzen und
+  gescannte Seiten (deren Text liest die OCR). Bilder, die pypdf nicht dekodieren kann (z. B.
+  JBIG2), entfallen ebenfalls.
+- Ist das Modell für Abbildungen nicht erreichbar, wartet die Indexierung wie bei der OCR
+  („Wartet: … Neuer Versuch ab …“). Mit `lms ps` prüfen, ob es geladen ist.
+- Lehnt das Modell ein einzelnes Bild ab (z. B. weil es keine Bilder versteht), entfällt nur
+  diese Abbildung; im Log des Workers steht „Abbildung … abgelehnt“ mit Dokument-ID und Nummer.
+
 ### Suche im Chat liefert nichts
 
 - Hinweis „Dokumentsuche fehlgeschlagen: … Die Antwort entsteht ohne Dokumentquellen.“: Ursache
@@ -321,6 +365,9 @@ sudo mgpt-ctl reindex --errors-only
   [Headless](https://lmstudio.ai/docs/app/api/headless)
 - olmOCR: [Modellseite in LM Studio](https://lmstudio.ai/models/allenai/olmocr-2-7b),
   [Projekt olmOCR](https://github.com/allenai/olmocr)
+- Abbildungen: [Qwen3-VL-8B in LM Studio](https://lmstudio.ai/models/qwen/qwen3-vl-8b),
+  [Gemma 3 12B in LM Studio](https://lmstudio.ai/models/google/gemma-3-12b),
+  [Qwen3-VL](https://github.com/QwenLM/Qwen3-VL)
 - nomic-embed-text: [Modellkarte (Präfixe)](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5)
 - Tesseract: [Doku](https://tesseract-ocr.github.io/tessdoc/),
   [Sprachdaten](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)

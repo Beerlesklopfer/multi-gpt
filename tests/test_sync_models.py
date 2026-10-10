@@ -64,8 +64,9 @@ def run(*args):
         ("dall-e-3", "image"),
         ("gpt-image-1", "image"),
         ("imagen-4.0-generate-001", "image"),
+        ("gemini-2.5-flash-image", "image"),
+        ("lyria-002", "music"),
         # Nicht eindeutig -> chat, der Verwalter korrigiert.
-        ("gemini-2.5-flash-image", "chat"),
         ("shorts-model", "chat"),
     ],
 )
