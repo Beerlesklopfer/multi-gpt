@@ -408,6 +408,7 @@ def copy_conversation(user, conversation: Conversation) -> Conversation:
             title=title,
             default_model=default_model,
             system_prompt=conversation.system_prompt,
+            temperature=conversation.temperature,
         )
         parent = None
         for msg in path:

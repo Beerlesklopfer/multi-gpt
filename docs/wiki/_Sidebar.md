@@ -3,6 +3,7 @@
 - [Startseite](Home)
 - [Konfiguration (.env)](Konfiguration)
 - [nginx und TLS](nginx-und-TLS)
+- [Chat-Einstellungen (Grundregeln, Kreativität)](Chat-Einstellungen)
 - [Projekte](Projekte)
 - [Chats teilen](Chats-teilen)
 - [Anbieter und Modelle](Anbieter-und-Modelle)

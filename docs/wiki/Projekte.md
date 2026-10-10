@@ -53,6 +53,11 @@ Die **Sammlungen** des Projekts sind im Eingabefeld unter „Dokumente“ angeha
 Auswahl in diesem Chat nicht selbst geändert hast. Sammlungen, die du nicht (mehr) lesen darfst,
 fallen weg; die Leserechte gelten wie immer.
 
+Die **Kreativität** des Projekts (Präzise 0,2, Ausgewogen 0,7, Kreativ 1,0 oder Standard) gilt
+für Chats des Projekts, die unter „System-Prompt“ keine eigene Kreativität gewählt haben. Bei
+„Standard“ gilt die Einstellung des Verwalters. Details unter
+[Chat-Einstellungen](Chat-Einstellungen).
+
 ## Seitenleiste, Suche und Archiv
 
 - Der Abschnitt **„Projekte“** steht über **„Chats“** (Chats ohne Projekt). Mit dem Pfeil klappst

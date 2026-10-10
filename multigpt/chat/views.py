@@ -12,8 +12,8 @@ from django.views.decorators.http import require_GET
 
 from multigpt.accounts.permissions import Action, can, supervised_conversation_owner
 
-from . import attachments, projects, services, sharing
-from .models import Conversation, Message
+from . import attachments, creativity, projects, services, sharing
+from .models import ChatSettings, Conversation, Message
 from .websearch import web_search_available
 
 
@@ -23,7 +23,55 @@ def _has_chat_model(user) -> bool:
     return can(user, Action.CHAT) and bool(services.chat_models_for(user))
 
 
+# Kürzung der Projekt-Anweisungen in der Übersicht (ganz per Aufklappen).
+PROMPT_PREVIEW_CHARS = 120
+
+_INHERITED_FROM = {"project": "Vorgabe des Projekts", "settings": "Einstellung des Verwalters"}
+
+
+def _prompt_context(request, conversation, project) -> dict:
+    """Bereich „System-Prompt“: was außer dem eigenen Prompt an das Modell geht
+    (Grundregeln im Wortlaut, Rolle und Projekt als Hinweis; die technischen
+    Hinweise von MultiGPT nur erwähnt) und die Auswahl „Kreativität“.
+
+    ``project``: nur für den Besitzer (``projects.page_context``), Empfänger
+    geteilter Chats sehen fremde Projekte nicht. Rolle: die des Betrachters –
+    sein Prompt gilt für die Antworten, die er auslöst."""
+    user = request.user
+    role = user.role if getattr(user, "role_id", None) else None
+    instructions = project.instructions.strip() if project is not None else ""
+    own = conversation.temperature if conversation is not None else None
+    base_value, source = creativity.inherited(conversation, project)
+    if base_value is None:
+        default_label = "Standard des Anbieters"
+    else:
+        default_label = f"{_INHERITED_FROM[source]} ({creativity.fmt(base_value)})"
+    options = [
+        {"value": f"{value}", "label": text, "selected": own == value}
+        for value, text in creativity.PRESETS
+    ]
+    if own is not None and not any(o["selected"] for o in options):
+        options.append({"value": f"{own}", "label": creativity.label(own), "selected": True})
+    return {
+        "prompt_info": {
+            "base": ChatSettings.base_text(),
+            "can_admin": can(user, Action.ADMIN),
+            "role": role is not None and bool(role.fixed_system_prompt.strip()),
+            "project_name": project.name if instructions else "",
+            "project_instructions": instructions,
+            "project_long": len(instructions) > PROMPT_PREVIEW_CHARS,
+            "preview_chars": PROMPT_PREVIEW_CHARS,
+        },
+        "creativity": {
+            "default_label": f"Standard – {default_label}",
+            "options": options,
+            "current": creativity.label(own) if own is not None else f"Standard – {default_label}",
+        },
+    }
+
+
 def _page_context(request, conversation=None):
+    project_context = projects.page_context(request, conversation)
     return {
         "active_conversation": conversation,
         "has_chat_model": _has_chat_model(request.user),
@@ -31,7 +79,8 @@ def _page_context(request, conversation=None):
         # Anhänge: Dateiauswahl und Vorprüfung im Browser (maßgeblich prüft der Server).
         "attachment_limits": attachments.limits(),
         # Projekt (M5-07): Kopfzeile, Vorauswahl Modell und Sammlungen, „Neuer Chat im Projekt“.
-        **projects.page_context(request, conversation),
+        **project_context,
+        **_prompt_context(request, conversation, project_context["chat_project"]),
     }
 
 

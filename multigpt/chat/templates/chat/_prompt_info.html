@@ -1,0 +1,26 @@
+{# Nur lesend: was vor dem eigenen Prompt an das Modell geht (Reihenfolge wie services.build_system_prompt). #}
+{# Die technischen Hinweise von MultiGPT (Quellmaterial, Werkzeuge) werden nur erwähnt. #}
+<div class="chat-prompt-info">
+  {% if prompt_info.base %}
+    <p class="chat-prompt-heading">Grundregeln <span class="hint">(vom Verwalter, gelten für alle Chats)</span>{% if prompt_info.can_admin %} <a href="{% url 'admin:chat_chatsettings_changelist' %}">Ändern</a>{% endif %}</p>
+    <div class="chat-settings-readonly chat-prompt-base">{{ prompt_info.base }}</div>
+  {% elif prompt_info.can_admin %}
+    <p class="hint">Keine Grundregeln festgelegt. <a href="{% url 'admin:chat_chatsettings_changelist' %}">Festlegen</a></p>
+  {% endif %}
+  <ul class="chat-prompt-extras">
+    {% if prompt_info.role %}<li>+ fester Prompt deiner Rolle</li>{% endif %}
+    <li>+ technische Hinweise zu Werkzeugen und Quellen</li>
+    {% if prompt_info.project_instructions %}
+      <li>
+        {% if prompt_info.project_long %}
+          <details class="chat-prompt-project">
+            <summary>+ Projekt-Anweisungen ({{ prompt_info.project_name }}): {{ prompt_info.project_instructions|truncatechars:prompt_info.preview_chars }}</summary>
+            <div class="chat-settings-readonly">{{ prompt_info.project_instructions }}</div>
+          </details>
+        {% else %}
+          + Projekt-Anweisungen ({{ prompt_info.project_name }}): {{ prompt_info.project_instructions }}
+        {% endif %}
+      </li>
+    {% endif %}
+  </ul>
+</div>

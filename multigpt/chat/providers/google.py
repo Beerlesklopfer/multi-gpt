@@ -105,6 +105,7 @@ from .base import (
     normalize_tools,
     orientation,
     provider_error_code,
+    rejected_parameter,
     sse_data,
     tool_schema,
 )
@@ -386,7 +387,8 @@ class GoogleAdapter(ProviderAdapter):
                     status, reason = _parse_error(error_body)
                     self._log(f"HTTP {response.status_code}", f"{status}/{reason}")
                     message, retryable = _http_error(response.status_code, reason, error_body)
-                    yield Error(message, retryable=retryable)
+                    rejected = rejected_parameter(response.status_code, error_body)
+                    yield Error(message, retryable=retryable, rejected_param=rejected)
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():

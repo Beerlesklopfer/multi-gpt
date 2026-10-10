@@ -81,6 +81,7 @@ from multigpt.billing.pricing import Round, Tally
 from . import attachments as chat_attachments
 from . import (
     citations,
+    creativity,
     documents_pdf,  # registriert create_pdf (Blätter als PDF), System-Hinweis
     images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
     sharing,
@@ -1242,14 +1243,16 @@ class _Loop:
             notes.append(documents_pdf.system_hint(self.bindings))  # create_pdf
             system = build_system_prompt(turn.user, turn.conversation, notes)
             adapter = registry.get_adapter(turn.ai_model.provider)
+            # Kreativität des Chats (creativity.py); im Vergleich für alle Spalten gleich.
+            temperature = creativity.effective(turn.conversation)
 
             while True:
                 sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
                 calls_so_far = int(self.state.get("model_calls", 0))
                 last = calls_so_far >= MAX_ROUNDS - 1
-                params = {}
+                params = creativity.params_for(turn.ai_model, temperature)
                 if specs:
-                    params = {"tools": specs, "tool_choice": "none" if last else "auto"}
+                    params.update(tools=specs, tool_choice="none" if last else "auto")
                 self.stream = adapter.stream(
                     turn.ai_model.model_id, history, system=system, **params
                 )
@@ -1260,6 +1263,7 @@ class _Loop:
                 round_usage: Usage | None = None
                 done: Done | None = None
                 last_save = time.monotonic()
+                retry_plain = False
                 for event in self.stream:
                     if isinstance(event, Delta):
                         if not event.text:
@@ -1281,6 +1285,17 @@ class _Loop:
                         round_in, round_out = event.tokens_in, event.tokens_out
                         round_usage = event
                     elif isinstance(event, Error):
+                        if (
+                            event.rejected_param == "temperature"
+                            and "temperature" in params
+                            and not round_parts
+                            and not calls
+                        ):
+                            # Anbieter lehnt die Temperatur ab (Regel in
+                            # capabilities.py veraltet): ohne wiederholen, merken.
+                            creativity.remember_rejected(turn.ai_model)
+                            retry_plain = True
+                            break
                         error = event.message or GENERIC_ERROR
                         if event.retryable and self.content.strip():
                             status = Message.Status.ABORTED  # Teiltext bleibt
@@ -1297,6 +1312,9 @@ class _Loop:
                         break
                 _close(self.stream)
                 self.stream = None
+                if retry_plain:
+                    self.state["model_calls"] = calls_so_far
+                    continue
                 self.tokens_in += round_in
                 if round_usage is not None:
                     self.tally.add(round_usage)

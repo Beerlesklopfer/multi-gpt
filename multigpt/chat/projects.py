@@ -280,6 +280,9 @@ def serialize_project(project: Project, user, *, detail: bool = False) -> dict:
                 "description": project.description,
                 "instructions": project.instructions,
                 "default_model": project.default_model_id,
+                "temperature": (
+                    None if project.temperature is None else float(project.temperature)
+                ),
                 "collections": sorted(c.pk for c in project.collections.all()),
                 "created": project.created.isoformat(),
                 "updated": project.updated.isoformat(),

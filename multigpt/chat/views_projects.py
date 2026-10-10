@@ -6,6 +6,8 @@ Dialoge. Fremde Projekte -> 404. Löschen braucht die Wahl „Chats behalten“
 bzw. „Chats mitlöschen“ und eine ausdrückliche Bestätigung.
 """
 
+from decimal import Decimal
+
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -17,7 +19,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from multigpt.accounts.permissions import Action, can
 
-from . import projects, services
+from . import creativity, projects, services
 from .models import AIModel, Project
 from .rag.search import readable_collections
 
@@ -41,6 +43,15 @@ class ProjectForm(forms.ModelForm):
         label="Sammlungen",
         help_text="Im Eingabefeld der Chats vorausgewählt, wenn du sie lesen darfst.",
     )
+    temperature = forms.TypedChoiceField(
+        choices=[],
+        coerce=Decimal,
+        empty_value=None,
+        required=False,
+        label="Kreativität",
+        help_text="Vorgabe für Chats im Projekt, die unter „System-Prompt“ keine eigene "
+        "Kreativität gewählt haben. Niedrig = sachlich, hoch = abwechslungsreicher.",
+    )
 
     class Meta:
         model = Project
@@ -49,6 +60,7 @@ class ProjectForm(forms.ModelForm):
             "description",
             "instructions",
             "default_model",
+            "temperature",
             "collections",
             "color",
             "pinned",
@@ -88,6 +100,17 @@ class ProjectForm(forms.ModelForm):
         )
         default_model.empty_label = "kein Standardmodell"
         default_model.label_from_instance = lambda m: f"{m.display_name} ({m.provider.name})"
+        temperature = self.fields["temperature"]
+        temperature.choices = [("", "Standard (Einstellung des Verwalters)")] + [
+            (f"{value}", text) for value, text in creativity.PRESETS
+        ]
+        own = self.instance.temperature if self.instance.pk else None
+        if own is not None and own not in [value for value, _ in creativity.PRESETS]:
+            temperature.choices.append((f"{own}", creativity.label(own)))
+        if own is not None:
+            # Gespeichert mit zwei Stellen (0.20), Auswahl ohne (0.2).
+            match = [v for v, _ in creativity.PRESETS if v == own]
+            self.initial["temperature"] = f"{match[0] if match else own}"
         collections = self.fields["collections"]
         collections.queryset = readable_collections(user).select_related("owner").order_by("name")
         collections.viewer_id = user.pk

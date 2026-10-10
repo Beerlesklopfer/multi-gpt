@@ -160,3 +160,55 @@ def from_lmstudio(item: dict) -> Detected | None:
     else:
         tools = guess_tools(str(item.get("id") or ""))
     return Detected(capability=CHAT, tools=tools, vision=kind == "vlm", source="lmstudio")
+
+
+# Temperatur (Kreativität, chat/creativity.py). Stand der Herstellerangaben,
+# geprüft 2026-10-10. Nicht senden, wenn der Anbieter sie ablehnt (HTTP 400),
+# ignoriert oder ausdrücklich davon abrät:
+#
+# - OpenAI (developers.openai.com/api/docs/guides/reasoning und
+#   …/guides/latest-model: „When reasoning effort is not `none`, remove
+#   `temperature`, `top_p`, and `top_logprobs`“): o1/o3/o4 nur mit Standard;
+#   gpt-5 (auch mini/nano) denkt standardmäßig (medium) und lehnt sie ab. Ab
+#   gpt-5.1 nur mit ``reasoning_effort: none`` erlaubt, nicht bei allen
+#   Modellen (GPT-6 Astra, GPT-6.1 Sol kennen kein ``none``). MultiGPT setzt
+#   keinen Reasoning-Aufwand, daher die ganze Familie gpt-5 und neuer ohne
+#   Temperatur. gpt-4o, gpt-4.1 usw. nehmen sie an.
+# - Anthropic (platform.claude.com, Migrationsleitfäden Opus 5.5, Sonnet 5.5,
+#   Haiku 5.5: „Setting temperature, top_p, or top_k to any non-default value on
+#   Claude Opus 4.7 and later models … returns a 400 error“; ebenso Sonnet 5,
+#   Sonnet 5.5, Haiku 5.5, Fable und Mythos): ab claude-opus-4-7 bzw. allen
+#   Claude-5-Modellen nicht. Mit Extended Thinking (``thinking``) generell nicht
+#   (Doku „Extended thinking“: nicht mit temperature/top_k kombinierbar). Bis
+#   Sonnet 4.6, Haiku 4.5, Opus 4.6 erlaubt (nur nicht zusammen mit top_p, das
+#   MultiGPT nicht setzt).
+# - Google (ai.google.dev/gemini-api/docs/gemini-3: „For all Gemini 3 models,
+#   we strongly recommend keeping the temperature parameter at its default
+#   value of 1.0“, sonst Schleifen oder schlechtere Ergebnisse): Gemini 3 und
+#   neuer nicht; Gemini 1.5/2.x ja.
+# - Lokal (LM Studio/llama.cpp, Ollama): immer erlaubt.
+#
+# Die Regel wirkt nach Modell-ID (auch über OpenRouter u. Ä. mit Präfix
+# ``openai/``, ``anthropic/`` usw.). Lehnt ein Anbieter die Temperatur trotzdem
+# ab, wiederholt services.py ohne und merkt sich das Modell (creativity.py).
+_NO_TEMPERATURE = re.compile(
+    # OpenAI: o-Serie, GPT-5 und neuer
+    r"(^|/)o[1-9]([-_.]|$)"
+    r"|(^|/)gpt-([5-9]|\d{2})([-_.]|$)"
+    # Anthropic: Opus 4.7+ und alle Claude-5-Familien (auch Bedrock-IDs)
+    r"|claude-opus-4-[7-9]([-_.@]|$)"
+    r"|claude-(opus|sonnet|haiku)-([5-9]|\d{2})([-_.@]|$)"
+    r"|claude-(fable|mythos)"
+    # Google: Gemini 3 und neuer
+    r"|(^|/)(models/)?gemini-([3-9]|\d{2})([-_.]|$)"
+)
+
+
+def accepts_temperature(model_id: str, provider: str = "", *, thinking: bool = False) -> bool:
+    """Darf ``temperature`` an das Modell gehen? ``provider``: ``Provider.kind``
+    (``openai_compat``, ``anthropic``, ``google``); ``thinking``: Anfrage mit
+    Extended Thinking (Anthropic). Im Zweifel ja – Ablehnungen fängt der
+    Wiederholversuch ohne Temperatur ab."""
+    if thinking:
+        return False
+    return not _NO_TEMPERATURE.search((model_id or "").lower())

@@ -98,6 +98,7 @@ from .base import (
     pair_tool_messages,
     parse_tool_arguments,
     provider_error_code,
+    rejected_parameter,
     tool_schema,
 )
 
@@ -552,7 +553,8 @@ class OpenAICompatAdapter(ProviderAdapter):
                     message, retryable = http_error_message(response.status_code, error_body)
                     if response.status_code == 404 and detail.endswith("/model_not_found"):
                         message = _model_not_found(model_id)
-                    yield Error(message, retryable=retryable)
+                    rejected = rejected_parameter(response.status_code, error_body)
+                    yield Error(message, retryable=retryable, rejected_param=rejected)
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():

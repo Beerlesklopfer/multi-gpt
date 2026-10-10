@@ -964,6 +964,49 @@ input {
   white-space: pre-wrap;
 }
 
+/* Übersicht im System-Prompt: Grundregeln, Rolle, Projekt (nur lesend) */
+.chat-prompt-info {
+  max-width: 48rem;
+  padding-top: 0.5rem;
+}
+
+.chat-prompt-heading {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
+.chat-prompt-heading .hint,
+.chat-prompt-value {
+  font-weight: normal;
+}
+
+.chat-prompt-base {
+  max-height: 12rem;
+  overflow-y: auto;
+  color: var(--text-muted);
+}
+
+.chat-prompt-extras {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+}
+
+.chat-prompt-project > summary {
+  cursor: pointer;
+}
+
+.chat-settings-form select {
+  max-width: 100%;
+  align-self: flex-start;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: inherit;
+}
+
 /* Dialoge (Umbenennen, Löschen bestätigen) */
 
 .dialog {

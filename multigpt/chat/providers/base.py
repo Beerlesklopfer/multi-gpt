@@ -79,6 +79,9 @@ class Error:
 
     message: str
     retryable: bool = False
+    # Name eines Parameters, den der Anbieter abgelehnt hat (bisher nur
+    # ``temperature``, siehe ``rejected_parameter``); services.py wiederholt dann ohne.
+    rejected_param: str = field(default="", compare=False)
 
 
 # Vereinheitlichter ``finish_reason``, wenn das Modell Werkzeuge aufrufen will.
@@ -449,6 +452,34 @@ def _error_strings(body: bytes) -> list[str]:
         if isinstance(detail, dict):
             values.append(detail.get("reason"))
     return [str(v) for v in values if v]
+
+
+# Parameter, deren Ablehnung services.py mit einem Wiederholversuch ohne sie abfängt.
+_RETRY_WITHOUT = ("temperature",)
+
+
+def rejected_parameter(status: int, body: bytes) -> str:
+    """Lehnt der Anbieter einen optionalen Parameter ab? Dann dessen Name, sonst "".
+
+    OpenAI: 400 ``unsupported_parameter``/``unsupported_value`` mit ``param:
+    "temperature"``; Anthropic: 400 ``invalid_request_error`` mit „temperature“
+    im Text; Gemini: 400 ``INVALID_ARGUMENT``. Der Text wird nur geprüft, nie
+    angezeigt oder protokolliert.
+    """
+    if status not in (400, 422):
+        return ""
+    values = _error_strings(body)
+    try:
+        err = json.loads(body).get("error")
+        if isinstance(err, dict) and err.get("param"):
+            values.append(str(err["param"]))
+    except (ValueError, TypeError, AttributeError):
+        pass
+    text = " ".join(values).lower()
+    for name in _RETRY_WITHOUT:
+        if name in text:
+            return name
+    return ""
 
 
 def is_key_expired(status: int, body: bytes) -> bool:

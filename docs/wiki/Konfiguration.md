@@ -19,6 +19,9 @@ Rechners abgeleitet; Handänderungen daran gehen verloren – nur von Hand in `A
 eingetragene Namen erscheinen bei der nächsten Abfrage als Vorschlag für die Hostnamen. Details
 unter [nginx und TLS](nginx-und-TLS).
 
+Einstellungen, die im Admin gepflegt werden, stehen nicht in dieser Datei, z. B. Grundregeln und
+Standard-Kreativität (siehe [Chat-Einstellungen](Chat-Einstellungen)).
+
 ## Grundlagen
 
 | Schlüssel | Standard (Code) | Debian-Paket | Bedeutung |

@@ -6,6 +6,7 @@ Bezeichner sind englisch, verbose_name und Choice-Labels deutsch (Plan 2).
 import json
 import secrets
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import PurePath
 from urllib.parse import urlsplit
 
@@ -351,7 +352,25 @@ class ChatSettings(models.Model):
         default=DEFAULT_BASE_INSTRUCTIONS,
         help_text="Gehen bei jedem Chat an jedes Modell, als erster Teil des System-Prompts – "
         "vor den Hinweisen von MultiGPT, den Projekt-Anweisungen und dem System-Prompt des "
-        "Chats. Leer = keine Grundregeln.",
+        "Chats. Nutzer sehen sie im Chat unter „System-Prompt“ (nur lesend). Leer = keine "
+        "Grundregeln. Bei zu ausschweifenden Antworten hilft z. B. der Zusatz „Antworte "
+        "sachlich und knapp. Wenn du etwas vermutest, kennzeichne es als Vermutung.“",
+    )
+    # Kreativität (Temperatur, chat/creativity.py): Standard für Chats ohne
+    # eigene Wahl bzw. Projektvorgabe. Leer = Standard des Anbieters.
+    default_temperature = models.DecimalField(
+        "Standard-Kreativität (Temperatur)",
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        default=Decimal("0.3"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("2"))],
+        help_text="0 bis 2; niedrig = sachlich und wiederholbar, hoch = abwechslungsreicher, "
+        "aber eher erfunden. 0,3 ist sachlich. Gilt für Chats ohne eigene Wahl unter "
+        "„Kreativität“ und ohne Projektvorgabe. Leer = Standard des Anbieters (oft 0,7–1,0). "
+        "Modelle, die keine Temperatur annehmen (z. B. OpenAI o-Serie und GPT-5, neuere "
+        "Claude-Modelle), bekommen keine.",
     )
     # Bilderzeugung (M9-01, chat/images.py).
     default_image_model = models.ForeignKey(
@@ -605,6 +624,15 @@ class Conversation(models.Model):
         verbose_name="Standardmodell",
     )
     system_prompt = models.TextField("System-Prompt", blank=True)
+    # Kreativität (chat/creativity.py); leer = Projektvorgabe bzw. Chat-Einstellungen.
+    temperature = models.DecimalField(
+        "Kreativität (Temperatur)",
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("2"))],
+    )
     # Projekt des Besitzers (chat/projects.py); gelöschtes Projekt -> Chat ohne Projekt.
     project = models.ForeignKey(
         "Project",
@@ -1814,6 +1842,15 @@ class Project(models.Model):
     name = models.CharField("Name", max_length=200)
     description = models.TextField("Beschreibung", blank=True)
     instructions = models.TextField("Anweisungen", blank=True)
+    # Vorgabe für Chats ohne eigene Wahl (chat/creativity.py); leer = Chat-Einstellungen.
+    temperature = models.DecimalField(
+        "Kreativität",
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("2"))],
+    )
     default_model = models.ForeignKey(
         AIModel,
         on_delete=models.SET_NULL,

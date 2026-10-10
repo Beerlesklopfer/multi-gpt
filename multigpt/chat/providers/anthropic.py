@@ -80,6 +80,7 @@ from .base import (
     normalize_tools,
     parse_tool_arguments,
     provider_error_code,
+    rejected_parameter,
     sse_data,
     tool_schema,
 )
@@ -241,7 +242,8 @@ class AnthropicAdapter(ProviderAdapter):
                     detail = _error_type(error_body)
                     self._log(f"HTTP {response.status_code}", detail)
                     message, retryable = _http_error(response.status_code, error_body)
-                    yield Error(message, retryable=retryable)
+                    rejected = rejected_parameter(response.status_code, error_body)
+                    yield Error(message, retryable=retryable, rejected_param=rejected)
                     return
                 parser = _EventParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():

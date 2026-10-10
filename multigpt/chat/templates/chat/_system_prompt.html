@@ -1,21 +1,37 @@
-{# System-Prompt des Chats (M5-03). Der feste Prompt der Rolle erscheint hier nie. Ändern: Recht U (geteilte Chats). #}
+{# System-Prompt des Chats (M5-03) mit Übersicht, was sonst an das Modell geht (views._prompt_context): #}
+{# Grundregeln im Wortlaut, Rolle nur als Hinweis (ihr Text erscheint hier nie), Projekt-Anweisungen gekürzt. #}
+{# Ändern (Prompt und Kreativität): Recht U (geteilte Chats). #}
 {% if has_chat_model and can_update or has_chat_model and not active_conversation %}
   <details class="chat-settings" id="chat-settings"{% if active_conversation.system_prompt %} data-active="true"{% endif %}>
-    <summary>System-Prompt{% if active_conversation.system_prompt %} <span class="badge">aktiv</span>{% endif %}</summary>
+    <summary>System-Prompt: {% if prompt_info.base %}Grundregeln aktiv · {% endif %}eigener Prompt <span id="system-prompt-state">{% if active_conversation.system_prompt %}aktiv{% else %}leer{% endif %}</span></summary>
+    {% include "chat/_prompt_info.html" %}
     <form class="chat-settings-form" id="system-prompt-form">
-      <label for="system-prompt-input">Anweisung an das Modell für diesen Chat</label>
+      <label for="system-prompt-input">Eigene Anweisung an das Modell für diesen Chat</label>
       <textarea id="system-prompt-input" name="system_prompt" rows="4" maxlength="20000"
                 aria-describedby="system-prompt-hint"
                 placeholder="z. B. „Antworte kurz und auf Deutsch.“">{{ active_conversation.system_prompt|default:"" }}</textarea>
       <p class="hint" id="system-prompt-hint">{% if active_conversation %}Gilt für alle weiteren Antworten in diesem Chat.{% else %}Wird mit der ersten Nachricht gespeichert.{% endif %}</p>
+      <label for="creativity-select">Kreativität</label>
+      <select id="creativity-select" name="temperature" aria-describedby="creativity-hint">
+        <option value="">{{ creativity.default_label }}</option>
+        {% for option in creativity.options %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="hint" id="creativity-hint">Niedrig: sachlich und gleichbleibend. Hoch: abwechslungsreicher, aber eher erfunden. Gilt für alle Modelle dieses Chats, auch im Vergleich; Modelle ohne einstellbare Temperatur (z. B. GPT-5, neuere Claude- und Gemini-Modelle) antworten mit ihrem eigenen Wert.</p>
       <div class="chat-settings-actions">
         <button type="submit" class="button button-small button-primary" id="system-prompt-save" disabled>Speichern</button>
       </div>
     </form>
   </details>
-{% elif active_conversation.system_prompt %}
+{% elif active_conversation %}
   <details class="chat-settings">
-    <summary>System-Prompt <span class="badge">aktiv</span></summary>
-    <div class="chat-settings-readonly">{{ active_conversation.system_prompt }}</div>
+    <summary>System-Prompt: {% if prompt_info.base %}Grundregeln aktiv · {% endif %}eigener Prompt {% if active_conversation.system_prompt %}aktiv{% else %}leer{% endif %}</summary>
+    {% include "chat/_prompt_info.html" %}
+    {% if active_conversation.system_prompt %}
+      <p class="chat-prompt-heading">Eigene Anweisung dieses Chats</p>
+      <div class="chat-settings-readonly">{{ active_conversation.system_prompt }}</div>
+    {% endif %}
+    <p class="chat-prompt-heading">Kreativität: <span class="chat-prompt-value">{{ creativity.current }}</span></p>
   </details>
 {% endif %}

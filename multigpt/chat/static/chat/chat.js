@@ -1004,44 +1004,60 @@
       return currentConversation();
     }
 
-    // --- System-Prompt des Chats (M5-03) ---
+    // --- System-Prompt und Kreativität des Chats (M5-03) ---
 
     const promptForm = document.getElementById("system-prompt-form");
     const promptInput = document.getElementById("system-prompt-input");
     const promptSave = document.getElementById("system-prompt-save");
+    const creativitySelect = document.getElementById("creativity-select");
     let savedPrompt = promptInput ? promptInput.value.trim() : "";
+    let savedCreativity = creativitySelect ? creativitySelect.value : "";
+
+    // Gleicher Zahlenwert („0.2“ und „0.20“) gilt als unverändert.
+    function sameCreativity(a, b) {
+      return a === b || (a !== "" && b !== "" && Number(a) === Number(b));
+    }
+
+    function creativityDirty() {
+      return Boolean(creativitySelect) && !sameCreativity(creativitySelect.value, savedCreativity);
+    }
 
     function promptDirty() {
-      return Boolean(promptInput) && promptInput.value.trim() !== savedPrompt;
+      return (Boolean(promptInput) && promptInput.value.trim() !== savedPrompt) || creativityDirty();
     }
 
     function updatePromptUi() {
       if (promptSave) {
         promptSave.disabled = !promptDirty();
       }
-      const summary = document.querySelector("#chat-settings > summary");
-      if (!summary) {
-        return;
-      }
-      let badge = summary.querySelector(".badge");
-      if (savedPrompt && !badge) {
-        badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = "aktiv";
-        summary.append(" ", badge);
-      } else if (!savedPrompt && badge) {
-        badge.remove();
+      const state = document.getElementById("system-prompt-state");
+      if (state) {
+        state.textContent = savedPrompt ? "aktiv" : "leer";
       }
     }
 
     async function saveSystemPrompt() {
+      const body = { system_prompt: promptInput.value };
+      if (creativitySelect) {
+        body.temperature = creativitySelect.value === "" ? null : Number(creativitySelect.value);
+      }
       const data = await window.MultiGPT.requestJson(
         "PATCH",
         fillTemplate(urls.detailTemplate, conversationId),
-        { system_prompt: promptInput.value },
+        body,
       );
       savedPrompt = (data.system_prompt || "").trim();
       promptInput.value = data.system_prompt || "";
+      if (creativitySelect) {
+        savedCreativity = data.temperature == null ? "" : String(data.temperature);
+        const match = [...creativitySelect.options].find((o) =>
+          sameCreativity(o.value, savedCreativity),
+        );
+        if (match) {
+          creativitySelect.value = match.value;
+          savedCreativity = match.value;
+        }
+      }
       const hint = document.getElementById("system-prompt-hint");
       if (hint) {
         hint.textContent = "Gilt für alle weiteren Antworten in diesem Chat.";
@@ -1824,6 +1840,7 @@
     }
 
     promptInput?.addEventListener("input", updatePromptUi);
+    creativitySelect?.addEventListener("change", updatePromptUi);
     promptForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!conversationId) {
@@ -1832,7 +1849,7 @@
       }
       try {
         await saveSystemPrompt();
-        setStatus("System-Prompt gespeichert.");
+        setStatus("System-Prompt und Kreativität gespeichert.");
       } catch (err) {
         setStatus(`System-Prompt konnte nicht gespeichert werden: ${err.message}`, true);
       }

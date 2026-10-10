@@ -1173,6 +1173,16 @@ class ChatSettingsAdmin(admin.ModelAdmin):
 
     fieldsets = [
         (None, {"fields": ["base_instructions"]}),
+        # Kreativität (chat/creativity.py)
+        (
+            "Kreativität",
+            {
+                "fields": ["default_temperature"],
+                "description": "Im Chat wählbar unter „System-Prompt“ → „Kreativität“ "
+                "(Präzise 0,2 · Ausgewogen 0,7 · Kreativ 1,0), im Projekt als Vorgabe. Dieser "
+                "Wert gilt, wenn dort nichts gewählt ist.",
+            },
+        ),
         # Bilderzeugung (M9-01, chat/images.py)
         ("Bilder", {"fields": ["default_image_model", "image_tool_confirm"]}),
         # Berechnungen (M4a-10, chat/tools_python.py, chat/sandbox.py)

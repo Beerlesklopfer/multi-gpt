@@ -2,7 +2,8 @@
 
 - ``GET /api/projects/[?archived=1]``: eigene Projekte (ohne Inhalte),
 - ``POST /api/projects/`` ``{name, description?, instructions?, default_model?,
-  collections?, color?}`` -> 201 mit allen Feldern,
+  temperature?, collections?, color?}`` -> 201 mit allen Feldern (``temperature``:
+  Kreativität 0–2 oder ``null``, creativity.py),
 - ``GET|PATCH /api/projects/<pk>/`` (PATCH zusätzlich ``pinned``, ``archived``),
 - ``DELETE /api/projects/<pk>/?chats=keep|delete``: Angabe ist Pflicht, damit
   niemand Chats versehentlich mitlöscht,
@@ -21,7 +22,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from multigpt.accounts.permissions import Action, can
 
-from . import projects
+from . import creativity, projects
 from .api import _error, _json_body, api_login_required
 from .models import Conversation, Project
 
@@ -47,6 +48,11 @@ def _apply(user, project: Project, data: dict, *, creating: bool):
         if err:
             return None, err
         project.default_model = model
+    if "temperature" in data:
+        value, err = creativity.clean(data["temperature"])
+        if err:
+            return None, err
+        project.temperature = value
     if "color" in data:
         color, err = projects.clean_color(data["color"])
         if err:
