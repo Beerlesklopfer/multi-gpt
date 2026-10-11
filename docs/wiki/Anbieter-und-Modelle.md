@@ -72,6 +72,9 @@ Ein lokales Modell mit 16 384 Tokens Kontext hat dann keinen Platz mehr für die
 
 - die **Basiswerkzeuge** aus den Chat-Einstellungen (Vorgabe `web_search`, `search_documents`,
   `create_pdf`),
+- bei **gewählten Sammlungen** alle Dokumentwerkzeuge: `search_documents`, `read_document`,
+  `list_documents` und `document_info`. Zum Zählen oder Auflisten („Zähle die Punkte je Gruppe“)
+  muss das Modell ein Dokument ganz lesen können, die Suche liefert nur Ausschnitte,
 - **kleine MCP-Server ganz** (höchstens 10 Werkzeuge und etwa 1 500 Tokens, z. B. Home
   Assistant). „Schalte das Licht aus“ geht so ohne Suche direkt an das passende Werkzeug.
   Große Server wie n8n erreicht das Modell über `find_tools`,

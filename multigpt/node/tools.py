@@ -43,12 +43,20 @@ class Progress:
 
 @dataclass
 class FileItem:
-    """Datei im Ergebnis (EmbeddedResource mit base64)."""
+    """Datei im Ergebnis (Umsetzung in MCP-Inhalte: ``protocol.file_content``).
+
+    ``preview=False`` (``get_file``): immer als eingebettete Ressource (base64).
+    ``preview=True`` (erzeugte Dateien der eingebauten Werkzeuge): je nach Typ als
+    Bild (``image``), SVG als Text-Ressource, sonst Ressource bzw. bei großen
+    Dateien nur ein Verweis (``resource_link``) mit Hinweis auf ``get_file``.
+    """
 
     uri: str
     mime_type: str
     data: bytes
     name: str = ""
+    preview: bool = False
+    attachment_id: int | None = None
 
 
 @dataclass
@@ -57,6 +65,9 @@ class ToolOutput:
     data: dict | None = None
     is_error: bool = False
     files: list[FileItem] = field(default_factory=list)
+    # True, wenn ``text`` nur ``data`` als JSON wiedergibt (``json_output``);
+    # sonst kommt der Text zusätzlich ins strukturierte Ergebnis (``protocol``).
+    text_in_data: bool = False
 
 
 @dataclass
@@ -162,7 +173,7 @@ def as_json(data) -> str:
 def json_output(data: dict, summary: str = "") -> ToolOutput:
     """Strukturiertes Ergebnis; der Text enthält dieselben Daten als JSON."""
     text = as_json(data)
-    return ToolOutput(f"{summary}\n{text}" if summary else text, data)
+    return ToolOutput(f"{summary}\n{text}" if summary else text, data, text_in_data=True)
 
 
 def arg_text(args: dict, name: str, *, required: bool = False, max_len: int = 10_000) -> str:

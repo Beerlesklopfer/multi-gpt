@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import inspect
+import io
 import logging
 from dataclasses import dataclass
 from importlib import metadata
@@ -44,7 +45,7 @@ from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS, MODERN_PROTOCOL_VERSI
 
 from . import tools as node_tools
 from .runs import RunError
-from .tools import Progress, ToolFailure, ToolOutput
+from .tools import FileItem, Progress, ToolFailure, ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -205,20 +206,181 @@ def list_tools_result(ctx) -> dict:
     return _dump(T.ListToolsResult(tools=[tool_definition(t) for t in node_tools.offered(ctx)]))
 
 
-def call_tool_result(output: ToolOutput) -> dict:
-    content: list = [T.TextContent(text=output.text or "")]
-    for item in output.files:
-        content.append(
-            T.EmbeddedResource(
-                resource=T.BlobResourceContents(
-                    uri=item.uri,
-                    mime_type=item.mime_type,
-                    blob=base64.b64encode(item.data).decode("ascii"),
-                )
-            )
+# --- Ergebnis von tools/call ------------------------------------------------------------
+#
+# Inhaltstypen nach Spezifikation (2025-11-25 und 2026-07-28, server/tools „Tool
+# Result“): ``text``, ``image`` (base64, mimeType), ``audio``, ``resource_link`` und
+# ``resource`` (eingebettet, ``text`` oder ``blob``) sowie ``structuredContent``.
+#
+# **structuredContent:** Gemessen mit Claude Code: Ist es gesetzt, sieht der Client
+# nur dieses JSON – der Textblock (z. B. stdout von run_python) und Bilder fehlen.
+# Deshalb: Ergebnisse mit Dateien (Bilder, SVG, PDF) kommen ohne
+# ``structuredContent``; die Daten (chat_id, attachments …) stehen dann als JSON in
+# einem eigenen Textblock am Ende. Ohne Dateien bleibt ``structuredContent`` und
+# enthält den Text zusätzlich als ``text``, wenn er mehr als das JSON ist
+# (Antwort von ask, Ausgabe von run_python, Treffer der Dokumentsuche).
+#
+# **Größe:** Der SSE-Client des Python-SDK liest Events nur bis etwa 1 MB (LOP C18).
+# Über SSE gilt daher ``SSE_INLINE_BYTES`` für Text und eingebettete Daten
+# (base64) zusammen, sonst ``JSON_INLINE_BYTES``. Was nicht passt, wird verkleinert
+# (Rasterbilder) bzw. nur verwiesen (``resource_link`` mit attachment_id, Abholen
+# mit get_file). Die URIs ``multigpt://…`` sind keine lesbaren MCP-Ressourcen
+# (kein ``resources/read``); sie benennen den Anhang bzw. das Dokument.
+
+JSON_INLINE_BYTES = 4 * 1024 * 1024
+SSE_INLINE_BYTES = 700 * 1024
+# Erzeugte PDFs u. a. nur bis zu dieser Größe einbetten, darüber Verweis.
+RESOURCE_INLINE_BYTES = 2 * 1024 * 1024
+# Vorschaubilder höchstens so groß (längste Seite); das Original holt get_file.
+PREVIEW_MAX_SIDE = 1600
+RASTER_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
+_SHRINK_SIDES = (PREVIEW_MAX_SIDE, 1024, 768, 512)
+
+
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
+
+
+def _size_label(size: int) -> str:
+    if size >= 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB".replace(".", ",")
+    return f"{max(1, size // 1024)} KB"
+
+
+def _fetch_hint(item: FileItem) -> str:
+    if item.attachment_id is not None:
+        return f"mit get_file (attachment_id {item.attachment_id}) abholen"
+    return "über Streamable HTTP (/mcp/) bzw. in MultiGPT herunterladen"
+
+
+def _link(item: FileItem, reason: str) -> tuple[T.ResourceLink, str]:
+    hint = _fetch_hint(item)
+    link = T.ResourceLink(
+        name=item.name or item.uri,
+        uri=item.uri,
+        mime_type=item.mime_type or None,
+        size=len(item.data) or None,
+        description=hint[0].upper() + hint[1:] + ".",
+    )
+    size = f", {_size_label(len(item.data))}" if item.data else ""
+    return link, f"„{item.name or item.uri}“ ({item.mime_type}{size}) {reason}: {hint}."
+
+
+def _encode_preview(image, kind: str) -> bytes:
+    from PIL import Image
+
+    out = io.BytesIO()
+    if kind == "image/png":
+        image.save(out, "PNG", optimize=True)
+    else:
+        if image.mode not in ("RGB", "L"):
+            rgba = image.convert("RGBA")
+            background = Image.new("RGB", rgba.size, "white")
+            background.paste(rgba, mask=rgba.split()[-1])
+            image = background
+        image.save(out, "JPEG", quality=85)
+    return out.getvalue()
+
+
+def _shrink(data: bytes, mime: str, limit: int) -> tuple[bytes, str, tuple[int, int]] | None:
+    """Rasterbild für die Vorschau verkleinern (längste Seite ``PREVIEW_MAX_SIDE``
+    bzw. kleiner), bis es base64 in ``limit`` passt; PNG bleibt PNG, solange es
+    passt, sonst JPEG (z. B. Fotos, Rauschen). None, wenn nicht möglich."""
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            img.load()
+            image = img.copy()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return None
+    kinds = ("image/png", "image/jpeg") if mime == "image/png" else ("image/jpeg",)
+    for side in _SHRINK_SIDES:
+        copy = image.copy()
+        copy.thumbnail((side, side))
+        for kind in kinds:
+            encoded = _encode_preview(copy, kind)
+            if len(encoded) * 4 // 3 + 4 <= limit:
+                return encoded, kind, copy.size
+    return None
+
+
+def _too_large_side(data: bytes) -> bool:
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return max(img.size) > PREVIEW_MAX_SIDE
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return False
+
+
+def file_content(item: FileItem, budget: int):
+    """Eine Datei als MCP-Inhalt -> ``(Block, Hinweis, verbrauchte Bytes)``."""
+    data = item.data
+    if not data:
+        link, note = _link(item, "nicht eingebettet (zu groß)")
+        return link, note, 0
+    encoded = len(data) * 4 // 3 + 4
+    mime = item.mime_type
+    if item.preview and mime in RASTER_TYPES:
+        if encoded <= budget and not _too_large_side(data):
+            return T.ImageContent(data=_b64(data), mime_type=mime), "", encoded
+        small = _shrink(data, mime, budget)
+        if small is None:
+            link, note = _link(item, "nicht eingebettet (Grenze dieser Verbindung)")
+            return link, note, 0
+        smaller, kind, (width, height) = small
+        note = (
+            f"„{item.name}“ als Vorschau verkleinert auf {width}×{height}; "
+            f"Original {_fetch_hint(item)}."
         )
+        return T.ImageContent(data=_b64(smaller), mime_type=kind), note, len(smaller) * 4 // 3 + 4
+    if item.preview and mime == "image/svg+xml":
+        # Viele Clients zeigen SVG nicht als Bild: als Text-Ressource (bereinigtes SVG).
+        if len(data) <= budget:
+            text = data.decode("utf-8", errors="replace")
+            resource = T.TextResourceContents(uri=item.uri, mime_type=mime, text=text)
+            return T.EmbeddedResource(resource=resource), "", len(data)
+        link, note = _link(item, "nicht eingebettet (Grenze dieser Verbindung)")
+        return link, note, 0
+    if item.preview and len(data) > RESOURCE_INLINE_BYTES:
+        link, note = _link(item, "nicht eingebettet (zu groß)")
+        return link, note, 0
+    if encoded > budget:
+        link, note = _link(item, "nicht eingebettet (Grenze dieser Verbindung)")
+        return link, note, 0
+    resource = T.BlobResourceContents(uri=item.uri, mime_type=mime, blob=_b64(data))
+    return T.EmbeddedResource(resource=resource), "", encoded
+
+
+def call_tool_result(output: ToolOutput, inline_bytes: int = JSON_INLINE_BYTES) -> dict:
+    """``CallToolResult`` aus dem Werkzeugergebnis; ``inline_bytes`` = Grenze für
+    eingebettete Daten (``SSE_INLINE_BYTES`` über SSE)."""
+    text = output.text or ""
+    data_text = node_tools.as_json(output.data) if output.data is not None else ""
+    budget = inline_bytes - len(text.encode()) - len(data_text.encode())
+    blocks: list = []
+    notes: list[str] = []
+    for item in output.files:
+        block, note, used = file_content(item, budget)
+        budget -= used
+        blocks.append(block)
+        if note:
+            notes.append(note)
+    if notes:
+        text = "\n\n".join([text, *notes]) if text else "\n\n".join(notes)
+    content: list = [T.TextContent(text=text)]
+    structured = output.data
+    if blocks:
+        content += blocks
+        if data_text:
+            content.append(T.TextContent(text=data_text))
+        structured = None
+    elif structured is not None and not output.text_in_data and "text" not in structured:
+        structured = {**structured, "text": text}
     return _dump(
-        T.CallToolResult(content=content, structured_content=output.data, is_error=output.is_error)
+        T.CallToolResult(content=content, structured_content=structured, is_error=output.is_error)
     )
 
 

@@ -12,12 +12,26 @@ schätzen. Der Code läuft abgeschottet in einer Sandbox auf dem Server.
   exakte Brüche und Wurzeln
 - **Hohe Genauigkeit** mit mpmath, z. B. π auf 50 Stellen
 - **Standardbibliothek**: `math`, `fractions`, `decimal`, `statistics`, `datetime`, `itertools` …
-- **Diagramme** mit matplotlib: Speichert der Code mit `plt.savefig('diagramm.png')` oder
-  `plt.savefig('diagramm.svg')`, erscheint die Datei in der Antwort, mit Vorschau,
+- **Diagramme** mit matplotlib: Speichert der Code mit `plt.savefig('diagramm.svg')` oder
+  `plt.savefig('diagramm.png')`, erscheint die Datei in der Antwort, mit Vorschau,
   Vergrößerung und Download. Offene Diagramme ohne `savefig` legt MultiGPT selbst als PNG ab.
+  **SVG ist bevorzugt:** scharf in jeder Größe, klein und im Chat sicher als Bild angezeigt (auf
+  dem Server bereinigt, siehe unten). Die Werkzeugbeschreibung sagt das dem Modell; PNG
+  speichert es nur zusätzlich, wenn eine Vorschau als Rasterbild gebraucht wird.
 
 Beispiele für Fragen: „Löse x² − 5x + 6 = 0“, „Wie viel Zins bringen 10 000 € bei 3,2 % über
 7 Jahre mit monatlicher Verzinsung?“, „Zeichne sin(x) und cos(x) von 0 bis 2π“.
+
+**Über MCP** (API-Key mit `tools.run`, z. B. aus Claude oder n8n) kommt das Ergebnis direkt
+zurück: die Ausgabe (Exit-Status, Laufzeit, stdout, stderr) als Text, PNG/JPEG/WebP als Bild, SVG
+als Ressource `image/svg+xml`, PDF als Ressource. Hat der Code nur SVG gespeichert, legt
+MultiGPT dort aus den noch offenen Figuren zusätzlich ein PNG ab, weil viele Clients SVG nicht
+anzeigen; gerendert wird in der Sandbox. Details und Größengrenzen:
+[API-Keys](API-Keys#was-werkzeuge-zurückgeben).
+
+Schreibt das Modell im Antworttext `![Balken](attachment:balken.png)` statt `![…](anhang:12)`,
+zeigt der Chat trotzdem das Bild: Verweise per Dateiname gelten für Anhänge derselben Antwort.
+Unbekannte Verweise blendet er aus.
 
 Im Chat steht der Aufruf als Zeile „Werkzeug run_python (Berechnungen)“. Aufgeklappt zeigt sie
 den **Code** mit Syntax-Hervorhebung und die **Ausgabe**. Jeder Aufruf startet frisch, Variablen

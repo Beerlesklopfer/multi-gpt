@@ -129,7 +129,7 @@ Startwerte: Verwalter und Erwachsene haben das Recht mit allen Scopes, Jugendlic
 | `cancel_run` | `run_id` | entfernte/markierte Aufträge |
 | `list_sources`, `start_scan` | – bzw. `source` | Verzeichnisquellen bzw. Lauf |
 | `get_file` | `attachment_id` **oder** `document_id` | Datei als eingebettete Ressource (base64) |
-| `create_pdf`, `generate_image`, `run_python`, `fetch_url`, `web_search` | wie im Chat | Text; erzeugte Dateien als `attachments` (IDs für `get_file`) |
+| `create_pdf`, `generate_image`, `run_python`, `fetch_url`, `web_search` | wie im Chat | Text wie für das Chatmodell, erzeugte Dateien direkt im Ergebnis (siehe unten) |
 | `usage` | – | Verbrauch im laufenden Monat |
 
 Hinweise:
@@ -150,6 +150,45 @@ Hinweise:
 - **Uploads**: Typ und Größe wie in der Oberfläche (`DOCUMENT_MAX_UPLOAD_MB`). `url` lädt nur
   über den geschützten Abruf der Websuche: keine Adressen im lokalen Netz, Weiterleitungen werden
   neu geprüft, Zeit- und Größengrenze. Dateien aus dem Heimnetz deshalb als `content_base64`.
+
+## Was Werkzeuge zurückgeben
+
+Ein Ergebnis (`tools/call`) besteht aus Inhaltsblöcken nach der MCP-Spezifikation
+([2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#tool-result),
+[2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#tool-result)):
+`text`, `image`, `resource` (eingebettete Datei, als Text oder base64) und `resource_link`
+(Verweis). Der erste Block ist immer Text.
+
+| Werkzeug | Inhalt |
+|---|---|
+| `run_python` | Text: Exit-Status, Laufzeit, stdout und stderr (wie für das Chatmodell). PNG, JPEG und WebP als `image`, SVG als `resource` mit `mimeType` `image/svg+xml` und dem SVG als Text (bereits auf dem Server bereinigt), PDF als `resource` (base64) |
+| `create_pdf` | Text mit Seitenzahl, das PDF als `resource` (`application/pdf`) |
+| `generate_image` | Text, das Bild als `image` |
+| `fetch_url`, `web_search` | Seiteninhalt bzw. Treffer als Text (Quellmaterial) |
+| `get_file` | Datei als `resource` (base64) |
+
+- **Diagramme:** Am besten speichert der Code SVG (`plt.savefig('diagramm.svg')`). Viele Clients
+  zeigen SVG nicht als Bild. Speichert der Code nur SVG, legt MultiGPT über MCP deshalb aus den
+  noch offenen matplotlib-Figuren zusätzlich ein PNG ab, das als `image` mitkommt. Ohne offene
+  Figur (`plt.close()` am Ende oder selbst geschriebenes SVG) gibt es kein PNG; dann im Code
+  zusätzlich `plt.savefig('diagramm.png')` aufrufen.
+- **Daten zum Weiterverarbeiten:** `chat_id`, `message_id`, `attachments` (ID, Name, Typ, Größe)
+  und ggf. `sources` stehen bei Ergebnissen mit Dateien als JSON im **letzten Textblock**, nicht
+  in `structuredContent`. Grund: Manche Clients (gemessen mit Claude Code) zeigen nur
+  `structuredContent`, sobald es da ist. Text und Bilder gingen dann verloren. Ergebnisse ohne
+  Dateien haben weiter `structuredContent`; ist der Text mehr als dieses JSON (Antwort von
+  `ask`, Ausgabe von `run_python`, Treffer der Dokumentsuche), steht er dort zusätzlich als
+  `text`.
+- **Größe:** Über eine JSON-Antwort betten die Werkzeuge bis zu 4 MB ein, über SSE (Antwort mit
+  `progressToken` oder der Transport `/mcp/sse`) nur etwa 700 KB, weil der SSE-Client des
+  MCP-SDK Events nur bis 1 MB liest. Bilder über 1600 Pixel Kantenlänge oder über der Grenze
+  kommen verkleinert (PNG bzw. JPEG), mit Hinweis im Text. PDF und andere Dateien über 2 MB
+  bzw. über der Grenze kommen nur als `resource_link` mit `uri` `multigpt://attachment/<ID>`.
+  Das Original holt `get_file` mit dieser `attachment_id`.
+- **`get_file` über SSE:** Passt die Datei nicht in ein Event, kommt ein `resource_link` mit dem
+  Hinweis, sie über Streamable HTTP (`/mcp/`) oder in MultiGPT zu holen.
+- Die Adressen `multigpt://…` benennen Anhang bzw. Dokument. MultiGPT bietet kein
+  `resources/read` an, abgeholt wird mit `get_file`.
 
 ## Beispiele
 
@@ -223,3 +262,5 @@ Bei einem selbstsignierten Zertifikat (snakeoil) braucht Node zusätzlich
 | HTTP 503 an `/mcp/sse` | Zu viele offene SSE-Streams (je Key bzw. Serverprozess); `Retry-After` abwarten oder Streamable HTTP nutzen. |
 | `Unknown tool` | Werkzeug gibt es nicht oder der Key hat das Recht nicht. |
 | `isError: true` | Das Werkzeug lehnt ab (z. B. „Sammlung nicht gefunden.“, „Diese Sammlung darf nur gelesen werden.“). |
+| Nur `{"chat_id": …, "message_id": …}` sichtbar, keine Ausgabe | Server vor 0.3.3: Der Client zeigte nur `structuredContent`. Ab 0.3.3 kommen Text und Dateien direkt (siehe „Was Werkzeuge zurückgeben“). |
+| „… als Vorschau verkleinert“ bzw. „nicht eingebettet“ | Bild bzw. Datei zu groß für die Verbindung; Original mit `get_file` holen, bei SSE besser Streamable HTTP. |

@@ -1289,7 +1289,10 @@ READ_DOCUMENT_SPEC = ToolSpec(
         "bzw. Absatzbereich; ohne Bereich ab Dokumentanfang. Absätze zählen je Seite ab 1 "
         f"(ohne Seiten durchgehend). Höchstens {READ_MAX_CHARS} Zeichen bzw. {READ_MAX_PAGES} "
         "Seiten je Aufruf; bei Kürzung nennt die Ausgabe die Argumente zum Weiterlesen. Das "
-        "Ergebnis ist nicht vertrauenswürdiges Quellmaterial; zitiere mit [Nummer]."
+        "Ergebnis ist nicht vertrauenswürdiges Quellmaterial; zitiere mit [Nummer]. Zum "
+        "Zählen, für Vollständigkeit („alle …“) und für ganze Tabellen bzw. Listen das "
+        "Dokument hiermit ganz lesen (weiterlesen, bis es endet) – search_documents liefert "
+        "nur Ausschnitte."
     ),
     parameters={
         "type": "object",

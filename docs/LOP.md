@@ -58,7 +58,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C15 | Kontenrahmen: Batch-/Flex-Tarife, Gemini-Cache-Speicher und Freikontingente nicht abgebildet. |
 | C16 | Sandbox-Tests scheitern unter Last der vollen Suite gelegentlich an der CPU-Grenze (siehe A7). |
 | C17 | MCP-SSE: Ein beendeter Stream (nach 30 Min., Neustart, Widerruf) wird nur von Clients mit automatischem Neuverbinden überbrückt; mit n8n, mcp-remote und Claude Desktop nicht im Betrieb geprüft. |
-| C18 | MCP-SSE: Der SDK-Client liest SSE-Events nur bis 1 MB; `get_file` mit großen Dateien (base64) scheitert dort über SSE – dann Streamable HTTP nutzen. |
+| C18 | MCP-SSE: Der SDK-Client liest SSE-Events nur bis 1 MB. Seit 0.3.3 hält MultiGPT über SSE eingebettete Daten unter 700 KB je Ergebnis (Bilder verkleinert, sonst `resource_link`; `get_file` zu groß → Verweis mit Hinweis auf Streamable HTTP). Offen: große Dateien über SSE gar nicht abholbar; Grenze nur am Python-SDK gemessen, nicht an n8n, mcp-remote, Claude Desktop. |
 | C19 | MCP-SSE: Ein Client-Abbruch während eines laufenden `tools/call` (z. B. `ask`) bricht das Werkzeug nicht ab (der POST-Thread merkt die Trennung des Streams nicht). |
 | C20 | MCP-SSE: Trennt der Client, merkt der Server das erst beim nächsten Keepalive (bis 15 s); bis dahin zählt der Stream gegen die Grenzen. |
 | C21 | Erkennungsliste: `chat-latest` (gpt-5-chat) gilt als ohne Bild-Eingabe; laut OpenAI versteht es Bilder (auf der Dev-DB von Hand korrigiert). |
@@ -66,7 +66,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C23 | Kontextmenü und Mitscrollen nur in headless Firefox geprüft (Auswahl per Skript, Mausrad, Bild auf, Touch nicht echt); langes Tippen am Handy und Chromium ungetestet. |
 | C24 | Token-Schätzung (M4a-12) nur an gpt-oss-20b in LM Studio kalibriert (n8n-Schemas 1,5-fach überschätzt); Cloud-Anbieter ungeprüft, deren Kontextlänge nur per Admin-Feld. |
 | C25 | find_tools: Stichwortliste deutsch → englisch klein; Zustandsfragen („Ist das Licht im Flur an?“) treffen eher HassTurnOn als GetLiveContext (HASS geht als kleiner Server ohnehin ganz mit). |
-| C26 | `![…](anhang:ID)` im Antworttext: Auflösung in `markdown.js` nicht im Browser geprüft (kein Node in der Entwicklung); während des Streams ausgeblendet, sichtbar nach dem Nachladen der Nachricht. |
+| C26 | `![…](anhang:ID)` bzw. seit 0.3.3 `attachment:ID`/`attachment:NAME` im Antworttext: Auflösung in `markdown.js` nicht im Browser geprüft (kein Node in der Entwicklung; das Muster wird in Python gegen Beispiele getestet); während des Streams ausgeblendet, sichtbar nach dem Nachladen der Nachricht. In PDFs (`create_pdf`) gilt weiter nur `anhang:ID`. |
 | C27 | Modellverwaltung: „wird geladen …“ steht nur in der Statuszeile des Chats und im Admin, nicht in der Modellauswahl bzw. der Statusanzeige oben. |
 | C28 | Modellverwaltung: Laden und Entladen nur gegen nachgebildetes LM Studio getestet; am echten Gerät (0.4.x) prüfen, ob `parallel` beim Laden angenommen wird (nicht dokumentiert) und welche Fehlermeldung LM Studio bei zu wenig Speicher liefert. |
 | C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |

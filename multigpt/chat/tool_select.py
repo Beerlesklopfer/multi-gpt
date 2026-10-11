@@ -12,6 +12,11 @@ keinen Platz mehr zum Antworten. Im Modus „nach Bedarf“ bekommt es deshalb n
   (``tool_state["unlocked"]``);
 - die Basiswerkzeuge des Verwalters (``ChatSettings.core_tools``, Vorgabe
   web_search, search_documents, create_pdf);
+- **Dokumentwerkzeuge bei gewählten Sammlungen** (``DOCUMENT_TOOLS``): Sind für
+  die Antwort Sammlungen gewählt, gehören read_document, list_documents und
+  document_info neben search_documents zum Kern. Gemessen: „Zähle die Punkte je
+  Gruppe der LOP“ – gpt-oss-20b suchte nur, bekam 4 Abschnitte und zählte
+  falsch; zum Zählen bzw. Auflisten muss es das Dokument ganz lesen können;
 - **kleine MCP-Server ganz** (höchstens ``SMALL_SERVER_TOOLS`` Werkzeuge und
   ``SMALL_SERVER_TOKENS`` geschätzte Tokens, z. B. Home Assistant mit 8
   Werkzeugen und rund 650 geschätzten Tokens): Für „Schalte das Licht aus“ soll das Modell
@@ -64,6 +69,9 @@ MAX_DIRECT_TOKENS = 4000
 # Kleine MCP-Server gehen im Modus „nach Bedarf“ ganz mit.
 SMALL_SERVER_TOOLS = 10
 SMALL_SERVER_TOKENS = 1500
+
+# Bei gewählten Sammlungen immer im Kern (eingebaute Werkzeuge, Namen).
+DOCUMENT_TOOLS = frozenset({"search_documents", "read_document", "list_documents", "document_info"})
 
 DEFAULT_LIMIT = 8
 # Vorauswahl aus der Nutzerfrage: klare Treffer gehen gleich in Runde 1 mit.
@@ -206,6 +214,7 @@ def select(
     *,
     force: bool = False,
     query: str = "",
+    collections: bool = False,
 ) -> Selection:
     """Welche Werkzeuge gehen an das Modell?
 
@@ -213,7 +222,8 @@ def select(
     (Kontext knapp); ``never`` bleibt ``never``. ``query`` (Nutzerfrage): klare
     Treffer der Suche gehen ohne Umweg über find_tools gleich mit
     (``preselected``) – „Waren alle Workflows erfolgreich?“ bekommt so die
-    Werkzeuge für Ausführungen direkt.
+    Werkzeuge für Ausführungen direkt. ``collections``: Für die Antwort sind
+    Sammlungen gewählt, die Dokumentwerkzeuge (``DOCUMENT_TOOLS``) gehören zum Kern.
     """
     tokens_all = context_budget.specs_tokens(b.spec for b in candidates.values())
     if not candidates or mode == NEVER:
@@ -221,6 +231,8 @@ def select(
     if mode == AUTO and not force and not too_many(candidates):
         return Selection(dict(candidates), candidates, tokens_all=tokens_all)
     core = core_names()
+    if collections:
+        core |= DOCUMENT_TOOLS
     small = _small_servers(candidates)
     keep = set(unlocked or ())
     preselected = [b.name for b in preselect(candidates, query) if b.name not in keep]

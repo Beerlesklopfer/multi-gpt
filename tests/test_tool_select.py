@@ -16,6 +16,7 @@ aus ``tests/data/mcp_tools.json``; die MCP-Aufrufe selbst sind gemockt.
 """
 
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -746,10 +747,46 @@ def test_find_tools_also_for_ask(client, model, mcp_mock):
 def test_attachment_reference_in_markdown_js():
     js = (STATIC / "markdown.js").read_text()
     # Nur Anhänge derselben Nachricht, nur lokale Adressen, sonst ausgeblendet.
-    assert "/^anhang:(\\d+)$/" in js
-    assert ":scope > .message-attachments > [data-attachment-id=" in js
+    assert "ATTACHMENT_REF.exec(" in js
+    assert ":scope > .message-attachments > [data-attachment-id]" in js
     assert "ref.remove()" in js and "LOCAL_PATH" in js
     assert "– Ansehen" in js
+
+
+def _attachment_ref_pattern() -> re.Pattern:
+    """Den regulären Ausdruck aus markdown.js in Python nachbauen (gleiche Syntax)."""
+    js = (STATIC / "markdown.js").read_text()
+    match = re.search(r"const ATTACHMENT_REF = /(.+)/(\w*);", js)
+    assert match, "ATTACHMENT_REF fehlt in markdown.js"
+    return re.compile(match.group(1), re.IGNORECASE if "i" in match.group(2) else 0)
+
+
+@pytest.mark.parametrize(
+    ("href", "target"),
+    [
+        ("anhang:12", "12"),
+        ("attachment:12", "12"),
+        ("attachment:balken.png", "balken.png"),
+        ("anhang:diagramm-1.svg", "diagramm-1.svg"),
+        ("Attachment:Balken.PNG", "Balken.PNG"),
+        ("attachment:../etc/passwd", None),
+        ("attachment:a b.png", None),
+        ("https://example.org/a.png", None),
+        ("anhang:", None),
+    ],
+)
+def test_attachment_reference_by_name_pattern(href, target):
+    match = _attachment_ref_pattern().match(href)
+    assert (match.group(1) if match else None) == target
+
+
+def test_attachment_reference_by_name_only_same_message():
+    js = (STATIC / "markdown.js").read_text()
+    # Name -> eigenes Sprungziel, Abgleich mit data-name der Anhänge DIESER Nachricht.
+    assert "#anhang-name-${encodeURIComponent(name)}" in js
+    assert 'target.startsWith("name-")' in js
+    assert '(item.dataset.name || "").toLowerCase() === name' in js
+    assert 'article?.querySelectorAll(":scope > .message-attachments > [data-attachment-id]")' in js
 
 
 def test_attachment_reference_page_and_tool_note(client, adult, model, settings, tmp_path):
@@ -769,5 +806,7 @@ def test_attachment_reference_page_and_tool_note(client, adult, model, settings,
     html = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     # Der Server liefert den Anhang in derselben Nachricht mit data-url (für markdown.js).
     assert f'data-attachment-id="{attachment.pk}"' in html
+    # Dateiname für ![…](attachment:NAME) (markdown.js gleicht data-name ab).
+    assert f'data-name="{attachment.display_name}"' in html
     assert "(anhang:11)" in html  # Rohtext; markdown.js löst nur eigene IDs auf
     assert "nicht verlinken" in tooling.NOTE_ATTACHMENT_SHOWN

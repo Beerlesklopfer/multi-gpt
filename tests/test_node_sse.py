@@ -338,3 +338,48 @@ def test_sdk_client_in_sse_mode(live_server, settings):
     assert wanted <= set(ApiCall.objects.values_list("method", flat=True))
     assert not SseSession.objects.exists()
     assert ApiCall.objects.filter(method=sse.STREAM_METHOD).exists()
+
+
+def test_large_file_over_sse_becomes_link(client, anna, settings, tmp_path):
+    """LOP C18: Über SSE passt nur ein Event bis etwa 1 MB. Große Dateien kommen
+    deshalb als resource_link mit Hinweis, kleine weiter eingebettet."""
+    from django.core.files.base import ContentFile
+
+    from multigpt.chat.models import Attachment, Conversation, Message
+    from multigpt.node import protocol
+
+    settings.MEDIA_ROOT = str(tmp_path / "media")
+    settings.MCP_SSE_KEEPALIVE_SECONDS = 30
+    conversation = Conversation.objects.create(user=anna)
+    message = Message.objects.create(conversation=conversation, role="assistant", content="")
+    ids = []
+    for name, size in (("klein.txt", 1000), ("gross.txt", protocol.SSE_INLINE_BYTES)):
+        attachment = Attachment(
+            message=message,
+            conversation=conversation,
+            kind=Attachment.Kind.FILE,
+            mime_type="text/plain",
+            size=size,
+            original_name=name,
+        )
+        attachment.file.save(name, ContentFile(b"x" * size), save=True)
+        ids.append(attachment.pk)
+    _, secret = make_key(anna, [S.FILES_READ])
+    response, events, endpoint = handshake(client, secret)
+    try:
+        for request_id, pk in enumerate(ids, start=1):
+            body = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "tools/call",
+                "params": {"name": "get_file", "arguments": {"attachment_id": pk}},
+            }
+            assert post(client, secret, endpoint, body).status_code == 202
+        small = next_message(events)["result"]
+        large = next_message(events)["result"]
+    finally:
+        response.close()
+    assert [c["type"] for c in small["content"]] == ["text", "resource", "text"]
+    assert [c["type"] for c in large["content"]] == ["text", "resource_link", "text"]
+    assert "Streamable HTTP" in large["content"][0]["text"]
+    assert len(json.dumps(large)) < 1024 * 1024

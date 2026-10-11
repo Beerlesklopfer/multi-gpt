@@ -1266,6 +1266,7 @@ class _Loop:
             self.state.get("unlocked") or (),
             force=True,
             query=self.turn.query,
+            collections=bool(self.state.get("collections")),
         )
         self._adopt_selection()
 
@@ -1389,6 +1390,7 @@ class _Loop:
                     self.state.get("unlocked") or (),
                     force=bool(self.state.get("on_demand")),
                     query=turn.query,
+                    collections=bool(self.state.get("collections")),
                 )
                 self._adopt_selection()
             if turn.resume and self.state["rounds"]:

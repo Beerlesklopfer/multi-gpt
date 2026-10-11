@@ -122,13 +122,16 @@ class Limits:
     output_kb: int = 64
     max_files: int = 6
     max_file_bytes: int = 5 * 1024 * 1024
+    # Nur SVG gespeichert: offene matplotlib-Figuren zusätzlich als PNG ablegen
+    # (Vorschau für MCP-Clients, die SVG nicht anzeigen; ``tools_python``).
+    png_preview: bool = False
 
     def clamped(self) -> Limits:
         """Auf sichere Mindest- und Höchstwerte begrenzen (auch bei manipulierter DB)."""
         values = {}
         for name, (low, high) in LIMIT_RANGES.items():
             values[name] = max(low, min(high, int(getattr(self, name))))
-        return Limits(**values)
+        return Limits(**values, png_preview=bool(self.png_preview))
 
 
 # Mindest- und Höchstwerte (die Admin-Felder nutzen dieselben Grenzen).
@@ -366,6 +369,18 @@ try:
         # Offene Diagramme ohne savefig: als PNG ablegen (plt.show() zeigt mit Agg nichts).
         for i, num in enumerate(plt.get_fignums()[: cfg["max_files"]], 1):
             plt.figure(num).savefig(f"/work/abbildung-{i}.png", dpi=100)
+    elif plt is not None and cfg["png_preview"]:
+        # Nur SVG gespeichert: noch offene Figuren als PNG-Vorschau ablegen
+        # (gleicher Name wie das SVG, wenn die Anzahl passt).
+        found = _images()
+        svgs = [e.name[:-4] for e in found if e.name.lower().endswith(".svg")]
+        rasters = [e for e in found if not e.name.lower().endswith((".svg", ".pdf"))]
+        nums = plt.get_fignums()
+        if svgs and not rasters and nums:
+            room = max(0, cfg["max_files"] - len(found))
+            for i, num in enumerate(nums[:room], 1):
+                stem = svgs[i - 1] if len(nums) == len(svgs) else f"vorschau-{i}"
+                plt.figure(num).savefig(f"/work/{stem}.png", dpi=100)
 except BaseException:
     pass
 
@@ -494,6 +509,7 @@ def command(
         "file_size": limits.file_mb * 1024 * 1024,
         "max_files": limits.max_files,
         "max_file_bytes": limits.max_file_bytes,
+        "png_preview": limits.png_preview,
     }
     args += [
         "--remount-ro", "/",

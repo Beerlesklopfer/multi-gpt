@@ -34,11 +34,21 @@ Entscheidungen:
   ``MAX_PDF_PAGES`` Seiten) als Datei-Anhang übernommen; der Inhalt bleibt
   nicht vertrauenswürdig (Auslieferung siehe ``api_attachments``).
   Höchstens ``MAX_FILES_PER_ANSWER`` je Antwort.
+- **SVG bevorzugt** (Beschreibung): Diagramme bleiben scharf und klein, der Chat
+  zeigt das bereinigte SVG sicher als ``<img>``. Über MCP (``node.tool_builtin``)
+  setzt der Aufrufer ``png_preview``: Hat der Code nur SVG gespeichert, legt die
+  Sandbox die noch offenen matplotlib-Figuren zusätzlich als PNG ab, weil viele
+  MCP-Clients SVG nicht als Bild anzeigen. Gerendert wird in der Sandbox, nicht
+  im Server (kein SVG-Renderer wie cairosvg nötig, kein fremdes SVG im
+  Server-Prozess). Ohne offene Figur (``plt.close()`` vor dem Ende, SVG von
+  Hand geschrieben) gibt es keine Vorschau – dann PNG selbst speichern.
 - **Logs:** nur IDs, Dauer, Exit-Status (``sandbox``) – nie Code oder Ausgabe.
 """
 
 from __future__ import annotations
 
+import contextvars
+import dataclasses
 import io
 import logging
 import re
@@ -64,6 +74,8 @@ MAX_RASTER_BYTES = 5 * 1024 * 1024
 MAX_SVG_BYTES = svg_clean.MAX_BYTES
 RASTER_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 MAX_PDF_PAGES = 50
+# Über MCP gesetzt (``node.tool_builtin``): nur SVG -> zusätzlich PNG-Vorschau.
+PNG_PREVIEW: contextvars.ContextVar[bool] = contextvars.ContextVar("png_preview", default=False)
 
 MSG_NO_CODE = "Bitte Python-Code im Argument „code“ angeben."
 MSG_TOO_LONG = f"Der Code ist zu lang (höchstens {MAX_CODE_CHARS} Zeichen)."
@@ -82,8 +94,10 @@ DESCRIPTION = (
     "matplotlib für Diagramme. Kein Netz, keine Dateien außerhalb eines leeren "
     "Arbeitsordners. Ergebnis per print ausgeben. Nutze es für exakte bzw. numerische "
     "Rechnungen (Gleichungen, Integrale, Statistik, Einheiten, große Zahlen) statt "
-    "Kopfrechnen. Für Diagramme matplotlib nutzen und mit plt.savefig('diagramm.png') "
-    "bzw. plt.savefig('diagramm.svg') speichern; die Dateien erscheinen in der Antwort. "
+    "Kopfrechnen. Für Diagramme matplotlib nutzen und bevorzugt als SVG speichern "
+    "(plt.savefig('diagramm.svg'), scharf und klein); zusätzlich PNG "
+    "(plt.savefig('diagramm.png')) nur, wenn eine Vorschau als Rasterbild gebraucht wird. "
+    "Die Dateien erscheinen in der Antwort. "
     "Ein Blatt mit eigener, exakter Geometrie (Maße in mm) als PDF speichern, z. B. "
     "plt.figure(figsize=(210/25.4, 297/25.4)) und plt.savefig('blatt.pdf'). "
     "Jeder Aufruf startet frisch (keine Variablen aus früheren Aufrufen), CPU-Zeit und "
@@ -276,6 +290,8 @@ def _tool_run(user, arguments: dict, sources) -> tooling.BuiltinResult:
     if not (cfg.python_enabled and can(user, Action.COMPUTE)):
         return tooling.BuiltinResult(tooling.MSG_NOT_ALLOWED, True)
     limits = limits_from(cfg)
+    if PNG_PREVIEW.get():
+        limits = dataclasses.replace(limits, png_preview=True)
     try:
         result = sandbox.run(code, limits)
     except sandbox.SandboxBusy:

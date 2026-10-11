@@ -1,3 +1,26 @@
+multi-gpt (0.3.3) unstable; urgency=medium
+
+  MCP-Server: Die eingebauten Werkzeuge liefern ihr Ergebnis jetzt direkt.
+  run_python gibt Exit-Status, Laufzeit, stdout und stderr als Text zurück,
+  erzeugte PNG/JPEG/WebP als Bild, SVG als Ressource image/svg+xml und PDF
+  als Ressource; create_pdf das PDF, generate_image das Bild. Bisher sahen
+  Clients wie Claude nur chat_id und message_id. Ergebnisse mit Dateien
+  haben dafür kein structuredContent mehr: chat_id, message_id und die
+  Anhänge stehen als JSON im letzten Textblock. Wer in n8n bisher
+  structuredContent.attachments ausgewertet hat, liest das JSON von dort.
+  Über SSE werden Bilder verkleinert bzw. große Dateien nur verwiesen
+  (abholen mit get_file über Streamable HTTP), weil SSE-Clients Events nur
+  bis etwa 1 MB lesen.
+
+  Diagramme speichern die Modelle jetzt bevorzugt als SVG. Speichert der
+  Code nur SVG, kommt über MCP zusätzlich ein PNG (aus der Sandbox).
+
+  Werkzeuge nach Bedarf: Sind für eine Antwort Sammlungen gewählt, sieht
+  das Modell neben search_documents auch read_document, list_documents und
+  document_info, damit es zum Zählen und Auflisten ein Dokument ganz liest.
+
+ -- Joerg Bernau <joerg@bernau.family>  Sun, 11 Oct 2026 12:00:00 +0200
+
 multi-gpt (0.3.2) unstable; urgency=medium
 
   MultiGPT ist jetzt auch MCP-Server: Unter https://<hostname>/mcp/ steuern

@@ -385,7 +385,9 @@ def messages_endpoint(request):
             def progress(item):
                 deliver(session_id, protocol.progress_notification(token, next(steps), item))
 
-        payload, status, _http_status = dispatch(call, ctx, env, request_id, params, progress)
+        payload, status, _http_status = dispatch(
+            call, ctx, env, request_id, params, progress, protocol.SSE_INLINE_BYTES
+        )
     size = deliver(session_id, payload)
     call.record(status if size else ApiCall.Status.ERROR, 202, size)
     return _plain(202)

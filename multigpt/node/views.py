@@ -180,11 +180,20 @@ def read_message(request, call: _Call):
     return body
 
 
-def dispatch(call: _Call, ctx, env, request_id, params, progress=None):
+def dispatch(
+    call: _Call,
+    ctx,
+    env,
+    request_id,
+    params,
+    progress=None,
+    inline_bytes: int = protocol.JSON_INLINE_BYTES,
+):
     """Methode ausführen -> ``(payload, Audit-Status, HTTP-Status)``.
 
     ``progress`` (optional) bekommt bei ``tools/call`` jeden ``Progress`` des
     Werkzeugs (Legacy-SSE: als ``notifications/progress`` in den Stream).
+    ``inline_bytes``: Grenze für eingebettete Dateien (über SSE kleiner, C18).
     """
     method = call.method
     try:
@@ -195,7 +204,7 @@ def dispatch(call: _Call, ctx, env, request_id, params, progress=None):
             payload = {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": protocol.finish(protocol.call_tool_result(output), env),
+                "result": protocol.finish(protocol.call_tool_result(output, inline_bytes), env),
             }
             status = ApiCall.Status.TOOL_ERROR if output.is_error else ApiCall.Status.OK
             return payload, status, 200
@@ -314,11 +323,8 @@ def _sse(call: _Call, steps, env, request_id, token):
                 chunk = _event(protocol.progress_notification(token, step, item))
                 sent += len(chunk)
                 yield chunk
-        payload = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": protocol.finish(protocol.call_tool_result(output), env),
-        }
+        result = protocol.call_tool_result(output, protocol.SSE_INLINE_BYTES)
+        payload = {"jsonrpc": "2.0", "id": request_id, "result": protocol.finish(result, env)}
         chunk = _event(payload)
         sent += len(chunk)
         status = ApiCall.Status.TOOL_ERROR if output.is_error else ApiCall.Status.OK

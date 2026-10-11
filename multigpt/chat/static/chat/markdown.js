@@ -61,6 +61,9 @@
       .replace(/'/g, "&#39;");
   }
 
+  // Ziel eines Anhang-Verweises: ID oder Dateiname (ohne Pfad, ohne Leerzeichen).
+  const ATTACHMENT_REF = /^(?:anhang|attachment):([^\s/\\]{1,200})$/i;
+
   if (ready) {
     // Links: neuer Tab, kein Opener, kein Referrer.
     window.DOMPurify.addHook("afterSanitizeAttributes", (node) => {
@@ -84,10 +87,21 @@
         },
         // Keine externen Bilder laden: als Link darstellen.
         image(token) {
-          // ![…](anhang:ID): Verweis auf einen Anhang (linkAttachments unten).
-          const ref = /^anhang:(\d+)$/.exec(String(token.href || "").trim());
+          // ![…](anhang:ID) bzw. ![…](attachment:NAME): Verweis auf einen Anhang
+          // per ID oder Dateiname (linkAttachments unten). Modelle schreiben
+          // gern attachment:balken.png statt anhang:12.
+          const ref = ATTACHMENT_REF.exec(String(token.href || "").trim());
           if (ref) {
-            return `<a class="attachment-ref" href="#anhang-${ref[1]}">${escapeHtml(token.text || "Anhang")}</a>`;
+            let name = ref[1];
+            try {
+              name = decodeURIComponent(name); // marked kodiert Umlaute in href
+            } catch {
+              // roh lassen
+            }
+            const target = /^\d+$/.test(name)
+              ? `#anhang-${name}`
+              : `#anhang-name-${encodeURIComponent(name)}`;
+            return `<a class="attachment-ref" href="${escapeHtml(target)}">${escapeHtml(token.text || "Anhang")}</a>`;
           }
           const label = token.text ? `Bild: ${token.text}` : "Bild";
           return `<a href="${escapeHtml(token.href || "")}">${escapeHtml(label)}</a>`;
@@ -180,12 +194,29 @@
     }
   }
 
-  // ![…](anhang:ID) im Modelltext (nach create_pdf bzw. generate_image): nur
-  // Anhänge DERSELBEN Nachricht (.message-attachments im Artikel, vom Server
-  // gerendert). Bild -> kleine Vorschau, sonst Link „Ansehen“; fremde bzw.
-  // (noch) unbekannte IDs werden ausgeblendet – der Anhang steht ohnehin unter
-  // der Antwort. Adressen kommen nur aus data-url/-thumbnail-url des Servers.
+  // ![…](anhang:ID) bzw. ![…](attachment:NAME) im Modelltext (nach run_python,
+  // create_pdf bzw. generate_image): nur Anhänge DERSELBEN Nachricht
+  // (.message-attachments im Artikel, vom Server gerendert); NAME ist der
+  // angezeigte Dateiname (data-name, ohne Groß-/Kleinschreibung). Bild -> kleine
+  // Vorschau, sonst Link „Ansehen“; fremde bzw. (noch) unbekannte Verweise werden
+  // ausgeblendet – der Anhang steht ohnehin unter der Antwort. Adressen kommen
+  // nur aus data-url/-thumbnail-url des Servers.
   const LOCAL_PATH = /^\/(?!\/)/;
+
+  function findAttachment(article, target) {
+    const items =
+      article?.querySelectorAll(":scope > .message-attachments > [data-attachment-id]") || [];
+    if (target.startsWith("name-")) {
+      let name = "";
+      try {
+        name = decodeURIComponent(target.slice("name-".length)).toLowerCase();
+      } catch {
+        return null;
+      }
+      return [...items].find((item) => (item.dataset.name || "").toLowerCase() === name) || null;
+    }
+    return [...items].find((item) => item.dataset.attachmentId === target) || null;
+  }
 
   function linkAttachments(el) {
     const refs = el.querySelectorAll('a.attachment-ref[href^="#anhang-"]');
@@ -194,10 +225,7 @@
     }
     const article = el.closest(".chat-message");
     for (const ref of refs) {
-      const id = ref.getAttribute("href").slice("#anhang-".length);
-      const item = article?.querySelector(
-        `:scope > .message-attachments > [data-attachment-id="${CSS.escape(id)}"]`,
-      );
+      const item = findAttachment(article, ref.getAttribute("href").slice("#anhang-".length));
       const url = item?.dataset.url || "";
       if (!item || !LOCAL_PATH.test(url)) {
         ref.remove();

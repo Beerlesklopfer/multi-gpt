@@ -52,7 +52,10 @@ Tipp: Den Server „n8n …“ nennen oder die URL von n8n verwenden; daran erke
    - **MCP Client** (normaler Workflow-Schritt): **Server Transport** „HTTP Streamable“,
      **MCP Endpoint URL** `https://<hostname>/mcp/`, **Authentication** „Bearer Auth“, dann das
      **Tool** wählen (die Liste kommt von MultiGPT) und die Argumente setzen (**Input Mode**
-     „Manual“ oder „JSON“). Für `get_file`: Option **Convert to Binary**.
+     „Manual“ oder „JSON“). Für `get_file`: Option **Convert to Binary**. `create_pdf`,
+     `generate_image` und `run_python` liefern ihre Dateien direkt im Ergebnis mit (ebenfalls
+     **Convert to Binary**); `chat_id` und die Anhang-IDs stehen dann als JSON im letzten
+     Textblock, siehe [Was Werkzeuge zurückgeben](API-Keys#was-werkzeuge-zurückgeben).
    - **MCP Client Tool** (Werkzeuge für einen *AI Agent* in n8n): gleiche Adresse und
      Zugangsdaten, **Tools to Include** auf die benötigten Werkzeuge beschränken.
    - **Ältere n8n-Versionen bzw. SSE:** Der Knoten „MCP Client Tool“ kennt in Version 1 nur

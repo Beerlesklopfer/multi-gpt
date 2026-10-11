@@ -58,7 +58,22 @@ def tool_names(client, secret) -> set[str]:
 
 
 def structured(result) -> dict:
-    return result.get("structuredContent") or {}
+    """Strukturierte Daten; bei Ergebnissen mit Dateien (ohne structuredContent)
+    aus dem JSON-Textblock am Ende."""
+    if result.get("structuredContent"):
+        return result["structuredContent"]
+    texts = [c["text"] for c in result.get("content", [])[1:] if c.get("type") == "text"]
+    if texts:
+        try:
+            return json.loads(texts[-1])
+        except ValueError:
+            pass
+    return {}
+
+
+def blocks(result, kind: str) -> list[dict]:
+    """Inhaltsblöcke eines Typs (``image``, ``resource``, ``resource_link`` …)."""
+    return [c for c in result.get("content", []) if c.get("type") == kind]
 
 
 def text(result) -> str:

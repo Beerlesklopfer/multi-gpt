@@ -712,3 +712,82 @@ def test_search_results_name_document_id(anna, collector, query_vector, rag_read
     result = rag_chat.run_search_documents(anna, {"query": "Kaution"}, collector)
     assert f'dokument_id="{doc.pk}"' in result.text
     assert "read_document" in rag_chat.SEARCH_DOCUMENTS_SPEC.description
+
+
+# --- Werkzeuge nach Bedarf mit gewählten Sammlungen (LOP-Zählfall) --------------------
+
+
+def test_on_demand_with_collections_offers_all_document_tools(
+    client, anna, tool_model, query_vector, rag_ready
+):
+    """Gemessen: Im Modus nach Bedarf sah gpt-oss-20b nur search_documents und
+    zählte aus 4 Treffern falsch. Mit gewählten Sammlungen gehören die
+    Dokumentwerkzeuge zum Kern; ohne Sammlungen bleiben sie hinter find_tools."""
+    from multigpt.chat import tool_select
+
+    coll = collection(anna, "Projekt")
+    indexed(coll, "LOP", paged("A1 Punkt.\n\nC1 Punkt.\n\nC2 Punkt."), vector=axis(1))
+    AIModel.objects.filter(pk=tool_model.pk).update(tools_on_demand=tool_select.ALWAYS)
+    requests = []
+
+    def reply(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200, content=text_body("Fertig."), headers={"content-type": "text/event-stream"}
+        )
+
+    client.force_login(anna)
+    offered = []
+    for chosen in ([coll.pk], []):
+        conversation = Conversation.objects.create(user=anna)
+        with respx.mock(assert_all_called=False) as mock:
+            mock.post(f"{BASE}/chat/completions").mock(side_effect=reply)
+            response = client.post(
+                reverse("chat:api_messages", args=[conversation.pk]),
+                json.dumps(
+                    {
+                        "content": "Zähle die Punkte je Gruppe der LOP",
+                        "model": tool_model.pk,
+                        "collections": chosen,
+                    }
+                ),
+                content_type="application/json",
+            )
+            events_of(response)
+        offered.append({t["function"]["name"] for t in requests[-1]["tools"]})
+    with_collections, without = offered
+    assert "find_tools" in with_collections
+    assert tool_select.DOCUMENT_TOOLS <= with_collections
+    assert not {"read_document", "list_documents", "document_info"} & without
+
+
+def test_document_tool_descriptions_ask_for_full_reading():
+    from multigpt.chat.rag import chat as rag_chat
+
+    search_text = rag_chat.SEARCH_DOCUMENTS_SPEC.description
+    read_text = doc_tools.READ_DOCUMENT_SPEC.description
+    assert "Zählen" in search_text and "read_document" in search_text
+    assert "nur einzelne Ausschnitte" in search_text
+    assert "Zählen" in read_text and "ganz lesen" in read_text
+
+
+def test_search_hints_full_reading_for_small_documents(anna, collector, query_vector, rag_ready):
+    from multigpt.chat.rag import chat as rag_chat
+
+    pages = paged(*[f"C{n} Offener Punkt Nummer {n}. {words('w', 20)}" for n in range(1, 9)])
+    small = indexed(collection(anna), "LOP", pages, tokens=30, overlap=0, vector=axis(1))
+    count = small.chunks.count()
+    assert 2 < count <= rag_chat.SMALL_DOCUMENT_CHUNKS
+    rag = RagSettings.load()
+    rag.top_k = 2
+    rag.save()
+    result = rag_chat.run_search_documents(anna, {"query": "Offener Punkt"}, collector)
+    assert result.text.count("<quelle ") == 2
+    assert f"„LOP“ (Dokument {small.pk}) hat nur {count} Abschnitte" in result.text
+    assert f"read_document(document_id={small.pk}) ganz lesen" in result.text
+    # Alle Abschnitte gefunden: kein Hinweis.
+    rag.top_k = 50
+    rag.save()
+    result = rag_chat.run_search_documents(anna, {"query": "Offener Punkt"}, collector)
+    assert result.text.count("<quelle ") == count
+    assert "ganz lesen" not in result.text

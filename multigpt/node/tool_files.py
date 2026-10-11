@@ -5,6 +5,8 @@ als eingebettete Ressource (base64), nur mit denselben Rechten wie der Download
 in der Oberfläche (Anhang: Leserecht auf den Chat bzw. eigener Entwurf;
 Dokument: Leserecht auf die Sammlung, ggf. Einschränkung des Keys). Grenze:
 ``API_FILE_MAX_MB`` (Standard 20 MB); größere Dateien nur über die Oberfläche.
+Über SSE passt nur weniger in ein Event (``protocol.SSE_INLINE_BYTES``, LOP C18);
+größere Dateien kommen dort als ``resource_link`` mit Hinweis auf Streamable HTTP.
 """
 
 from __future__ import annotations
@@ -59,7 +61,8 @@ def _attachment(ctx, pk: int) -> ToolOutput:
         raise ToolFailure(MSG_NOT_FOUND) from None
     mime = _content_type(attachment, stored).split(";", 1)[0]
     name = download_name(attachment, stored)
-    return _output(f"multigpt://attachment/{attachment.pk}", mime, data, name, "attachment")
+    uri = f"multigpt://attachment/{attachment.pk}"
+    return _output(uri, mime, data, name, "attachment")
 
 
 def _document(ctx, pk: int) -> ToolOutput:
@@ -91,6 +94,7 @@ def _output(uri: str, mime: str, data: bytes, name: str, kind: str) -> ToolOutpu
         f"Datei „{name}“ ({mime}, {len(data)} Bytes) als eingebettete Ressource.",
         info,
         files=[FileItem(uri=uri, mime_type=mime, data=data, name=name)],
+        text_in_data=True,
     )
 
 
