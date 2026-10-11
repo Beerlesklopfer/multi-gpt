@@ -114,8 +114,8 @@ MAX_PARALLEL = 2
 
 @dataclass(frozen=True)
 class Limits:
-    cpu_seconds: int = 10
-    wall_seconds: int = 20
+    cpu_seconds: int = 30
+    wall_seconds: int = 60
     memory_mb: int = 512
     processes: int = 4
     file_mb: int = 10

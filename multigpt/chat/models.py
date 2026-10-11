@@ -584,12 +584,13 @@ class ChatSettings(models.Model):
     )
     python_cpu_seconds = models.PositiveSmallIntegerField(
         "CPU-Zeit (s)",
-        default=10,
+        # 30 s: sympy braucht allein für den Import einige Sekunden (LOP A7).
+        default=30,
         validators=[MinValueValidator(1), MaxValueValidator(60)],
     )
     python_wall_seconds = models.PositiveSmallIntegerField(
         "Laufzeit gesamt (s)",
-        default=20,
+        default=60,
         validators=[MinValueValidator(2), MaxValueValidator(120)],
         help_text="Danach wird der Lauf abgebrochen (Wanduhr, auch beim Warten).",
     )

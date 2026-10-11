@@ -70,8 +70,8 @@ Eine Rückfrage vor jeder Ausführung ist deshalb nicht nötig. Wer sie trotzdem
 
 | Einstellung | Standard | Höchstwert | Wirkung |
 |---|---|---|---|
-| CPU-Zeit | 10 s | 60 s | Danach bricht der Lauf ab („CPU-Zeit-Grenze erreicht“) |
-| Laufzeit gesamt | 20 s | 120 s | Wanduhr, zählt auch Warten; danach wird alles beendet |
+| CPU-Zeit | 30 s | 60 s | Danach bricht der Lauf ab („CPU-Zeit-Grenze erreicht“) |
+| Laufzeit gesamt | 60 s | 120 s | Wanduhr, zählt auch Warten; danach wird alles beendet |
 | Speicher je Prozess | 512 MB | 4096 MB | Mehr Speicher führt zu `MemoryError` |
 | Prozesse und Threads | 4 | 64 | Einschließlich Python und dem Start-Prozess; bremst Fork-Bomben |
 | Dateigröße | 10 MB | 100 MB | je Datei im Arbeitsordner |

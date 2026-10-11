@@ -665,15 +665,15 @@ def test_run_result_text_for_model(answer, monkeypatch):
         "Ausgabe (stdout):\n42" in result.text and "Fehlerausgabe (stderr):\nWarnung" in result.text
     )
     code, limits = calls[0]
-    assert code == "print(42)" and limits.cpu_seconds == 10 and limits.wall_seconds == 20
+    assert code == "print(42)" and limits.cpu_seconds == 30 and limits.wall_seconds == 60
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "aborted,text",
     [
-        ("timeout", "Zeitlimit von 20 s"),
-        ("cpu", "CPU-Zeit-Grenze von 10 s"),
+        ("timeout", "Zeitlimit von 60 s"),
+        ("cpu", "CPU-Zeit-Grenze von 30 s"),
         ("output", "viel zu viel Ausgabe"),
         ("file_size", "Datei größer als 10 MB"),
     ],
