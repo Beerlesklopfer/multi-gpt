@@ -35,6 +35,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -259,8 +260,21 @@ MSG_NO_VISION = (
 )
 
 
+# LM Studio, wenn das Modell zwischen Anfrage und Antwort entladen wurde (JIT-Auto-Evict,
+# Leerlauf oder eine zweite MultiGPT-Instanz mit Modellverwaltung): vorübergehend.
+UNLOADED_MARKERS = ("model is unloaded", "model is not loaded", "no models loaded")
+UNLOADED_RETRY_SECONDS = 2.0
+
+
+def _model_unloaded(exc: ProviderError) -> bool:
+    text = str(exc).lower()
+    return getattr(exc, "status", None) == 400 and any(m in text for m in UNLOADED_MARKERS)
+
+
 def _provider_error(exc: ProviderError) -> OcrError:
     message = f"OCR-Modell: {exc or MSG_FAILED}"
+    if _model_unloaded(exc):
+        return OcrError(message, retryable=True)
     if getattr(exc, "status", None) == 400:
         message += MSG_NO_VISION
     if getattr(exc, "truncated", False):
@@ -281,21 +295,36 @@ def _ask(ai_model: AIModel, image: bytes) -> str:
         raise OcrError(f"OCR-Modell: {exc.message}", unreachable=True) from None
 
 
+def _describe(adapter, ai_model: AIModel, image: bytes, temperature: float) -> str:
+    return adapter.describe_image(
+        ai_model.model_id,
+        image,
+        OLMOCR_PROMPT,
+        temperature=temperature,
+        max_tokens=OLMOCR_MAX_TOKENS,
+    )
+
+
 def _ask_loaded(ai_model: AIModel, image: bytes) -> str:
     adapter = registry.get_adapter(ai_model.provider)
     last: ProviderError | None = None
+    reloaded = False
     for temperature in OLMOCR_TEMPERATURES:
         try:
-            return adapter.describe_image(
-                ai_model.model_id,
-                image,
-                OLMOCR_PROMPT,
-                temperature=temperature,
-                max_tokens=OLMOCR_MAX_TOKENS,
-            )
+            return _describe(adapter, ai_model, image, temperature)
         except NotImplementedError:
             raise OcrError(MSG_UNSUPPORTED) from None
         except ProviderError as exc:
+            if _model_unloaded(exc) and not reloaded:
+                # Einmal neu anfragen: LM Studio lädt per JIT nach (bzw. die
+                # Modellverwaltung beim nächsten use()). Erst danach Tesseract.
+                reloaded = True
+                logger.info("olmOCR: Modell %s war entladen, neuer Versuch", ai_model.pk)
+                time.sleep(UNLOADED_RETRY_SECONDS)
+                try:
+                    return _describe(adapter, ai_model, image, temperature)
+                except ProviderError as again:
+                    exc = again
             if not getattr(exc, "truncated", False):
                 raise _provider_error(exc) from None
             last = exc  # abgeschnitten (Wiederholschleife?) -> etwas wärmer erneut
@@ -368,8 +397,11 @@ def page_reader(cfg: RagSettings | None = None) -> Callable[[str, int], str]:
             return olmocr_page(ai_model, pdf_path, page_number)
         except OcrError as exc:
             if use_tesseract:
+                # Ursache mitloggen (deutscher Text ohne Key, bei LM Studio dessen Meldung).
                 logger.warning(
-                    "olmOCR für Seite %s nicht möglich, Tesseract springt ein", page_number
+                    "olmOCR für Seite %s nicht möglich, Tesseract springt ein (%s)",
+                    page_number,
+                    exc.message[:300],
                 )
                 state["offline"] = state["offline"] or exc.unreachable
                 return extract.ocr_pdf_page(pdf_path, page_number)

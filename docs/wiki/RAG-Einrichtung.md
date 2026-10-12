@@ -167,6 +167,12 @@ Deshalb kann MultiGPT die Modelle selbst verwalten (ab LM Studio 0.4, REST-API v
 - **Ladefehler:** Meldet LM Studio einen Fehler (z. B. zu wenig Speicher), wartet MultiGPT mit
   dem nächsten Versuch 1, 2, 4 … höchstens 30 Minuten; „Laden“ von Hand geht sofort.
 
+**Nur eine Instanz verwaltet:** Nutzen mehrere MultiGPT-Installationen dasselbe LM Studio (z. B.
+Produktion und Entwicklung), darf „Modelle verwalten“ nur bei einer an sein. Eine verwaltende
+Instanz sieht nicht, was die andere gerade benutzt, und entlädt deren Modelle nach Leerlauf bzw.
+nach der Indexierung. Die andere bekommt dann „Model is unloaded“; die OCR wiederholt die Seite
+seit 0.3.5 einmal, Chats brechen ab.
+
 **Einrichten:** Admin → Anbieter → LM Studio → Abschnitt „Modellverwaltung (LM Studio)“:
 „Modelle verwalten“ an, Budget und Reserve eintragen. Ohne diesen Schalter ändert sich nichts.
 In LM Studio die Einstellung „JIT models auto-evict“ ausschalten bzw. JIT-Laden ganz

@@ -70,6 +70,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
 | C31 | Parallele Indexierung seit 0.3.5 (RAG-Einstellung „Dokumente gleichzeitig“, Standard 2): nur mit Tests geprüft, nicht am echten Lauf (Produktion indexierte gerade). Auf der Produktion beobachten: Dauer je Dokument, LM-Studio-Last; beim OCR-Modell „Parallele Anfragen“ passend setzen. |
 | C32 | Prompt-Caching: Anthropic seit 0.3.4 (Breakpoint am Systemprompt plus automatisches Caching des Verlaufs, 5 Min.). Offen: nicht gegen die echte API geprüft (kein Anthropic-Anbieter in der Entwicklung) – auf der Produktion `cache_read_input_tokens` in den Buchungen beobachten; Cache-Preise an den Anthropic-Modellen eintragen; 1-Stunden-Haltezeit für Chats mit langen Pausen erwägen; OpenAI `prompt_cache_key` je Chat für bessere Trefferquote. |
+| C33 | Zwei MultiGPT-Instanzen an einem LM Studio (Produktion und Entwicklung): Eine mit „Modelle verwalten“ entlädt Modelle, die die andere gerade nutzt („Model is unloaded“, beobachtet 2026-10-12 bei der CLV-Indexierung in der Entwicklung). Seit 0.3.5 wiederholt die OCR die Seite einmal; dauerhaft nur eine Instanz verwalten lassen (Wiki). Offen: Chat und Embeddings wiederholen nicht. |
 
 ## D. Geplante Meilensteine
 

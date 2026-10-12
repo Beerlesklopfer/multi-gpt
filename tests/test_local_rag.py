@@ -800,3 +800,37 @@ def test_describe_image_shows_local_provider_error_text():
             except ProviderHTTPError as exc:
                 assert ("Failed to load model" in str(exc)) is expect
                 assert exc.retryable is expect
+
+
+def test_ocr_retries_once_when_lm_studio_unloaded_the_model(monkeypatch):
+    """„Model is unloaded“ (entladen während der Arbeit): einmal neu, kein Vision-Hinweis."""
+    from multigpt.chat.providers.base import ProviderHTTPError
+    from multigpt.chat.rag import ocr
+
+    unloaded = ProviderHTTPError(
+        "Der Anbieter hat die Anfrage abgelehnt (HTTP 400). LM Studio meldet: Model is unloaded.",
+        400,
+    )
+    calls = []
+
+    class Adapter:
+        def __init__(self, results):
+            self.results = list(results)
+
+        def describe_image(self, *args, **kwargs):
+            calls.append(1)
+            result = self.results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    model = type("M", (), {"pk": 1, "model_id": "allenai/olmocr-2-7b", "provider": None})()
+    monkeypatch.setattr(ocr, "UNLOADED_RETRY_SECONDS", 0)
+    monkeypatch.setattr(ocr.registry, "get_adapter", lambda provider: adapter)
+    adapter = Adapter([unloaded, "Seitentext"])
+    assert ocr._ask_loaded(model, b"png") == "Seitentext"
+    assert len(calls) == 2
+    adapter = Adapter([unloaded, unloaded])
+    with pytest.raises(ocr.OcrError) as info:
+        ocr._ask_loaded(model, b"png")
+    assert info.value.retryable and "Vision-Modell" not in info.value.message

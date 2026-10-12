@@ -437,7 +437,14 @@ class OpenAICompatAdapter(ProviderAdapter):
             ) from None
         if response.status_code != 200:
             detail = _error_code(response.content)
-            self._log(f"Bildanfrage HTTP {response.status_code}", detail)
+            if not (self.provider.api_key or "").strip():
+                # Lokal ohne Key (LM Studio): dessen Meldung nennt die Ursache, z. B.
+                # Kontext zu klein; bei Cloud-Anbietern nie (Text kann den Key enthalten).
+                text = _provider_text(response.content, 160)
+                log_detail = f"{detail}: {text}" if text else detail
+            else:
+                log_detail = detail
+            self._log(f"Bildanfrage HTTP {response.status_code}", log_detail)
             message, retryable = http_error_message(response.status_code, response.content)
             expired = is_key_expired(response.status_code, response.content)
             if response.status_code == 404 and detail.endswith("/model_not_found"):
