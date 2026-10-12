@@ -511,6 +511,7 @@ def is_loaded(ai_model: AIModel) -> bool:
 
 def _do_unload(provider: Provider, slot: Slot, reason: str) -> None:
     lmstudio.unload(provider, slot.instance_id)
+    _disown(provider, [slot.instance_id])
     forget(provider.pk, slot.ai_model.model_id if slot.ai_model else slot.instance_id)
     logger.info(
         "LM Studio (Anbieter %s): Modell %s entladen (%s)",
@@ -571,7 +572,7 @@ def ensure_loaded(
             )
             started = time.monotonic()
             try:
-                lmstudio.load(
+                answer = lmstudio.load(
                     provider,
                     entry.key if entry else ai_model.model_id,
                     context_length=context,
@@ -583,6 +584,8 @@ def ensure_loaded(
                 logger.warning("LM Studio: Modell %s nicht geladen (%s)", ai_model.pk, exc.status)
                 raise ModelUnavailable(message) from None
             _record_success(ai_model)
+            instance = str(answer.get("instance_id") or (entry.key if entry else ai_model.model_id))
+            ModelRuntime.objects.filter(ai_model=ai_model).update(loaded_instance=instance)
             _mark_verified(ai_model)
             logger.info(
                 "LM Studio: Modell %s geladen (%d Tokens, %.1f s)",
@@ -655,6 +658,23 @@ def hold(ai_model: AIModel, events: Iterator):
 # --- Leerlauf und Hand-Steuerung -------------------------------------------------------------
 
 
+def _disown(provider: Provider, instance_ids) -> None:
+    """Merker „selbst geladen“ löschen (entladen bzw. nicht mehr geladen): Lädt eine
+    andere Installation dasselbe Modell, hat die Instanz dieselbe ID (den Modellnamen)."""
+    ModelRuntime.objects.filter(
+        ai_model__provider=provider, loaded_instance__in=list(instance_ids)
+    ).update(loaded_instance="")
+
+
+def own_instance(ai_model: AIModel, instance_id: str) -> bool:
+    loaded = (
+        ModelRuntime.objects.filter(ai_model=ai_model)
+        .values_list("loaded_instance", flat=True)
+        .first()
+    )
+    return bool(loaded) and loaded == instance_id
+
+
 def unload_idle(now=None) -> int:
     """Worker: Modelle nach Leerlauf entladen; abgelaufene Belegungen löschen."""
     now = now or timezone.now()
@@ -672,9 +692,18 @@ def unload_idle(now=None) -> int:
             continue
         remember_catalog(provider, catalog)
         snap = snapshot(provider, catalog)
+        # Nicht mehr geladene Instanzen gelten nicht mehr als eigene.
+        loaded = {slot.instance_id for slot in snap.slots}
+        ModelRuntime.objects.filter(ai_model__provider=provider).exclude(
+            loaded_instance=""
+        ).exclude(loaded_instance__in=loaded).update(loaded_instance="")
         for slot in snap.slots:
             model = slot.ai_model
             if model is None or slot.pinned or slot.busy:
+                continue
+            # Nur selbst Geladenes: Eine andere MultiGPT-Installation am selben LM Studio
+            # (oder ein Mensch) hat das Modell vielleicht gerade in Gebrauch (C33).
+            if not own_instance(model, slot.instance_id):
                 continue
             if slot.indexing and snap.run_open:
                 continue
@@ -707,6 +736,7 @@ def unload_now(provider: Provider, instance_id: str) -> None:
     """Von Hand entladen (Verwalter); auch angeheftete und fremde Modelle."""
     with provider_lock(provider, wait=30):
         lmstudio.unload(provider, instance_id)
+    _disown(provider, [instance_id])
     forget(provider.pk)
     logger.info("LM Studio (Anbieter %s): Instanz von Hand entladen", provider.pk)
 

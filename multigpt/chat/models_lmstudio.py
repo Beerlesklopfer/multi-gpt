@@ -27,6 +27,10 @@ class ModelRuntime(models.Model):
     last_used = models.DateTimeField("zuletzt genutzt", null=True, blank=True)
     loading_since = models.DateTimeField("wird geladen seit", null=True, blank=True)
     loaded_at = models.DateTimeField("zuletzt geladen", null=True, blank=True)
+    # Instanz, die DIESE MultiGPT-Installation geladen hat. Nur sie wird nach Leerlauf
+    # bzw. nach der Indexierung entladen – nicht Instanzen einer anderen Installation
+    # am selben LM Studio (Produktion und Entwicklung, LOP C33) oder von Hand geladene.
+    loaded_instance = models.CharField("selbst geladene Instanz", max_length=200, blank=True)
     load_failures = models.PositiveSmallIntegerField("Fehlversuche beim Laden", default=0)
     retry_after = models.DateTimeField("nächster Ladeversuch ab", null=True, blank=True)
     last_error = models.CharField("letzter Ladefehler", max_length=500, blank=True)

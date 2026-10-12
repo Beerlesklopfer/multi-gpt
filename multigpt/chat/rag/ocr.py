@@ -262,7 +262,12 @@ MSG_NO_VISION = (
 
 # LM Studio, wenn das Modell zwischen Anfrage und Antwort entladen wurde (JIT-Auto-Evict,
 # Leerlauf oder eine zweite MultiGPT-Instanz mit Modellverwaltung): vorübergehend.
-UNLOADED_MARKERS = ("model is unloaded", "model is not loaded", "no models loaded")
+UNLOADED_MARKERS = (
+    "model is unloaded",
+    "model unloaded",  # „Model unloaded by user or API request.“
+    "model is not loaded",
+    "no models loaded",
+)
 UNLOADED_RETRY_SECONDS = 2.0
 
 

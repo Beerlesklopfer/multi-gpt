@@ -5,24 +5,24 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 
 ## A. Entscheidungen des Nutzers
 
-| Nr. | Thema | Frage | Empfehlung |
-|---|---|---|---|
-| A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein |
-| A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |
-| A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |
-| A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |
+| Nr. | Thema | Frage | Empfehlung | Entscheidung |
+|---|---|---|---|---|
+| A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein | NEIN |
+| A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |  |
+| A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |  |
+| A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |  |
 | A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |
-| A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update |
-| A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf |
-| A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden |
-| A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |
-| A14 | M14 Runner | Rückkanal: eigener ASGI-/WebSocket-Dienst oder Long-Polling? | ASGI-Dienst |
-| A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht (Chat oder seit 0.3.4 eine Antwort samt Folgeverlauf, Recht D)? | später |
-| A16 | Berechnungen | scipy aufnehmen (ca. 100 MB)? | nur bei Bedarf |
-| A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf |
-| A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja |
-| A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |
-| A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört |
+| A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update | JA |
+| A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf |  JA |
+| A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden |  sobald dort Cloud-Modelle genutzt werden |
+| A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |  |
+| A14 | M14 Runner | Rückkanal: eigener ASGI-/WebSocket-Dienst oder Long-Polling? | ASGI-Dienst | ASGI-Dienst |
+| A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht (Chat oder seit 0.3.4 eine Antwort samt Folgeverlauf, Recht D)? | später | JA |
+| A16 | Berechnungen | scipy aufnehmen (ca. 100 MB)? | nur bei Bedarf | JA |
+| A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf | erst bei Bedarf |
+| A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja | ja |
+| A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |  |
+| A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört | erst, wenn der Chat während Läufen stört |
 
 ## B. Klärung im Betrieb
 
@@ -72,7 +72,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
 | C31 | Parallele Indexierung seit 0.3.5 (RAG-Einstellung „Dokumente gleichzeitig“, Standard 2): zuerst als Threads gebaut – gemessen ohne Gewinn, weil der GIL sie auf einen Kern zwang; jetzt eigene Prozesse (`run_worker --lane N`). Durchsatz noch nicht sauber gemessen (Messungen gestört durch apt-Upgrade, parallele Tests und entladene Modelle, C33). Auf der Produktion beobachten: Dauer je Dokument, CPU, LM-Studio-Last. |
 | C32 | Prompt-Caching: Anthropic seit 0.3.4 (Breakpoint am Systemprompt plus automatisches Caching des Verlaufs, 5 Min.). Offen: nicht gegen die echte API geprüft (kein Anthropic-Anbieter in der Entwicklung) – auf der Produktion `cache_read_input_tokens` in den Buchungen beobachten; Cache-Preise an den Anthropic-Modellen eintragen; 1-Stunden-Haltezeit für Chats mit langen Pausen erwägen; OpenAI `prompt_cache_key` je Chat für bessere Trefferquote. |
-| C33 | Zwei MultiGPT-Instanzen an einem LM Studio (Produktion und Entwicklung): Eine mit „Modelle verwalten“ entlädt Modelle, die die andere gerade nutzt („Model is unloaded“, beobachtet 2026-10-12 bei der CLV-Indexierung in der Entwicklung). Seit 0.3.5 wiederholt die OCR die Seite einmal; dauerhaft nur eine Instanz verwalten lassen (Wiki). Offen: Chat und Embeddings wiederholen nicht. |
+| C33 | Zwei MultiGPT-Installationen an einem LM Studio: seit 0.3.6 entlädt jede nach Leerlauf/Indexierung nur selbst geladene Instanzen (`ModelRuntime.loaded_instance`); beobachtet 2026-10-12 – Produktion und Entwicklung verwalteten beide, olmOCR wurde im Minutentakt geladen und entladen, OCR fiel auf Tesseract. Die OCR wiederholt bei „Model is unloaded“ bzw. „Model unloaded by user or API request“ einmal. Offen: Platz schaffen (Verdrängen für eine wartende Anfrage) trifft weiterhin fremde Instanzen; Chat und Embeddings wiederholen nicht. |
 | C34 | Persönliches Menü und Profilbild (0.3.5): Profilbild erscheint nur in der Kopfzeile, noch nicht an Nachrichten in geteilten Chats; Verwalter können fremde Profilbilder nicht entfernen; nur in Firefox geprüft (Chromium, Handy mit Touch offen). „Mein Verbrauch“ und „Familie“ stehen nur noch im Menü, nicht mehr in der Seitenleiste. |
 
 ## D. Geplante Meilensteine

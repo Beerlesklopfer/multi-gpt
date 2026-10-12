@@ -634,8 +634,8 @@ def test_run_note_while_loading(lms, nomic):
 def test_idle_unload_by_worker(lms, provider, gpt, nomic, olmocr_model):
     lms.loaded = {GPT: 32768, NOMIC: 2048, OLMOCR: 8192}
     old = timezone.now() - timedelta(hours=2)
-    for model in (gpt, nomic, olmocr_model):
-        ModelRuntime.objects.create(ai_model=model, last_used=old)
+    for model, key in ((gpt, GPT), (nomic, NOMIC), (olmocr_model, OLMOCR)):
+        ModelRuntime.objects.create(ai_model=model, last_used=old, loaded_instance=key)
     model_manager.acquire_lease(olmocr_model)  # läuft gerade
     assert model_manager.unload_idle() == 1
     assert lms.actions() == [("unload", GPT)]  # nomic angeheftet, olmOCR belegt
@@ -643,6 +643,7 @@ def test_idle_unload_by_worker(lms, provider, gpt, nomic, olmocr_model):
 
 def test_idle_first_seen_starts_clock(lms, gpt):
     lms.loaded = {GPT: 32768}
+    ModelRuntime.objects.create(ai_model=gpt, loaded_instance=GPT)
     assert model_manager.unload_idle() == 0
     assert ModelRuntime.objects.get(ai_model=gpt).last_used is not None
     assert lms.actions() == []
@@ -659,8 +660,8 @@ def test_indexing_models_unloaded_soon_after_run(lms, gpt, olmocr_model):
     """Nach dem Lauf: Indexierungsmodelle nach 2 Minuten weg, das Chatmodell nicht."""
     lms.loaded = {GPT: 32768, OLMOCR: 8192}
     recent = timezone.now() - timedelta(minutes=3)
-    for model in (gpt, olmocr_model):
-        ModelRuntime.objects.create(ai_model=model, last_used=recent)
+    for model, key in ((gpt, GPT), (olmocr_model, OLMOCR)):
+        ModelRuntime.objects.create(ai_model=model, last_used=recent, loaded_instance=key)
     assert model_manager.unload_idle() == 1
     assert lms.actions() == [("unload", OLMOCR)]
 
@@ -845,3 +846,31 @@ def test_parallel_never_sent_for_embedding_models(nomic, gpt):
     gpt.load_parallel = 2
     assert model_manager.load_parallel(nomic) is None
     assert model_manager.load_parallel(gpt) == 2
+
+
+def test_idle_never_unloads_instances_loaded_elsewhere(lms, gpt, olmocr_model):
+    """Zweite MultiGPT-Installation am selben LM Studio (C33): deren Instanzen bleiben."""
+    lms.loaded = {GPT: 32768, OLMOCR: 8192}
+    old = timezone.now() - timedelta(hours=2)
+    ModelRuntime.objects.create(ai_model=gpt, last_used=old)  # nie selbst geladen
+    ModelRuntime.objects.create(ai_model=olmocr_model, last_used=old, loaded_instance="anders")
+    assert model_manager.unload_idle() == 0
+    assert lms.actions() == []
+
+
+def test_load_remembers_own_instance(lms, olmocr_model):
+    model_manager.load_now(olmocr_model)
+    assert ModelRuntime.objects.get(ai_model=olmocr_model).loaded_instance
+
+
+def test_own_marker_cleared_when_gone_or_unloaded(lms, gpt, olmocr_model):
+    """Nach dem Entladen bzw. wenn das Modell weg ist, gilt die gleichnamige Instanz
+    einer anderen Installation nicht mehr als eigene."""
+    lms.loaded = {GPT: 32768}
+    old = timezone.now() - timedelta(hours=2)
+    ModelRuntime.objects.create(ai_model=gpt, last_used=old, loaded_instance=GPT)
+    ModelRuntime.objects.create(ai_model=olmocr_model, last_used=old, loaded_instance=OLMOCR)
+    assert model_manager.unload_idle() == 1  # GPT (eigen) entladen, olmOCR ist nicht geladen
+    assert not ModelRuntime.objects.exclude(loaded_instance="").exists()
+    lms.loaded = {GPT: 32768}  # jetzt von einer anderen Installation geladen
+    assert model_manager.unload_idle() == 0

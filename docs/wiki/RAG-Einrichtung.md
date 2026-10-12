@@ -167,11 +167,13 @@ Deshalb kann MultiGPT die Modelle selbst verwalten (ab LM Studio 0.4, REST-API v
 - **Ladefehler:** Meldet LM Studio einen Fehler (z. B. zu wenig Speicher), wartet MultiGPT mit
   dem nächsten Versuch 1, 2, 4 … höchstens 30 Minuten; „Laden“ von Hand geht sofort.
 
-**Nur eine Instanz verwaltet:** Nutzen mehrere MultiGPT-Installationen dasselbe LM Studio (z. B.
-Produktion und Entwicklung), darf „Modelle verwalten“ nur bei einer an sein. Eine verwaltende
-Instanz sieht nicht, was die andere gerade benutzt, und entlädt deren Modelle nach Leerlauf bzw.
-nach der Indexierung. Die andere bekommt dann „Model is unloaded“; die OCR wiederholt die Seite
-seit 0.3.5 einmal, Chats brechen ab.
+**Mehrere Installationen an einem LM Studio** (z. B. Produktion und Entwicklung): Seit 0.3.6
+entlädt jede Installation nach Leerlauf bzw. nach der Indexierung nur Modelle, die sie **selbst
+geladen** hat. Eine Installation, die gerade ein Modell der anderen nutzt, verliert es dadurch
+nicht mehr. Platz für eine wartende Anfrage schaffen darf jede Installation weiterhin; wird ein
+Modell dabei mitten in der Arbeit entladen („Model is unloaded“ bzw. „Model unloaded by user or
+API request“), wiederholt die OCR die Seite einmal. Am ruhigsten bleibt es, wenn nur eine
+Installation „Modelle verwalten“ eingeschaltet hat.
 
 **Einrichten:** Admin → Anbieter → LM Studio → Abschnitt „Modellverwaltung (LM Studio)“:
 „Modelle verwalten“ an, Budget und Reserve eintragen. Ohne diesen Schalter ändert sich nichts.
@@ -364,6 +366,12 @@ eingerichtet und der Worker gelaufen sein, bevor die Suche wieder Treffer liefer
 Der Worker holt Aufträge aus einer Tabelle in PostgreSQL (`SELECT … FOR UPDATE SKIP LOCKED`, so
 können mehrere Worker parallel laufen), indexiert die Dokumente und wiederholt vorübergehende
 Fehler.
+
+**Läufe pausieren:** Admin → „Dokumente (RAG)“ → „Läufe“ → Lauf öffnen → „Pausieren“ (oder Aktion
+in der Liste, `mgpt-ctl index pause <ID>`, MCP `pause_run`). Der Lauf holt dann keine neuen
+Dokumente mehr; gerade laufende werden fertig. „Fortsetzen“ macht an derselben Stelle weiter.
+Von Hand Hochgeladenes kommt ohnehin vor großen Läufen (Verzeichnisquellen, „Alles neu
+indexieren“) dran.
 
 **Dokumente gleichzeitig** (RAG-Einstellungen, Abschnitt „Indexierung“, Standard 2, höchstens 4):
 So viele Dokumente bearbeitet der Worker parallel, ohne Neustart änderbar. Das lohnt nur, wenn
