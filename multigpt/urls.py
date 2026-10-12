@@ -22,6 +22,11 @@ urlpatterns = [
     path("einstellungen/api-keys/", views_keys.api_keys_page, name="api_keys"),
     path("einstellungen/api-keys/erzeugen/", views_keys.api_key_quick, name="api_key_quick"),
     path(
+        "einstellungen/api-keys/<int:pk>/projekt/",
+        views_keys.api_key_project,
+        name="api_key_project",
+    ),
+    path(
         "einstellungen/api-keys/<int:pk>/widerrufen/",
         views_keys.api_key_revoke,
         name="api_key_revoke",

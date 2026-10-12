@@ -60,6 +60,8 @@ class ApiKey(models.Model):
         editable=False,
         verbose_name="Chat für Werkzeugaufrufe",
     )
+    # Neue Chats von ``ask`` im Projekt „API“ des Kontos sammeln (A4, node/chats.py).
+    collect_in_project = models.BooleanField("Chats im Projekt „API“ sammeln", default=True)
     expires_at = models.DateTimeField("läuft ab", null=True, blank=True)
     active = models.BooleanField("aktiv", default=True)
     revoked_at = models.DateTimeField("widerrufen", null=True, blank=True)

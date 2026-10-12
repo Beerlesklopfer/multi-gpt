@@ -1,5 +1,6 @@
 """Seite „Einstellungen → API-Keys“ (M15): eigene Keys anlegen, widerrufen,
-zuletzt benutzt und Audit-Log der eigenen Aufrufe.
+zuletzt benutzt, Schalter „Chats im Projekt ‚API‘ sammeln“ und Audit-Log der
+eigenen Aufrufe.
 
 Nur das angemeldete Konto, ohne Parameter für ein anderes. Der Key erscheint
 genau einmal in der Antwort auf das Anlegen (``Cache-Control: no-store``) und
@@ -61,6 +62,15 @@ class ApiKeyForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
         help_text="Leer = alle Sammlungen, die das Konto lesen bzw. schreiben darf.",
     )
+    collect_in_project = forms.BooleanField(
+        label="Chats im Projekt „API“ sammeln",
+        required=False,
+        initial=True,
+        help_text="Neue Chats von „ask“ landen im Projekt „API“ statt in der Chatliste.",
+    )
+    # Ein nicht angekreuztes Kästchen fehlt im POST; die Marke unterscheidet
+    # „ausgeschaltet“ von „ohne Formular abgeschickt“ (dann gilt der Standard).
+    collect_shown = forms.CharField(widget=forms.HiddenInput, initial="1", required=False)
 
     def __init__(self, user, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,6 +92,7 @@ class ApiKeyForm(forms.Form):
             data["scopes"] or sorted(keys.role_scopes(user)),
             expires_at=self.expires_at(),
             collections=data["collections"],
+            collect_in_project=data["collect_in_project"] or not data["collect_shown"],
         )
 
     def expires_at(self):
@@ -215,6 +226,20 @@ def api_key_delete(request, pk: int):
         name = key.name
         key.delete()
         messages.success(request, f"Key „{name}“ gelöscht.")
+    return redirect("api_keys")
+
+
+@require_POST
+@login_required
+def api_key_project(request, pk: int):
+    """Schalter „im Projekt ‚API‘ sammeln“ eines eigenen Keys (gilt für neue Chats)."""
+    key = get_object_or_404(ApiKey, pk=pk, owner=request.user)
+    key.collect_in_project = request.POST.get("collect_in_project") == "1"
+    key.save(update_fields=["collect_in_project"])
+    if key.collect_in_project:
+        messages.success(request, f"Neue Chats von „{key.name}“ landen im Projekt „API“.")
+    else:
+        messages.success(request, f"Neue Chats von „{key.name}“ landen in der Chatliste.")
     return redirect("api_keys")
 
 

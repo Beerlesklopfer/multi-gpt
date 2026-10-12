@@ -27,7 +27,7 @@
         {% csrf_token %}
         {% if can_create %}
           <details class="connect-options"{% if form.errors %} open{% endif %}>
-            <summary>Anpassen: Name, Rechte, Gültigkeit, Sammlungen</summary>
+            <summary>Anpassen: Name, Rechte, Gültigkeit, Sammlungen, Projekt „API“</summary>
             {{ form.as_div }}
           </details>
         {% endif %}
@@ -54,7 +54,7 @@
           <thead>
             <tr>
               <th scope="col">Name</th><th scope="col">Key</th><th scope="col">Rechte</th>
-              <th scope="col">Sammlungen</th><th scope="col">gültig bis</th>
+              <th scope="col">Sammlungen</th><th scope="col">Projekt „API“</th><th scope="col">gültig bis</th>
               <th scope="col">zuletzt benutzt</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th>
             </tr>
           </thead>
@@ -65,6 +65,14 @@
                 <td><code>{{ key.display_prefix }}</code></td>
                 <td>{% for scope in key.scopes %}<span title="{{ scope }}">{{ scope }}</span>{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>
                 <td>{% for c in key.collections.all %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% empty %}alle{% endfor %}</td>
+                <td>
+                  <form method="post" action="{% url 'api_key_project' key.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="collect_in_project" value="{% if key.collect_in_project %}0{% else %}1{% endif %}">
+                    {% if key.collect_in_project %}ja{% else %}nein{% endif %}
+                    <button type="submit" class="button button-small" title="Gilt für neue Chats von „ask“">{% if key.collect_in_project %}Ausschalten{% else %}Einschalten{% endif %}</button>
+                  </form>
+                </td>
                 <td>{% if key.expires_at %}{{ key.expires_at|date:"d.m.Y H:i" }}{% else %}kein Ablauf{% endif %}</td>
                 <td>{% if key.last_used_at %}{{ key.last_used_at|date:"d.m.Y H:i" }}{% if key.last_used_ip %} von {{ key.last_used_ip }}{% endif %}{% else %}nie{% endif %}</td>
                 <td>{{ key.state_label }}</td>

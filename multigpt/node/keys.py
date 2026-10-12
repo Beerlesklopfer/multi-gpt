@@ -63,7 +63,16 @@ def effective_scopes(key: ApiKey) -> frozenset[str]:
     return frozenset(api_scopes.clean(key.scopes)) & role_scopes(key.owner)
 
 
-def create_key(owner, name: str, scopes, *, expires_at=None, collections=(), sources=()) -> Created:
+def create_key(
+    owner,
+    name: str,
+    scopes,
+    *,
+    expires_at=None,
+    collections=(),
+    sources=(),
+    collect_in_project: bool = True,
+) -> Created:
     """Key anlegen. ``ValueError`` (deutsch), wenn das Konto keine Keys anlegen
     darf oder Rechte verlangt, die seine Rolle nicht hat."""
     name = " ".join((name or "").split())[:MAX_NAME]
@@ -92,6 +101,7 @@ def create_key(owner, name: str, scopes, *, expires_at=None, collections=(), sou
                     key_hash=hash_key(secret),
                     scopes=wanted,
                     expires_at=expires_at,
+                    collect_in_project=collect_in_project,
                 )
                 if collections:
                     key.collections.set(collections)

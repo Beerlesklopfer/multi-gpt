@@ -692,6 +692,35 @@ def test_ask_continue_chat_and_rights(client, anna, secret, chat_model):
     assert not Conversation.objects.filter(title="API: x").exists()  # leerer Chat entfernt
 
 
+def test_ask_collects_new_chats_in_api_project(client, anna, key, secret, chat_model):
+    from multigpt.chat.models import Project
+
+    archived = Project.objects.create(owner=anna, name="API", archived=True)
+    with respx.mock() as mock:
+        mock.post(f"{BASE}/chat/completions").mock(
+            return_value=httpx.Response(
+                200, content=_sse_body("Ok."), headers={"content-type": "text/event-stream"}
+            )
+        )
+        _, first = call(client, secret, "ask", {"prompt": "Eins"})
+        _, second = call(client, secret, "ask", {"prompt": "Zwei"})
+        # Fremdes Projekt „API“ zählt nicht; Konto bernd bekommt ein eigenes.
+        bernd = make_user("bernd")
+        _, bernd_secret = make_key(bernd, [S.CHAT_ASK], name="b")
+        _, third = call(client, bernd_secret, "ask", {"prompt": "Drei"})
+        # Schalter aus: neuer Chat ohne Projekt
+        ApiKey.objects.filter(pk=key[0].pk).update(collect_in_project=False)
+        _, fourth = call(client, secret, "ask", {"prompt": "Vier"})
+    project = Project.objects.get(owner=anna, name="API", archived=False)
+    assert project.pk != archived.pk  # archiviertes Projekt nicht wiederverwendet
+    chats = [Conversation.objects.get(pk=structured(r)["chat_id"]) for r in (first, second)]
+    assert all(c.project_id == project.pk and c.title.startswith("API: ") for c in chats)
+    other = Conversation.objects.get(pk=structured(third)["chat_id"])
+    assert other.project.owner == bernd and other.project.name == "API"
+    assert Conversation.objects.get(pk=structured(fourth)["chat_id"]).project is None
+    assert Project.objects.filter(owner=anna, name="API").count() == 2
+
+
 def test_ask_streams_progress_as_sse(client, secret, chat_model):
     with respx.mock() as mock:
         mock.post(f"{BASE}/chat/completions").mock(

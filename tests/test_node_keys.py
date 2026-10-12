@@ -261,6 +261,7 @@ def test_quick_button_creates_key_with_role_scopes(client):
     assert key.name.startswith("MCP-Client ")
     assert set(key.scopes) == set(keys.role_scopes(user))
     assert key.expires_at > timezone.now() + dt.timedelta(days=89)
+    assert key.collect_in_project  # ohne Formularangaben: Standard
     secret = response.context["created"].secret
     cfg = json.loads(response.context["connect_created"]["json"])
     assert cfg["mcpServers"]["multigpt"]["headers"]["Authorization"] == f"Bearer {secret}"
@@ -288,6 +289,36 @@ def test_input_field_and_generate_endpoint(client):
     data = response.json()
     assert data["secret"].startswith("mgpt_")
     assert ApiKey.objects.get().name == data["name"]
+
+
+def test_collect_in_project_switch_on_create_and_in_list(client):
+    user = make_user("anna")
+    client.force_login(user)
+    page = client.get(reverse("api_keys")).content.decode()
+    assert 'name="collect_in_project"' in page and "checked" in page
+    # Kästchen abgewählt (Marke vorhanden): aus; Schnellanlage mit Häkchen: an
+    client.post(reverse("api_keys"), {"name": "aus", "collect_shown": "1"})
+    assert not ApiKey.objects.get(name="aus").collect_in_project
+    client.post(
+        reverse("api_key_quick"), {"name": "an", "collect_shown": "1", "collect_in_project": "on"}
+    )
+    key = ApiKey.objects.get(name="an")
+    assert key.collect_in_project
+    # Schalter in der Liste, nur für eigene Keys
+    url = reverse("api_key_project", args=[key.pk])
+    assert url in client.get(reverse("api_keys")).content.decode()
+    client.post(url, {"collect_in_project": "0"})
+    key.refresh_from_db()
+    assert not key.collect_in_project
+    client.post(url, {"collect_in_project": "1"})
+    key.refresh_from_db()
+    assert key.collect_in_project
+    foreign, _ = make_key(make_user("bernd"))
+    response = client.post(reverse("api_key_project", args=[foreign.pk]), {})
+    assert response.status_code == 404
+    foreign.refresh_from_db()
+    assert foreign.collect_in_project
+    assert client.get(url).status_code == 405
 
 
 def test_generate_endpoint_requires_role_and_post(client):

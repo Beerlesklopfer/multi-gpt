@@ -36,6 +36,7 @@ def test_apikey_create_list_revoke():
     assert "nur dieses eine Mal" in err and secret not in err
     assert key.scopes == ["docs.read", "usage.read"]
     assert key.expires_at is not None  # Standard 90 Tage
+    assert key.collect_in_project  # Standard: Chats im Projekt „API“
     listing, _ = run("apikey", "list")
     assert key.display_prefix in listing and secret not in listing
     out, _ = run("apikey", "revoke", key.display_prefix)
@@ -56,6 +57,13 @@ def test_apikey_create_errors():
         run("apikey", "create", "anna", "--name", "x", "--scopes", "all", "--expires", "bald")
     out, _ = run("apikey", "create", "anna", "--name", "x", "--scopes", "all", "--expires", "never")
     assert ApiKey.objects.get(name="x").expires_at is None
+
+
+def test_apikey_create_no_project():
+    make_user("anna")
+    _, err = run("apikey", "create", "anna", "--name", "y", "--scopes", "all", "--no-project")
+    assert not ApiKey.objects.get(name="y").collect_in_project
+    assert "Projekt „API“: nein" in err
 
 
 def test_index_status_follow_stops_after_ticks():

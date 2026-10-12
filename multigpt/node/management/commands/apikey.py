@@ -1,7 +1,7 @@
 """``mgpt-ctl apikey …`` – API-Keys für den MCP-Server verwalten (M15).
 
     apikey create <konto> --name … --scopes chat.ask,docs.read [--expires 90d|JJJJ-MM-TT|never]
-                          [--collection ID …]
+                          [--collection ID …] [--no-project]
     apikey list [<konto>]
     apikey revoke <id oder präfix>
 
@@ -62,6 +62,11 @@ class Command(BaseCommand):
         create.add_argument(
             "--collection", type=int, action="append", help="Nur diese Sammlung (mehrfach)."
         )
+        create.add_argument(
+            "--no-project",
+            action="store_true",
+            help="Chats von „ask“ nicht im Projekt „API“ sammeln (Standard: sammeln).",
+        )
         listing = sub.add_parser("list", help="Keys auflisten (ohne Geheimnis).")
         listing.add_argument("account", nargs="?", help="Nur dieses Konto.")
         revoke = sub.add_parser("revoke", help="Key widerrufen (sofort wirksam).")
@@ -94,6 +99,7 @@ class Command(BaseCommand):
                 wanted,
                 expires_at=parse_expiry(options["expires"]),
                 collections=collections,
+                collect_in_project=not options["no_project"],
             )
         except ValueError as exc:
             raise CommandError(str(exc)) from None
@@ -105,7 +111,8 @@ class Command(BaseCommand):
         )
         self.stderr.write(
             f"Key #{key.pk} „{key.name}“ für {user.get_username()} angelegt "
-            f"(Rechte: {', '.join(key.scopes)}; gültig bis: {expiry}).\n"
+            f"(Rechte: {', '.join(key.scopes)}; gültig bis: {expiry}; "
+            f"Projekt „API“: {'ja' if key.collect_in_project else 'nein'}).\n"
             "Der Key wird nur dieses eine Mal angezeigt:"
         )
         self.stdout.write(created.secret)
