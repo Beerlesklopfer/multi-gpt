@@ -518,12 +518,14 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
   - „Datenschutz“: Der Inhalt von `/workspace` liegt jetzt auch auf dem Server, als Bundle in der Datenbank. Er gilt dort weiter als nicht vertrauenswürdiges Material, wird nie ausgeführt und nur an den Runner des Kontos ausgeliefert.
   - Frage 8b (Sicherung) entfällt; die Größe begrenzt der Server beim Hochladen des Bundles. Große Abhängigkeiten wie `node_modules` gehören in `.gitignore` und werden bei Bedarf im tmpfs neu installiert, sofern die Rolle Netz erlaubt.
 
-**Neue offene Fragen dazu:**
+**Entschieden am 2026-10-13 (8p–8s):**
 
-1. **8p – Wie kommt die Vorschau in den Browser?** Empfehlung: über MultiGPT gestreamt, also über den Rückkanal und einen eigenen Pfad, der die Ausgabe in einem abgeschotteten Rahmen anzeigt (CSP `sandbox`, ohne Netz). Das funktioniert auch von anderen Geräten aus und braucht keinen offenen Port am Client. Die Alternative ist ein Port auf `localhost` des Browser-Rechners: einfacher, aber nur dort sichtbar und ohne Anmeldung.
-2. **8q – Wem gehört ein Arbeitsstand?** Empfehlung: dem Konto, wählbar im Chat (wie 8j); mehrere Chats dürfen denselben Arbeitsstand nacheinander nutzen. Alternative: genau einer je Chat.
-3. **8r – Wann wird gespeichert?** Empfehlung: nach jedem Werkzeugaufruf, der Dateien geändert hat (ein Commit je Aufruf). Dann geht bei einem Abbruch nichts verloren, und die Historie zeigt jeden Schritt. Alternative: nur am Ende der Sitzung.
-4. **8s – Größengrenze des Bundles?** Empfehlung: 50 MB je Arbeitsstand, 10 Arbeitsstände je Konto (Werte je Rolle änderbar).
+1. **8p – Ausführen und Vorschau:**
+   - **HTML:** Ein winziger HTTP-Server im Container liefert die Dateien aus dem tmpfs aus. Nur statisches HTML samt JS, CSS und Bildern; keine Templates und keine serverseitige Ausführung. Die Antworten laufen über den Rückkanal zu MultiGPT und von dort in den Browser, angezeigt in einem abgeschotteten Rahmen (CSP `sandbox`, ohne Netz). Am Client bleibt kein Port offen.
+   - **Python und andere CLI-Programme:** Sie laufen in einem Pseudo-Terminal (PTY) im Container. Das Terminal wird in den Browser exportiert (Ausgabe gestreamt, Eingabe zurück, z. B. mit xterm.js), sodass auch interaktive Programme mit `input()` gehen.
+2. **8q – Besitz:** Ein Arbeitsstand gehört dem Konto und ist im Chat auswählbar; mehrere Chats können ihn nacheinander nutzen.
+3. **8r – Speichern:** nach jedem Werkzeugaufruf, der Dateien geändert hat, mit einem Commit je Aufruf und einem neuen Bundle.
+4. **8s – Grenzen:** 50 MB je Arbeitsstand und 10 Arbeitsstände je Konto, je Rolle änderbar.
 
 **Festlegungen:**
 
