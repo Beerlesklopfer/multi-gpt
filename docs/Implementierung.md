@@ -111,7 +111,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 ### M4 – Weitere Adapter und LM Studio
 *Abhängig von: M3, Frage 1a (LM-Studio-Rechner).*
 
-- **M4-01** Adapter `anthropic` (Messages-API) und `google` (Gemini). Vorher jeweils die aktuelle Dokumentation lesen.
+- **M4-01** Adapter `anthropic` (Messages-API) und `google` (Gemini). Vorher jeweils die aktuelle Dokumentation lesen. **Prompt-Caching (0.3.4, Nutzerwunsch 2026-10-12):** `system` als Textblock mit `cache_control` (cacht Werkzeuge und System), dazu `cache_control` auf oberster Ebene (automatisches Caching des Verlaufsendes), beide 5 Minuten; `cache_control` aus `params` ist reserviert. Abrechnung über die vorhandenen Cache-Felder (`cached_read`, `cache_write`, `cache_write_1h`).
 - **M4-02** `make sync-models` als Management-Kommando.
 - **M4-03** `GET /api/providers/status/` mit 15-s-Cache. Der Status liegt in der DB am `Provider` (`online`, `last_checked`, `reported_models`) und gilt damit für beide gunicorn-Worker. Ein bedingtes UPDATE auf `last_checked` sorgt dafür, dass nur ein Aufruf prüft. Die Netzprüfung läuft außerhalb jeder Transaktion.
 - **M4-04** Statusanzeige im Frontend: Polling alle 30 s nur bei sichtbarem Tab, Hinweis beim Wechsel zwischen online und offline, lokale Modelle bei offline ausgegraut.

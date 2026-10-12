@@ -124,7 +124,10 @@ def test_normal_stream(mock):
     assert body["stream"] is True
     assert body["max_tokens"] == DEFAULT_MAX_TOKENS
     assert body["temperature"] == 0.5
-    assert body["system"] == "Sei nett."
+    assert body["system"] == [
+        {"type": "text", "text": "Sei nett.", "cache_control": {"type": "ephemeral"}}
+    ]
+    assert body["cache_control"] == {"type": "ephemeral"}
     assert body["messages"] == [{"role": "user", "content": "Hallo"}]
     assert "tools" not in body
     assert request.headers["x-api-key"] == KEY
@@ -189,7 +192,7 @@ def test_roles_merged_and_system_param(mock):
     ]
     run(messages=history, system="Rolle")
     body = json.loads(route.calls.last.request.content)
-    assert body["system"] == "Rolle"
+    assert body["system"][0]["text"] == "Rolle"
     assert body["messages"] == [
         {"role": "user", "content": "Erste Frage"},
         {"role": "assistant", "content": "Antwort"},
@@ -209,6 +212,7 @@ def test_params_override_max_tokens_but_not_reserved(mock):
     ]
     assert "top_k" not in body
     assert "system" not in body
+    assert body["cache_control"] == {"type": "ephemeral"}  # Verlauf trotzdem cachen
 
 
 def test_default_base_url(mock):

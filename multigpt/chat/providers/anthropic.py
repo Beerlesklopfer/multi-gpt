@@ -96,7 +96,23 @@ DEFAULT_MAX_TOKENS = 16000
 MODELS_PAGE_SIZE = 1000
 MAX_MODEL_PAGES = 20
 
-_RESERVED_PARAMS = {"model", "messages", "stream", "system", "tools", "tool_choice"}
+_RESERVED_PARAMS = {
+    "model",
+    "messages",
+    "stream",
+    "system",
+    "tools",
+    "tool_choice",
+    "cache_control",
+}
+
+# Prompt-Caching (Präfix-Abgleich, Reihenfolge tools → system → messages): ein fester
+# Punkt am Systemprompt cacht Werkzeuge und System zusammen, das automatische Caching
+# (Feld auf oberster Ebene) wandert mit dem Ende des Verlaufs mit. Lesen kostet etwa ein
+# Zehntel, Schreiben ein Viertel mehr (5 Minuten Haltezeit); Werkzeugrunden und
+# Folgefragen lesen den bisherigen Verlauf aus dem Cache. Zu kurze Präfixe (je nach
+# Modell unter 512 bis 4096 Tokens) cacht die API stillschweigend nicht – ohne Kosten.
+CACHE_CONTROL = {"type": "ephemeral"}
 # Blöcke, die ``provider_state`` nötig machen (unverändert zurückzugeben).
 _THINKING_BLOCKS = ("thinking", "redacted_thinking")
 
@@ -201,7 +217,14 @@ class AnthropicAdapter(ProviderAdapter):
             stream=True,
         )
         if system_parts:
-            body["system"] = "\n\n".join(system_parts)
+            body["system"] = [
+                {
+                    "type": "text",
+                    "text": "\n\n".join(system_parts),
+                    "cache_control": dict(CACHE_CONTROL),
+                }
+            ]
+        body["cache_control"] = dict(CACHE_CONTROL)
         if tools:
             body["tools"] = [_tool_payload(t) for t in tools]
             choice = _tool_choice(params.get("tool_choice"))

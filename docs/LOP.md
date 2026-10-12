@@ -70,7 +70,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
 | C31 | Indexierung: Der Worker bearbeitet ein Dokument nach dem anderen (~40 s je Buch mit Textebene). Mehrere Dokumente gleichzeitig (z. B. 2–4, begrenzt durch die Parallelität in LM Studio) würde große Verzeichnisquellen deutlich schneller machen. Parallele OCR-Seiten lohnen bei Text-PDFs kaum. |
-| C32 | Prompt-Caching (Anthropic): Die Abrechnung erfasst Cache-Tokens, die Anfragen setzen aber kein `cache_control` – Systemprompt, Werkzeuge und Verlauf werden bei jeder Runde voll berechnet. Umsetzen: Breakpoints auf Werkzeuge/System und das Ende des Verlaufs; OpenAI cacht automatisch (Prefix ≥ 1024 Tokens), Gemini über Context-Caching. |
+| C32 | Prompt-Caching: Anthropic seit 0.3.4 (Breakpoint am Systemprompt plus automatisches Caching des Verlaufs, 5 Min.). Offen: nicht gegen die echte API geprüft (kein Anthropic-Anbieter in der Entwicklung) – auf der Produktion `cache_read_input_tokens` in den Buchungen beobachten; Cache-Preise an den Anthropic-Modellen eintragen; 1-Stunden-Haltezeit für Chats mit langen Pausen erwägen; OpenAI `prompt_cache_key` je Chat für bessere Trefferquote. |
 
 ## D. Geplante Meilensteine
 

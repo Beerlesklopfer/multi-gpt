@@ -63,6 +63,19 @@ Buchungen behalten ihren Betrag und zeigen, welche Preisversion sie verwendet ha
 Modelle **ohne Preis** (oder nur mit Preis 0) kosten nichts und werden von keinem Budget
 gesperrt. Damit ein Cloud-Modell nicht versehentlich frei bleibt, Preise immer eintragen.
 
+### Prompt-Caching
+
+Seit 0.3.4 markiert MultiGPT bei **Anthropic** den Systemprompt (samt Werkzeugen) und das Ende
+des Verlaufs für den Cache (5 Minuten Haltezeit). Folgefragen und vor allem Werkzeugrunden – jede
+Runde schickt den ganzen Verlauf erneut – lesen den Präfix dann zu etwa einem Zehntel des
+Eingabepreises statt voll; das erste Schreiben kostet ein Viertel mehr. **OpenAI** cacht lange
+Präfixe (ab 1024 Tokens) von selbst. Kurze Anfragen unter der Mindestlänge des Modells werden
+nicht gecacht und kosten nichts extra.
+
+Damit die Ersparnis auch in den Buchungen steht, bei Anthropic-Modellen **„Eingabe aus Cache“**
+und **„Cache schreiben (5 Min.)“** eintragen (Preisliste des Anbieters). Leer gilt der volle
+Eingabepreis – dann wird gecachte Eingabe zu teuer und Cache-Schreiben zu billig gebucht.
+
 ### So rechnet MultiGPT
 
 - Eingabe ohne Cache = gesamte Eingabe − Cache gelesen − Cache geschrieben, zum Eingabepreis.
