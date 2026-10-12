@@ -1,3 +1,37 @@
+multi-gpt (0.3.6) unstable; urgency=medium
+
+  Kosten: Der EZB-Referenzkurs USD→EUR wird jetzt standardmäßig automatisch
+  geholt (Worker, werktags ab 16:30, mit Backoff; ohne Internet nur
+  Warnungen im Log). Ausschalten mit BILLING_ECB_FETCH=false in
+  /etc/multi-gpt/.env. Abrechnungskonten in EUR lassen sich im Admin
+  (Aktion „Auf USD umstellen“) bzw. mit
+    sudo mgpt-ctl switch_account_to_usd --all-eur [--apply]
+  auf USD umstellen; es entstehen neue Preisversionen, Buchungen und
+  Budgets (EUR) bleiben unverändert.
+
+  MCP/API-Keys: Neues Recht „Chats lesen“ (chat.read) mit den Werkzeugen
+  list_chats und read_chat – nur eigene und mit dem Konto geteilte Chats.
+  Rollen, die Modelle fragen dürfen, bekommen es per Migration; am Key muss
+  es ausdrücklich gewählt werden. Chats, die ask über einen Key anlegt,
+  landen standardmäßig im Projekt „API“ (Schalter je Key, mgpt-ctl apikey
+  create --no-project). Läufe lassen sich über pause_run/resume_run
+  pausieren.
+
+  Indexierung: Läufe pausieren und fortsetzen (Admin, mgpt-ctl index
+  pause|resume). Hochgeladenes kommt vor großen Läufen dran, auch über die
+  zusätzlichen Worker-Prozesse. Teilen sich mehrere MultiGPT-Installationen
+  ein LM Studio, entlädt jede nur noch selbst geladene Modelle.
+
+  Geteilte Chats: Der Besitzer bekommt eine Mitteilung (persönliches Menü,
+  Seite /mitteilungen/), wenn ein Empfänger den Chat löscht, archiviert oder
+  eine Antwort löscht.
+
+  Berechnungen: scipy steht in der Sandbox zur Verfügung (Paket rund
+  140 MB größer). Die Speichergrenze der Sandbox sollte mindestens 320 MB
+  betragen, damit scipy lädt (Standard 512 MB).
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 23:20:00 +0200
+
 multi-gpt (0.3.5) unstable; urgency=medium
 
   Persönliches Menü: Rechts oben steht jetzt das Profilbild mit Namen; ein
