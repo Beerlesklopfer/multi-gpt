@@ -17,7 +17,7 @@ Kurzform, z. B. „R“, „RW“ oder „RWUD“.
 | **R** | Lesen (immer an) | Chat mit allen Versionen und Zweigen, Quellen und Anhängen ansehen, Nachrichten kopieren, als Markdown exportieren, Versionen für sich selbst umschalten, „Als eigene Kopie fortsetzen“ |
 | **W** | Schreiben | neue Nachrichten senden, auch mit Bildern und Dateien (Büroklammer, Einfügen, Ziehen); Antworten neu erzeugen (als neue Version, nichts wird überschrieben); Modell für die eigene Nachricht wählen |
 | **U** | Bearbeiten | vorhandene Nachrichten bearbeiten, eigene und fremde (es entsteht eine neue Version; dafür braucht es zusätzlich **W**, weil eine neue Antwort entsteht); Chat umbenennen; System-Prompt des Chats ändern |
-| **D** | Löschen | Chat archivieren oder endgültig löschen – **für alle**, also auch für den Besitzer |
+| **D** | Löschen | Chat archivieren oder endgültig löschen bzw. eine Antwort samt Frage und allem danach löschen – **für alle**, also auch für den Besitzer |
 
 Einzelne Nachrichten oder Zweige lassen sich in MultiGPT nicht löschen, auch nicht vom Besitzer.
 

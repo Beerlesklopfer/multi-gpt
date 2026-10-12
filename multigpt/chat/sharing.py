@@ -7,7 +7,8 @@ einzelnes Konto. Lesen (R) ist immer enthalten, dazu einzeln:
   erzeugen (neuer Zweig), Modell für die eigene Nachricht wählen.
 - **U** ``can_update``: Nachrichten bearbeiten (neue Version, braucht zum
   Senden zusätzlich W), Chat umbenennen, System-Prompt ändern.
-- **D** ``can_delete``: Chat archivieren bzw. löschen – für alle.
+- **D** ``can_delete``: Chat archivieren bzw. löschen, Antworten samt Frage und
+  Folgeverlauf löschen – für alle.
 
 Nur der Besitzer verwaltet Freigaben. Geprüft wird immer über
 ``permissions.can()``, also bei jeder Anfrage neu; ein Widerruf greift sofort,
@@ -175,6 +176,16 @@ def view_leaf_id(conversation: Conversation, viewer_id: int) -> int | None:
         .first()
     )
     return own if own is not None else _main_leaf_id(conversation)
+
+
+def move_view_leaves(conversation: Conversation, removed: set[int], new_leaf: int | None) -> None:
+    """Nach dem Löschen eines Teilbaums: eigene Ansichten, die darin endeten, auf
+    ``new_leaf`` setzen (ohne Ziel: Eintrag weg, der Empfänger folgt dem Hauptpfad)."""
+    views = ConversationView.objects.filter(conversation=conversation, current_leaf_id__in=removed)
+    if new_leaf is None:
+        views.delete()
+    else:
+        views.update(current_leaf_id=new_leaf)
 
 
 def move_leaf(conversation: Conversation, message: Message) -> None:

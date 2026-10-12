@@ -233,6 +233,7 @@
       mcpServers: chat.dataset.apiMcpServers,
       toolConfirmTemplate: chat.dataset.apiToolConfirmTemplate,
       branchTemplate: chat.dataset.apiBranchTemplate,
+      messageDeleteTemplate: chat.dataset.apiMessageDeleteTemplate,
       fragmentTemplate: chat.dataset.messagesFragmentTemplate,
     };
     let conversationId = chat.dataset.conversationId || null;
@@ -661,6 +662,10 @@
           button.hidden =
             !form || !article.dataset.messageId || article.dataset.status === "awaiting_confirmation";
           button.disabled = busy || !modelsReady;
+        }
+        for (const button of bar.querySelectorAll("[data-delete-message]")) {
+          button.hidden = !article.dataset.messageId;
+          button.disabled = busy;
         }
       }
     }
@@ -1556,6 +1561,58 @@
       focusTarget?.focus({ preventScroll: true });
     }
 
+    // --- Löschen: Frage, Antwort (alle Versionen) und alles danach ---
+
+    async function deleteExchange(article) {
+      const messageId = article.dataset.messageId;
+      if (!messageId || !urls.messageDeleteTemplate || !conversationId) {
+        return;
+      }
+      const openDialog = window.MultiGPT.openDialog;
+      const heading = "Antwort löschen?";
+      const text =
+        "Gelöscht werden die Frage dazu, alle Versionen dieser Antwort und der ganze Verlauf " +
+        "danach. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht.";
+      const ok = openDialog
+        ? await openDialog({ heading, text, confirmLabel: "Löschen", danger: true })
+        : window.confirm(`${heading}\n\n${text}`);
+      if (!ok || isBusy()) {
+        return;
+      }
+      // Ab hier neu aufbauen: die Frage (Nachricht davor) ist die erste, die fehlt.
+      const previous = article.previousElementSibling?.closest(".chat-message") || article;
+      closeEditor(false);
+      log.setAttribute("aria-busy", "true");
+      try {
+        const url = fillTemplate(urls.messageDeleteTemplate, conversationId).replace(
+          "/999999999/",
+          `/${encodeURIComponent(messageId)}/`,
+        );
+        const response = await fetch(url, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { Accept: "application/json", "X-CSRFToken": csrfToken() },
+        });
+        if (!response.ok) {
+          throw new Error(await errorMessage(response));
+        }
+        if (!(await refreshMessages(previous))) {
+          throw new Error("Der Verlauf konnte nicht geladen werden.");
+        }
+      } catch (err) {
+        setStatus(`Löschen fehlgeschlagen. ${err.message || ""}`.trim(), true);
+        updateMessageActions();
+        return;
+      } finally {
+        log.setAttribute("aria-busy", String(Boolean(controller)));
+      }
+      if (emptyState) {
+        emptyState.hidden = Boolean(log.querySelector(".chat-message"));
+      }
+      setStatus("Gelöscht.");
+      textarea.focus();
+    }
+
     // --- Kopieren ---
 
     async function copyMessage(article, button) {
@@ -1716,7 +1773,7 @@
 
     log.addEventListener("click", (event) => {
       const button = event.target.closest(
-        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-version-target]",
+        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-version-target], [data-delete-message]",
       );
       const article = button?.closest(".chat-message");
       if (!button || !article || button.disabled) {
@@ -1730,6 +1787,8 @@
         openEditor(article);
       } else if (button.hasAttribute("data-regenerate-message")) {
         regenerate(article);
+      } else if (button.hasAttribute("data-delete-message")) {
+        deleteExchange(article);
       } else {
         switchVersion(article, button);
       }

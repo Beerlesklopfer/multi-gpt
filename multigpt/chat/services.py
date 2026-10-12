@@ -359,6 +359,61 @@ def switch_branch(conversation: Conversation, message_id, *, adopt_model: bool =
             conversation.default_model_id = model_id
 
 
+def delete_exchange(conversation: Conversation, message_id) -> int:
+    """Frage samt Antwort und allem danach löschen (Nutzerwunsch 2026-10-12).
+
+    ``message_id`` ist eine Antwort (dann gilt ihre Frage) oder die Frage selbst.
+    Gelöscht wird der ganze Teilbaum ab der Frage: alle Versionen der Antwort und
+    der weitere Verlauf; andere Versionen der Frage bleiben. Danach zeigt der Chat
+    die neueste übrige Version der Frage bzw. die Nachricht davor. Buchungen
+    bleiben (``UsageEntry.message`` SET_NULL), Dateien gehen nach dem Commit.
+    Rückgabe: Anzahl gelöschter Nachrichten (alle Rollen).
+    """
+    with transaction.atomic():
+        # Gleiche Sperre wie ein neuer Zug: kein Löschen mitten in einen Start.
+        Conversation.objects.select_for_update().filter(pk=conversation.pk).first()
+        tree = Tree(conversation)
+        if (
+            isinstance(message_id, bool)
+            or not isinstance(message_id, int)
+            or message_id not in tree
+        ):
+            raise TurnError("Diese Nachricht gibt es in diesem Chat nicht.")
+        role = conversation.messages.filter(pk=message_id).values_list("role", flat=True).first()
+        question_id = message_id if role == Message.Role.USER else tree.parent[message_id]
+        if question_id is None:
+            question_id = message_id  # Antwort ohne Frage (Altdaten): ab ihr löschen
+        # Teilbaum über alle Rollen (Werkzeug-Nachrichten hängen mit dran).
+        children: dict[int | None, list[int]] = {}
+        for pk, parent_id in conversation.messages.values_list("pk", "parent_id"):
+            children.setdefault(parent_id, []).append(pk)
+        doomed, stack = set(), [question_id]
+        while stack:
+            node = stack.pop()
+            doomed.add(node)
+            stack.extend(children.get(node, []))
+        others = [pk for pk in tree.siblings(question_id) if pk != question_id]
+        if others:
+            new_leaf = tree.newest_leaf_below(max(others, key=lambda pk: tree.order[pk]))
+        else:
+            new_leaf = tree.parent[question_id]
+        chat_attachments.delete_files(list(Attachment.objects.filter(message_id__in=doomed)))
+        close_pending(conversation)
+        # Angezeigte Enden vor dem Löschen umsetzen (danach stünden sie per SET_NULL leer).
+        main_leaf = (
+            Conversation.objects.filter(pk=conversation.pk)
+            .values_list("current_leaf_id", flat=True)
+            .first()
+        )
+        if main_leaf is None or main_leaf in doomed:
+            Conversation.objects.filter(pk=conversation.pk).update(current_leaf_id=new_leaf)
+            conversation.current_leaf_id = new_leaf
+        sharing.move_view_leaves(conversation, doomed, new_leaf)
+        Message.objects.filter(pk=question_id).delete()  # CASCADE über parent
+    logger.info("Chat %s: %d Nachricht(en) gelöscht", conversation.pk, len(doomed))
+    return len(doomed)
+
+
 def build_system_prompt(user, conversation: Conversation, notes=()) -> str | None:
     """Reihenfolge: Grundregeln (``ChatSettings``, leer = keine), fester Prompt
     der Rolle, Hinweise von MultiGPT (``notes``: Quellmaterial, Websuche), dann

@@ -318,6 +318,23 @@ def branch(request, pk: int):
     return _path_response(conversation, request.user)
 
 
+@require_http_methods(["DELETE"])
+@api_login_required
+def message_delete(request, pk: int, message_id: int):
+    """Antwort samt Frage und allem danach löschen (``services.delete_exchange``).
+    Braucht das Löschrecht am Chat (Besitzer bzw. D); Antwort wie GET messages."""
+    conversation = _get_conversation(request, pk)
+    if conversation is None:
+        return _error("Chat nicht gefunden.", 404)
+    if not can(request.user, Action.DELETE, conversation):
+        return _error("Du darfst in diesem Chat nichts löschen.", 403)
+    try:
+        services.delete_exchange(conversation, message_id)
+    except services.TurnError as exc:
+        return _error(exc.message, exc.status)
+    return _path_response(conversation, request.user)
+
+
 def _parse_collections(user, raw) -> tuple[list[int], JsonResponse | None]:
     """``collections`` (M7): Sammlungen für die Dokumentsuche dieser Antwort.
 

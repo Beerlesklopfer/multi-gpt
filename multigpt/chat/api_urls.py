@@ -16,6 +16,11 @@ urlpatterns = [
     path("conversations/", api.conversation_create, name="api_conversations"),
     path("conversations/<int:pk>/messages/", api.messages, name="api_messages"),
     path("conversations/<int:pk>/branch/", api.branch, name="api_branch"),
+    path(
+        "conversations/<int:pk>/messages/<int:message_id>/",
+        api.message_delete,
+        name="api_message_delete",
+    ),
     # Chats teilen (RWUD, api_sharing.py)
     path(
         "conversations/<int:pk>/shares/",

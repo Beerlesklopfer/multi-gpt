@@ -98,6 +98,19 @@ Das gilt auch für den Vergleich (die Spalten stehen im selben Verlauf) und für
 Verlaufs nach dem Ende der Antwort: Wer oben liest, wird nicht verschoben. Ist im System
 „Bewegung reduzieren“ eingestellt, springt „↓ Neueste“ ohne Animation.
 
+## Antwort löschen
+
+Der Papierkorb unter einer Antwort löscht **die Frage dazu, alle Versionen dieser Antwort und den
+ganzen Verlauf danach**. Der Chat geht an der Stelle davor weiter. Gab es die Frage in mehreren
+Fassungen (Bearbeiten), bleiben die anderen Fassungen stehen und werden angezeigt. Vorher kommt
+eine Rückfrage; rückgängig machen lässt sich das Löschen nicht.
+
+- Erzeugte Dateien und Anhänge der gelöschten Nachrichten werden mit gelöscht.
+- **Kosten bleiben gebucht** (Verbrauch und Budget ändern sich nicht).
+- In geteilten Chats braucht das Löschen das Recht **D** („Löschen“), wie das Löschen des ganzen
+  Chats; es gilt für alle, die den Chat sehen.
+- Während eine Antwort läuft, ist der Knopf gesperrt.
+
 ## Tastaturkürzel
 
 | Taste | Wo | Wirkung |
