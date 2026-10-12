@@ -1,3 +1,18 @@
+multi-gpt (0.3.4) unstable; urgency=medium
+
+  * NEWS und Website: 0.3.4
+  * LOP: A15 (Antwort löschen umgesetzt), Stand 0.3.4
+  * Chat: Antwort samt Frage und allem danach löschen
+  * Chat: Eingabe-Historie mit Pfeil hoch/runter
+  * Anthropic: Prompt-Caching für Systemprompt, Werkzeuge und Verlauf
+  * Modellverwaltung: Indexierungsmodelle nur für den Lauf laden, danach entladen
+  * CI: User-Namespaces auf dem Ubuntu-Host freigeben, Setup-Ausgabe bei Fehlern
+  * CI: Paket-Skript-Tests als normaler Nutzer, nginx-Temp-Ordner vorab anlegen
+  * CI: Paket-Skript-Tests in Debian 13 statt auf dem Ubuntu-Runner
+  * CI: Paket je Tag auf Debian 13 bauen, GitHub-Release und signierte apt-Quelle auf Pages
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 14:49:22 +0200
+
 multi-gpt (0.3.3) unstable; urgency=medium
 
   * Website: Stand 0.3.3
