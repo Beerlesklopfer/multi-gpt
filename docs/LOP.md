@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-12, nach 0.3.3. Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
+Stand: 2026-10-12, nach 0.3.3 (0.3.4 lokal: Entladen nach Indexierung, Prompt-Caching, Eingabe-Historie, Antwort löschen). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 
 ## A. Entscheidungen des Nutzers
@@ -18,7 +18,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden |
 | A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |
 | A14 | M14 Runner | Rückkanal: eigener ASGI-/WebSocket-Dienst oder Long-Polling? | ASGI-Dienst |
-| A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht? Einzelne Nachrichten löschen? | später |
+| A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht (Chat oder seit 0.3.4 eine Antwort samt Folgeverlauf, Recht D)? | später |
 | A16 | Berechnungen | scipy aufnehmen (ca. 100 MB)? | nur bei Bedarf |
 | A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf |
 | A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja |
