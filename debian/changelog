@@ -1,3 +1,13 @@
+multi-gpt (0.3.3) unstable; urgency=medium
+
+  * Website: Stand 0.3.3
+  * MCP: SVG nur als Verweis, wenn ein PNG beiliegt; matplotlib schreibt SVG-Text als Text (svg.fonttype none)
+  * MCP: Werkzeuge liefern Ausgabe, Bilder (SVG bevorzugt, PNG-Vorschau) und PDFs direkt; Dokumentwerkzeuge im Kern bei Sammlungen; attachment:-Verweise
+  * LOP: A7 erledigt
+  * Berechnungen: Standard-CPU-Zeit 30 s, Wanduhr 60 s (LOP A7)
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 10:34:50 +0200
+
 multi-gpt (0.3.2) unstable; urgency=medium
 
   * LOP: C31 (parallele Indexierung mehrerer Dokumente)
