@@ -53,7 +53,7 @@ def setup():
 
 
 def test_read_chat_shows_messages_tools_and_errors(setup):
-    text = tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk})
+    text = tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk}).text
     assert "Thread mit Fehler" in text and "Schalte das Licht aus" in text
     assert "HassTurnOff" in text and "Schlafzimmer" in text and "Gerät nicht gefunden" in text
     assert "Der Anbieter hat die Antwort abgebrochen." in text
@@ -71,7 +71,7 @@ def test_shared_chat_readable_and_listed(setup):
     group = UserGroup.objects.create(name="Lesetest")
     setup["ben"].groups.add(group)
     Share.objects.create(conversation=setup["conv"], group=group)
-    text = tool_chats.read_chat(ctx(setup["ben"]), {"chat_id": setup["conv"].pk})
+    text = tool_chats.read_chat(ctx(setup["ben"]), {"chat_id": setup["conv"].pk}).text
     assert "Schalte das Licht aus" in text
     data = tool_chats.list_chats(ctx(setup["ben"]), {}).data
     titles = {c["title"]: c for c in data["chats"]}
@@ -91,7 +91,7 @@ def test_list_chats_query_and_paging(setup):
 
 def test_long_chat_is_paged(setup, monkeypatch):
     monkeypatch.setattr(tool_chats, "PAGE_CHARS", 80)
-    first = tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk})
+    first = tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk}).text
     assert "weiter mit page=2" in first
     with pytest.raises(ToolFailure, match="Seite"):
         tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk, "page": 99})
@@ -109,3 +109,20 @@ def test_migration_adds_chat_read_to_roles_with_chat_ask():
     migration.add_chat_read(apps, None)
     role.refresh_from_db()
     assert role.api_scopes == ["chat.ask", "chat.read", "docs.read"]
+
+
+def test_read_chat_over_mcp_endpoint(client, setup):
+    """Durch das ganze Protokoll (Befund Produktion: 500, weil read_chat einen reinen
+    Text statt ToolOutput lieferte) – auch list_chats."""
+    from tests.node_support import call, make_key
+
+    _, secret = make_key(setup["anna"], scopes=["chat.read"])
+    response, result = call(client, secret, "read_chat", {"chat_id": setup["conv"].pk})
+    assert response.status_code == 200, response.content
+    assert not result["isError"]
+    text = "".join(block.get("text", "") for block in result["content"])
+    assert "HassTurnOff" in text and "Seite 1 von 1" in text
+    response, result = call(client, secret, "list_chats", {})
+    assert response.status_code == 200 and not result["isError"]
+    response, result = call(client, secret, "read_chat", {"chat_id": setup["other"].pk})
+    assert response.status_code == 200 and result["isError"]

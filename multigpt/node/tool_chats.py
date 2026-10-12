@@ -21,7 +21,17 @@ from multigpt.chat import services, sharing
 from multigpt.chat.models import Conversation, Message
 
 from . import scopes as S
-from .tools import NodeTool, ToolFailure, arg_bool, arg_int, arg_text, json_output, register, schema
+from .tools import (
+    NodeTool,
+    ToolFailure,
+    ToolOutput,
+    arg_bool,
+    arg_int,
+    arg_text,
+    json_output,
+    register,
+    schema,
+)
 
 PAGE_CHARS = 30_000  # Zeichen je Seite von read_chat
 ARGS_CHARS = 600  # Werkzeugargumente je Aufruf
@@ -148,7 +158,8 @@ def read_chat(ctx, args):
     footer = f"\n\n(Seite {page} von {pages}" + (
         f"; weiter mit page={page + 1})" if page < pages else ")"
     )
-    return chunk + footer
+    data = {"chat_id": conversation.pk, "page": page, "pages": pages}
+    return ToolOutput(chunk + footer, data)
 
 
 register(
