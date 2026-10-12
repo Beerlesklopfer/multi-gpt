@@ -24,7 +24,7 @@ from django.views.decorators.http import require_http_methods
 from multigpt.accounts.permissions import Action, can
 
 from . import attachments as chat_attachments
-from . import creativity, reasoning
+from . import creativity, notices, reasoning
 from .api import _error, _json_body, api_login_required
 from .models import Conversation
 
@@ -86,6 +86,8 @@ def conversation_detail(request, pk: int):
         with transaction.atomic():
             # Dateien der Anhänge nach dem Commit entfernen (Plan 9: Datenschutz).
             chat_attachments.delete_conversation_files(conversation)
+            # A15: Besitzer benachrichtigen (nur Titel als Text, kein Verweis).
+            notices.notify_owner(conversation, request.user, notices.DELETED)
             conversation.delete()
         return JsonResponse({"deleted": True, "id": pk})
 
@@ -127,7 +129,11 @@ def conversation_detail(request, pk: int):
 
     # update() statt save(): "updated" bleibt, damit Umbenennen oder Archivieren
     # die Reihenfolge der Chatliste nicht verändert.
+    archive_changed = "archived" in fields and fields["archived"] != conversation.archived
     Conversation.objects.filter(pk=conversation.pk).update(**fields)
     for key, value in fields.items():
         setattr(conversation, key, value)
+    if archive_changed:
+        action = notices.ARCHIVED if fields["archived"] else notices.UNARCHIVED
+        notices.notify_owner(conversation, request.user, action)  # A15
     return JsonResponse(serialize_conversation(conversation, request.user))

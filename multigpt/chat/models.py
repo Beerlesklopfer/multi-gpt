@@ -2097,3 +2097,6 @@ class Project(models.Model):
 
 # Modellverwaltung (LM Studio): Laufzeitzustand und Belegung, eigenes Modul.
 from .models_lmstudio import ModelLease, ModelRuntime  # noqa: E402,F401
+
+# Mitteilungen (A15): eigenes Modul.
+from .models_notice import Notice  # noqa: E402,F401

@@ -1,9 +1,10 @@
 {% comment %}Persönliches Menü rechts oben (Profilbild, Pulldown). Ohne JavaScript ein
 <details>; user_menu.js ergänzt Escape, Klick daneben und Pfeiltasten.{% endcomment %}
-{% load avatar_tags family_tags %}
+{% load avatar_tags family_tags notice_tags %}
+{% unread_notice_count user as notice_count %}
 <details class="user-menu" id="user-menu">
-  <summary class="user-menu-button" aria-label="Persönliches Menü: {{ user }}">
-    {% avatar user 32 %}
+  <summary class="user-menu-button" aria-label="Persönliches Menü: {{ user }}{% if notice_count %}, {{ notice_count }} ungelesene Mitteilung{{ notice_count|pluralize:'en' }}{% endif %}">
+    <span class="user-menu-avatar">{% avatar user 32 %}{% if notice_count %}<span class="notice-badge notice-badge-dot" aria-hidden="true">{{ notice_count }}</span>{% endif %}</span>
     <span class="user-menu-name">{{ user }}</span>
     <span class="user-menu-caret" aria-hidden="true">▾</span>
   </summary>
@@ -16,6 +17,7 @@
       </div>
     </div>
     <ul class="user-menu-list" role="list">
+      <li><a href="{% url 'chat:notices' %}" class="user-menu-notices">Mitteilungen{% if notice_count %} <span class="notice-badge">{{ notice_count }}<span class="sr-only"> ungelesen</span></span>{% endif %}</a></li>
       <li><a href="{% url 'settings' %}">Einstellungen</a></li>
       <li><a href="{% url 'settings' %}#profilbild">Profilbild ändern</a></li>
       <li><a href="{% url 'usage' %}">Mein Verbrauch</a></li>

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% comment %}Seite „Mitteilungen“ (A15, chat/views_notices.py): nur eigene Mitteilungen,
+ohne JavaScript bedienbar (Formulare mit POST).{% endcomment %}
+{% block title %}Mitteilungen – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page notices-page" aria-labelledby="notices-title">
+    <h1 id="notices-title">Mitteilungen</h1>
+    <p class="page-intro">
+      Hier erfährst du, wenn jemand deinen geteilten Chat löscht, archiviert oder eine
+      Antwort daraus löscht. Gelesene Mitteilungen verschwinden nach {{ retention_days }} Tagen.
+    </p>
+    {% if notices %}
+      <div class="notices-head">
+        <p class="notices-count" role="status">
+          {% if unread %}{{ unread }} ungelesen{% else %}Alles gelesen.{% endif %}
+        </p>
+        {% if unread %}
+          <form method="post" action="{% url 'chat:notice_read_all' %}">
+            {% csrf_token %}
+            <button type="submit" class="button button-small">Alle als gelesen markieren</button>
+          </form>
+        {% endif %}
+      </div>
+      <ul class="notice-list" role="list">
+        {% for notice in notices %}
+          <li class="notice{% if not notice.read %} notice-unread{% endif %}">
+            <p class="notice-text">
+              {% if not notice.read %}<span class="sr-only">Ungelesen: </span>{% endif %}{{ notice.text }}
+            </p>
+            <div class="notice-meta">
+              <time datetime="{{ notice.created|date:'c' }}">{{ notice.created|date:"j. F Y, H:i" }}</time>
+              {% if notice.conversation_id %}
+                <a href="{% url 'chat:conversation' notice.conversation_id %}">Zum Chat</a>
+              {% endif %}
+              {% if not notice.read %}
+                <form method="post" action="{% url 'chat:notice_read' notice.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="link-button" aria-label="Mitteilung vom {{ notice.created|date:'j. F Y, H:i' }} als gelesen markieren">Als gelesen markieren</button>
+                </form>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="notices-empty">Keine Mitteilungen.</p>
+    {% endif %}
+  </section>
+{% endblock %}

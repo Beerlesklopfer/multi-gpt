@@ -1,6 +1,6 @@
 from django.urls import include, path
 
-from . import api_attachments, views, views_collections, views_projects
+from . import api_attachments, views, views_collections, views_notices, views_projects
 
 app_name = "chat"
 
@@ -45,5 +45,9 @@ urlpatterns = [
         views_collections.document_chunk,
         name="document_chunk",
     ),
+    # Mitteilungen (A15)
+    path("mitteilungen/", views_notices.notice_list, name="notices"),
+    path("mitteilungen/<int:pk>/gelesen/", views_notices.notice_read, name="notice_read"),
+    path("mitteilungen/alle-gelesen/", views_notices.notice_read_all, name="notice_read_all"),
     path("api/", include("multigpt.chat.api_urls")),
 ]

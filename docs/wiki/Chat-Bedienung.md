@@ -101,10 +101,17 @@ Verlaufs nach dem Ende der Antwort: Wer oben liest, wird nicht verschoben. Ist i
 ## Persönliches Menü und Profilbild
 
 Rechts oben steht das eigene Profilbild mit Namen; ein Klick öffnet das persönliche Menü:
-**Einstellungen**, **Profilbild ändern**, **Mein Verbrauch**, **API-Keys** (wenn die Rolle sie
-erlaubt), **Familie** und **Verwaltung** (nur Verwalter), **Passwort ändern** und **Abmelden**.
-Escape oder ein Klick daneben schließt es, Pfeil hoch/runter wandert durch die Einträge. Auf dem
-Handy steht nur das Bild.
+**Mitteilungen**, **Einstellungen**, **Profilbild ändern**, **Mein Verbrauch**, **API-Keys** (wenn
+die Rolle sie erlaubt), **Familie** und **Verwaltung** (nur Verwalter), **Passwort ändern** und
+**Abmelden**. Escape oder ein Klick daneben schließt es, Pfeil hoch/runter wandert durch die
+Einträge. Auf dem Handy steht nur das Bild.
+
+**Mitteilungen:** Gibt es ungelesene, zeigt eine Zahl am Profilbild und am Eintrag
+„Mitteilungen“, wie viele es sind. Die Seite listet sie mit Datum; „Als gelesen markieren“ bzw.
+„Alle als gelesen markieren“ nimmt die Zahl weg, „Zum Chat“ öffnet den betroffenen Chat (nicht bei
+gelöschten Chats). Gelesene Mitteilungen werden nach 90 Tagen gelöscht. Derzeit gibt es sie, wenn
+jemand deinen geteilten Chat löscht, archiviert oder eine Antwort daraus löscht
+([Chats teilen](Chats-teilen.md#mitteilungen-an-den-besitzer)).
 
 **Profilbild:** Einstellungen → „Profilbild“: JPG, PNG oder WebP bis 10 MB. MultiGPT schneidet es
 quadratisch zu, verkleinert es auf 256 Pixel und speichert es ohne Metadaten (Ort, Kamera). Ohne

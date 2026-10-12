@@ -17,7 +17,17 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from multigpt.accounts import usage
 from multigpt.accounts.permissions import Action, applicable_shares, can, model_permitted
 
-from . import api_images, projects, reasoning, services, sharing, status, tooling, websearch
+from . import (
+    api_images,
+    notices,
+    projects,
+    reasoning,
+    services,
+    sharing,
+    status,
+    tooling,
+    websearch,
+)
 from . import attachments as chat_attachments
 from . import sources as source_refs
 from .mcp import status as mcp_status
@@ -341,6 +351,7 @@ def message_delete(request, pk: int, message_id: int):
         services.delete_exchange(conversation, message_id)
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
+    notices.notify_owner(conversation, request.user, notices.EXCHANGE_DELETED)  # A15
     return _path_response(conversation, request.user)
 
 

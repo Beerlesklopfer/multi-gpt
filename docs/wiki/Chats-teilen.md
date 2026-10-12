@@ -19,7 +19,7 @@ Kurzform, z. B. „R“, „RW“ oder „RWUD“.
 | **U** | Bearbeiten | vorhandene Nachrichten bearbeiten, eigene und fremde (es entsteht eine neue Version; dafür braucht es zusätzlich **W**, weil eine neue Antwort entsteht); Chat umbenennen; System-Prompt des Chats ändern |
 | **D** | Löschen | Chat archivieren oder endgültig löschen bzw. eine Antwort samt Frage und allem danach löschen – **für alle**, also auch für den Besitzer |
 
-Einzelne Nachrichten oder Zweige lassen sich in MultiGPT nicht löschen, auch nicht vom Besitzer.
+Einzelne Nachrichten lassen sich nicht löschen. Eine Antwort samt Frage und allem danach löscht, wer das Recht D hat (Papierkorb unter der Antwort, seit 0.3.4); der Besitzer bekommt dann eine Mitteilung.
 
 Nur wer den Chat angelegt hat (der **Besitzer**), kann teilen, Rechte ändern und Freigaben
 widerrufen. Den Besitz übertragen geht nicht. Teilen dürfen Konten, deren Rolle das Recht „Mit
@@ -55,8 +55,17 @@ Eigene geteilte Chats tragen in der Seitenleiste ein kleines Personen-Symbol.
   das nur für dich, die anderen Gruppenmitglieder sehen den Chat weiter. Teilt der Besitzer
   erneut, siehst du den Chat wieder.
 - Wer mit **Löschen**-Recht archiviert oder löscht, bekommt eine deutliche Rückfrage, z. B.
-  „Der Chat gehört Anna und wird für alle gelöscht.“ Der Besitzer wird darüber nicht
-  benachrichtigt.
+  „Der Chat gehört Anna und wird für alle gelöscht.“ Der Besitzer bekommt darüber eine
+  **Mitteilung** in MultiGPT (siehe unten).
+
+## Mitteilungen an den Besitzer
+
+Löscht oder archiviert ein Empfänger mit Recht **D** einen geteilten Chat, holt ihn aus dem
+Archiv oder löscht eine Antwort samt Frage und Folgeverlauf, erhält der Besitzer eine Mitteilung,
+z. B. „Ben hat deinen geteilten Chat „Urlaub“ gelöscht.“ Sie nennt nur den Namen und den Titel
+des Chats, keine Inhalte. Handelt der Besitzer selbst, entsteht keine Mitteilung. Es gibt keine
+E-Mail: Die Mitteilungen stehen im persönlichen Menü rechts oben unter **„Mitteilungen“**
+(siehe [Chat-Bedienung](Chat-Bedienung.md#persönliches-menü-und-profilbild)).
 
 ## Mehrere Personen in einem Chat
 
