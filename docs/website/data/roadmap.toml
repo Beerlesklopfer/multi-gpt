@@ -1,7 +1,7 @@
 # Meilensteine aus doc/Plan.md, Abschnitt 11.
 # status: "done" | "partial" | "planned"  (Texte dazu in i18n/*.toml)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.2.
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.3.
 # steps: Arbeitspakete je Meilenstein (id, status, optional version = erschienen mit).
 
 [[milestones]]
@@ -14,8 +14,8 @@
     de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
     en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
-    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.2). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
-    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.2). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.3). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.3). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
 
   [[milestones.steps]]
     id = "M1-01"
