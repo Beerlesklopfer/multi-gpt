@@ -104,6 +104,7 @@ Verlaufs nach dem Ende der Antwort: Wer oben liest, wird nicht verschoben. Ist i
 |---|---|---|
 | Enter | Eingabefeld, Editor | senden |
 | Umschalt+Enter | Eingabefeld, Editor | Zeilenumbruch |
+| Pfeil hoch / runter | Eingabefeld (erste bzw. letzte Zeile) | frühere eigene Nachrichten dieses Chats zurückholen, wie in einer Shell; ganz unten kommt der angefangene Text wieder. Gespeichert wird dafür nichts im Browser |
 | Strg+V | Eingabefeld | Bild aus der Zwischenablage als Anhang |
 | Escape | Editor einer Nachricht | Bearbeiten abbrechen |
 | Kontextmenü-Taste, Umschalt+F10 | markierter Text im Chat | Kontextmenü öffnen |

@@ -1885,13 +1885,78 @@
       }
     });
 
+    // Eingabe-Historie wie in der Shell: Pfeil hoch/runter holt frühere Nachrichten
+    // dieses Chats (angezeigter Verlauf, nichts im Browser gespeichert). Nur in der
+    // ersten bzw. letzten Zeile, damit mehrzeiliges Bearbeiten wie gewohnt geht.
+    // Der angefangene Entwurf kommt beim Zurückblättern wieder.
+    const promptHistory = { index: -1, draft: "" };
+
+    function sentPrompts() {
+      const texts = [];
+      for (const el of log.querySelectorAll(".chat-message-user .chat-message-content")) {
+        const text = el.textContent;
+        if (text.trim() && texts[texts.length - 1] !== text) {
+          texts.push(text);
+        }
+      }
+      return texts.reverse(); // neueste zuerst
+    }
+
+    function browseHistory(step) {
+      const prompts = sentPrompts();
+      const next = promptHistory.index + step;
+      if (next < -1 || next >= prompts.length) {
+        return false;
+      }
+      if (promptHistory.index === -1) {
+        promptHistory.draft = textarea.value;
+      }
+      promptHistory.index = next;
+      textarea.value = next === -1 ? promptHistory.draft : prompts[next];
+      autosize();
+      updateSendButton();
+      // Cursor in Blätterrichtung: nach „hoch“ an den Anfang (nächstes Hoch blättert
+      // weiter, auch bei mehrzeiligen Nachrichten), nach „runter“ ans Ende.
+      const caret = step > 0 ? 0 : textarea.value.length;
+      textarea.setSelectionRange(caret, caret);
+      return true;
+    }
+
+    function historyKey(event) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) {
+        return false;
+      }
+      const { selectionStart: start, selectionEnd: end, value } = textarea;
+      if (start !== end) {
+        return false;
+      }
+      if (event.key === "ArrowUp") {
+        // Nur in der ersten Zeile, sonst bewegt Pfeil hoch den Cursor wie gewohnt.
+        return !value.slice(0, start).includes("\n") && browseHistory(1);
+      }
+      if (event.key === "ArrowDown") {
+        return (
+          promptHistory.index !== -1 && !value.slice(end).includes("\n") && browseHistory(-1)
+        );
+      }
+      return false;
+    }
+
     textarea.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         if (!controller) {
+          promptHistory.index = -1;
           send();
         }
+        return;
       }
+      if (historyKey(event)) {
+        event.preventDefault();
+      }
+    });
+    textarea.addEventListener("input", () => {
+      promptHistory.index = -1; // Bearbeitet: ab hier gilt der Text als neuer Entwurf
     });
     textarea.addEventListener("input", autosize);
     document.addEventListener("multigpt:attachments-changed", updateSendButton);
