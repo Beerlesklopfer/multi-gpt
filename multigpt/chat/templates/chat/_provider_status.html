@@ -14,8 +14,8 @@
     {% endfor %}
   </ul>
 {% endif %}
-{# Nur Verwalter: zuletzt offline geprüfte MCP-Server (chat/mcp/status.py), Link in den Admin.
-   provider_status.js hält die Liste aktuell (LOP A2); Aufbau dort gleich. #}
+{% comment %}Nur Verwalter: zuletzt offline geprüfte MCP-Server (chat/mcp/status.py), Link in den Admin.
+provider_status.js hält die Liste aktuell (LOP A2); Aufbau dort gleich.{% endcomment %}
 {% if status_mcp_live %}
   <ul class="provider-status mcp-status" id="mcp-status" aria-label="Status der MCP-Server (nur Verwalter)"
       data-url="{% url 'chat:api_mcp_status' %}"
