@@ -2,25 +2,16 @@
 
 Stand: 2026-10-12 abends, 0.3.5 veröffentlicht (GitHub-Release und apt-Quelle). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen.
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
+Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja, A19 so lassen; umgesetzt für 0.3.6: A4 (`ask`-Chats im Projekt „API“), A10 (EUR-Konten auf USD umstellen, Admin-Aktion/Befehl), A11 (EZB-Kurs automatisch, Standard an), A15 (Mitteilungen an den Besitzer), A16 (scipy); A14 entschieden (ASGI-Dienst), Umsetzungsplan in Implementierung.md M14.
 
 ## A. Entscheidungen des Nutzers
 
 | Nr. | Thema | Frage | Empfehlung | Entscheidung |
 |---|---|---|---|---|
-| A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein | NEIN |
-| A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key | ja, als Option je Key |
-| A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT | nein, nur in MultiGPT |
 | A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |  |
-| A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja | JA |
-| A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update | JA |
-| A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf | JA |
 | A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden | sobald dort Cloud-Modelle genutzt werden |
 | A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |  |
-| A14 | M14 Runner | Rückkanal: eigener ASGI-/WebSocket-Dienst oder Long-Polling? | ASGI-Dienst | ASGI-Dienst |
-| A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht (Chat oder seit 0.3.4 eine Antwort samt Folgeverlauf, Recht D)? | später | JA |
-| A16 | Berechnungen | scipy aufnehmen (ca. 100 MB)? | nur bei Bedarf | JA |
 | A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf | erst bei Bedarf |
-| A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja | ja |
 | A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |  |
 | A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört | erst, wenn der Chat während Läufen stört |
 
@@ -46,7 +37,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C4 | gpt-image wird je Stück abgerechnet, nicht nach Tokens (`book_attachment` ohne Token-Parameter). |
 | C5 | Arbeitsblätter: Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett fehlen; Antwortlinien ungleich kräftig; PDF-Link fehlt in der Live-Anzeige (`attachments.js`). |
 | C6 | Projekte lassen sich noch nicht als Ganzes teilen. |
-| C7 | Besitzer wird bei Löschen/Archivieren durch Empfänger nicht benachrichtigt. |
 | C8 | Ein abgelaufener Key, der erst mitten im Chat auffällt, schaltet den Anbieter nicht offline. |
 | C9 | `gpt-3.5-turbo` gilt in der Heuristik als ohne Werkzeuge (abgekündigt). |
 | C10 | Lokale Reasoning-Schalter außer gpt-oss (z. B. Qwen3 `enable_thinking`) nicht unterstützt. |
@@ -74,6 +64,8 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C32 | Prompt-Caching: Anthropic seit 0.3.4 (Breakpoint am Systemprompt plus automatisches Caching des Verlaufs, 5 Min.). Offen: nicht gegen die echte API geprüft (kein Anthropic-Anbieter in der Entwicklung) – auf der Produktion `cache_read_input_tokens` in den Buchungen beobachten; Cache-Preise an den Anthropic-Modellen eintragen; 1-Stunden-Haltezeit für Chats mit langen Pausen erwägen; OpenAI `prompt_cache_key` je Chat für bessere Trefferquote. |
 | C33 | Zwei MultiGPT-Installationen an einem LM Studio: seit 0.3.6 entlädt jede nach Leerlauf/Indexierung nur selbst geladene Instanzen (`ModelRuntime.loaded_instance`); beobachtet 2026-10-12 – Produktion und Entwicklung verwalteten beide, olmOCR wurde im Minutentakt geladen und entladen, OCR fiel auf Tesseract. Die OCR wiederholt bei „Model is unloaded“ bzw. „Model unloaded by user or API request“ einmal. Offen: Platz schaffen (Verdrängen für eine wartende Anfrage) trifft weiterhin fremde Instanzen; Chat und Embeddings wiederholen nicht. |
 | C34 | Persönliches Menü und Profilbild (0.3.5): Profilbild erscheint nur in der Kopfzeile, noch nicht an Nachrichten in geteilten Chats; Verwalter können fremde Profilbilder nicht entfernen; nur in Firefox geprüft (Chromium, Handy mit Touch offen). „Mein Verbrauch“ und „Familie“ stehen nur noch im Menü, nicht mehr in der Seitenleiste. |
+| C35 | USD-Umstellung (A10): Eine Antwort, die vor der Umstellung begann und danach gebucht wird, rechnet mit der alten EUR-Preisversion, wird aber als USD gebucht (`ModelPrice` hat kein eigenes Währungsfeld). Seltener Randfall; Abhilfe wäre `ModelPrice.currency` (Migration). |
+| C36 | `read_chat`/`list_chats` (Recht `chat.read`): erst mit dem nächsten Release auf der Produktion; dort Key nur mit `chat.read` anlegen und als zweiten MCP-Server (`multigpt-prod`) in Claude Code eintragen. |
 
 ## D. Geplante Meilensteine
 
@@ -84,4 +76,4 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
 | M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Rest geplant, wartet auf A13 |
-| M14 Runner | geplant, wartet auf A14 |
+| M14 Runner | Umsetzungsplan steht (M14-01 … M14-15, ASGI-Dienst); wartet auf Entscheidungen 8b–8o (Implementierung.md §6 und M14) |

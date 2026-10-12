@@ -73,6 +73,7 @@ sudo mgpt-ctl apikey revoke mgpt_ab12cd34ef     # oder die ID aus „list“
 | `--scopes` | Kommagetrennt: `chat.ask`, `docs.read`, `docs.write`, `index.control`, `files.read`, `tools.run`, `usage.read` oder `all`. Höchstens, was die Rolle erlaubt. |
 | `--expires` | `90d` (Standard), Anzahl Tage, Datum `JJJJ-MM-TT` (bis Tagesende) oder `never`. |
 | `--collection <ID>` | Key nur für diese Sammlung(en), mehrfach möglich. |
+| `--no-project` | Chats von `ask` nicht im Projekt „API“ des Kontos sammeln (Standard: sammeln). |
 
 `create` gibt den Key **einmal** auf stdout aus (Hinweise auf stderr), z. B.
 `sudo mgpt-ctl apikey create … > key.txt`. Gespeichert wird nur ein Hash.
@@ -141,12 +142,24 @@ Das Passwort wird verdeckt abgefragt. Rollen: `admin`, `adult`, `teen`, `guest`
 
 ### `fetch_ecb_rate` – Wechselkurs USD → EUR holen
 
-Ruft den EZB-Referenzkurs USD ab und trägt fehlende EUR-Beträge in den Buchungen nach
-(Kosten von Anbietern, die in USD abrechnen). Nur nötig, wenn der Kurs nicht von Hand im
-Admin gepflegt wird; der automatische Abruf ist standardmäßig aus.
+Ruft den EZB-Referenzkurs USD sofort ab und trägt fehlende EUR-Beträge in den Buchungen nach
+(Kosten von Anbietern, die in USD abrechnen). Normalerweise nicht nötig: Der Worker holt den
+Kurs täglich selbst (abschaltbar mit `BILLING_ECB_FETCH=false`).
 
 ```bash
 sudo mgpt-ctl fetch_ecb_rate
+```
+
+### `switch_account_to_usd` – EUR-Konten auf USD umstellen
+
+Stellt Abrechnungskonten von EUR auf USD um: neue Preisversion „gültig ab jetzt“ je Modell,
+umgerechnet mit dem neuesten Wechselkurs; alte Preise und Buchungen bleiben. Ohne `--apply`
+nur Vorschau. Dasselbe gibt es im Admin als Aktion „Auf USD umstellen“, siehe
+[Kosten und Budgets](Kosten-und-Budgets).
+
+```bash
+sudo mgpt-ctl switch_account_to_usd --all-eur          # Vorschau aller EUR-Konten
+sudo mgpt-ctl switch_account_to_usd OpenAI --apply     # Konto „OpenAI“ umstellen
 ```
 
 ### `run_worker` – Hintergrundaufträge abarbeiten

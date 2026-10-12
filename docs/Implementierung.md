@@ -144,7 +144,8 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
   - **Statusleiste:** MCP-Server nur für Verwalter (`is_staff` mit Leserecht auf MCP-Server) und nur, wenn sie offline sind, mit Link in den Admin. Begründung: Für Nutzer zählt nur, ob ihre Werkzeuge verfügbar sind – das zeigt die MCP-Auswahl im Chat. Ein dauerhafter grüner Punkt je Server wäre Rauschen; ein offline-Server ist dagegen eine Aufgabe für den Verwalter. Die Anzeige wird beim Seitenaufbau gerendert, ohne eigenes Polling (der Status ändert sich höchstens minütlich).
   - **Admin:** Tabelle der gemeldeten Werkzeuge auf der Änderungsseite (Name, Beschreibung, Parameter, Hinweise des Servers, Einstufung als Auswahl „nicht eingestuft“/„ohne Rückfrage“/„mit Rückfrage“). Für gemeldete Werkzeuge gilt die Tabelle, die JSON-Felder bleiben als Rückfall unter „Erweitert“. Vorschlag aus den annotations (`destructiveHint` → mit Rückfrage, sonst `readOnlyHint` → ohne Rückfrage) nur als Vorbelegung bei nicht eingestuften Werkzeugen; wirksam erst beim Speichern. Neue Werkzeuge sind hervorgehoben, eingestufte, aber nicht mehr gemeldete werden darunter genannt. Liste: Spalten Status (Ursache im Tooltip), zuletzt geprüft, Werkzeuge, davon nicht eingestuft. Alle Texte vom Server werden escaped und gekürzt angezeigt. Logs nur mit Server-ID und Kurzursache.
 - **M4a-10** **Berechnungen: eingebautes Werkzeug `run_python`** (`chat/tools_python.py`, `chat/sandbox.py`, `chat/svg_clean.py`, Migrationen chat `0029_python_tool` und accounts `0008_role_can_compute`). Modelle mit `supports_tools` rechnen mit numpy, sympy, mpmath und zeichnen mit matplotlib, statt zu schätzen. **Festlegung Sandbox:** Der Code gilt als nicht vertrauenswürdig (Prompt-Injection). Er läuft nur unter bubblewrap (Debian-Paket `bubblewrap`, `Depends`). Ohne funktionierende Sandbox wird das Werkzeug nicht angeboten; einen Rückfall im Server-Prozess gibt es nicht, auch nicht unter DEBUG.
-  - **bwrap:** `--unshare-all` (auch kein Netz), `--die-with-parent`, `--new-session`, `--cap-drop ALL`, `--clearenv` mit festen Variablen (PATH, HOME=/tmp, LANG, `MPLBACKEND=Agg`, `MPLCONFIGDIR=/tmp/matplotlib`, je ein BLAS-Thread). Nur lesend: `/usr` und **einzeln** die Rechenpakete aus dem venv unter `/sandbox/lib` (numpy, sympy, mpmath, matplotlib samt Abhängigkeiten und `*.libs`). Django, MultiGPT, `/etc`, `/home`, `/var/lib/multi-gpt` und DB-Sockets sind nicht sichtbar. `/tmp` (64 MB) und der Arbeitsordner `/work` sind tmpfs mit fester Größe, danach `--remount-ro /`. Python mit `-I -S -B`. **Kein `/proc`:** `ProtectKernelTunables` und `ProtectKernelLogs` der Unit legen gesperrte Overmounts auf /proc, deshalb verweigert der Kernel ein neues procfs im User-Namespace. Die Sandbox ist ohne /proc enger.
+  - **bwrap:** `--unshare-all` (auch kein Netz), `--die-with-parent`, `--new-session`, `--cap-drop ALL`, `--clearenv` mit festen Variablen (PATH, HOME=/tmp, LANG, `MPLBACKEND=Agg`, `MPLCONFIGDIR=/tmp/matplotlib`, je ein BLAS-Thread). Nur lesend: `/usr` und **einzeln** die Rechenpakete aus dem venv unter `/sandbox/lib` (numpy, scipy, sympy, mpmath, matplotlib samt Abhängigkeiten und `*.libs`). Django, MultiGPT, `/etc`, `/home`, `/var/lib/multi-gpt` und DB-Sockets sind nicht sichtbar. `/tmp` (64 MB) und der Arbeitsordner `/work` sind tmpfs mit fester Größe, danach `--remount-ro /`. Python mit `-I -S -B`. **Kein `/proc`:** `ProtectKernelTunables` und `ProtectKernelLogs` der Unit legen gesperrte Overmounts auf /proc, deshalb verweigert der Kernel ein neues procfs im User-Namespace. Die Sandbox ist ohne /proc enger.
+  - **scipy** (LOP A16, `scipy>=1.16`, im venv rund 140 MB samt `scipy.libs` mit eigenem OpenBLAS und libgfortran) ist optional eingebunden: Es lädt unter seccomp ohne /proc, `OPENBLAS_NUM_THREADS=1` hält OpenBLAS innerhalb von RLIMIT_NPROC; wegen des reservierten Adressraums braucht `import scipy.stats, scipy.signal …` etwa 320 MB RLIMIT_AS (Standard 512 MB), „Sandbox testen“ rechnet ein Integral und ein Gleichungssystem.
   - **seccomp** (`--seccomp`, BPF selbst erzeugt, keine neue Abhängigkeit, x86_64 und aarch64): verboten sind ptrace, process_vm_*, mount und verwandte Aufrufe, unshare/setns, clone mit Namespace-Flags, clone3 (ENOSYS, glibc fällt auf clone zurück), bpf, perf_event_open, userfaultfd, keyctl, io_uring, Kernelmodule, kexec und fremde ABIs (i386, x32). `no_new_privs` setzt bwrap.
   - **Grenzen** (`ChatSettings.python_*`, im Admin, Höchstwerte in `sandbox.LIMIT_RANGES` und zusätzlich im Code begrenzt): CPU 10 s (höchstens 60), Wanduhr 20 s (120) mit SIGKILL auf die Prozessgruppe, Speicher (RLIMIT_AS) 512 MB (4096), Prozesse/Threads 4 (64), Dateigröße 10 MB (100), Ausgabe 64 KB (1024), höchstens 6 Dateien je Lauf und 12 je Antwort. Die Grenzen setzt das Startskript per `resource` vor dem fremden Code, weich gleich hart. RLIMIT_NPROC wirkt erst innerhalb des User-Namespace, sonst zählt der Kernel alle Prozesse des Dienstnutzers mit.
   - **Ein- und Ausgabe:** Code, Startskript und seccomp-Programm gehen über memfd hinein (`--ro-bind-data`, `--seccomp`). Bilder kommen über einen eigenen Pipe-Deskriptor zurück (JSON-Zeilen, base64); der Server liest keine Pfade aus der Sandbox. Der Font-Cache von matplotlib wird einmal je Prozess in einer sauberen Sandbox mit festem Code erzeugt und jedem Lauf per `--file` ins tmpfs gelegt (spart etwa 5 s je Diagramm).
@@ -503,7 +504,7 @@ Im Scratchpad sammelt der Nutzer Material aus sehr unterschiedlichen Quellen. Da
 *Abnahme:* Aus einer Antwort, einem PDF-Abschnitt, einer Webquelle, einer Notiz und einem Bild entsteht ein zweiseitiges Dokument. Jede Sachaussage trägt einen Kurzbeleg im Stil des Kontos, jedes wörtliche Zitat ist geprüft, eine absichtlich unbelegte Aussage ist markiert. Export als DOCX und PDF mit Literaturverzeichnis, jede Quelle einmal. Ein nur lesend berechtigtes Projektmitglied sieht das Dokument, kann aber nichts ändern.
 
 ### M14 – Runner
-*Abhängig von: M4a (MCP-Schleife, Einstufung, Rückfrage, MCP-Freigabe je Modell), M6-06 bis M6-10 (Kontenrahmen und Budgets), M12-01 (nginx mit TLS). Frage 8a–8f. Neu eingeplant am 2026-10-10 (Nutzerwunsch).*
+*Abhängig von: M4a (MCP-Schleife, Einstufung, Rückfrage, MCP-Freigabe je Modell), M6-06 bis M6-10 (Kontenrahmen und Budgets), M12-01 (nginx mit TLS), M15-11 (Muster LISTEN/NOTIFY aus `node/sse.py`). Frage 8a ist entschieden (LOP A14: eigener ASGI-Dienst mit WebSocket, kein Long-Polling). Offen sind 8b–8f (Abschnitt 6) und 8g–8o (unten). Neu eingeplant am 2026-10-10 (Nutzerwunsch), Umsetzungsplan ausgearbeitet am 2026-10-12.*
 
 Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder Laptop im Heimnetz), nicht auf dem Server. Er gibt den Modellen eine Arbeitsumgebung mit Shell, Dateien, git und Python. Der MultiGPT-Webserver verwaltet ihn. Plan 8i beschreibt den Ablauf.
 
@@ -511,7 +512,7 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
 
 - **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.
 - **Kopplung per Token:** Das Konto erzeugt im Web einen Kopplungs-Token. Er wird einmal angezeigt und nur als Hash gespeichert (wie Passwörter, nie im Klartext in DB oder Logs). Jeder Token gehört zu genau einem Konto, ist widerrufbar und hat ein Ablaufdatum. Ein Widerruf trennt eine laufende Verbindung sofort.
-- **Verbindung nur ausgehend:** Der Runner baut eine WebSocket-Verbindung über TLS zu nginx auf (`wss://<host>/runner/`). Am Client gibt es keine offenen Ports. Bricht die Verbindung ab, verbindet er sich mit Backoff neu. Der Server spricht den Runner nur über diesen Rückkanal an.
+- **Verbindung nur ausgehend:** Der Runner baut eine WebSocket-Verbindung über TLS zu nginx auf (`wss://<host>/runner/ws`). Am Client gibt es keine offenen Ports. Bricht die Verbindung ab, verbindet er sich mit Backoff neu. Der Server spricht den Runner nur über diesen Rückkanal an.
 - **Runner als MCP-Server:** Für MultiGPT ist ein gekoppelter Runner ein MCP-Server mit dem neuen Transport `runner` (neben `stdio` und HTTP). Die MCP-Nachrichten laufen über den Rückkanal. Damit gelten Einstufung der Werkzeuge, Rückfrage im Chat, Rollenfreigabe und MCP-Freigabe je Modell wie bei jedem anderen MCP-Server.
 - **Werkzeuge** (zuerst nur diese, kein Coding-Agent im Container): Shell-Befehl, Dateien lesen, schreiben und auflisten, git und Python. Alles arbeitet nur in `/workspace` der Sitzung. Schreibende Werkzeuge und die Shell sind standardmäßig bestätigungspflichtig.
 - **Sitzung = eigenes Volume:** Jede Sitzung lebt in einem eigenen Volume, das als `/workspace` eingebunden wird. Container sind wegwerfbar, das Volume bleibt. Volumes werden im Web verwaltet: anlegen, Größe festlegen, sichern, löschen.
@@ -519,18 +520,221 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
 - **Rolle bestimmt die Grenzen:** Recht „Runner nutzen“, Höchstwerte für CPU und RAM, Netz an/aus. Netz ist standardmäßig aus (Container ohne Netz). Die Grenzen setzt der Server, der Runner übernimmt sie beim Start als Container-Optionen und meldet sie zurück; der Server prüft die Rückmeldung.
 - **Datenschutz:** Inhalte von `/workspace` bleiben auf dem Client. Zum Server gehen nur Werkzeugaufrufe und -ergebnisse (wie bei jedem MCP-Werkzeug), Status und Zeitverbrauch. Ergebnisse aus dem Runner gelten wie Webtext als nicht vertrauenswürdiges Material.
 
-- **M14-01** **Datenmodell** in einer neuen App `multigpt.runner`: `RunnerToken` (Konto, Name, Hash, erstellt, läuft ab, widerrufen, zuletzt genutzt), `Runner` (Token, Engine `podman`/`docker`, Version, Status, zuletzt gesehen), `RunnerVolume` (Konto, Name, Größe, Status, letzte Sicherung), `RunnerSession` (Volume, Runner, Start, Ende, Minuten, Grenzen), `RunnerAudit` (Sitzung, Zeit, Werkzeug, Befehl bzw. Argumente gekürzt, Exit-Code, Dauer, ausgelöst von Nachricht). Aktionen in `can()`: `USE_RUNNER`, `MANAGE_RUNNER`. Rollenfelder `can_use_runner`, `runner_max_cpus`, `runner_max_memory_mb`, `runner_network` (Standard aus).
-- **M14-02** **Kopplung:** Seite „Runner“ im Konto: Token erzeugen (einmalige Anzeige mit Startbefehl für Podman bzw. Docker), Liste mit Ablauf, „Widerrufen“. Speicherung nur als Hash (z. B. SHA-256 eines zufälligen 256-Bit-Tokens), Vergleich in konstanter Zeit, Ablauf Standard 90 Tage. Tests: falscher, abgelaufener und widerrufener Token werden abgewiesen, ein Widerruf trennt die Verbindung.
-- **M14-03** **Rückkanal auf dem Server:** WebSocket-Endpunkt `/runner/` hinter nginx (Upgrade-Header, lange Timeouts). gunicorn mit `gthread` kann kein WebSocket; vorher entscheiden (Frage 8a), ob ein eigener ASGI-Dienst (`multi-gpt-runner.service`) den Rückkanal hält oder ob es Long-Polling über HTTPS wird. Authentifizierung mit dem Token im ersten Frame, nicht in der URL (keine Tokens in nginx-Logs). Heartbeat, Status „online/offline“ am `Runner`.
-  - **Erkenntnis aus M15 (2026-10-10) zu Frage 8a:** Der MCP-*Server* von MultiGPT (`/mcp/`) braucht kein ASGI: MCP 2026-07-28 ist über Streamable HTTP zustandslos (je Anfrage ein POST, Antwort als JSON oder anfragebezogener SSE-Stream), ältere Versionen gehen ohne Sitzungs-ID ebenso; das läuft unter gunicorn `gthread` mit `StreamingHttpResponse` wie die Chat-Streams. Beim Runner ist die Richtung aber umgekehrt: MultiGPT ist dort Client und muss einen Server *hinter NAT* aufrufen, also Anfragen über eine vom Runner gehaltene Verbindung schieben. Das bleibt eine lang offene Verbindung je Runner: Als Long-Polling unter `gthread` belegte jeder wartende Runner dauerhaft einen der 16 Threads (2 × 8) und konkurrierte mit den Chat-Streams. Empfehlung deshalb unverändert: eigener ASGI-Dienst für `/runner/` (WebSocket), der Rest bleibt WSGI. Als Rahmen für die Nachrichten bietet sich der zustandslose 2026-07-28-Umschlag an (keine Sitzung, Wiederaufnahme nach Abbruch trivial).
-- **M14-04** **Runner-Agent** (Client): kleines Programm im eigenen Image, startet mit Podman rootless oder Docker, verbindet sich ausgehend, startet und stoppt Arbeitscontainer, bindet das Volume der Sitzung als `/workspace` ein, setzt CPU-, RAM- und Netzgrenzen (`--cpus`, `--memory`, `--network=none`), `--read-only` für das Wurzeldateisystem, keine zusätzlichen Capabilities, kein privilegierter Modus, kein Docker-Socket im Container. Anleitung für Linux, Windows (WSL2) und macOS im Wiki.
-- **M14-05** **MCP-Transport `runner`:** `McpServer.transport = "runner"` mit Verweis auf das Konto; der MCP-Client spricht über den Rückkanal. Ein Runner-Server ist nur für sein Konto sichtbar. Werkzeuge `shell`, `read_file`, `write_file`, `list_files`, `git`, `python`, alle auf `/workspace` beschränkt (Pfade auflösen, keine Symlinks hinaus). Einstufung: lesende Dateiwerkzeuge ohne Rückfrage, alle anderen mit Rückfrage; Verwalter kann umstufen. Zeitlimit und Ausgabegrenze je Aufruf.
-- **M14-06** **Volumes und Sitzungen:** im Web anlegen (Name, Größe), einer Sitzung zuordnen, sichern (Archiv auf dem Client bzw. zum Herunterladen), löschen (mit Bestätigung). Die Größe setzt der Runner als Quota bzw. prüft sie regelmäßig. Container werden nach jeder Sitzung bzw. bei „Zurücksetzen“ verworfen, das Volume bleibt.
-- **M14-07** **Zeitkontingent:** Kontoart „Laufzeit“ in `billing` (`BillingAccount.kind = "runtime"`), Kontingent in Container-Minuten je Rolle bzw. Person und Monat, Buchung je angefangene Minute aus den Heartbeats der Sitzung (`UsageEntry` mit Einheit `runtime:minute`). Hinweis ab 80 %, bei 100 % sendet der Server „Stopp“, der Runner beendet den Container, das Volume bleibt. Ohne Rückmeldung des Runners zählt der Server weiter bis zum Verbindungsende. „Mein Verbrauch“ zeigt die Minuten.
-- **M14-08** **Verwaltung im Web:** Status des Runners und der Sitzung, Starten, Stoppen, Zurücksetzen (Container neu, Volume bleibt), Logs des Containers (letzte Zeilen, gekürzt), Audit-Log aller Befehle je Sitzung. Verwalter sehen im Admin Runner, Status und Minuten als Metadaten, keine Inhalte aus `/workspace` und keine Befehlsausgaben fremder Konten.
-- **M14-09** **Sicherheit, Datenschutz, Doku:** Bedrohungsmodell (Prompt-Injection führt Befehle aus, Ausbruch aus dem Container, gestohlener Token, Missbrauch des Rückkanals) mit Gegenmaßnahmen in Abschnitt 5. Wiki-Seite „Runner“, Website (Funktionen, Roadmap).
-  
-  *Tests:* Token-Hash und Ablauf, Widerruf trennt sofort, fremdes Konto sieht den Runner nicht, Pfad außerhalb `/workspace` wird abgelehnt, Netz aus ist wirksam, Stopp bei 100 % mit erhaltenem Volume, Rückfrage vor `shell`, MCP-Freigabe „kein“ verhindert das Angebot.
+**Architektur (Plan vom 2026-10-12):**
+
+```
+Browser-Rechner (Heimnetz)                    Server (Paket multi-gpt)
+┌──────────────────────────────┐  wss, nur   ┌───────┐ /runner/ws ┌────────────────────────────┐
+│ Runner-Agent (Container)     │  ausgehend  │ nginx │──────────>│ multi-gpt-runner.service   │
+│  └ podman.sock (rootless)    │────────────>│  TLS  │           │ uvicorn + Starlette (ASGI) │
+│ Arbeitscontainer Sitzung 1   │             └───┬───┘           └─────────────┬──────────────┘
+│  /workspace = Volume A       │                 │ /                           │ LISTEN/NOTIFY
+│ Arbeitscontainer Sitzung 2   │                 v                             v
+│  /workspace = Volume B       │       multi-gpt.service (gunicorn) <──> PostgreSQL <──> multi-gpt-worker
+└──────────────────────────────┘
+```
+
+*Runner-Dienst (ASGI):*
+
+- **Bibliotheken:** Starlette + uvicorn, kein Django Channels. Starlette 1.7.0 und uvicorn 0.54.0 sind schon als Abhängigkeiten von `mcp` 2.3.0 im venv; neu ist nur `websockets` (PyPI 17.2), weil uvicorn ohne `websockets` bzw. `wsproto` keine WebSocket-Upgrades annimmt und der Agent dieselbe Bibliothek als Client nutzt. Geprüft am 2026-10-12 mit `pip index versions` und `apt-cache policy`. Channels (PyPI 4.3.2, Debian 13 `python3-django-channels` 4.2.2) mit daphne (4.2.3) verworfen: Für mehrere Prozesse braucht Channels einen Channel-Layer (Redis oder ein PostgreSQL-Layer eines Dritten), und Routing allein bringt gegenüber Starlette nichts. Die Debian-Pakete (`python3-uvicorn` 0.32.0, `python3-starlette` 0.46.1, `python3-websockets` 15.0.1) zählen nicht, weil dh-virtualenv aus PyPI installiert.
+- **Module** in der neuen App `multigpt.runner`:
+  - `asgi.py`: Starlette-App mit `WebSocketRoute("/runner/ws")`, ruft beim Import `django.setup()` auf.
+  - `gateway.py`: Verbindungen dieses Prozesses (Runner-ID → Verbindung), Abläufe für Hello, Heartbeat und Weiterleitung.
+  - `store.py`: alle ORM-Zugriffe, aus dem Loop nur über `asgiref.sync.sync_to_async` (kommt mit Django).
+  - `listener.py`: eine `psycopg.AsyncConnection` (autocommit) mit `LISTEN` für alle Kanäle des Prozesses.
+  - `protocol.py`: Rahmen und ihre Prüfung, ohne Django-Importe, damit der Agent dieselbe Datei nutzt.
+- **Start:** Verwaltungsbefehl `runner_gateway` (wie `run_worker`) ruft `uvicorn.run()` mit diesen Einstellungen auf: Adresse aus `MULTI_GPT_RUNNER_BIND` (Standard `127.0.0.1:8001`), `workers=1`, `ws="websockets"`, `ws_max_size` 8 MB, `ws_ping_interval`/`ws_ping_timeout` 20 s, `proxy_headers` mit `forwarded_allow_ips` 127.0.0.1 und ::1, `limit_concurrency` 200, `server_header=False`. Ein Prozess genügt für eine Familie. Weil die Zustellung über PostgreSQL läuft, gingen auch mehrere.
+- **Anmeldung:** Der erste Rahmen muss innerhalb von 10 s `hello` sein: Token, Protokoll- und Agent-Version, Engine (`podman`/`docker`, Version, rootless ja/nein), Rechnername, vorhandene Volumes und Container mit MultiGPT-Labels. Der Token steht nie in der URL, also auch nicht in nginx-Logs.
+  - Prüfung wie bei `ApiKey`: Präfix `mgrt_`, SHA-256, `hmac.compare_digest`, Ablauf, Widerruf, aktives Konto. Danach `can(user, Action.USE_RUNNER)`.
+  - Fehler schließen die Verbindung mit 4401 (Token) bzw. 4403 (Recht); bei diesen Codes verbindet sich der Agent nicht neu. Neu verbunden wird mit Backoff nur bei 1006, 1011, 1012 und 1013.
+  - Fehlgeschlagene Anmeldungen werden je IP über `RunnerAudit` gedrosselt, wie `API_FAILURE_LIMIT`.
+  - Verbindungen mit `Origin`-Header werden abgewiesen: Browser haben dort nichts zu suchen, der Agent sendet keinen.
+  - Je Token gibt es eine Verbindung. Eine neue ersetzt die alte, die alte wird mit 4409 geschlossen.
+- **Heartbeat:** Der Agent sendet alle 30 s den Zustand der Sitzungen und die belegte Größe der Volumes. Der Dienst setzt `Runner.last_seen`, prüft Token und Rolle frisch aus der DB (wie das SSE-Keepalive), bucht Laufzeit und prüft das Kontingent. Tote TCP-Verbindungen erkennt der WebSocket-Ping von uvicorn. Endet die Verbindung, wird der Runner `offline` und seine Sitzungen `unknown`. Beim Wiederverbinden gleicht der Server den gemeldeten Ist-Zustand ab.
+- **Rahmen** (JSON-Textrahmen, Schema in `protocol.py`, unbekannte Typen und Felder werden abgewiesen):
+  - Agent → Server: `hello`, `heartbeat`, `mcp` {pipe, session, message}, `session_state` (gestartet/gestoppt, tatsächliche Grenzen aus `inspect`), `volume_state`, `log` (Antwort auf eine Log-Anfrage, gekürzt), `error`.
+  - Server → Agent: `welcome` (Runner-ID, Intervalle, Image-Liste), `session_start` {session, volume, image, cpus, memory_mb, network}, `session_stop`, `session_reset`, `volume_create`, `volume_delete`, `volume_backup`, `log_request`, `mcp`, `close` {Grund: widerrufen, Kontingent, ersetzt}.
+
+*Kommunikation Web/Worker ↔ Runner-Dienst (PostgreSQL LISTEN/NOTIFY wie M15-11):*
+
+- **Tabelle `RunnerMessage`:** ID, Runner, Richtung (`to_runner`/`to_server`), `pipe` (UUID der MCP-Verbindung), Antwortkanal, Art, Nutzlast (JSON), erstellt. Der Absender schreibt die Zeile und ruft in derselben Transaktion `pg_notify(kanal, id)` auf; die Nutzlast liegt wegen der Grenze von knapp 8000 Byte immer in der Tabelle. Der Empfänger holt sie mit `DELETE … RETURNING` in ID-Reihenfolge.
+- **Kanäle:**
+  - `mgpt_runner_<runner_id>`: an den Runner. Der Runner-Dienst hört darauf, solange der Runner verbunden ist.
+  - `mgpt_runner_reply_<prozess-uuid>`: Antworten. Je gunicorn- bzw. Worker-Prozess gibt es eine LISTEN-Verbindung im MCP-Loop-Thread (`chat/mcp/bridge.py`). Sie wird erst beim ersten Runner-Aufruf geöffnet und verteilt nach `pipe`.
+  - `mgpt_runner_ctl`: Widerruf, Rechteänderung, Stopp wegen Kontingent. Ausgelöst per Signal bzw. Aktion; der Runner-Dienst schließt bzw. stoppt sofort.
+  - Geht eine Benachrichtigung verloren, holt der Heartbeat die Warteschlange ab: höchstens 30 s Verzug. Verwaiste Zeilen (älter als 10 min) löscht der Worker.
+- **Ablauf eines Werkzeugaufrufs:**
+  1. Die Chat-Schleife in gunicorn ruft den MCP-Client mit dem Transport `runner` auf.
+  2. Der JSON-RPC-Aufruf landet als `RunnerMessage(to_runner)` in der Tabelle, dazu ein NOTIFY.
+  3. Der Runner-Dienst schickt ihn als Rahmen `mcp` über den WebSocket an den Agent.
+  4. Die Antwort des Agents schreibt der Runner-Dienst als `RunnerMessage(to_server)`, mit NOTIFY auf den Antwortkanal.
+  5. Der Transport gibt die Antwort an den MCP-Client zurück.
+
+  Ist der Runner offline, antwortet der Runner-Dienst sofort mit einem JSON-RPC-Fehler „Runner nicht verbunden“; das Web prüft `Runner.status` schon vorher. Zeitlimit ist `McpServer.timeout`.
+- **Verworfen:** internes HTTP vom Web zum Runner-Dienst (Streamable HTTP über 127.0.0.1). Das ginge nur mit genau einem Prozess, belegte gunicorn-Threads für die ganze Dauer des Aufrufs und bräuchte für Widerruf und Abgleich trotzdem einen zweiten Kanal. LISTEN/NOTIFY ist in M15-11 erprobt und hängt nicht an der Zahl der Prozesse.
+- **DB-Verbindungen:** Der Runner-Dienst braucht eine LISTEN-Verbindung und eine für den ORM-Thread, jeder gunicorn- bzw. Worker-Prozess, der einen Runner anspricht, eine weitere.
+
+*MCP über den Rückkanal:*
+
+- **Server-Seite:** `McpServer.transport = "runner"` mit neuem Feld `owner` (Konto). Bei der ersten Kopplung wird je Konto ein Eintrag „Runner“ angelegt. `can(USE_MCP_SERVER)` lässt nur den Besitzer zu, und die CheckConstraint auf `transport` wird erweitert.
+- **Transport:** `chat/mcp/client.py` bekommt `_runner_transport(config)`, einen asynchronen Kontextmanager nach dem `Transport`-Protokoll des SDK (`mcp/client/_transport.py`: liefert `(read_stream, write_stream)` mit `SessionMessage`). Gebaut wird er auf anyio-Memory-Streams und der `RunnerMessage`-Brücke.
+  - `ServerConfig` erhält `runner_session`; `_connections` ist dann nach `(pk, runner_session)` statt nach `pk` geschlüsselt. Jede Sitzung hat so eine eigene MCP-Verbindung (pipe).
+  - Welche Sitzung gilt, ergibt sich aus dem Chat (Frage 8j).
+- **Agent-Seite:** je pipe eine Sitzung des Low-Level-`Server` aus dem SDK über Memory-Streams. Die Protokollversion handeln SDK-Client und SDK-Server aus. Einstufung, Rückfrage, Rollen- und Modellfreigabe greifen ohne Änderung, weil der Runner für die Chat-Schleife ein normaler MCP-Server ist.
+
+*nginx:*
+
+- In der Site `deploy/nginx/multi-gpt` (conffile) kommt dieser Block dazu:
+  ```
+  location = /runner/ws {
+      proxy_pass http://multi_gpt_runner;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_buffering off;
+      proxy_read_timeout 120s;
+      proxy_send_timeout 120s;
+  }
+  ```
+- **Fallstricke:**
+  - Ein `proxy_set_header` in einer `location` ersetzt alle geerbten Einträge, auch `Connection ""` auf Server-Ebene. Host und `X-Forwarded-*` müssen deshalb dort wiederholt werden.
+  - `Connection "upgrade"` steht fest statt über `map $http_upgrade $connection_upgrade`: Andere Sites definieren diese Variable oft selbst, im http-Kontext gäbe das einen Konflikt.
+  - 120 s Timeout genügen, weil Ping (20 s) und Heartbeat (30 s) die Verbindung ständig bedienen.
+- **Generierung im postinst:** `upstream.conf` bekommt `upstream multi_gpt_runner { server 127.0.0.1:<port>; }`, den Port aus `MULTI_GPT_RUNNER_BIND`, gelesen wie der gunicorn-Port. Kein `keepalive`, weil die Verbindungen ohnehin lange leben.
+
+*Paketierung:*
+
+- **`pyproject.toml`:** neu `websockets>=15`; `uvicorn>=0.30` und `starlette>=0.46` werden ausdrücklich eingetragen, weil der Code sie direkt nutzt.
+- **Unit `debian/multi-gpt.multi-gpt-runner.service`:**
+  - `Type=simple`, weil uvicorn kein sd_notify kann; `User`/`Group` `multi-gpt`, `EnvironmentFile=/etc/multi-gpt/.env`.
+  - `ExecStart=/usr/share/python/multi-gpt/bin/python -P -m django runner_gateway`.
+  - `KillMode=mixed`, `TimeoutStopSec=15` (die Agents verbinden sich neu), `Restart=on-failure`.
+  - Härtung wie beim Worker, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`.
+- **`debian/rules`:** `dh_installsystemd --name=multi-gpt-runner`. Beim Upgrade wird der Dienst wie die beiden anderen nach der Migration neu gestartet.
+- **postinst:** `upstream.conf` wie oben; die erzeugte `.env` bekommt `MULTI_GPT_RUNNER_BIND` auskommentiert. postrm bleibt unverändert.
+- **Docker:** `compose.yaml` bekommt einen zweiten Dienst mit demselben Image und dem Befehl `runner_gateway`.
+- **Prüfung:** `make test-packaging` prüft Upstream, Location und `nginx -t`. `functional.sh` prüft den Handshake durch nginx (101) und Close 4401 bei falschem Token, mit dem `websockets`-Client aus dem venv.
+- **Entwicklung:** `make run-runner`; der Agent verbindet sich dann direkt auf `ws://127.0.0.1:8001/runner/ws`, mit `MGPT_INSECURE_DEV=1`.
+
+*Runner-Seite (Browser-Rechner):*
+
+- **Agent:** Python-Paket im Verzeichnis `runner/` (Plan 5), Abhängigkeiten `websockets`, `mcp` (nur der Low-Level-Server) und `httpx`. Image `ghcr.io/beerlesklopfer/multigpt-runner:<version>`, gebaut im CI beim Tag. Der Agent führt selbst keine Modellbefehle aus, er steuert nur die Arbeitscontainer.
+- **Engine-Schnittstelle:** `Engine` mit create/remove/export volume, start/stop session, exec, inspect, list_labeled. Umgesetzt wird sie mit einem eigenen kleinen Client für die Docker-kompatible REST-API über den Unix-Socket (`httpx` mit `uds=`); dieselbe API bieten Podman und Docker. Geprüft und verworfen wurden `podman` (PyPI 5.8.0) und `docker` (PyPI 7.2.0): zwei SDKs für eine Handvoll Aufrufe. Für die Tests gibt es `FakeEngine`.
+- **Start unter Podman rootless:**
+  - Quadlet-Datei `~/.config/containers/systemd/multigpt-runner.container` mit `Image=…`, `Volume=%t/podman/podman.sock:/run/podman.sock`, `Secret=mgpt_runner_token,type=mount,target=/run/secrets/token`, `Environment=MGPT_URL=https://<host>`, gegebenenfalls `MGPT_CA_SHA256=<fingerprint>` (Frage 8i), `Restart=always`, `WantedBy=default.target`.
+  - Vorher `systemctl --user enable --now podman.socket`, `loginctl enable-linger` (vgl. LOP B6) und `podman secret create mgpt_runner_token -`.
+  - Der Token liegt als Secret-Datei vor, nicht in einer Umgebungsvariable, die `inspect` und `ps` zeigen würden.
+  - Die Seite „Runner“ zeigt beides fertig ausgefüllt an, nur der Token kommt aus dem Kopierknopf.
+  - Unter Docker wäre es `docker run` mit `/var/run/docker.sock`. Das ist root-gleich, daher Frage 8h.
+- **Arbeitscontainer:**
+  - Der Agent baut die Optionen selbst aus einem festen Schema; der Server liefert nur Werte, nie Kommandozeilenargumente: `NetworkMode=none` (bzw. Standardnetz, wenn die Rolle es erlaubt), `NanoCpus`, `Memory` und `MemorySwap` gleich, `PidsLimit` 256, `ReadonlyRootfs`, Tmpfs `/tmp` 256 MB, `CapDrop=ALL`, `no-new-privileges`, `Init`, Nutzer 1000:1000.
+  - Eingebunden wird nur das Volume `mgpt-vol-<uuid>` als `/workspace`: keine Host-Pfade, kein Socket.
+  - Images nur aus der Liste des Servers, mit Digest, und zusätzlich der lokalen Positivliste des Agents.
+  - Labels `multigpt.session` und `multigpt.volume`, Befehl `sleep infinity`.
+  - Nach dem Start meldet der Agent die tatsächlichen Werte aus `inspect`. Der Server vergleicht sie; bei Abweichung folgen Stopp und Audit-Eintrag.
+- **Werkzeuge per `exec`:**
+  - `shell` mit Zeitlimit und Ausgabe bis 64 KB.
+  - `read_file`, `write_file`, `list_files` über das Hilfsprogramm `mgpt-fs` im Arbeits-Image: Pfad auflösen, muss unter `/workspace` liegen, `O_NOFOLLOW`.
+  - `git` und `python` als Hüllen um `shell`.
+  - Ein Fehler hier reicht höchstens bis in den Container, weil dort keine Host-Pfade eingebunden sind.
+- **Volumes:** angelegt mit Label. Die Größe prüft der Agent alle 5 min mit `du` im laufenden Container; über der Grenze lehnt er schreibende Werkzeuge ab und gibt einen Hinweis. Harte Quotas (`--opt size=`) bräuchten XFS-Projektquotas und kommen nicht in v1.
+- **Sicherung:** `volume export` als tar in ein Sicherungsverzeichnis des Agents (Quadlet `Volume=%h/MultiGPT-Sicherungen:/backups`, Frage 8b).
+- **Sicherheit, Zusammenfassung:**
+  - Am Client gibt es keine eingehenden Ports.
+  - TLS wird immer geprüft, bei snakeoil mit festgehaltenem Fingerprint.
+  - Der Token liegt nur als Secret vor. Nach 4401 bzw. 4403 verbindet sich der Agent nicht neu.
+  - Ein Widerruf trennt über `mgpt_runner_ctl` sofort.
+  - Rechte werden bei jedem Heartbeat und jedem Werkzeugaufruf frisch geprüft.
+  - Rahmen haben ein festes Schema und eine Größengrenze.
+  - Der Agent prüft jeden Befehl des Servers. Auch ein kompromittierter Server kann deshalb nur das erlaubte Image mit dem Volume des Kontos starten; das Restrisiko sind Befehle im Container, mit Netz, falls die Rolle es erlaubt.
+
+*Rechte je Rolle* (Startwerte, Verwalter änderbar; `Action.USE_RUNNER` in `_ROLE_FLAGS`, Verwaltung über `Action.ADMIN`):
+
+| Feld | Verwalter | Erwachsene | Jugendliche | Gäste |
+|---|---|---|---|---|
+| `can_use_runner` | an | an | aus (8e) | aus (8e) |
+| `runner_max_cpus` | 4 | 2 | 1 | 1 |
+| `runner_max_memory_mb` | 4096 | 2048 | 1024 | 1024 |
+| `runner_network` | aus | aus | aus | aus |
+| `runner_max_volumes` | 10 | 5 | 2 | 1 |
+| `runner_max_volume_gb` | 20 | 10 | 2 | 1 |
+
+*Zeitkontingent im Kontenrahmen (`multigpt.billing`):*
+
+- **Kontoart:** `BillingAccount.Kind.RUNTIME = "runtime"` („Laufzeit (Container-Minuten)“), ohne Währung; die vorhandene CheckConstraint passt. Eine Datenmigration legt das Konto „Runner-Laufzeit“ an. Es gibt genau ein Laufzeitkonto (Prüfung in `clean`).
+- **Budget:** `AccountBudget.monthly_minutes` (nur Laufzeitkonten, `clean` erweitert), Person vor Rolle, leer = unbegrenzt (8f). `UNITS` bekommt `runtime_minute` („Container-Laufzeit, je Minute“).
+- **Buchung:** `UsageEntry.Kind.RUNTIME` mit `units={"runtime_minute": n}`. Je Sitzung und Kalendermonat gibt es eine Buchung, die fortgeschrieben wird (`RunnerSession.usage_entry`). So entsteht keine Zeile je Minute.
+- **Zählung:** Maßgeblich ist die Serverzeit. Jeder Heartbeat mit Sitzung „läuft“ zählt die Zeit seit dem letzten gezählten Heartbeat, höchstens 2 × Intervall, damit Ausfälle nicht mitzählen. Am Sitzungsende wird auf die angefangene Minute aufgerundet.
+- **Durchsetzung:** `budgets.snapshot` kennt die Einheit „min“. Ab 80 % erscheint ein Hinweis im Chat und auf der Seite „Runner“. Bei 100 % gehen `session_stop` an alle Sitzungen des Kontos und neue Starts werden abgelehnt. Kommt nach 60 s keine Bestätigung, trennt der Server die Verbindung; gezählt wird bis zur Bestätigung bzw. zum Verbindungsende. „Mein Verbrauch“ und die Familienübersicht zeigen die Minuten.
+
+**Arbeitspakete** (Tests ohne echten Runner: `FakeRunner` = Starlette-`TestClient.websocket_connect` gegen die ASGI-App mit einem MCP-Low-Level-Server im Prozess; `FakeEngine` im Agent; LISTEN/NOTIFY-Tests mit `transaction=True` und zweiter Verbindung wie `tests/test_node_sse.py`):
+
+- **M14-01** **Datenmodell und Rechte** (keine Vorbedingung in M14) in einer neuen App `multigpt.runner`:
+  - `RunnerToken`: Konto, Name, Präfix, Hash, erstellt, läuft ab, widerrufen, zuletzt genutzt.
+  - `Runner`: Token, Name, Engine, Version, rootless, Status, zuletzt gesehen.
+  - `RunnerVolume`: Konto, Runner, Name, UUID, Größe, belegt, Status, letzte Sicherung.
+  - `RunnerSession`: Volume, Runner, Start, Ende, Minuten, Soll- und Ist-Grenzen, `usage_entry`.
+  - `RunnerMessage`, wie oben beschrieben.
+  - `RunnerAudit`: Sitzung, Zeit, Werkzeug, gekürzte Argumente, Exit-Code, Dauer, Nachricht, IP.
+  - Rollenfelder wie in der Tabelle, `Action.USE_RUNNER`, Datenmigration der Startrollen.
+
+  *Tests:* `can()` je Rolle, Besitzerprüfung, Migrationen.
+- **M14-02** **Kopplung im Web** (nach 01): Seite „Runner“ mit Token erzeugen (Präfix `mgrt_`, 256 Bit, SHA-256, Ablauf Standard 90 Tage), einmaliger Anzeige mit fertiger Quadlet-Datei und Befehlen, Liste, „Widerrufen“; dazu `mgpt-ctl runner token create|list|revoke`. Ein Widerruf sendet NOTIFY auf `mgpt_runner_ctl`. *Tests:* Hash, Ablauf, Widerruf, einmalige Anzeige mit `Cache-Control: no-store`.
+- **M14-03** **Rahmenprotokoll** (nach 01): `multigpt/runner/protocol.py` mit Schema, Prüfung, Größengrenzen und Close-Codes, ohne Django-Importe; die Datei wird in das Agent-Paket kopiert, ein Test prüft die Gleichheit. *Tests:* gültige und ungültige Rahmen, unbekannte Felder.
+- **M14-04** **Runner-Dienst** (nach 02, 03): `asgi.py`, `gateway.py`, `store.py`, Verwaltungsbefehl `runner_gateway` mit Hello, Heartbeat, Online-Status, Ersetzen alter Verbindungen, Origin-Sperre, Drosselung und Widerruf über `mgpt_runner_ctl`. *Tests mit FakeRunner:* falscher, abgelaufener bzw. widerrufener Token → 4401, Rolle ohne Recht → 4403, Hello-Timeout, Widerruf trennt innerhalb 1 s, Heartbeat setzt `last_seen`.
+  - **Erkenntnis aus M15 (2026-10-10) zu Frage 8a (seit A14 entschieden):** Der MCP-*Server* von MultiGPT (`/mcp/`) braucht kein ASGI: MCP 2026-07-28 ist über Streamable HTTP zustandslos (je Anfrage ein POST, Antwort als JSON oder anfragebezogener SSE-Stream), ältere Versionen gehen ohne Sitzungs-ID ebenso; das läuft unter gunicorn `gthread` mit `StreamingHttpResponse` wie die Chat-Streams. Beim Runner ist die Richtung aber umgekehrt: MultiGPT ist dort Client und muss einen Server *hinter NAT* aufrufen, also Anfragen über eine vom Runner gehaltene Verbindung schieben. Das bleibt eine lang offene Verbindung je Runner: Als Long-Polling unter `gthread` belegte jeder wartende Runner dauerhaft einen der 16 Threads (2 × 8) und konkurrierte mit den Chat-Streams. Empfehlung deshalb unverändert: eigener ASGI-Dienst für `/runner/` (WebSocket), der Rest bleibt WSGI. Als Rahmen für die Nachrichten bietet sich der zustandslose 2026-07-28-Umschlag an (keine Sitzung, Wiederaufnahme nach Abbruch trivial).
+- **M14-05** **Zustellung über LISTEN/NOTIFY** (nach 04): `RunnerMessage` mit den Kanälen `mgpt_runner_<id>`, `mgpt_runner_reply_<prozess>` und `mgpt_runner_ctl`, `listener.py` im Runner-Dienst, Antwort-Listener im MCP-Loop von gunicorn bzw. Worker, Aufräumen im Worker. *Tests:* Zustellung über zweite Verbindung und zweiten Prozess, verlorene Benachrichtigung wird beim Heartbeat nachgeholt, Runner offline → sofortiger Fehler.
+- **M14-06** **MCP-Transport `runner`** (nach 05): `McpServer.transport = "runner"` mit `owner`, `_runner_transport`, `ServerConfig.runner_session`, Verbindungen je `(pk, sitzung)`. Werkzeugliste `shell`, `read_file`, `write_file`, `list_files`, `git`, `python` mit Einstufung (lesende Dateiwerkzeuge ohne Rückfrage, sonst mit), Zeitlimit und Ausgabegrenze. *Tests:* FakeRunner beantwortet `tools/list`/`tools/call`; fremdes Konto sieht den Server nicht; MCP-Freigabe „kein“ verhindert das Angebot; Rückfrage vor `shell`.
+- **M14-07** **Paketierung und nginx** (nach 04, parallel zu 05/06):
+  - `pyproject.toml`, Unit, `debian/rules`.
+  - postinst: `upstream.conf` und `.env`-Vorlage; Location im conffile.
+  - `compose.yaml`, `make run-runner`.
+  - `make test-packaging` und `functional.sh` (Handshake 101 durch nginx, 4401).
+  - *Tests:* Paketprüfung mit Stubs wie bisher.
+- **M14-08** **Runner-Agent, Grundgerüst** (nach 03, parallel zu 04–07): Paket `runner/` mit Verbindung, Backoff (kein Neuversuch nach 4401/4403), TLS mit Fingerprint-Pinning, Token aus Secret-Datei, `Engine` mit `FakeEngine` und REST-Engine über den Unix-Socket, Abgleich beim Wiederverbinden. *Tests:* Agent gegen die ASGI-App im Prozess (uvicorn auf Zufallsport), FakeEngine, Backoff mit gefälschter Uhr.
+- **M14-09** **Agent: Arbeitscontainer und Werkzeuge** (nach 06, 08):
+  - Optionen aus dem festen Schema, Positivliste der Images, Rückmeldung der Ist-Grenzen.
+  - MCP-Low-Level-Server je pipe mit Werkzeugen über `exec` und `mgpt-fs`, Zeitlimit und Ausgabegrenze.
+  - *Tests:* Serverbefehle mit fremdem Image, Host-Pfad oder unbekannter Option werden abgewiesen; Pfad außerhalb `/workspace` und Symlink hinaus werden abgelehnt (`mgpt-fs` direkt getestet); abweichende Ist-Grenzen führen zum Stopp.
+- **M14-10** **Volumes und Sitzungen** (nach 09):
+  - Im Web: Volumes anlegen (Name, Größe, Höchstzahl je Rolle), dem Chat zuordnen (8j), sichern (8b), löschen mit Bestätigung.
+  - Sitzungen starten, stoppen und zurücksetzen (Container neu, Volume bleibt); Leerlauf-Stopp (8k); Größenprüfung.
+  - *Tests:* Abläufe mit FakeEngine; Volume überlebt Stopp und Reset; über der Größe wird Schreiben abgelehnt.
+- **M14-11** **Zeitkontingent „Laufzeit“** (nach 01, 04; unabhängig von 08–10 testbar):
+  - In `billing`: Kontoart, `monthly_minutes`, Einheit `runtime_minute`, Buchung je Sitzung und Monat.
+  - Hinweis ab 80 %; Stopp bei 100 % über `mgpt_runner_ctl`; „Mein Verbrauch“.
+  - *Tests:* Heartbeats mit gefälschter Uhr; Lücken über 2 × Intervall zählen nicht; Monatswechsel; Person vor Rolle; Stopp-Rahmen bei 100 %; Volume bleibt.
+- **M14-12** **Verwaltung, Audit, Admin** (nach 10):
+  - Seite „Runner“: Live-Status über Polling alle 5 s, Container-Logs (letzte Zeilen, gekürzt), Audit-Log je Sitzung.
+  - Admin „Runner“ nur mit Metadaten, ohne Inhalte und ohne Ausgaben fremder Konten. Löschen des Audit-Logs nach `API_AUDIT_DAYS`.
+  - *Tests:* Sichtbarkeit je Konto und Verwalter.
+- **M14-13** **Images und Verteilung** (nach 09):
+  - Arbeits-Image (8c) mit `mgpt-fs`; Agent-Image.
+  - CI-Job baut beim Tag beide und veröffentlicht sie auf ghcr.io mit Digest. Die Digests stehen in den Einstellungen des Servers.
+  - *Tests:* Build im CI, Rauchtest des Agent-Images gegen den Runner-Dienst.
+- **M14-14** **Sicherheit und Doku** (begleitend, Abschluss nach 13):
+  - Bedrohungsmodell in Abschnitt 5 (Prompt-Injection führt Befehle aus, Ausbruch aus dem Container, gestohlener Token, kompromittierter Server, Missbrauch des Rückkanals).
+  - Wiki „Runner“ (Linux mit Quadlet, Windows und macOS mit Podman machine), „nginx und TLS“, „Kosten und Budgets“; Website; `debian/NEWS`.
+- **M14-15** **Ende-zu-Ende mit echtem Podman** (nach allen): Test mit Marker `podman`, läuft nur, wenn `podman` vorhanden ist. Er spielt die Abnahme unten durch, inklusive „Netz aus“ (`git clone` schlägt fehl). In `make test` übersprungen, in einem eigenen Ziel `make test-runner`.
+
+  *Reihenfolge:* 01 → 02/03 → 04 → 05 → 06 → 09 → 10 → 12 → 13 → 15. Parallel laufen 07 (ab 04), 08 (ab 03), 11 (ab 04) und 14. Engpass ist 05/06 (Brücke zwischen der MCP-Schleife und dem Rückkanal).
+
+  *Tests (gesamt):* Token-Hash und Ablauf, Widerruf trennt sofort, fremdes Konto sieht den Runner nicht, Pfad außerhalb `/workspace` wird abgelehnt, Netz aus ist wirksam, Stopp bei 100 % mit erhaltenem Volume, Rückfrage vor `shell`, MCP-Freigabe „kein“ verhindert das Angebot.
+
+**Offene Fragen zu M14** (Fortsetzung von Plan 13, Frage 8; 8b–8f stehen in Abschnitt 6):
+
+1. **8g – Agent als Container (mit eingebundenem Podman-Socket) oder als Programm auf dem Host (pipx)?** Empfehlung: Container mit Quadlet. Der Agent ist so ein Image mit Version und ohne Python-Installation am Client; pipx nur als Ausweg.
+2. **8h – Docker schon in v1?** Der Docker-Socket ist root-gleich. Empfehlung: v1 nur Podman rootless, Docker später mit deutlichem Warnhinweis.
+3. **8i – snakeoil-Zertifikat: Fingerprint im Agent festhalten?** Empfehlung: ja. Den SHA-256-Fingerprint setzt die Kopplungsseite automatisch ein, wenn kein eigenes Zertifikat konfiguriert ist.
+4. **8j – Wie wird eine Sitzung bzw. ein Volume einem Chat zugeordnet?** Empfehlung: Auswahl „Runner: <Volume>“ im Chat, je Chat gemerkt. Ein Volume ist höchstens in einer laufenden Sitzung; der erste Werkzeugaufruf startet die Sitzung.
+5. **8k – Container nach Leerlauf stoppen?** Empfehlung: ja, nach 15 Minuten ohne Werkzeugaufruf (Einstellung `RUNNER_IDLE_MINUTES`). Das spart Kontingent, das Volume bleibt.
+6. **8l – Was heißt „Netz an“?** Mit dem Standardnetz erreicht der Container auch das Heimnetz. Empfehlung: v1 nur „aus“ und „an (inkl. Heimnetz)“ mit Hinweis, nur für Verwalter bzw. Erwachsene; Filter fürs Heimnetz später.
+7. **8m – Was zählt als Laufzeit?** Empfehlung: nur laufende Arbeitscontainer. Ein gekoppelter Runner im Leerlauf zählt nicht.
+8. **8n – Runner-Dienst immer aktiv?** Empfehlung: ja, der Dienst ist installiert und läuft (wenig Speicher). Die Funktion steuert das Rollenrecht, Standard nur Verwalter und Erwachsene.
+9. **8o – Runner-Werkzeuge auch über API-Keys (M15, `ask` mit `tools`)?** Empfehlung: nein in v1. Nur im Chat mit Rückfrage; `ask` endet ohnehin mit `awaiting_confirmation`.
 
 *Abnahme:* Ein Konto koppelt einen Runner unter Podman rootless per Token. Ein Modell mit Werkzeugen legt in `/workspace` ein git-Repository an, schreibt eine Python-Datei und führt sie aus; die Shell fragt vorher nach. Der Audit-Log zeigt alle Befehle. Nach Stopp und Neustart ist der Inhalt des Volumes noch da. Mit Netz aus schlägt `git clone` von außen fehl. Bei ausgeschöpftem Zeitkontingent stoppt der Container, das Volume bleibt. Ein widerrufener Token kann sich nicht mehr verbinden.
 
@@ -561,6 +765,7 @@ MultiGPT wird selbst MCP-Server. Externe Orchestratoren (n8n, Claude Desktop, an
 - **M15-01** Datenmodell, Scopes, Rollenrecht, Keys (`node/models.py`, `scopes.py`, `keys.py`).
 - **M15-02** MCP-Endpunkt `/mcp/` und `/mcp` (`views.py`, `protocol.py`), Werkzeugverzeichnis (`tools.py`) mit `ask`/`list_models` (`tool_ask.py`), Dokumenten (`tool_docs.py`), Läufen (`tool_index.py`), Dateien und Verbrauch (`tool_files.py`), eingebauten Werkzeugen (`tool_builtin.py`). Gemeinsame Laufsteuerung für MCP, CLI und Chat in `runs.py`. Upload über `rag.upload.store_upload` (aus `upload_document` herausgelöst), Verbrauch über `views_usage.usage_payload`.
 - **M15-03** Seite „Einstellungen → API-Keys“ (`views_keys.py`): anlegen (Rechte nur im Rahmen der Rolle, Gültigkeit 30/90/365 Tage oder ohne, optional Sammlungen), einmalige Anzeige mit Kopierknopf, widerrufen, zuletzt benutzt (Zeit, IP), letzte 50 Aufrufe.
+  - Projekt „API“ (LOP A4, 2026-10-12): `ApiKey.collect_in_project` (Migration `node 0004_apikey_collect_in_project`, Standard an, auch für bestehende Keys) legt neue `ask`-Chats im Projekt „API“ des Kontos ab (`chats.api_project`: vorhandenes nicht archiviertes Projekt dieses Namens, sonst neu); Schalter beim Anlegen, je Key in der Liste (`api_key_project`) und `mgpt-ctl apikey create --no-project`.
 - **M15-04** Admin „Knoten“: API-Keys und API-Aufrufe nur lesend als Metadaten (Aktion „widerrufen“), Übersicht „Integrationen“ (n8n-MCP-Server eingerichtet/online, aktive und benutzte Keys, Aufrufe 24 h).
 - **M15-05** CLI: `mgpt-ctl index status [--follow] [--run ID] [--interval S]`, `index runs`, `index cancel`, `index scan`, `index sources`, `index upload <sammlung> <dateien…> --as <konto>`, `index reindex`; `mgpt-ctl apikey create|list|revoke`. `reindex` legt seine Aufträge jetzt als Lauf an (Ausgabe nennt die Laufnummer), Optionen unverändert.
 - **M15-06** Chat-Werkzeuge `index_status` (ohne Rückfrage), `start_reindex`, `start_scan`, `cancel_run` (immer mit Rückfrage) in `node/chat_tools.py`, registriert in `NodeConfig.ready()`.
@@ -612,8 +817,8 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 
 **M14 (Runner):**
 
-- M14-03 (Rückkanal) hängt an Frage 8a und ist der Engpass.
-- M14-05 nutzt die vorhandene MCP-Schleife; Einstufung, Rückfrage und Freigabe je Modell kommen ohne Änderung mit.
+- M14: Frage 8a ist entschieden (eigener ASGI-Dienst); Engpass sind M14-05 (Zustellung über LISTEN/NOTIFY) und M14-06 (MCP-Transport `runner`), siehe Umsetzungsplan in M14.
+- M14-06 nutzt die vorhandene MCP-Schleife; Einstufung, Rückfrage und Freigabe je Modell kommen ohne Änderung mit.
 
 ---
 
@@ -669,7 +874,7 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
 | 7j – Eigenes Kontextmenü standardmäßig an? | M13-01 | Empfehlung: ja, abschaltbar, Umschalt+Rechtsklick öffnet das Browsermenü |
 | 7k – Prompt-Vorlagen je Projekt teilen? | M13-02 | Empfehlung: ja über die Projektfreigabe (R nutzen, U bearbeiten) |
 | 7l – Crossref für manuell angelegte Quellen? | M13-03 | Empfehlung: ja, am vorhandenen Schalter `crossref_enabled` |
-| 8a – Rückkanal: eigener ASGI-Dienst mit WebSocket oder Long-Polling über gunicorn? | M14-03 | Empfehlung: eigener ASGI-Dienst `multi-gpt-runner.service` hinter nginx. Erkenntnis aus M15: Der MCP-*Server* `/mcp/` läuft zustandslos unter WSGI; nur der Runner (Server hinter NAT) braucht die lang offene Verbindung, siehe M14-03 |
+| 8a – Rückkanal: eigener ASGI-Dienst mit WebSocket oder Long-Polling über gunicorn? | M14-04 | **Entschieden (LOP A14, 2026-10-12): eigener ASGI-Dienst** `multi-gpt-runner.service` (Starlette/uvicorn) hinter nginx, siehe Umsetzungsplan M14 |
 | 8b – Wohin gehen Sicherungen der Volumes? | M14-06 | Empfehlung: Archiv auf dem Client, Download im Browser optional |
 | 8c – Welches Arbeits-Image? | M14-04 | Empfehlung: Debian slim mit Python, git, numpy und sympy; eigenes Image erst später |
 | 8d – Mehrere Runner je Konto? | M14-02 | Empfehlung: ja (z. B. PC und Laptop), je Sitzung genau einer |
@@ -784,3 +989,6 @@ Der kritische Pfad ist **M1 → M2 → M3 → M4 → M4a**. Alles mit Werkzeugen
   - Offen für die Abnahme: n8n-Workflows gegen ein installiertes Paket (Fragen 9a–9e).
 
 - **Persönliches Menü (Nutzerwunsch 2026-10-12, 0.3.5):** `accounts/_user_menu.html` als `<details>` rechts oben (ohne JS bedienbar), `user_menu.js` für Escape, Klick daneben, Pfeiltasten, `aria-expanded`. Einträge nach Rechten (API-Keys über `keys.role_scopes`, Familie über `MANAGE_FAMILY`, Verwaltung für `is_staff`); „Mein Verbrauch“ und „Familie“ wandern aus der Seitenleiste ins Menü. **Profilbild:** `accounts.Avatar` (OneToOne, `BinaryField`, 256 px WebP ohne Metadaten über `accounts/avatar.py`, Prüfung wie Bild-Anhänge), `User.avatar_updated` als Merker und Cache-Version (`?v=`), Auslieferung `GET /konto/profilbild/<pk>/` für angemeldete Konten (`private, max-age=86400`), Ändern `POST /einstellungen/profilbild/`. Ohne Bild Initialen auf fester Farbe (aus der Konto-ID). Migration `accounts 0012`.
+- **Mitteilungen an den Besitzer (LOP A15, 2026-10-12):** `chat.Notice` (`chat/models_notice.py`, Migration `chat 0041_notice`) und `chat/notices.py` – Empfänger mit Recht D löscht/archiviert (auch zurückholt) einen geteilten Chat (`api_manage`) oder löscht eine Antwort samt Folgeverlauf (`api.message_delete`) → Mitteilung an den Besitzer mit Anzeigenamen und Titel, ohne Inhalte (beim Löschen ohne Verweis auf den Chat); Anzeige im persönlichen Menü mit Zahl ungelesener (`notice_tags`), Seite `/mitteilungen/` (`views_notices.py`), gelesene löscht der Worker nach 90 Tagen; Tests `tests/test_notices.py`.
+
+- **Chats lesen über MCP (Nutzerwunsch 2026-10-12, 0.3.6):** Recht `chat.read` (Datenmigration `node 0005_chat_read_scope`: Rollen mit `chat.ask` bekommen es dazu), Werkzeuge `list_chats` und `read_chat` in `node/tool_chats.py`. Lesbar sind nur eigene und mit dem Konto geteilte Chats (`sharing.access_for`: Besitzer oder Freigabe), nie über die Einsicht von Verwaltern. `read_chat` rendert den angezeigten Pfad als Markdown mit Werkzeugaufrufen (Argumente ≤ 600, Ergebnis ≤ 1 500 Zeichen), Status, Fehlern und Anhangsnamen, seitenweise zu 30 000 Zeichen. Zweck: Fehler in Chats der Produktion aus der Ferne nachvollziehen (Key nur mit `chat.read`).
