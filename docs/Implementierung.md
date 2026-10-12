@@ -527,6 +527,15 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
 3. **8r – Speichern:** nach jedem Werkzeugaufruf, der Dateien geändert hat, mit einem Commit je Aufruf und einem neuen Bundle.
 4. **8s – Grenzen:** 50 MB je Arbeitsstand und 10 Arbeitsstände je Konto, je Rolle änderbar.
 
+**Arbeitsweise (Nutzer, 2026-10-13):** Das Modell arbeitet wie Claude Code, aber im Container. Es bekommt also nicht nur einzelne Befehle, sondern arbeitet selbstständig in vielen Runden: Dateien lesen, suchen (Muster, Volltext), anlegen, gezielt ändern (Ersetzen einer Textstelle statt ganzer Dateien), Befehle ausführen, testen und nachbessern, bis die Aufgabe erledigt ist. Die Schleife läuft in MultiGPT (Werkzeugschleife des Chats), die Werkzeuge im Container. Das ersetzt „zuerst nur Werkzeuge, kein Coding-Agent“ oben.
+
+Werkzeuge im Stil von Claude Code: `read` (mit Zeilenbereich), `write`, `edit` (eindeutige Textstelle ersetzen), `glob`, `grep`, `bash` (im PTY, mit Zeitlimit), `serve` (statischen HTTP-Server für die Vorschau starten), `todo` (Aufgabenliste der Sitzung, im Chat sichtbar).
+
+**Offene Fragen dazu:**
+
+1. **8t – Rückfrage vor Änderungen?** Bisher waren Schreiben und Shell bestätigungspflichtig. Für eine Arbeitsweise wie Claude Code bremst das sehr. Empfehlung: Modi wie in Claude Code je Sitzung – „fragen“ (jede Änderung bestätigen), „Änderungen automatisch“ (Dateien ohne Rückfrage, Befehle mit Rückfrage) und „alles automatisch“. Vorgabe „alles automatisch“, weil der Container eingesperrt ist (tmpfs, kein Netz, nur das eigene Bundle); „alles automatisch“ mit Netz nur für Verwalter.
+2. **8u – Wie viele Runden?** Heute endet eine Antwort nach `MAX_ROUNDS` Werkzeugrunden. Empfehlung: für Runner-Sitzungen eigene Grenze, 100 Runden je Antwort; danach fragt der Chat, ob weitergearbeitet werden soll. Gezählt werden außerdem Laufzeit (Kontingent) und Tokens (Budget).
+
 **Festlegungen:**
 
 - **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.
