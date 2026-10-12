@@ -8,8 +8,8 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | Nr. | Thema | Frage | Empfehlung | Entscheidung |
 |---|---|---|---|---|
 | A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein | NEIN |
-| A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |  |
-| A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |  |
+| A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key | ja, als Option je Key |
+| A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT | nein, nur in MultiGPT |
 | A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |  |
 | A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja | JA |
 | A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update | JA |
