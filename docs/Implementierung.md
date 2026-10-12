@@ -521,7 +521,7 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
 **Entschieden am 2026-10-13 (8p–8s):**
 
 1. **8p – Ausführen und Vorschau:**
-   - **HTML:** Ein winziger HTTP-Server im Container liefert die Dateien aus dem tmpfs aus. Nur statisches HTML samt JS, CSS und Bildern; keine Templates und keine serverseitige Ausführung. Die Antworten laufen über den Rückkanal zu MultiGPT und von dort in den Browser, angezeigt in einem abgeschotteten Rahmen (CSP `sandbox`, ohne Netz). Am Client bleibt kein Port offen.
+   - **HTML:** Ein winziger HTTP-Server, im Arbeits-Image des Podman-Containers installiert, liefert die Dateien aus dem tmpfs aus. Nur statisches HTML samt JS, CSS und Bildern; keine Templates und keine serverseitige Ausführung. Die Antworten laufen über den Rückkanal zu MultiGPT und von dort in den Browser, angezeigt in einem abgeschotteten Rahmen (CSP `sandbox`, ohne Netz). Am Client bleibt kein Port offen.
    - **Python und andere CLI-Programme:** Sie laufen in einem Pseudo-Terminal (PTY) im Container. Das Terminal wird in den Browser exportiert (Ausgabe gestreamt, Eingabe zurück, z. B. mit xterm.js), sodass auch interaktive Programme mit `input()` gehen.
 2. **8q – Besitz:** Ein Arbeitsstand gehört dem Konto und ist im Chat auswählbar; mehrere Chats können ihn nacheinander nutzen.
 3. **8r – Speichern:** nach jedem Werkzeugaufruf, der Dateien geändert hat, mit einem Commit je Aufruf und einem neuen Bundle.
