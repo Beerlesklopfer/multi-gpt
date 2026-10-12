@@ -135,7 +135,14 @@ def _load_modules() -> None:
     if _LOADED:
         return
     # Reihenfolge = Reihenfolge in tools/list.
-    from . import tool_ask, tool_builtin, tool_docs, tool_files, tool_index  # noqa: F401
+    from . import (  # noqa: F401
+        tool_ask,
+        tool_builtin,
+        tool_chats,
+        tool_docs,
+        tool_files,
+        tool_index,
+    )
 
     _LOADED = True
 

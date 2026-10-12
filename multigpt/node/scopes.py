@@ -16,6 +16,7 @@ Einlesen von Verzeichnisquellen, das wie im Admin nur Verwaltern zusteht.
 """
 
 CHAT_ASK = "chat.ask"
+CHAT_READ = "chat.read"
 DOCS_READ = "docs.read"
 DOCS_WRITE = "docs.write"
 INDEX_CONTROL = "index.control"
@@ -28,6 +29,11 @@ SCOPES: dict[str, tuple[str, str]] = {
     CHAT_ASK: (
         "Modelle fragen",
         "Einem Modell eine Aufgabe geben (Modellwahl im Rahmen der Rolle, Budget des Kontos).",
+    ),
+    CHAT_READ: (
+        "Chats lesen",
+        "Eigene und mit dem Konto geteilte Chats auflisten und lesen (Verlauf, Werkzeugaufrufe, "
+        "Fehler). Keine fremden Chats, auch nicht für Verwalter.",
     ),
     DOCS_READ: (
         "Dokumente lesen",

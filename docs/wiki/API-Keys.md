@@ -67,7 +67,8 @@ claude mcp add --transport sse multigpt https://nas.example/mcp/sse --header "Au
 ## Key anlegen
 
 **Im Browser:** Einstellungen → „API-Keys (MCP-Zugang …)“ → Name, Rechte, Gültigkeit und
-optional „Nur diese Sammlungen“ wählen → **Key anlegen**. Der Key erscheint **genau einmal**;
+optional „Nur diese Sammlungen“ wählen; „Chats im Projekt „API“ sammeln“ ist vorgewählt
+(siehe unten) → **Key anlegen**. Der Key erscheint **genau einmal**;
 MultiGPT speichert nur einen Hash (SHA-256). Verloren = widerrufen und neu anlegen.
 Unter dem Key-Feld stehen die Verbindungsdaten zum Kopieren: JSON (`mcpServers`) und
 `claude mcp add` für Streamable HTTP, aufklappbar dieselben Angaben für **SSE** (ältere Clients,
@@ -91,6 +92,7 @@ Der Key steht auf stdout (z. B. `> key.txt`), die Hinweise auf stderr. Weitere O
 | Recht | Bedeutung | Werkzeuge |
 |---|---|---|
 | `chat.ask` | Einem Modell eine Aufgabe geben (Modell im Rahmen der Rolle, Budget des Kontos) | `ask`, `list_models` |
+| `chat.read` | Eigene und mit dem Konto geteilte Chats auflisten und lesen (Verlauf, Werkzeugaufrufe, Fehler); fremde Chats nie, auch nicht für Verwalter | `list_chats`, `read_chat` |
 | `docs.read` | Sammlungen und Dokumente auflisten, durchsuchen, lesen | `list_collections`, `search_documents`, `list_documents`, `document_info`, `read_document` |
 | `docs.write` | Dateien hochladen, Dokumente löschen, neu indexieren (eigene bzw. schreibbare Sammlungen) und die Läufe dazu verfolgen | `upload_document`, `delete_document`, `reindex`, `run_status`, `list_runs` |
 | `index.control` | Läufe überwachen, pausieren, fortsetzen und abbrechen; Verzeichnisquellen einlesen (**nur Verwalter**) | `run_status`, `list_runs`, `cancel_run`, `pause_run`, `resume_run`, `list_sources`, `start_scan` |
@@ -119,6 +121,8 @@ Startwerte: Verwalter und Erwachsene haben das Recht mit allen Scopes, Jugendlic
 |---|---|---|
 | `ask` | `prompt`, optional `model`, `collections`, `web_search`, `tools`, `chat` | Antworttext; strukturiert: `chat_id`, `message_id`, `status`, Tokens, `cost_eur`, `sources` |
 | `list_models` | – | erlaubte Chat-Modelle (ID, Name, Fähigkeiten, Budgetsperre) |
+| `list_chats` | optional `query` (Titel), `archived`, `include_shared` (Standard ja), `page`, `page_size` (≤ 50) | Chats mit `chat_id`, Titel, Projekt bzw. `shared_by`, letzter Änderung |
+| `read_chat` | `chat_id`, optional `page` | angezeigter Verlauf als Markdown: Nachrichten mit ID, Verfasser/Modell, Zeit, Status, Werkzeugaufrufe (Argumente und Ergebnis gekürzt), Anhänge, Fehler; lange Chats seitenweise (30 000 Zeichen) |
 | `list_collections` | – | Sammlungen mit Zahlen je Status |
 | `search_documents` | `query`, optional `collections` | nummeriertes Quellmaterial mit Fundstellen |
 | `list_documents`, `document_info`, `read_document` | wie die Dokument-Werkzeuge im Chat | Liste, Angaben, Text mit Fundstellen |
@@ -136,7 +140,11 @@ Startwerte: Verwalter und Erwachsene haben das Recht mit allen Scopes, Jugendlic
 
 Hinweise:
 
-- **`ask`** legt je Aufruf einen Chat „API: …“ an, der im Konto sichtbar ist; mit `chat: <ID>`
+- **`ask`** legt je Aufruf einen Chat „API: …“ an, der im Konto sichtbar ist. Standardmäßig landet
+  er im Projekt **„API“** des Kontos (wird bei Bedarf angelegt; ein vorhandenes, nicht
+  archiviertes Projekt dieses Namens wird genutzt) statt in der normalen Chatliste. Der Schalter
+  gilt je Key: beim Anlegen, in der Liste „Deine Keys“ (Spalte „Projekt „API““, wirkt auf neue
+  Chats) und auf der Konsole mit `--no-project`. Mit `chat: <ID>`
   geht es in einem eigenen bzw. schreibbar geteilten Chat weiter. Ohne `tools` bekommt das Modell
   keine Werkzeuge. Braucht ein Werkzeug eine Rückfrage, endet `ask` mit Status
   `awaiting_confirmation` – bestätigen lässt sich das nur in MultiGPT.
