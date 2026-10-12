@@ -8,6 +8,10 @@ schätzen. Der Code läuft abgeschottet in einer Sandbox auf dem Server.
 ## Was geht
 
 - **Numerik** mit numpy: lineare Gleichungssysteme, Matrizen, Statistik, Zufallszahlen
+- **Wissenschaftliche Verfahren** mit scipy: Optimierung und Kurvenanpassung
+  (`scipy.optimize`), numerische Integration und Differentialgleichungen (`scipy.integrate`),
+  Verteilungen und Tests (`scipy.stats`), Signalverarbeitung und Filter (`scipy.signal`),
+  Interpolation, Sondermatrizen und spezielle Funktionen
 - **Symbolik** mit sympy: Gleichungen lösen, Ableitungen, Integrale, Vereinfachen,
   exakte Brüche und Wurzeln
 - **Hohe Genauigkeit** mit mpmath, z. B. π auf 50 Stellen
@@ -96,11 +100,14 @@ höchstens 2 Berechnungen gleichzeitig.
 
 **Hinweis:** Manche symbolischen Rechnungen brauchen in sympy mehrere Sekunden, z. B. das
 Gauß-Integral über ganz ℝ etwa 9 s. Brechen solche Rechnungen ab, die CPU-Zeit erhöhen.
+Auch der Import von `scipy.stats` oder `scipy.signal` kostet 2–4 s. scipy braucht mindestens
+etwa 320 MB Speicher je Prozess; darunter scheitert der Import mit „Cannot allocate memory“.
 
 ## Prüfen: „Sandbox testen“
 
 Admin → Chat → Chat-Einstellungen → Knopf **„Sandbox testen“** (oben rechts). MultiGPT rechnet
-`print(1+1)` in der Sandbox und versucht dann Dinge, die scheitern müssen: eine
+`print(1+1)` in der Sandbox, prüft numpy, sympy, mpmath, matplotlib und scipy (ein Integral und
+ein lineares Gleichungssystem über OpenBLAS) und versucht dann Dinge, die scheitern müssen: eine
 Netzverbindung, das Lesen von `/etc/passwd`, `/etc/multi-gpt/.env`, `/var/lib/multi-gpt` und
 dem Programmordner, Schreiben unter `/usr`, Umgebungsvariablen des Servers und den Import von
 Django. Jede Prüfung erscheint als grüne bzw. rote Meldung.

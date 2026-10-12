@@ -13,7 +13,7 @@ Aufbau (``command``):
   (kein TIOCSTI auf ein Terminal), ``--cap-drop ALL``.
 - Dateisystem: leeres Wurzel-tmpfs, nur lesend ``/usr`` (Interpreter und
   Standardbibliothek) und **einzeln** die Rechenpakete aus dem venv unter
-  ``/sandbox/lib`` (numpy, sympy, mpmath, matplotlib und deren Abhängigkeiten).
+  ``/sandbox/lib`` (numpy, scipy, sympy, mpmath, matplotlib und deren Abhängigkeiten).
   Django, MultiGPT selbst, Einstellungen, ``/etc``, ``/home``, ``/var/lib/multi-gpt``,
   DB-Sockets und ``/proc`` sind nicht sichtbar. ``/tmp`` und der Arbeitsordner
   ``/work`` sind eigene tmpfs mit fester Größe; danach wird die Wurzel
@@ -23,8 +23,9 @@ Aufbau (``command``):
   verweigert dann ein neues procfs im User-Namespace. Ohne /proc ist die
   Sandbox ohnehin enger.
 - ``--clearenv`` mit wenigen festen Variablen (PATH, HOME, MPLBACKEND=Agg,
-  MPLCONFIGDIR im tmpfs, je ein BLAS-Thread). Umgebung des Servers (SECRET_KEY,
-  DATABASE_URL …) kommt nicht hinein.
+  MPLCONFIGDIR im tmpfs, je ein BLAS-Thread: das OpenBLAS von numpy und scipy
+  startet so keine Threads über RLIMIT_NPROC hinaus). Umgebung des Servers
+  (SECRET_KEY, DATABASE_URL …) kommt nicht hinein.
 - Python mit ``-I -S -B``: keine Umgebungsvariablen, keine site-packages,
   kein Skriptordner im Pfad, keine .pyc.
 - seccomp (``--seccomp``): selbst erzeugtes BPF-Programm (``seccomp_program``)
@@ -81,9 +82,10 @@ BWRAP_SEARCH_PATH = "/usr/bin:/bin:/usr/local/bin"
 INSTALL_HINT = "Paket bubblewrap installieren: sudo apt install bubblewrap"
 
 # Pakete, die in die Sandbox eingeblendet werden (Importname). Fehlende werden
-# übersprungen; numpy, sympy und mpmath prüft der Status.
+# übersprungen; numpy, sympy und mpmath prüft der Status, scipy ist optional.
 CALC_PACKAGES = (
     "numpy",
+    "scipy",
     "sympy",
     "mpmath",
     "matplotlib",
@@ -100,7 +102,14 @@ CALC_PACKAGES = (
 )
 REQUIRED_PACKAGES = ("numpy", "sympy", "mpmath")
 # Mitgelieferte Bibliotheken der Wheels (auditwheel, RPATH $ORIGIN/../<name>.libs).
-BUNDLED_LIBS = ("numpy.libs", "pillow.libs", "matplotlib.libs", "contourpy.libs", "kiwisolver.libs")
+BUNDLED_LIBS = (
+    "numpy.libs",
+    "scipy.libs",
+    "pillow.libs",
+    "matplotlib.libs",
+    "contourpy.libs",
+    "kiwisolver.libs",
+)
 
 SANDBOX_LIB = "/sandbox/lib"
 WORK_DIR = "/work"
@@ -844,6 +853,14 @@ try:
 except Exception:
     r["mpl"] = None
 try:
+    import scipy, scipy.integrate, scipy.linalg
+    val, _ = scipy.integrate.quad(lambda x: x * x, 0, 3)
+    sol = scipy.linalg.solve([[2.0, 1.0], [1.0, 3.0]], [3.0, 5.0])
+    ok = abs(val - 9) < 1e-9 and abs(sol[0] - 0.8) < 1e-9 and abs(sol[1] - 1.4) < 1e-9
+    r["scipy"] = scipy.__version__ if ok else None
+except Exception:
+    r["scipy"] = None
+try:
     socket.create_connection(("1.1.1.1", 53), timeout=2).close()
     r["net"] = True
 except OSError:
@@ -917,6 +934,12 @@ def selftest() -> list[tuple[bool, str]]:
             f"matplotlib {data['mpl']}"
             if data.get("mpl")
             else "matplotlib fehlt (keine Diagramme).",
+        ),
+        (
+            bool(data.get("scipy")),
+            f"scipy {data['scipy']} (Integral und lineares Gleichungssystem über OpenBLAS)."
+            if data.get("scipy")
+            else "scipy fehlt oder lädt nicht (keine Optimierung, Integration, Statistik).",
         ),
         (not data.get("net"), "Netz gesperrt." if not data.get("net") else "NETZ ERREICHBAR!"),
         (

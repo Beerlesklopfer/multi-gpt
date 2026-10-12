@@ -1294,7 +1294,7 @@ class ChatSettingsAdmin(admin.ModelAdmin):
                     "python_file_mb",
                     "python_output_kb",
                 ],
-                "description": "Python mit numpy, sympy, mpmath und matplotlib in einer "
+                "description": "Python mit numpy, scipy, sympy, mpmath und matplotlib in einer "
                 "Sandbox (bubblewrap: kein Netz, keine Server-Dateien). Nur für Modelle mit "
                 "Werkzeugen und Rollen mit „Berechnungen ausführen“. „Sandbox testen“ (oben "
                 "rechts) rechnet print(1+1) und versucht Netz- und Dateizugriffe.",

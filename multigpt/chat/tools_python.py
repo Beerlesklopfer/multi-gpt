@@ -1,7 +1,8 @@
 """Werkzeug ``run_python``: Berechnungen in der Sandbox (M4a-10).
 
-Modelle sollen rechnen statt schätzen: Numerik (numpy), Symbolik (sympy),
-beliebige Genauigkeit (mpmath), Statistik, Einheiten-Umrechnungen und
+Modelle sollen rechnen statt schätzen: Numerik (numpy), wissenschaftliche
+Verfahren wie Optimierung, Integration, Statistik und Signalverarbeitung (scipy),
+Symbolik (sympy), beliebige Genauigkeit (mpmath), Einheiten-Umrechnungen und
 Diagramme (matplotlib). Ausgeführt wird nur in ``sandbox`` (bubblewrap, ohne
 Netz, ohne Server-Dateien); ohne funktionierende Sandbox wird das Werkzeug gar
 nicht angeboten.
@@ -90,12 +91,13 @@ ABORT_TEXTS = {
 }
 
 DESCRIPTION = (
-    "Führt Python-Code für Berechnungen aus, mit numpy, sympy und mpmath sowie "
-    "matplotlib für Diagramme. Kein Netz, keine Dateien außerhalb eines leeren "
-    "Arbeitsordners. Ergebnis per print ausgeben. Nutze es für exakte bzw. numerische "
-    "Rechnungen (Gleichungen, Integrale, Statistik, Einheiten, große Zahlen) statt "
-    "Kopfrechnen. Für Diagramme matplotlib nutzen und bevorzugt als SVG speichern "
-    "(plt.savefig('diagramm.svg'), scharf und klein); zusätzlich PNG "
+    "Führt Python-Code für Berechnungen aus, mit numpy, scipy (Optimierung, Integration, "
+    "Statistik, Signalverarbeitung), sympy und mpmath sowie matplotlib für Diagramme. "
+    "Kein Netz, keine Dateien außerhalb eines leeren Arbeitsordners. Ergebnis per print "
+    "ausgeben. Nutze es für exakte bzw. numerische Rechnungen (Gleichungen, Integrale, "
+    "Statistik, Einheiten, große Zahlen) statt Kopfrechnen. Für Diagramme matplotlib "
+    "nutzen und bevorzugt als SVG speichern (plt.savefig('diagramm.svg'), scharf und "
+    "klein); zusätzlich PNG "
     "(plt.savefig('diagramm.png')) nur, wenn eine Vorschau als Rasterbild gebraucht wird. "
     "Die Dateien erscheinen in der Antwort. "
     "Ein Blatt mit eigener, exakter Geometrie (Maße in mm) als PDF speichern, z. B. "
@@ -322,7 +324,7 @@ def tool_spec() -> ToolSpec:
                 "code": {
                     "type": "string",
                     "description": "Vollständiges Python-3-Programm; Ergebnisse mit print "
-                    "ausgeben. Verfügbar: numpy, sympy, mpmath, matplotlib (Agg) und die "
+                    "ausgeben. Verfügbar: numpy, scipy, sympy, mpmath, matplotlib (Agg) und die "
                     "Standardbibliothek (math, fractions, decimal, statistics, …).",
                 }
             },

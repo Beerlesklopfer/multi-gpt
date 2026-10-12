@@ -20,7 +20,8 @@ dependencies = [
     # markdown-it-py, weasyprint: Blätter als PDF (Werkzeug create_pdf); WeasyPrint
     # braucht Pango >= 1.44 aus dem System (debian/control).
     "markdown-it-py>=4.2",
-    # matplotlib, mpmath, numpy, sympy: Berechnungen (run_python, M4a-10), nur in der Sandbox.
+    # matplotlib, mpmath, numpy, scipy, sympy: Berechnungen (run_python, M4a-10), nur in
+    # der Sandbox. scipy (LOP A16, ca. 140 MB mit eigenem OpenBLAS): ab 1.16 für numpy 2.3.
     "matplotlib>=3.10",
     "mcp>=2.3",
     "mpmath>=1.3",
@@ -30,6 +31,7 @@ dependencies = [
     "pillow>=11.0",
     "pypdf>=6.0",
     "python-docx>=1.2",
+    "scipy>=1.16",
     "sympy>=1.14",
     "weasyprint>=70.0",
     "whitenoise>=6.9",

@@ -5,6 +5,7 @@ sie übersprungen (``needs_sandbox``). Alles andere (Rechte, Angebot, Anhänge,
 SVG-Bereinigung, Werkzeugschleife) läuft mit gemockter Sandbox überall.
 """
 
+import importlib.util
 import io
 import json
 import os
@@ -79,6 +80,26 @@ def test_numpy_and_sympy():
     assert lines[1] == "[2, 3]"
     assert lines[2] == "[0.8, 1.4]"
     assert lines[3] == "3.14159265358979323846264338328"
+
+
+@needs_sandbox
+def test_scipy_integrate_and_optimize():
+    # scipy (LOP A16) mit eigenem OpenBLAS: lädt ohne /proc, unter seccomp und mit
+    # einem BLAS-Thread innerhalb der Prozessgrenze.
+    result = run(
+        "import numpy as np\n"
+        "from scipy import integrate, linalg, optimize, stats\n"
+        "print(round(integrate.quad(np.sin, 0, np.pi)[0], 9))\n"
+        "res = optimize.minimize(lambda v: (v[0] - 1)**2 + (v[1] + 2)**2, [0, 0])\n"
+        "print(res.success, np.round(res.x, 4).tolist())\n"
+        "print(np.round(linalg.solve([[2, 1], [1, 3]], [3, 5]), 6).tolist())\n"
+        "print(round(stats.norm.cdf(1.96), 4))\n",
+        cpu_seconds=60,
+        wall_seconds=120,
+        processes=2,
+    )
+    assert result.ok, result.stderr
+    assert result.stdout.splitlines() == ["2.0", "True [1.0, -2.0]", "[0.8, 1.4]", "0.975"]
 
 
 @needs_sandbox
@@ -378,6 +399,8 @@ def test_command_has_isolation_flags(monkeypatch):
     assert targets[0] == "/usr"
     assert all(t.startswith("/sandbox/lib/") for t in targets[1:])
     assert "/sandbox/lib/numpy" in targets and "/sandbox/lib/sympy" in targets
+    if importlib.util.find_spec("scipy") is not None:
+        assert "/sandbox/lib/scipy" in targets and "/sandbox/lib/scipy.libs" in targets
     assert args[-5:-1] == ["-I", "-S", "-B", "/sandbox/runner.py"]
 
 
