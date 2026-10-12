@@ -417,6 +417,7 @@ def test_streamed_parallel_tool_calls(mock):
     )
     mock.post(f"{BASE}/chat/completions").mock(return_value=sse_response(body))
     assert run(tools=[WEATHER]) == [
+        Delta(""),  # erstes Lebenszeichen (Statistik), einmal je Antwort
         ToolCallEvent("call_a", "wetter", {"ort": "Köln"}),
         ToolCallEvent("call_b", "wetter", {"ort": "Bonn"}),
         ToolCallEvent("call_c", "uhrzeit", {}),
@@ -435,6 +436,7 @@ def test_tool_calls_without_index_or_id_and_stop_reason():
     ]
     events = [e for c in chunks for e in parser.feed(f"data: {json.dumps(c)}")]
     events += list(parser.end_of_stream())
+    assert events.pop(0) == Delta("")
     call = events[0]
     assert call.id.startswith("call_")
     assert call == ToolCallEvent(call.id, "wetter", {"ort": "Köln"})
@@ -445,7 +447,7 @@ def test_tool_calls_without_index_or_id_and_stop_reason():
 def test_invalid_tool_arguments_become_error(mock, raw):
     body = sse(tool_delta(0, "call_a", "wetter", raw), finish_chunk("tool_calls"))
     mock.post(f"{BASE}/chat/completions").mock(return_value=sse_response(body))
-    events = run(tools=[WEATHER])
+    events = [e for e in run(tools=[WEATHER]) if e != Delta("")]
     assert len(events) == 1 and isinstance(events[0], Error) and events[0].retryable
     assert "ungültige Argumente" in events[0].message and "wetter" in events[0].message
 

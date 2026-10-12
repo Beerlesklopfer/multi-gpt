@@ -129,8 +129,7 @@ def managed(provider: Provider) -> bool:
     return bool(
         provider.manage_models
         and provider.active
-        and provider.is_local
-        and provider.kind == Provider.Kind.OPENAI_COMPAT
+        and provider.is_lmstudio
         and provider.vram_budget_gb
     )
 
@@ -779,10 +778,8 @@ def unload_now(provider: Provider, instance_id: str) -> None:
 
 
 def local_providers():
-    """Lokale, OpenAI-kompatible Anbieter (Kandidaten für die Modellverwaltung)."""
-    return list(
-        Provider.objects.filter(is_local=True, kind=Provider.Kind.OPENAI_COMPAT).order_by("name")
-    )
+    """Anbieter mit der Schnittstelle „LM Studio“ (Kandidaten für die Modellverwaltung)."""
+    return list(Provider.objects.filter(kind=Provider.Kind.LMSTUDIO).order_by("name"))
 
 
 def budget_info(provider: Provider, *, others_than: AIModel | None = None) -> dict | None:

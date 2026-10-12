@@ -90,9 +90,13 @@ class CatalogModel:
         return bool(self.instances)
 
 
+DEFAULT_ROOT = "http://localhost:1234"
+
+
 def api_root(provider) -> str:
-    """Server-Wurzel: Basis-URL ohne ``/v1`` (wie ``_lmstudio_models`` im Adapter)."""
-    base = (provider.base_url or "http://localhost:1234/v1").rstrip("/")
+    """Server-Wurzel (eine Angabe je Anbieter): ``/v1`` für den Chat und ``/api/v1``
+    für die Verwaltung werden daraus abgeleitet; ein ``/v1`` am Ende wird ignoriert."""
+    base = (provider.base_url or DEFAULT_ROOT).rstrip("/")
     return base.removesuffix("/v1")
 
 

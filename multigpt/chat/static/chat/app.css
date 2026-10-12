@@ -690,6 +690,13 @@ input {
   color: var(--text-muted);
 }
 
+/* Statistik der Antwort im Kopf (chat/stats.py): Token/s, erstes Token */
+.chat-message-stats {
+  margin-left: 0.5rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Rohtext (Nutzer, ohne JS): Zeilenumbrüche erhalten. Markdown siehe unten.
    Schriftgröße über „A−“/„A+“ (app.js setzt --chat-font-scale). */
 .chat-message-content {

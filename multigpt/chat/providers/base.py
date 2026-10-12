@@ -29,7 +29,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Delta:
-    """Ein Stück Antworttext."""
+    """Ein Stück Antworttext; leer = Modell erzeugt schon (Denken, Werkzeugaufruf),
+    nur für die Zeitmessung (``chat/stats.py``)."""
 
     text: str
 

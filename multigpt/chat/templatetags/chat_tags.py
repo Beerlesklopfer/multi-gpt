@@ -90,3 +90,11 @@ def _offline_mcp(context) -> list[dict]:
     """Nur für Verwalter: zuletzt offline geprüfte MCP-Server (``mcp.status.offline_for``)."""
     request = context.get("request")
     return mcp_status.offline_for(getattr(request, "user", None))
+
+
+@register.simple_tag
+def message_stats(msg):
+    """Token/s und erstes Token einer Antwort (``chat/stats.py``) oder ``None``."""
+    from ..stats import summary
+
+    return summary(msg.tool_state)

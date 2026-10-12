@@ -20,6 +20,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connections
+from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
@@ -156,7 +157,7 @@ def lms():
 def provider():
     return Provider.objects.create(
         name="LM Studio",
-        kind=Provider.Kind.OPENAI_COMPAT,
+        kind=Provider.Kind.LMSTUDIO,
         base_url=BASE,
         is_local=True,
         manage_models=True,
@@ -573,7 +574,13 @@ def test_chat_loads_model_with_status_and_holds_lease(lms, gpt, chat_user):
     assert lms.actions() == [("load", GPT)]
     assert seen_lease == [True]
     assert not ModelLease.objects.exists()
-    assert Message.objects.get(role="assistant").content == "Hallo!"
+    answer = Message.objects.get(role="assistant")
+    assert answer.content == "Hallo!"
+    assert answer.tool_state["stats"]["ttft_ms"] >= 0  # Statistik im Kopf (chat/stats.py)
+    client = Client()
+    client.force_login(chat_user)
+    html = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'class="chat-message-stats"' in html and "erstes Token nach" in html
 
 
 def test_chat_without_room_shows_clear_error(lms, provider, gpt, chat_user):
@@ -742,7 +749,12 @@ def test_expired_leases_are_removed(gpt):
 
 
 def test_provider_validation():
-    provider = Provider(name="x", kind=Provider.Kind.OPENAI_COMPAT, is_local=True)
+    compat = Provider(name="o", kind=Provider.Kind.OPENAI_COMPAT, is_local=True)
+    compat.manage_models = True
+    compat.vram_budget_gb = Decimal("16")
+    with pytest.raises(ValidationError):
+        compat.clean()  # Modellverwaltung nur mit der Schnittstelle „LM Studio“
+    provider = Provider(name="x", kind=Provider.Kind.LMSTUDIO)
     provider.manage_models = True
     with pytest.raises(ValidationError):
         provider.clean()
@@ -751,6 +763,7 @@ def test_provider_validation():
         provider.clean()  # Reserve 2 >= Budget 2
     provider.vram_budget_gb = Decimal("16")
     provider.clean()
+    assert provider.is_local  # LM Studio ist immer lokal
     cloud = Provider(name="c", kind=Provider.Kind.ANTHROPIC, manage_models=True)
     cloud.vram_budget_gb = Decimal("16")
     with pytest.raises(ValidationError):
@@ -924,3 +937,40 @@ def test_own_marker_cleared_when_gone_or_unloaded(lms, gpt, olmocr_model):
     assert not ModelRuntime.objects.exclude(loaded_instance="").exists()
     lms.loaded = {GPT: 32768}  # jetzt von einer anderen Installation geladen
     assert model_manager.unload_idle() == 0
+
+
+def test_migration_moves_lm_studio_providers_to_new_interface():
+    """0042: bisherige LM-Studio-Anbieter (OpenAI-kompatibel) bekommen die Schnittstelle."""
+    from importlib import import_module
+
+    from django.apps import apps
+
+    migration = import_module("multigpt.chat.migrations.0042_provider_lmstudio")
+    kinds = {
+        "verwaltet": dict(manage_models=True, is_local=True, base_url="http://pc:8080/v1"),
+        "port": dict(is_local=True, base_url="http://pc:1234/v1"),
+        "ollama": dict(is_local=True, base_url="http://pc:11434/v1"),
+        "cloud": dict(base_url="https://api.openai.com/v1"),
+    }
+    for name, fields in kinds.items():
+        Provider.objects.create(name=name, kind=Provider.Kind.OPENAI_COMPAT, **fields)
+    migration.to_lmstudio(apps, None)
+    result = dict(Provider.objects.values_list("name", "kind"))
+    assert result == {
+        "verwaltet": "lmstudio",
+        "port": "lmstudio",
+        "ollama": "openai_compat",
+        "cloud": "openai_compat",
+    }
+    assert Provider.objects.get(name="port").base_url == "http://pc:1234"
+
+
+def test_lm_studio_interface_derives_both_paths_from_one_address():
+    from multigpt.chat.providers.registry import get_adapter
+
+    for url in ("http://pc:1234", "http://pc:1234/", "http://pc:1234/v1"):
+        provider = Provider(name="l", kind=Provider.Kind.LMSTUDIO, base_url=url)
+        assert get_adapter(provider).base_url == "http://pc:1234/v1"
+        assert lmstudio.api_root(provider) == "http://pc:1234"
+    empty = Provider(name="l", kind=Provider.Kind.LMSTUDIO)
+    assert get_adapter(empty).base_url == "http://localhost:1234/v1"

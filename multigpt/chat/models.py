@@ -73,17 +73,25 @@ def document_upload_to(instance, filename: str) -> str:
 class Provider(models.Model):
     class Kind(models.TextChoices):
         OPENAI_COMPAT = "openai_compat", "OpenAI-kompatibel"
+        LMSTUDIO = "lmstudio", "LM Studio"
         ANTHROPIC = "anthropic", "Anthropic"
         GOOGLE = "google", "Google"
 
     name = models.CharField("Name", max_length=100, unique=True)
-    kind = models.CharField("Art", max_length=20, choices=Kind.choices)
+    kind = models.CharField(
+        "Schnittstelle",
+        max_length=20,
+        choices=Kind.choices,
+        help_text="LM Studio (ab 0.4): als Basis-URL nur die Adresse des Servers, z. B. "
+        "http://pc.local:1234 – Chat und Modellverwaltung leitet MultiGPT daraus ab. "
+        "Immer lokal.",
+    )
     base_url = models.URLField(
         "Basis-URL",
         max_length=500,
         blank=True,
         help_text="Leer lassen für die Standard-URL des Anbieters. "
-        "LM Studio z. B. http://pc.local:1234/v1",
+        "LM Studio: Adresse des Servers, z. B. http://pc.local:1234",
     )
     api_key = EncryptedTextField(
         "API-Key",
@@ -177,13 +185,22 @@ class Provider(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def openai_api(self) -> bool:
+        """Chats über die OpenAI-kompatible API (auch LM Studio)."""
+        return self.kind in (self.Kind.OPENAI_COMPAT, self.Kind.LMSTUDIO)
+
+    @property
+    def is_lmstudio(self) -> bool:
+        return self.kind == self.Kind.LMSTUDIO
+
     def clean(self):
         super().clean()
+        if self.is_lmstudio:
+            self.is_local = True  # LM Studio läuft immer im eigenen Netz
         if self.manage_models:
-            if not (self.is_local and self.kind == self.Kind.OPENAI_COMPAT):
-                raise ValidationError(
-                    {"manage_models": "Nur für lokale, OpenAI-kompatible Anbieter (LM Studio)."}
-                )
+            if not self.is_lmstudio:
+                raise ValidationError({"manage_models": "Nur mit der Schnittstelle „LM Studio“."})
             if self.vram_budget_gb is None:
                 raise ValidationError(
                     {"vram_budget_gb": "Zum Verwalten der Modelle bitte das Budget angeben."}
@@ -1711,7 +1728,7 @@ class RagSettings(models.Model):
             if figure_model is None:
                 message = "Zum Beschreiben der Abbildungen bitte ein Vision-Modell wählen."
                 raise ValidationError({"figure_model": message})
-            if figure_model.provider.kind != Provider.Kind.OPENAI_COMPAT:
+            if not figure_model.provider.openai_api:
                 message = "Für Abbildungen wird ein OpenAI-kompatibler Anbieter benötigt."
                 raise ValidationError({"figure_model": message})
         if self.overlap_tokens >= self.chunk_tokens:

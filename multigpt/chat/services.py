@@ -95,6 +95,7 @@ from . import (
 )
 from . import projects as chat_projects
 from . import sources as source_refs
+from . import stats as chat_stats
 from . import status as provider_status
 from .mcp import status as mcp_status
 from .models import (
@@ -1523,6 +1524,8 @@ class _Loop:
                     turn.ai_model.model_id, history, system=system, **params
                 )
                 self.state["model_calls"] = calls_so_far + 1
+                started = time.monotonic()  # Statistik (chat/stats.py)
+                first_at: float | None = None
                 round_parts: list[str] = []
                 calls: list[ToolCallEvent] = []
                 round_in = round_out = 0
@@ -1532,6 +1535,8 @@ class _Loop:
                 retry_plain = False
                 for event in self.stream:
                     if isinstance(event, Delta):
+                        if first_at is None:
+                            first_at = time.monotonic()
                         if not event.text:
                             continue
                         if not round_parts and self.state["rounds"] and self.content.strip():
@@ -1584,6 +1589,7 @@ class _Loop:
                 if round_usage is not None:
                     self.tally.add(round_usage)
                 self.tokens_out += round_out
+                chat_stats.add_round(self.state, started, first_at, time.monotonic(), round_out)
                 if error:
                     break
                 if calls and specs:

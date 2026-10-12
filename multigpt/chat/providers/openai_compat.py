@@ -917,6 +917,7 @@ class _ChunkParser:
     def __init__(self, emit_tool_calls: bool = False):
         self.emit_tool_calls = emit_tool_calls
         self.finished = False
+        self.signalled = False  # leeres Delta (erstes Lebenszeichen) schon gemeldet
         self.finish_reason: str | None = None
         self.usage: Usage | None = None
         # Werkzeugaufrufe kommen in Stücken, je ``index`` (Reihenfolge des Eintreffens).
@@ -965,7 +966,14 @@ class _ChunkParser:
             delta = choice.get("delta") or {}
             text = delta.get("content")
             if text:
+                self.signalled = True
                 yield Delta(text)
+            elif not self.signalled and any(
+                delta.get(k) for k in ("reasoning_content", "reasoning", "tool_calls")
+            ):
+                self.signalled = True
+                yield Delta("")  # Modell erzeugt schon (Statistik: erstes Token), einmal
+
             for part in delta.get("tool_calls") or []:
                 self._collect_tool_call(part)
             reason = choice.get("finish_reason")

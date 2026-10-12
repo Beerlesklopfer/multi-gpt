@@ -14,10 +14,12 @@ def _adapter_classes() -> dict[str, type[ProviderAdapter]]:
     # Spät importiert, damit ``base`` ohne httpx-Adapter nutzbar bleibt.
     from .anthropic import AnthropicAdapter
     from .google import GoogleAdapter
+    from .lmstudio import LMStudioAdapter
     from .openai_compat import OpenAICompatAdapter
 
     return {
         "openai_compat": OpenAICompatAdapter,
+        "lmstudio": LMStudioAdapter,
         "anthropic": AnthropicAdapter,
         "google": GoogleAdapter,
     }
@@ -38,7 +40,6 @@ OPENAI_COMPAT_PRESETS = [
     ("OpenRouter", "https://openrouter.ai/api/v1"),
     ("Mistral", "https://api.mistral.ai/v1"),
     ("Groq", "https://api.groq.com/openai/v1"),
-    ("LM Studio (Beispiel)", "http://192.168.0.10:1234/v1"),
 ]
 
 

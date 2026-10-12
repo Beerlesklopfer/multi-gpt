@@ -339,6 +339,7 @@ _GOOGLE_RULES = [
 ]
 _RULES = {
     "openai_compat": [(re.compile(p), r) for p, r in _OPENAI_RULES],
+    "lmstudio": [(re.compile(p), r) for p, r in _OPENAI_RULES],
     "anthropic": [(re.compile(p), r) for p, r in _ANTHROPIC_RULES],
     "google": [(re.compile(p), r) for p, r in _GOOGLE_RULES],
 }

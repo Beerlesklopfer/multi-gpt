@@ -74,7 +74,7 @@ QUALITIES = {"auto": "automatisch", "low": "niedrig", "medium": "mittel", "high"
 DEFAULT_FORMAT = "square"
 DEFAULT_QUALITY = "auto"
 # Anbieterarten, deren Adapter ``generate_image`` kann.
-SUPPORTED_KINDS = (Provider.Kind.OPENAI_COMPAT, Provider.Kind.GOOGLE)
+SUPPORTED_KINDS = (Provider.Kind.OPENAI_COMPAT, Provider.Kind.LMSTUDIO, Provider.Kind.GOOGLE)
 # Beschreibung höchstens so lang (DALL·E 3: 4000 Zeichen; GPT Image mehr).
 MAX_PROMPT = 4000
 # Höchstens so viele Bilder je Antwort (Schutz vor Werkzeugschleifen, Kosten).

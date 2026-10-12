@@ -59,7 +59,7 @@ def _fits(purpose: str, capability: str) -> bool:
 def _figure_candidate(provider: Provider, model: AIModel | None, model_id: str) -> bool:
     """Abbildungen: nur OpenAI-kompatible Anbieter (``describe_image``); bei
     Cloud-Anbietern nur Modelle mit Bild-Eingabe bzw. Vision-Muster in der ID."""
-    if provider.kind != Provider.Kind.OPENAI_COMPAT:
+    if not provider.openai_api:
         return False
     if provider.is_local:
         return True
