@@ -157,6 +157,11 @@ Deshalb kann MultiGPT die Modelle selbst verwalten (ab LM Studio 0.4, REST-API v
 - **Leerlauf:** Der Worker entlädt jede Minute Modelle, die länger als **Entladen nach Leerlauf**
   (Standard 30 Minuten, 0 = nie) nicht genutzt wurden – nie angeheftete, belegte oder
   Indexierungsmodelle während eines Laufs. Die TTL von LM Studio bleibt ungenutzt.
+- **Nach der Indexierung:** Modelle der Indexierung (Embedding, OCR, Abbildungen) werden nur für
+  den Lauf geladen: Ist kein Lauf mehr offen, entlädt der Worker sie nach **2 Minuten** ohne
+  Gebrauch (Schalter „nach der Indexierung entladen“, Standard an). So bleibt die Grafikkarte
+  außerhalb der Läufe dem Chat. Die Suche im Chat lädt das Embedding-Modell bei Bedarf kurz
+  nach (nomic: etwa 0,4 GB, wenige Sekunden). Wer das vermeiden will, heftet es an.
 - **Gleichzeitig:** Laden und Entladen laufen nacheinander (Sperre in PostgreSQL). Wer währenddessen
   dasselbe Modell braucht, wartet und nutzt es dann.
 - **Ladefehler:** Meldet LM Studio einen Fehler (z. B. zu wenig Speicher), wartet MultiGPT mit
@@ -178,6 +183,7 @@ in den RAG-Einstellungen und auf der Seite „LM Studio: geladene Modelle“):
 | Priorität | 50 | 0–100, niedrigere gehen zuerst |
 | automatisch laden | an | aus: nur von Hand laden, sonst Meldung |
 | Entladen nach Leerlauf | 30 min | 0 = nie; gilt nicht für angeheftete |
+| nach der Indexierung entladen | an | nur Indexierungsmodelle: 2 min nach dem Lauf statt nach dem Leerlauf |
 | gemessener Speicherbedarf | leer | überschreibt die Schätzung (z. B. Wert aus `nvidia-smi`) |
 
 **Erwarteter Speicher:** Neben jeder Auswahl „Kontextfenster“ steht live die Schätzung, das

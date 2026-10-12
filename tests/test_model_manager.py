@@ -655,6 +655,30 @@ def test_idle_keeps_indexing_models_during_run(lms, olmocr_model):
     assert model_manager.unload_idle() == 0
 
 
+def test_indexing_models_unloaded_soon_after_run(lms, gpt, olmocr_model):
+    """Nach dem Lauf: Indexierungsmodelle nach 2 Minuten weg, das Chatmodell nicht."""
+    lms.loaded = {GPT: 32768, OLMOCR: 8192}
+    recent = timezone.now() - timedelta(minutes=3)
+    for model in (gpt, olmocr_model):
+        ModelRuntime.objects.create(ai_model=model, last_used=recent)
+    assert model_manager.unload_idle() == 1
+    assert lms.actions() == [("unload", OLMOCR)]
+
+
+def test_indexing_grace_and_opt_out(lms, olmocr_model):
+    lms.loaded = {OLMOCR: 8192}
+    runtime = ModelRuntime.objects.create(
+        ai_model=olmocr_model, last_used=timezone.now() - timedelta(minutes=1)
+    )
+    assert model_manager.unload_idle() == 0  # Schonfrist
+    runtime.last_used = timezone.now() - timedelta(minutes=10)
+    runtime.save()
+    olmocr_model.unload_after_indexing = False
+    olmocr_model.save()
+    assert model_manager.unload_idle() == 0  # dann gilt der Leerlauf (30 min)
+    assert lms.actions() == []
+
+
 def test_expired_leases_are_removed(gpt):
     ModelLease.objects.create(ai_model=gpt, expires=timezone.now() - timedelta(minutes=1))
     with respx.mock(assert_all_called=False) as mock:

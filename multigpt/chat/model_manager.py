@@ -131,6 +131,11 @@ def indexing_ids() -> set[int]:
     return ids
 
 
+# Indexierungsmodelle nach dem Lauf: kurze Schonfrist, damit ein Folgelauf oder eine
+# Suche direkt danach nicht ent- und neu lädt.
+AFTER_RUN_GRACE_MINUTES = 2
+
+
 def run_open() -> bool:
     return IndexRun.objects.filter(status__in=IndexRun.OPEN).exists()
 
@@ -661,14 +666,19 @@ def unload_idle(now=None) -> int:
         snap = snapshot(provider, catalog)
         for slot in snap.slots:
             model = slot.ai_model
-            if model is None or slot.pinned or slot.busy or not model.idle_unload_minutes:
+            if model is None or slot.pinned or slot.busy:
                 continue
             if slot.indexing and snap.run_open:
+                continue
+            minutes = model.idle_unload_minutes
+            if slot.indexing and model.unload_after_indexing:
+                minutes = min(minutes or AFTER_RUN_GRACE_MINUTES, AFTER_RUN_GRACE_MINUTES)
+            if not minutes:
                 continue
             if slot.last_used is None:
                 touch(model, now)  # erstmals gesehen: ab jetzt zählt der Leerlauf
                 continue
-            if slot.last_used > now - timedelta(minutes=model.idle_unload_minutes):
+            if slot.last_used > now - timedelta(minutes=minutes):
                 continue
             try:
                 with provider_lock(provider, wait=0):

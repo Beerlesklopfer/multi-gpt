@@ -132,7 +132,8 @@ Am Anbieter (nur lokal, OpenAI-kompatibel, LM Studio ab 0.4) im Abschnitt
 | Reserve für Anzeige bzw. System (GB) | 2 | bleibt immer frei (Monitor an derselben Karte, Desktop, Schätzfehler) |
 
 Je Modell kommen im Detailformular dazu: Parallele Anfragen, Priorität (0–100, Standard 50),
-automatisch laden (an), Entladen nach Leerlauf (30 min, 0 = nie) und ein gemessener
+automatisch laden (an), Entladen nach Leerlauf (30 min, 0 = nie), nach der Indexierung
+entladen (an: Indexierungsmodelle 2 Minuten nach dem Lauf) und ein gemessener
 Speicherbedarf, der die Schätzung ersetzt. Regeln, Schätzung und typische Werte stehen unter
 [RAG einrichten → Modellverwaltung](RAG-Einrichtung#modellverwaltung-automatisch-laden-speicherbudget).
 

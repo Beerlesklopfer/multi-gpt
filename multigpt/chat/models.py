@@ -324,6 +324,14 @@ class AIModel(models.Model):
         help_text="0 = nie. Gilt nicht für angeheftete Modelle. Übernimmt der Worker, "
         "nicht die TTL von LM Studio.",
     )
+    unload_after_indexing = models.BooleanField(
+        "nach der Indexierung entladen",
+        default=True,
+        help_text="Nur für Modelle der Indexierung (Embedding, OCR, Abbildungen): Ist kein "
+        "Lauf mehr offen, entlädt der Worker das Modell nach 2 Minuten ohne Gebrauch statt "
+        "nach dem Leerlauf oben. Die Suche im Chat lädt das Embedding-Modell bei Bedarf neu. "
+        "Gilt nicht für angeheftete Modelle.",
+    )
     vram_gb = models.DecimalField(
         "gemessener Speicherbedarf (GB)",
         max_digits=6,

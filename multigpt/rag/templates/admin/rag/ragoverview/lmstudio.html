@@ -57,7 +57,7 @@
             {% if row.busy %}<br>{{ row.busy }} laufende Anfrage(n){% endif %}
             {% if row.error %}<br><span class="rag-bad">{{ row.error }}</span>{% endif %}
           </td>
-          <td>{% if row.last_used %}{{ row.last_used|date:"d.m. H:i" }}{% else %}–{% endif %}{% if row.model.idle_unload_minutes and not row.model.pinned %}<br><small>entladen nach {{ row.model.idle_unload_minutes }} min</small>{% endif %}</td>
+          <td>{% if row.last_used %}{{ row.last_used|date:"d.m. H:i" }}{% else %}–{% endif %}{% if row.model.pinned %}{% elif row.indexing and row.model.unload_after_indexing %}<br><small>entladen 2 min nach dem Lauf</small>{% elif row.model.idle_unload_minutes %}<br><small>entladen nach {{ row.model.idle_unload_minutes }} min</small>{% endif %}</td>
           <td>
             <form method="post">
               {% csrf_token %}

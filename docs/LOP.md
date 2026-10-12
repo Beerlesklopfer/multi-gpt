@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-11, nach 0.3.1 (veröffentlicht) und M15 „Knoten“ (lokal, erscheint als 0.3.2).
+Stand: 2026-10-12, nach 0.3.3. Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 
 ## A. Entscheidungen des Nutzers
@@ -23,9 +23,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf |
 | A19 | Kontextmenü (M13-01) | Herkunft eigener Nachrichten im Zitat „Ich:“ statt „Du:“ (das Modell würde „Du“ auf sich beziehen); „Übersetzen“ flach (ins Deutsche, deutscher Text ins Englische) statt Untermenü mit Sprachen – so lassen? | ja |
 | A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |
-| A21 | Modellverwaltung (M7-09, 0.3.2) | Wie viel Reserve braucht der Monitor an der LM-Studio-Grafikkarte (Auflösung, Anzahl Monitore, Desktop-Effekte)? | 2 GB (Standard); bei 4K bzw. zwei Monitoren 3 GB; Wert aus `nvidia-smi` ohne geladene Modelle ablesen |
-| A22 | Modellverwaltung | Chatmodell gpt-oss-20b anheften? | nein: Priorität 60 statt anheften (Indexierung verdrängt es dann nie, ein anderes Chatmodell schon); nomic anheften |
-| A23 | Modellverwaltung | Budget für die Karte des LM-Studio-Rechners (Größe der Grafikkarte)? „Modelle verwalten“ ist bis dahin aus. | Grafikspeicher laut `nvidia-smi` in GB eintragen, dann einschalten und JIT/Auto-Evict in LM Studio abschalten |
 | A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört |
 
 ## B. Klärung im Betrieb
@@ -35,6 +32,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | B1 | „failed to parse grammar“: lief der Chat auf der Produktion 0.3.0? Mit 0.3.1 nicht reproduzierbar. |
 | B2 | qwen3-coder-30b bricht in LM Studio mit „terminated“ ab – Speicher bzw. Kontext in LM Studio prüfen. |
 | B3 | Wer hat die Entwicklungs-DB zwischenzeitlich auf chat 0028 migriert? Ungeklärt. |
+| B5 | LM Studio nach Neustart des Rechners: `llmster` lauschte nur auf 127.0.0.1 (Einstellung „im lokalen Netz“ nicht übernommen). Behoben mit `lms server start --bind 0.0.0.0` bzw. GUI; dauerhaft per systemd-Unit oder `LMS_SERVER_HOST=0.0.0.0`; Firewall auf 192.168.24.250 beschränken. In LM Studio Auto-Evict (`unloadPreviousJITModelOnLoad`) und `logSensitiveData` aus. Beim nächsten Neustart prüfen. |
 | B4 | Nach der Installation: Preise der Cloud-Modelle eintragen, Bildmodell setzen, „Alles neu indexieren“, „Sandbox testen“, bei OpenAI/Anthropic „Online-Status prüfen“ abschalten. |
 
 ## C. Bekannte Lücken (kleine Folgeschritte)
@@ -72,6 +70,7 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
 | C31 | Indexierung: Der Worker bearbeitet ein Dokument nach dem anderen (~40 s je Buch mit Textebene). Mehrere Dokumente gleichzeitig (z. B. 2–4, begrenzt durch die Parallelität in LM Studio) würde große Verzeichnisquellen deutlich schneller machen. Parallele OCR-Seiten lohnen bei Text-PDFs kaum. |
+| C32 | Prompt-Caching (Anthropic): Die Abrechnung erfasst Cache-Tokens, die Anfragen setzen aber kein `cache_control` – Systemprompt, Werkzeuge und Verlauf werden bei jeder Runde voll berechnet. Umsetzen: Breakpoints auf Werkzeuge/System und das Ende des Verlaufs; OpenAI cacht automatisch (Prefix ≥ 1024 Tokens), Gemini über Context-Caching. |
 
 ## D. Geplante Meilensteine
 
