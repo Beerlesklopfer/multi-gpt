@@ -178,7 +178,8 @@ print(6 * 7)
 @needs_sandbox
 def test_run_python_returns_output_png_svg_and_pdf(client, secret):
     """Befund: über MCP kam nur {chat_id, message_id, attachments} an. Jetzt:
-    stdout im Text, PNG als Bild, SVG als Text-Ressource, PDF als Ressource."""
+    stdout im Text, PNG als Bild, PDF als Ressource; das SVG nur als Verweis, weil das
+    PNG zum Ansehen reicht (sonst füllt es den Kontext des Clients)."""
     _python_on()
     _, result = call(client, secret, "run_python", {"code": PLOT_ALL})
     assert not result["isError"], text(result)
@@ -191,9 +192,10 @@ def test_run_python_returns_output_png_svg_and_pdf(client, secret):
     assert image["mimeType"] == "image/png"
     assert Image.open(io.BytesIO(base64.b64decode(image["data"]))).format == "PNG"
     resources = {r["resource"]["mimeType"]: r["resource"] for r in blocks(result, "resource")}
-    svg = resources["image/svg+xml"]
-    assert "<svg" in svg["text"] and "<script" not in svg["text"]
-    assert svg["uri"].startswith("multigpt://attachment/")
+    assert "image/svg+xml" not in resources
+    (svg,) = blocks(result, "resource_link")
+    assert svg["mimeType"] == "image/svg+xml" and svg["uri"].startswith("multigpt://attachment/")
+    assert "get_file" in text(result)
     assert base64.b64decode(resources["application/pdf"]["blob"]).startswith(b"%PDF-")
     data = structured(result)
     assert {a["name"] for a in data["attachments"]} == {"kurve.png", "kurve.svg", "kurve.pdf"}
@@ -211,7 +213,18 @@ def test_run_python_svg_only_gets_png_preview(client, secret):
     names = {a["name"] for a in structured(result)["attachments"]}
     assert names == {"balken.svg", "balken.png"}
     assert [b["mimeType"] for b in blocks(result, "image")] == ["image/png"]
-    assert blocks(result, "resource")[0]["resource"]["mimeType"] == "image/svg+xml"
+    assert blocks(result, "resource_link")[0]["mimeType"] == "image/svg+xml"
+    assert not blocks(result, "resource")
+
+
+@needs_sandbox
+def test_matplotlib_svg_keeps_text():
+    """svg.fonttype none: Beschriftungen bleiben <text> statt Glyphen-Pfaden."""
+    code = "import matplotlib.pyplot as plt\nplt.title('Umsatz')\nplt.savefig('t.svg')\n"
+    (svg,) = sandbox.run(code, sandbox.Limits()).files
+    content = svg.data.decode()
+    assert "<text" in content and "Umsatz" in content
+    assert '<use xlink:href="#DejaVuSans' not in content
 
 
 @needs_sandbox
@@ -319,15 +332,19 @@ def test_get_file_over_sse_budget_points_to_streamable_http():
 def test_svg_resource_and_budget_shared_between_files():
     svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'
     png = base64.b64decode(_png())
-    files = [_item("image/svg+xml", svg, pk=1), _item("image/png", png, pk=2)]
-    result = protocol.call_tool_result(ToolOutput("ok", {"a": 1}, files=files))
-    (resource,) = blocks(result, "resource")
+    alone = protocol.call_tool_result(ToolOutput("ok", files=[_item("image/svg+xml", svg, pk=1)]))
+    (resource,) = blocks(alone, "resource")
     assert resource["resource"] == {
         "uri": "multigpt://attachment/1",
         "mimeType": "image/svg+xml",
         "text": svg.decode(),
     }
+    # Mit PNG daneben reicht das Bild, das SVG kommt nur als Verweis.
+    files = [_item("image/svg+xml", svg, pk=1), _item("image/png", png, pk=2)]
+    result = protocol.call_tool_result(ToolOutput("ok", {"a": 1}, files=files))
     assert blocks(result, "image")[0]["data"] == _png()
+    (link,) = blocks(result, "resource_link")
+    assert link["uri"] == "multigpt://attachment/1" and not blocks(result, "resource")
     # Ohne Platz: beide nur als Verweis.
     tiny = protocol.call_tool_result(ToolOutput("ok", files=files), 40)
     assert len(blocks(tiny, "resource_link")) == 2

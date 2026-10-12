@@ -316,6 +316,15 @@ _limit(resource.RLIMIT_NOFILE, 256)
 _limit(resource.RLIMIT_CORE, 0)
 sys.path.append("/sandbox/lib")
 
+# matplotlib-Vorgaben: Text im SVG bleibt Text statt Glyphen-Pfaden (etwa zehnmal
+# kleiner, durchsuchbar). Liegt im beschreibbaren MPLCONFIGDIR, kostet keinen Import.
+try:
+    os.makedirs("/tmp/matplotlib", exist_ok=True)
+    with open("/tmp/matplotlib/matplotlibrc", "w", encoding="utf-8") as fh:
+        fh.write("svg.fonttype: none\n")
+except OSError:
+    pass
+
 import linecache, traceback
 
 with open("/sandbox/code.py", encoding="utf-8") as fh:

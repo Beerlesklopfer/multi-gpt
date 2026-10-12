@@ -315,7 +315,7 @@ def _too_large_side(data: bytes) -> bool:
         return False
 
 
-def file_content(item: FileItem, budget: int):
+def file_content(item: FileItem, budget: int, has_raster: bool = False):
     """Eine Datei als MCP-Inhalt -> ``(Block, Hinweis, verbrauchte Bytes)``."""
     data = item.data
     if not data:
@@ -337,7 +337,12 @@ def file_content(item: FileItem, budget: int):
         )
         return T.ImageContent(data=_b64(smaller), mime_type=kind), note, len(smaller) * 4 // 3 + 4
     if item.preview and mime == "image/svg+xml":
-        # Viele Clients zeigen SVG nicht als Bild: als Text-Ressource (bereinigtes SVG).
+        # Gibt es eine Rastervorschau, reicht die zum Ansehen: SVG nur als Verweis,
+        # damit es den Kontext des Clients nicht füllt (mit get_file abholbar).
+        if has_raster:
+            link, note = _link(item, "als Verweis (Vorschau als PNG oben)")
+            return link, note, 0
+        # Sonst als Text-Ressource (bereinigtes SVG), viele Clients rendern SVG nicht.
         if len(data) <= budget:
             text = data.decode("utf-8", errors="replace")
             resource = T.TextResourceContents(uri=item.uri, mime_type=mime, text=text)
@@ -362,8 +367,9 @@ def call_tool_result(output: ToolOutput, inline_bytes: int = JSON_INLINE_BYTES) 
     budget = inline_bytes - len(text.encode()) - len(data_text.encode())
     blocks: list = []
     notes: list[str] = []
+    has_raster = any(f.preview and f.mime_type in RASTER_TYPES for f in output.files)
     for item in output.files:
-        block, note, used = file_content(item, budget)
+        block, note, used = file_content(item, budget, has_raster)
         budget -= used
         blocks.append(block)
         if note:

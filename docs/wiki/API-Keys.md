@@ -161,7 +161,7 @@ Ein Ergebnis (`tools/call`) besteht aus Inhaltsblöcken nach der MCP-Spezifikati
 
 | Werkzeug | Inhalt |
 |---|---|
-| `run_python` | Text: Exit-Status, Laufzeit, stdout und stderr (wie für das Chatmodell). PNG, JPEG und WebP als `image`, SVG als `resource` mit `mimeType` `image/svg+xml` und dem SVG als Text (bereits auf dem Server bereinigt), PDF als `resource` (base64) |
+| `run_python` | Text: Exit-Status, Laufzeit, stdout und stderr (wie für das Chatmodell). PNG, JPEG und WebP als `image`, SVG als `resource` mit `mimeType` `image/svg+xml` und dem SVG als Text (bereits auf dem Server bereinigt) – liegt ein PNG bei (eigenes oder Vorschau), nur als `resource_link` (mit `get_file` abholen), PDF als `resource` (base64) |
 | `create_pdf` | Text mit Seitenzahl, das PDF als `resource` (`application/pdf`) |
 | `generate_image` | Text, das Bild als `image` |
 | `fetch_url`, `web_search` | Seiteninhalt bzw. Treffer als Text (Quellmaterial) |

@@ -13,7 +13,11 @@ multi-gpt (0.3.3) unstable; urgency=medium
   bis etwa 1 MB lesen.
 
   Diagramme speichern die Modelle jetzt bevorzugt als SVG. Speichert der
-  Code nur SVG, kommt über MCP zusätzlich ein PNG (aus der Sandbox).
+  Code nur SVG, kommt über MCP zusätzlich ein PNG (aus der Sandbox). Liegt
+  ein PNG bei, kommt das SVG nur als Verweis (resource_link, abholen mit
+  get_file), damit es den Kontext des Clients nicht füllt. matplotlib
+  schreibt Beschriftungen im SVG als Text statt als Pfade (svg.fonttype
+  none): die Dateien sind deutlich kleiner und durchsuchbar.
 
   Werkzeuge nach Bedarf: Sind für eine Antwort Sammlungen gewählt, sieht
   das Modell neben search_documents auch read_document, list_documents und
