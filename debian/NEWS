@@ -26,6 +26,9 @@ multi-gpt (0.3.6) unstable; urgency=medium
   Seite /mitteilungen/), wenn ein Empfänger den Chat löscht, archiviert oder
   eine Antwort löscht.
 
+  Die Oberfläche zeigt die Version unten in der Seitenleiste, auf der
+  Anmeldeseite und im Kopf der Verwaltung.
+
   Berechnungen: scipy steht in der Sandbox zur Verfügung (Paket rund
   140 MB größer). Die Speichergrenze der Sandbox sollte mindestens 320 MB
   betragen, damit scipy lädt (Standard 512 MB).

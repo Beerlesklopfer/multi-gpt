@@ -1,5 +1,8 @@
 multi-gpt (0.3.6) unstable; urgency=medium
 
+  * MCP: read_chat lieferte reinen Text statt ToolOutput (HTTP 500 auf der Produktion)
+  * Versionsanzeige unten in der Seitenleiste, auf der Anmeldeseite und im Admin
+  * Releases: Beschreibung auf GitHub englisch aus docs/releases/<version>.md
   * NEWS und Website: 0.3.6
   * LOP: A6, A13, A20 entschieden; M13-Fragen 7a–7l festgelegt
   * Doku: M14-Umsetzungsplan, LOP nach den Entscheidungen A3–A19, mgpt-ctl
@@ -16,7 +19,7 @@ multi-gpt (0.3.6) unstable; urgency=medium
   * Indexierung: Hochgeladenes vor großen Läufen abarbeiten
   * LOP: Stand 0.3.5 (B6 n8n-Autostart, B7 Produktion, C31 Prozesse, C34 Menü)
 
- -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 23:16:27 +0200
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 23:50:01 +0200
 
 multi-gpt (0.3.5) unstable; urgency=medium
 
