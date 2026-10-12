@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-12, nach 0.3.5. Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
+Stand: 2026-10-12 abends, 0.3.5 veröffentlicht (GitHub-Release und apt-Quelle). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen.
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 
 ## A. Entscheidungen des Nutzers
@@ -31,8 +31,10 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | B1 | „failed to parse grammar“: lief der Chat auf der Produktion 0.3.0? Mit 0.3.1 nicht reproduzierbar. |
 | B2 | qwen3-coder-30b bricht in LM Studio mit „terminated“ ab – Speicher bzw. Kontext in LM Studio prüfen. |
 | B3 | Wer hat die Entwicklungs-DB zwischenzeitlich auf chat 0028 migriert? Ungeklärt. |
-| B5 | LM Studio nach Neustart des Rechners: `llmster` lauschte nur auf 127.0.0.1 (Einstellung „im lokalen Netz“ nicht übernommen). Behoben mit `lms server start --bind 0.0.0.0` bzw. GUI; dauerhaft per systemd-Unit oder `LMS_SERVER_HOST=0.0.0.0`; Firewall auf 192.168.24.250 beschränken. In LM Studio Auto-Evict (`unloadPreviousJITModelOnLoad`) und `logSensitiveData` aus. Beim nächsten Neustart prüfen. |
+| B5 | LM Studio nach Neustart des LM-Studio-Rechners: `llmster` lauschte nur auf 127.0.0.1. Behoben mit `lms server start --bind 0.0.0.0` bzw. GUI; dauerhaft per systemd-Unit oder `LMS_SERVER_HOST=0.0.0.0`; Firewall auf 192.168.24.250 beschränken. In LM Studio Auto-Evict („JIT models auto-evict“) und `logSensitiveData` aus – per GUI, die Datei wurde nicht übernommen. Beim nächsten Neustart des LM-Studio-Rechners prüfen. |
 | B4 | Nach der Installation: Preise der Cloud-Modelle eintragen, Bildmodell setzen, „Alles neu indexieren“, „Sandbox testen“, bei OpenAI/Anthropic „Online-Status prüfen“ abschalten. |
+| B6 | n8n nach Neustart des Servers aus (rootless Podman-Compose `~/n8n-ai`, kein Autostart): seit 2026-10-12 `systemctl --user enable podman-restart.service` (startet alle Container mit `restart=always`, Linger ist an). Offen: `n8n-sandbox-api` startet nicht – `SANDBOX_API_RUNNER_REGISTRATION_TOKEN` fehlt in `compose.yaml`; n8n meldet veraltete Einstellungen (`N8N_RUNNERS_MODE` intern, Python-Runner fehlt). |
+| B7 | Produktion nach dem Update auf 0.3.5: „Modelle verwalten“ beim Anbieter LM Studio (Budget 24, Reserve 2, gpt-oss Priorität 60) – nur auf einer Instanz (C33); Cache-Preise der Anthropic-Modelle (C32); beim OCR-Modell „Parallele Anfragen“ passend zu „Dokumente gleichzeitig“ (C31). |
 
 ## C. Bekannte Lücken (kleine Folgeschritte)
 
@@ -62,15 +64,16 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | C22 | Kontextmenü (M13-01): offen sind „Ins Scratchpad“ (M13-05), eigene Vorlagen (M13-02), Knopf „⋯“ je Nachricht für die ganze Nachricht, die Abschnittsansicht `collections/chunk.html` und „Nachfragen“ aus nur lesbaren Chats in einem neuen Chat (Frage 7c). |
 | C23 | Kontextmenü und Mitscrollen nur in headless Firefox geprüft (Auswahl per Skript, Mausrad, Bild auf, Touch nicht echt); langes Tippen am Handy und Chromium ungetestet. |
 | C24 | Token-Schätzung (M4a-12) nur an gpt-oss-20b in LM Studio kalibriert (n8n-Schemas 1,5-fach überschätzt); Cloud-Anbieter ungeprüft, deren Kontextlänge nur per Admin-Feld. |
-| C25 | find_tools: Stichwortliste deutsch → englisch klein; Zustandsfragen („Ist das Licht im Flur an?“) treffen eher HassTurnOn als GetLiveContext (HASS geht als kleiner Server ohnehin ganz mit). |
+| C25 | find_tools: Stichwortliste deutsch → englisch klein; Zustandsfragen („Ist das Licht im Flur an?“) treffen eher HassTurnOn als GetLiveContext (HASS geht als kleiner Server ohnehin ganz mit). Beispiel Chat 21 (2026-10-12): „Zeichne die Funktion x²“ – gpt-oss behauptete, keine Grafik erzeugen zu können; erst „Nimm Python“ führte zu run_python (Stichworte Zeichnen/Plotten/Diagramm fehlen). |
 | C26 | `![…](attachment:NAME)` bzw. `anhang:ID` im Antworttext: seit 0.3.5 im Browser geprüft (Firefox) – ein im Text gezeigtes Bild verschwindet aus der Anhangsliste (vorher doppelt), Klick öffnet die Großansicht. Offen: während des Streams ausgeblendet (sichtbar nach dem Nachladen); in PDFs (`create_pdf`) gilt weiter nur `anhang:ID`; Chromium ungetestet. |
 | C27 | Modellverwaltung: „wird geladen …“ steht nur in der Statuszeile des Chats und im Admin, nicht in der Modellauswahl bzw. der Statusanzeige oben. |
 | C28 | Modellverwaltung am echten LM Studio (0.4, 2026-10-12): Laden mit `context_length` und `parallel` wird angenommen und per `echo_load_config` bestätigt (olmOCR `parallel: 2`); Laden dauert 0,4 s (nomic) bzw. 1,8 s (olmOCR). **Embedding-Modelle lehnen `parallel` ab** (HTTP 400) – MultiGPT schickt es dort nicht mehr. Offen: Fehlermeldung bei zu wenig Grafikspeicher (nicht getestet, um ein laufendes gpt-oss nicht zu verdrängen). |
 | C29 | Speicherschätzung nicht an echten Messwerten kalibriert (Rechenpuffer pauschal 0,5 GB, KV-Cache f16); Architekturtabelle nur für gängige Modelle, sonst konservative Näherung. Abhilfe: Messwert am Modell eintragen. |
 | C30 | Modellverwaltung: Bild-Erzeugung und Anhänge-Beschreibung lokaler Modelle laufen nicht über die Verwaltung (LM Studio erzeugt keine Bilder). Eine laufende Chat-Antwort hält ihr Modell belegt; ein OCR-Lauf mit Tesseract als Ersatz weicht bei Speichermangel still auf Tesseract aus. |
-| C31 | Parallele Indexierung seit 0.3.5 (RAG-Einstellung „Dokumente gleichzeitig“, Standard 2): nur mit Tests geprüft, nicht am echten Lauf (Produktion indexierte gerade). Auf der Produktion beobachten: Dauer je Dokument, LM-Studio-Last; beim OCR-Modell „Parallele Anfragen“ passend setzen. |
+| C31 | Parallele Indexierung seit 0.3.5 (RAG-Einstellung „Dokumente gleichzeitig“, Standard 2): zuerst als Threads gebaut – gemessen ohne Gewinn, weil der GIL sie auf einen Kern zwang; jetzt eigene Prozesse (`run_worker --lane N`). Durchsatz noch nicht sauber gemessen (Messungen gestört durch apt-Upgrade, parallele Tests und entladene Modelle, C33). Auf der Produktion beobachten: Dauer je Dokument, CPU, LM-Studio-Last. |
 | C32 | Prompt-Caching: Anthropic seit 0.3.4 (Breakpoint am Systemprompt plus automatisches Caching des Verlaufs, 5 Min.). Offen: nicht gegen die echte API geprüft (kein Anthropic-Anbieter in der Entwicklung) – auf der Produktion `cache_read_input_tokens` in den Buchungen beobachten; Cache-Preise an den Anthropic-Modellen eintragen; 1-Stunden-Haltezeit für Chats mit langen Pausen erwägen; OpenAI `prompt_cache_key` je Chat für bessere Trefferquote. |
 | C33 | Zwei MultiGPT-Instanzen an einem LM Studio (Produktion und Entwicklung): Eine mit „Modelle verwalten“ entlädt Modelle, die die andere gerade nutzt („Model is unloaded“, beobachtet 2026-10-12 bei der CLV-Indexierung in der Entwicklung). Seit 0.3.5 wiederholt die OCR die Seite einmal; dauerhaft nur eine Instanz verwalten lassen (Wiki). Offen: Chat und Embeddings wiederholen nicht. |
+| C34 | Persönliches Menü und Profilbild (0.3.5): Profilbild erscheint nur in der Kopfzeile, noch nicht an Nachrichten in geteilten Chats; Verwalter können fremde Profilbilder nicht entfernen; nur in Firefox geprüft (Chromium, Handy mit Touch offen). „Mein Verbrauch“ und „Familie“ stehen nur noch im Menü, nicht mehr in der Seitenleiste. |
 
 ## D. Geplante Meilensteine
 
