@@ -806,33 +806,77 @@ def test_lane_works_only_when_wanted(monkeypatch):
         if number == 2:
             timer = threading.Timer(0.1, stop.set)
             timer.start()
-        run_worker.lane(number, stop, poll=0.01)
+        run_worker.run_lane(number, stop, poll=0.01)
         assert len(calls) == expected
         assert calls == [False] * expected
 
 
-@pytest.mark.django_db(transaction=True, serialized_rollback=True)
-def test_worker_runs_two_documents_in_parallel(monkeypatch):
-    """Ohne --once (keine Test-Transaktion): zwei Spuren arbeiten gleichzeitig."""
-    import threading
-    import time as _time
-
+def test_lane_command_reuses_interpreter_and_entry(monkeypatch):
     from multigpt.chat.management.commands import run_worker
 
-    started = []
-    both = threading.Barrier(2, timeout=10)
+    monkeypatch.setattr(
+        run_worker.sys, "orig_argv", ["/venv/bin/python", "-P", "-m", "django", "run_worker"]
+    )
+    assert run_worker.lane_command(2, 3.0) == [
+        "/venv/bin/python", "-P", "-m", "django", "run_worker", "--lane", "2", "--poll", "3.0",
+    ]  # fmt: skip
+    monkeypatch.setattr(
+        run_worker.sys, "orig_argv", ["python", "manage.py", "run_worker", "--poll", "1"]
+    )
+    assert run_worker.lane_command(1, 1.0)[:4] == ["python", "manage.py", "run_worker", "--lane"]
+
+
+class FakeProc:
+    def __init__(self):
+        self.terminated = False
+        self.returncode = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+        self.returncode = 0
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_worker_starts_and_stops_lane_processes(monkeypatch):
+    """Ohne --once (keine Test-Transaktion): drei Spur-Prozesse, beim Ende beendet."""
+    from multigpt.chat.management.commands import run_worker
+
+    procs = []
+
+    def fake_start(number, poll):
+        proc = FakeProc()
+        procs.append((number, proc))
+        return proc
 
     def fake_work_once(should_stop):
-        if len(started) < 2:
-            started.append(threading.current_thread().name)
-            both.wait()  # klappt nur, wenn zwei Spuren gleichzeitig arbeiten
-            if len(started) == 2:
-                os.kill(os.getpid(), signal.SIGTERM)
-            return object()
-        _time.sleep(0.01)
+        os.kill(os.getpid(), signal.SIGTERM)
         return None
 
+    monkeypatch.setattr(run_worker, "start_lane", fake_start)
     monkeypatch.setattr(jobs, "work_once", fake_work_once)
-    monkeypatch.setattr(run_worker, "SETTINGS_TTL", 0.01)
     call_command("run_worker", "--poll", "0.01")
-    assert len(set(started)) == 2
+    assert [n for n, _ in procs] == [1, 2, 3]
+    assert all(p.terminated for _, p in procs)
+
+
+@pytest.mark.django_db
+def test_lane_mode_runs_jobs_until_signal(monkeypatch):
+    calls = []
+
+    def fake_work_once(should_stop):
+        calls.append(should_stop())
+        os.kill(os.getpid(), signal.SIGTERM)
+        return object()
+
+    monkeypatch.setattr(jobs, "work_once", fake_work_once)
+    call_command("run_worker", "--lane", "1", "--poll", "0.01")
+    assert calls == [False]

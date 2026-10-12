@@ -11,15 +11,23 @@ Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
 (``node/audit.py``) und entlädt lokale Modelle nach Leerlauf
 (``chat/model_manager.py``) – ein eigener Timer ist nicht nötig.
 
-Parallele Indexierung (C31): Neben dem Haupt-Thread holen bis zu drei weitere
-Threads Jobs ab, so viele wie ``RagSettings.index_workers`` minus eins (ohne
-Neustart änderbar). ``SKIP LOCKED`` verteilt die Jobs, Laden und Entladen der
-Modelle läuft unter der Sperre je Anbieter (``model_manager``). Mit ``--once``
-(Tests, Fehlersuche) bleibt es bei einem Thread.
+Parallele Indexierung (C31): Neben dem Hauptprozess holen bis zu drei weitere
+Prozesse (``run_worker --lane N``) Jobs ab, so viele wie
+``RagSettings.index_workers`` minus eins (ohne Neustart änderbar). Prozesse statt
+Threads, weil die Indexierung in Python rechnet (PDF-Text, Zerteilung): Threads
+teilten sich wegen des GIL einen Kern und wurden nicht schneller (gemessen
+2026-10-12). ``SKIP LOCKED`` verteilt die Jobs, Laden und Entladen der Modelle
+läuft unter der Sperre je Anbieter (``model_manager``). Der Hauptprozess startet
+die Spuren, startet abgestürzte neu und beendet sie mit sich; eine Spur endet
+auch, wenn ihr Hauptprozess verschwindet. Mit ``--once`` (Tests, Fehlersuche)
+gibt es keine Spuren.
 """
 
 import logging
+import os
 import signal
+import subprocess
+import sys
 import threading
 import time
 
@@ -39,6 +47,7 @@ logger = logging.getLogger("multigpt.worker")
 
 MAX_LANES = 4  # wie MaxValueValidator von RagSettings.index_workers
 SETTINGS_TTL = 30.0  # Sekunden, so oft liest eine Spur die Einstellung neu
+LANE_RESTART_DELAY = 60.0  # Sekunden zwischen Neustarts einer abgestürzten Spur
 
 
 def wanted_lanes() -> int:
@@ -49,12 +58,16 @@ def wanted_lanes() -> int:
     return max(1, min(MAX_LANES, value or 1))
 
 
-def lane(number: int, stop: threading.Event, poll: float) -> None:
-    """Zusätzliche Spur: holt Jobs, solange ``index_workers`` sie vorsieht."""
+def run_lane(number: int, stop: threading.Event, poll: float, parent: int | None = None) -> None:
+    """Zusätzliche Spur: holt Jobs, solange ``index_workers`` sie vorsieht.
+    ``parent``: PID des Hauptprozesses; ist er weg, endet die Spur."""
     active_until = 0.0
     active = False
     try:
         while not stop.is_set():
+            if parent is not None and os.getppid() != parent:
+                logger.warning("Spur %d: Hauptprozess beendet, Spur endet", number)
+                break
             if not connection.in_atomic_block:
                 close_old_connections()
             if time.monotonic() > active_until:
@@ -85,6 +98,34 @@ def lane(number: int, stop: threading.Event, poll: float) -> None:
             connection.close()
 
 
+def lane_command(number: int, poll: float) -> list[str]:
+    """Aufruf einer Spur: derselbe Interpreter mit denselben Schaltern (z. B. ``-P``
+    im Paket) und demselben Einstieg (``manage.py`` bzw. ``-m django``)."""
+    argv = list(getattr(sys, "orig_argv", []) or [sys.executable, *sys.argv])
+    if "run_worker" in argv:
+        argv = argv[: argv.index("run_worker") + 1]
+    else:  # z. B. call_command aus einem anderen Einstieg
+        argv = [sys.executable, "-m", "django", "run_worker"]
+    return [*argv, "--lane", str(number), "--poll", str(poll)]
+
+
+def start_lane(number: int, poll: float) -> subprocess.Popen:
+    return subprocess.Popen(lane_command(number, poll), close_fds=True)
+
+
+def stop_lanes(procs: dict[int, subprocess.Popen], timeout: float = 60.0) -> None:
+    """SIGTERM an alle Spuren; laufende Jobs halten an der nächsten Prüfstelle."""
+    for proc in procs.values():
+        if proc.poll() is None:
+            proc.terminate()
+    deadline = time.monotonic() + timeout
+    for proc in procs.values():
+        try:
+            proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 class Command(BaseCommand):
     help = "Hintergrundjobs (Indexierung von Dokumenten) abarbeiten."
 
@@ -100,8 +141,14 @@ class Command(BaseCommand):
             default=3.0,
             help="Wartezeit in Sekunden, wenn kein Job fällig ist (Standard 3).",
         )
+        parser.add_argument(
+            "--lane",
+            type=int,
+            default=0,
+            help="Intern: als zusätzliche Spur N laufen (startet der Worker selbst).",
+        )
 
-    def handle(self, *args, once=False, poll=3.0, **options):
+    def handle(self, *args, once=False, poll=3.0, lane=0, **options):
         stop = threading.Event()
 
         def on_signal(signum, frame):
@@ -110,19 +157,40 @@ class Command(BaseCommand):
             stop.set()
 
         previous = {sig: signal.signal(sig, on_signal) for sig in (signal.SIGTERM, signal.SIGINT)}
+        if lane:
+            logger.info("Spur %d gestartet", lane)
+            try:
+                run_lane(lane, stop, poll, parent=os.getppid())
+            finally:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
+                logger.info("Spur %d beendet", lane)
+            return
         logger.info("Worker gestartet%s", " (einmalig)" if once else "")
         last_stale_check = 0.0
-        lanes = []
-        # Nicht in einer Transaktion (Tests): Threads hätten eigene Verbindungen.
-        if not once and not connection.in_atomic_block:
-            for number in range(1, MAX_LANES):
-                thread = threading.Thread(
-                    target=lane, args=(number, stop, poll), name=f"worker-{number}", daemon=True
-                )
-                thread.start()
-                lanes.append(thread)
+        lanes: dict[int, subprocess.Popen] = {}
+        started: dict[int, float] = {}
+        # Nicht in einer Transaktion (Tests) und nicht mit --once.
+        with_lanes = not once and not connection.in_atomic_block
         try:
             while not stop.is_set():
+                if with_lanes:
+                    now = time.monotonic()
+                    for number in range(1, MAX_LANES):
+                        proc = lanes.get(number)
+                        if proc is not None and proc.poll() is None:
+                            continue
+                        # Abgestürzte Spur höchstens einmal je Minute neu starten.
+                        if now - started.get(number, -LANE_RESTART_DELAY) < LANE_RESTART_DELAY:
+                            continue
+                        if proc is not None:
+                            logger.warning(
+                                "Spur %d beendet (Code %s), wird neu gestartet",
+                                number,
+                                proc.returncode,
+                            )
+                        lanes[number] = start_lane(number, poll)
+                        started[number] = now
                 # Wie zwischen zwei Requests: veraltete/kaputte Verbindungen verwerfen
                 # (nicht innerhalb einer Transaktion, z. B. im Test).
                 if not connection.in_atomic_block:
@@ -159,9 +227,7 @@ class Command(BaseCommand):
                     stop.wait(poll)
         finally:
             stop.set()
-            for thread in lanes:
-                # Laufende Jobs halten an der nächsten Prüfstelle und werden wieder eingereiht.
-                thread.join(timeout=60)
+            stop_lanes(lanes)
             for sig, handler in previous.items():
                 signal.signal(sig, handler)
             logger.info("Worker beendet")
