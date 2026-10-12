@@ -100,9 +100,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"
 
-# Kosten (multigpt/billing): EZB-Referenzkurs USD automatisch abrufen? Standard
-# aus (externer Abruf); Kurse lassen sich immer von Hand im Admin pflegen.
-BILLING_ECB_FETCH = env.bool("BILLING_ECB_FETCH", default=False)
+# Kosten (multigpt/billing): EZB-Referenzkurs USD automatisch abrufen (Worker
+# täglich, Knopf im Admin)? Standard an (A11); ohne Internet auf false stellen.
+# Kurse lassen sich immer auch von Hand im Admin pflegen.
+BILLING_ECB_FETCH = env.bool("BILLING_ECB_FETCH", default=True)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

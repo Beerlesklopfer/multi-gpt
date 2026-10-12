@@ -17,6 +17,13 @@ def _test_settings(settings, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_ecb_fetch(settings):
+    """EZB-Kurs (A11) im Test nicht abrufen: Der Worker holt ihn sonst täglich
+    aus dem Internet. Tests in tests/test_billing*.py schalten ihn gezielt ein."""
+    settings.BILLING_ECB_FETCH = False
+
+
+@pytest.fixture(autouse=True)
 def _no_sandbox(monkeypatch):
     """Werkzeug run_python (M4a-10) standardmäßig nicht anbieten: Ob bubblewrap
     läuft, hängt vom Rechner ab, und viele Tests prüfen genaue Werkzeuglisten.

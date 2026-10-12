@@ -268,7 +268,9 @@ def usage_by_account(user, start, end, *, by_user: bool = False) -> list[dict]:
             cached_read=Coalesce(Sum("cached_read"), 0),
             cache_write=Coalesce(Sum(F("cache_write") + F("cache_write_1h")), 0),
             reasoning=Coalesce(Sum("reasoning"), 0),
-            amount_sum=Sum("amount"),
+            # Nur Buchungen in der heutigen Kontowährung (nach „Auf USD umstellen“
+            # stehen ältere in EUR; deren EUR-Betrag zählt in ``eur`` mit).
+            amount_sum=Sum("amount", filter=Q(currency=F("account__currency"))),
             eur_sum=Sum("amount_eur"),
             eur_missing=Count("pk", filter=Q(amount__isnull=False, amount_eur__isnull=True)),
             unpriced=Count(

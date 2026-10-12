@@ -34,7 +34,8 @@ Anpassen unter **Kosten und Abrechnung › Abrechnungskonten**:
 2. Anbieter bündeln: Am Anbieter (**Chat › Anbieter**, Abschnitt „Abrechnung“) ein vorhandenes
    Konto wählen, z. B. OpenRouter auf „OpenAI“.
 3. Art und Währung lassen sich nicht mehr ändern, sobald es Preise oder Buchungen gibt. Dann ein
-   neues Konto anlegen und die Anbieter umhängen.
+   neues Konto anlegen und die Anbieter umhängen. Ausnahme: **EUR-Konten auf USD umstellen**
+   (siehe unten).
 4. **aktiv** ausschalten sperrt alle Modelle des Kontos (z. B. Abo gekündigt).
 
 ## 2. Preise pflegen
@@ -59,6 +60,28 @@ Varianten wie `image:high` oder `image:high:1024x1024`; fehlt die Variante, gilt
 
 **Preisänderung:** neue Zeile mit neuem „gültig ab“ anlegen, die alte stehen lassen. Alte
 Buchungen behalten ihren Betrag und zeigen, welche Preisversion sie verwendet haben.
+
+### EUR-Konten auf USD umstellen
+
+Aus den früheren Euro-Preisen übernommene Konten stehen noch in EUR, die Anbieter
+rechnen aber in USD ab. Am besten beim nächsten Preis-Update umstellen: in der Liste
+**Abrechnungskonten** die Konten markieren, Aktion **„Auf USD umstellen“**. Die Vorschau zeigt
+je Modell den bisherigen EUR-Preis und den neuen USD-Preis (EUR-Preis geteilt durch den
+neuesten Kurs „1 USD in EUR“), erst **Übernehmen** speichert. Ohne Kurs geht es nicht; ist der
+Kurs älter als eine Woche, weist die Vorschau darauf hin. Auf der Kommandozeile:
+`mgpt-ctl switch_account_to_usd` (siehe [mgpt-ctl](mgpt-ctl)).
+
+- Die Kontowährung wird USD; je Modell mit Preis entsteht eine neue Preisversion **gültig ab
+  jetzt**. Danach die USD-Preise mit der Preisseite des Anbieters abgleichen und bei Bedarf
+  korrigieren.
+- Bisherige Preisversionen bleiben als Historie, alte Buchungen behalten Betrag und Währung
+  (EUR).
+- **Budgets bleiben unverändert:** Sie stehen immer in Euro und zählen den EUR-Betrag der
+  Buchungen, egal in welcher Währung das Konto abrechnet.
+- Preisversionen mit „gültig ab“ in der Zukunft verhindern die Umstellung (sie stünden sonst in
+  EUR im USD-Konto).
+- Im Monat der Umstellung zeigt „Mein Verbrauch“ beim Konto nur die USD-Buchungen als Betrag in
+  Kontowährung; der Euro-Betrag enthält alle.
 
 Modelle **ohne Preis** (oder nur mit Preis 0) kosten nichts und werden von keinem Budget
 gesperrt. Damit ein Cloud-Modell nicht versehentlich frei bleibt, Preise immer eintragen.
@@ -97,10 +120,17 @@ Fehlt ein Kurs, bleibt der EUR-Betrag **unbekannt** (nicht 0), und der Admin zei
 Für Budgets zählen solche Beträge vorläufig mit dem neuesten Kurs, ohne jeden Kurs 1:1. Sobald ein
 passender Kurs gespeichert wird, trägt MultiGPT die fehlenden EUR-Beträge nach.
 
-**EZB-Kurs automatisch (optional, standardmäßig aus):** `BILLING_ECB_FETCH=true` in
-`/etc/multi-gpt/.env` schaltet den Knopf „EZB-Kurs abrufen“ und den Befehl
-`mgpt-ctl fetch_ecb_rate` frei. Abgerufen wird nur
-`https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`, ohne Weiterleitungen.
+**EZB-Kurs automatisch (standardmäßig an):** Der Worker holt den
+EZB-Referenzkurs einmal täglich, werktags ab 16:30 Uhr (Veröffentlichung gegen 16 Uhr), und
+beim ersten Durchlauf, wenn der Kurs des letzten Werktags fehlt (z. B. nach einem Neustart).
+Danach trägt er fehlende EUR-Beträge nach. Liefert die EZB noch den Vortag, fragt er bis 20 Uhr
+stündlich nach. Ohne Internet erscheint nur eine Warnung im Log
+(`journalctl -u multi-gpt-worker`), der nächste Versuch folgt nach 5 Minuten, dann mit
+doppeltem Abstand bis höchstens 6 Stunden. Zusätzlich gibt es den Knopf „EZB-Kurs abrufen“ und
+den Befehl `mgpt-ctl fetch_ecb_rate`. Abgerufen wird nur
+`https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`, ohne Weiterleitungen. Von Hand
+gepflegte Kurse desselben Tages bleiben. Ausschalten (Server ohne Internet):
+`BILLING_ECB_FETCH=false` in `/etc/multi-gpt/.env`, dann die Kurse von Hand pflegen.
 
 ## 4. Budgets
 

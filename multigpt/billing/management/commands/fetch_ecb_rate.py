@@ -1,4 +1,8 @@
-"""EZB-Referenzkurs USD abrufen (nur mit BILLING_ECB_FETCH=true), siehe billing.ecb."""
+"""EZB-Referenzkurs USD abrufen (nicht mit BILLING_ECB_FETCH=false), siehe billing.ecb.
+
+Den täglichen Abruf übernimmt der Worker (``ecb.auto_fetch``); der Befehl ist für
+den sofortigen Abruf von Hand.
+"""
 
 from django.core.management.base import BaseCommand, CommandError
 

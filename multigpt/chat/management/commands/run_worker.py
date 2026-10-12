@@ -9,7 +9,8 @@ Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
 (je Quelle höchstens ein offener Scan-Job), prüft fällige MCP-Server
 (``chat/mcp/status.py``) und löscht alte Einträge im Audit-Log der API
 (``node/audit.py``) und entlädt lokale Modelle nach Leerlauf
-(``chat/model_manager.py``) – ein eigener Timer ist nicht nötig.
+(``chat/model_manager.py``) und holt einmal täglich den EZB-Kurs USD
+(``billing/ecb.py``) – ein eigener Timer ist nicht nötig.
 
 Spuren über ``index_workers`` hinaus übernehmen nur eilige Aufträge (Hochladen,
 gezielt neu indexieren), damit ein einzelnes Dokument nicht hinter langen
@@ -38,8 +39,9 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import DatabaseError, close_old_connections, connection
 
+from multigpt.billing import ecb as billing_ecb
 from multigpt.chat import attachments as chat_attachments
-from multigpt.chat import model_manager
+from multigpt.chat import model_manager, notices
 from multigpt.chat.mcp import status as mcp_status
 from multigpt.chat.models import RagSettings
 from multigpt.chat.rag import jobs
@@ -215,6 +217,10 @@ class Command(BaseCommand):
                         api_sse.cleanup()
                         # Modellverwaltung (LM Studio): nach Leerlauf entladen.
                         model_manager.unload_idle()
+                        # Mitteilungen (A15): gelesene nach 90 Tagen löschen.
+                        notices.cleanup()
+                        # EZB-Kurs USD (A11): einmal täglich, Fehler nur als Warnung.
+                        billing_ecb.auto_fetch()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:

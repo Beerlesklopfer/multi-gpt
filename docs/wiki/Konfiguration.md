@@ -91,7 +91,7 @@ MultiGPT ist unter `/mcp/` (ältere Clients: `/mcp/sse`) selbst MCP-Server (sieh
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `BILLING_ECB_FETCH` | `False` | EZB-Referenzkurs USD abrufen (Knopf im Admin, `mgpt-ctl fetch_ecb_rate`). Externer Abruf, daher standardmäßig aus; Kurse lassen sich immer von Hand pflegen. Siehe [Kosten und Budgets](Kosten-und-Budgets). |
+| `BILLING_ECB_FETCH` | `True` | EZB-Referenzkurs USD abrufen: täglich durch den Worker, Knopf im Admin, `mgpt-ctl fetch_ecb_rate`. Externer Abruf; ohne Internet auf `false` stellen und Kurse von Hand pflegen. Siehe [Kosten und Budgets](Kosten-und-Budgets). |
 
 ## Nur bei der Installation
 

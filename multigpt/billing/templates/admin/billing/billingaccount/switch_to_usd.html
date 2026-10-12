@@ -1,0 +1,72 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+{# Vorschau der Admin-Aktion „Auf USD umstellen“ (A10); gespeichert wird erst mit „Übernehmen“. #}
+
+{% block bodyclass %}{{ block.super }} app-billing model-billingaccount switch-to-usd{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Auf USD umstellen
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>Die Kontowährung wechselt von EUR auf USD. Je Modell entsteht eine neue Preisversion
+     „gültig ab jetzt“ in USD (EUR-Preis geteilt durch den Kurs). Bisherige Preisversionen
+     und Buchungen bleiben unverändert; Budgets stehen weiter in EUR.</p>
+  {% if errors %}
+    <ul class="messagelist">
+      {% for text in errors %}<li class="warning">{{ text }} Dieses Konto wird übersprungen.</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% for plan in plans %}
+    <h2>{{ plan.account.name }}</h2>
+    <p>Kurs: 1 USD = {{ plan.rate.usd_eur }} EUR vom {{ plan.rate.date|date:"d.m.Y" }}
+       ({{ plan.rate.get_source_display }}).
+       {% if plan.rate_stale %}<strong>Der Kurs ist älter als {{ stale_days }} Tage – vorher den EZB-Kurs abrufen?</strong>{% endif %}</p>
+    {% if plan.changes %}
+      <table>
+        <thead><tr><th scope="col">Modell</th><th scope="col">Bisher gültig</th><th scope="col">Preis</th><th scope="col">EUR</th><th scope="col">USD neu</th></tr></thead>
+        <tbody>
+        {% for change in plan.changes %}
+          {% for label, eur, usd in change.pairs %}
+            <tr>
+              {% if forloop.first %}
+                <td rowspan="{{ change.pairs|length }}">{{ change.ai_model.display_name }} <small>({{ change.ai_model.provider.name }})</small></td>
+                <td rowspan="{{ change.pairs|length }}">ab {{ change.old.valid_from|date:"d.m.Y H:i" }}</td>
+              {% endif %}
+              <td>{{ label }}</td><td>{{ eur }}</td><td>{{ usd }}</td>
+            </tr>
+          {% empty %}
+            <tr><td>{{ change.ai_model.display_name }}</td><td>ab {{ change.old.valid_from|date:"d.m.Y H:i" }}</td><td colspan="3">nur Gebühren je Einheit</td></tr>
+          {% endfor %}
+          {% if change.old.unit_prices %}
+            <tr><td></td><td></td><td>Gebühren je Einheit</td><td colspan="2">{{ change.units_text }}</td></tr>
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Keine Modelle mit Preis – es wird nur die Währung umgestellt.</p>
+    {% endif %}
+    {% if plan.without_price %}
+      <p>Ohne Preis (bleiben ohne Preis):
+        {% for model in plan.without_price %}{{ model.display_name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  {% endfor %}
+  <form method="post">
+    {% csrf_token %}
+    {% for pk in selected %}<input type="hidden" name="_selected_action" value="{{ pk }}">{% endfor %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="apply" value="1">
+    <div class="submit-row">
+      <input type="submit" class="default" value="Übernehmen">
+      <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

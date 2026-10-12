@@ -2,11 +2,13 @@
 
 - Abrechnungskonten mit Budgets je Rolle bzw. Nutzer (Inline) und der Liste
   der zugeordneten Anbieter. Art und Währung sind fest, sobald es Preise oder
-  Buchungen gibt (``BillingAccount.clean``).
+  Buchungen gibt (``BillingAccount.clean``); einzige Ausnahme ist die Aktion
+  „Auf USD umstellen“ für EUR-Bestandskonten (``usd_switch``, A10).
 - Modellpreise mit Historie (auch als Inline am Modell, siehe chat/admin.py).
   Eine Preisänderung ist eine neue Zeile mit neuem „gültig ab“; alte Buchungen
   behalten Betrag und Preisversion.
-- Wechselkurse: von Hand, optional EZB-Abruf (``ecb``, standardmäßig aus).
+- Wechselkurse: von Hand oder EZB-Abruf (``ecb``, standardmäßig an; der Worker
+  holt den Kurs täglich).
   Nach dem Speichern werden fehlende EUR-Beträge nachgetragen.
 - Buchungen nur lesend, ohne Inhalte; CSV-Export je Monat bzw. Konto.
 """
@@ -17,12 +19,14 @@ import json
 from decimal import Decimal
 
 from django.contrib import admin, messages
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.http import HttpResponse, HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html_join
 
-from . import booking, ecb
+from . import booking, ecb, usd_switch
 from .models import AccountBudget, BillingAccount, ExchangeRate, ModelPrice, UsageEntry
 
 MISSING_RATE_WARNING = (
@@ -57,6 +61,7 @@ class BillingAccountAdmin(admin.ModelAdmin):
     fields = ["name", "kind", "currency", "active", "note", "provider_list"]
     readonly_fields = ["provider_list"]
     inlines = [AccountBudgetInline]
+    actions = ["switch_to_usd_action"]
 
     @admin.display(description="Anbieter")
     def provider_list(self, obj):
@@ -74,6 +79,51 @@ class BillingAccountAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         _warn_missing_rates(request)
         return super().changelist_view(request, extra_context)
+
+    @admin.action(description="Auf USD umstellen (neue Preisversion ab jetzt)")
+    def switch_to_usd_action(self, request, queryset):
+        """EUR-Konten auf USD umstellen (A10, ``usd_switch``); erst Vorschau, dann
+        nach „Übernehmen“ speichern."""
+        if not self.has_change_permission(request):
+            return None
+        plans, errors = [], []
+        for account in queryset.order_by("name"):
+            try:
+                plans.append(usd_switch.plan(account))
+            except usd_switch.SwitchError as exc:
+                errors.append(str(exc))
+        if request.POST.get("apply") == "1":
+            for text in errors:
+                self.message_user(request, text, messages.WARNING)
+            for planned in plans:
+                try:
+                    count = usd_switch.apply(planned)
+                except usd_switch.SwitchError as exc:
+                    self.message_user(request, str(exc), messages.WARNING)
+                    continue
+                self.message_user(
+                    request,
+                    f"„{planned.account}“ auf USD umgestellt, {count} neue Preisversion(en) "
+                    f"mit Kurs {planned.rate.usd_eur} vom {planned.rate.date:%d.%m.%Y}.",
+                    messages.SUCCESS,
+                )
+            return None
+        if not plans:
+            for text in errors:
+                self.message_user(request, text, messages.WARNING)
+            return None
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": "Auf USD umstellen",
+            "subtitle": None,
+            "plans": plans,
+            "errors": errors,
+            "selected": request.POST.getlist(ACTION_CHECKBOX_NAME),
+            "action": "switch_to_usd_action",
+            "stale_days": usd_switch.STALE_RATE_DAYS,
+        }
+        return TemplateResponse(request, "admin/billing/billingaccount/switch_to_usd.html", context)
 
 
 PRICE_FIELDSETS = [
