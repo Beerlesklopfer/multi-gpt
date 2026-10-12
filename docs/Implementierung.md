@@ -509,6 +509,22 @@ Im Scratchpad sammelt der Nutzer Material aus sehr unterschiedlichen Quellen. Da
 
 Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder Laptop im Heimnetz), nicht auf dem Server. Er gibt den Modellen eine Arbeitsumgebung mit Shell, Dateien, git und Python. Der MultiGPT-Webserver verwaltet ihn. Plan 8i beschreibt den Ablauf.
 
+**Entscheidung des Nutzers vom 2026-10-13 (ersetzt „Sitzung = eigenes Volume“, Sicherung per `volume export` und die Größenprüfung der Volumes):** Der Runner ist das Coding-Werkzeug von MultiGPT. Anlass war Chat 17 der Produktion: Ein Modell hat HTML/JS-Code als PDF abgelegt, weil es kein Werkzeug für Code-Dateien gab. Ein eigenes `write_files` auf dem Server entfällt dafür.
+
+- **Arbeitsstand als git-Bundle in der Datenbank:** Neues Modell `RunnerWorkspace` (Besitzer, Name, Zuordnung zum Chat, `bundle` als BLOB/`BinaryField`, Größe, letzter Commit, geändert). Das Bundle enthält alle Refs (`git bundle create … --all`) und damit die ganze Historie. Damit ist jeder Stand zurückholbar, und die Datensicherung der Datenbank sichert die Arbeitsstände mit.
+- **Container nur mit tmpfs:** Beim Start einer Sitzung lädt der Agent das Bundle vom Server und klont es in ein tmpfs `/workspace`. Der Container hat sonst kein beschreibbares Dateisystem und kein Volume. Nach Änderungen committet der Agent (`git add -A`, `git commit`), erzeugt ein neues Bundle und lädt es hoch. Endet die Sitzung, ist auf dem Client nichts mehr übrig.
+- **Ausführen:** entweder Aufruf einer CLI im Container (Shell, Python, Node usw.) oder ein kleiner Webserver im Container, der die HTML-Ausgabe aus dem tmpfs ausliefert (Vorschau z. B. eines Bildschirmschoners). Der Rest bleibt im tmpfs.
+- **Folgen für die Festlegungen oben:**
+  - „Datenschutz“: Der Inhalt von `/workspace` liegt jetzt auch auf dem Server, als Bundle in der Datenbank. Er gilt dort weiter als nicht vertrauenswürdiges Material, wird nie ausgeführt und nur an den Runner des Kontos ausgeliefert.
+  - Frage 8b (Sicherung) entfällt; die Größe begrenzt der Server beim Hochladen des Bundles. Große Abhängigkeiten wie `node_modules` gehören in `.gitignore` und werden bei Bedarf im tmpfs neu installiert, sofern die Rolle Netz erlaubt.
+
+**Neue offene Fragen dazu:**
+
+1. **8p – Wie kommt die Vorschau in den Browser?** Empfehlung: über MultiGPT gestreamt, also über den Rückkanal und einen eigenen Pfad, der die Ausgabe in einem abgeschotteten Rahmen anzeigt (CSP `sandbox`, ohne Netz). Das funktioniert auch von anderen Geräten aus und braucht keinen offenen Port am Client. Die Alternative ist ein Port auf `localhost` des Browser-Rechners: einfacher, aber nur dort sichtbar und ohne Anmeldung.
+2. **8q – Wem gehört ein Arbeitsstand?** Empfehlung: dem Konto, wählbar im Chat (wie 8j); mehrere Chats dürfen denselben Arbeitsstand nacheinander nutzen. Alternative: genau einer je Chat.
+3. **8r – Wann wird gespeichert?** Empfehlung: nach jedem Werkzeugaufruf, der Dateien geändert hat (ein Commit je Aufruf). Dann geht bei einem Abbruch nichts verloren, und die Historie zeigt jeden Schritt. Alternative: nur am Ende der Sitzung.
+4. **8s – Größengrenze des Bundles?** Empfehlung: 50 MB je Arbeitsstand, 10 Arbeitsstände je Konto (Werte je Rolle änderbar).
+
 **Festlegungen:**
 
 - **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.
