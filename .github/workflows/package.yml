@@ -136,10 +136,15 @@ jobs:
           fi
 
   pages:
+    # Website samt apt-Quelle neu bauen – über main, denn die Umgebung github-pages
+    # erlaubt nur Deployments von main (ein Aufruf vom Tag aus wird abgewiesen).
     needs: release
+    runs-on: ubuntu-24.04
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/website.yml
-    secrets: inherit
+      actions: write
+    steps:
+      - name: Website-Workflow anstoßen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run website.yml --ref main

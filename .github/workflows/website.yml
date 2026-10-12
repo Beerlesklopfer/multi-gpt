@@ -1,7 +1,7 @@
 # Baut die Projektseite (docs/website, Hugo) und veröffentlicht sie auf GitHub Pages,
 # zusammen mit dem apt-Repository unter /apt (aus den .deb der letzten Releases,
 # signiert mit dem Secret APT_SIGNING_KEY). Läuft auch nach jedem Paket-Release
-# (package.yml ruft diesen Workflow auf).
+# (package.yml stößt ihn auf main an).
 # Voraussetzung im Repository: Settings → Pages → Source = "GitHub Actions".
 name: Website
 
