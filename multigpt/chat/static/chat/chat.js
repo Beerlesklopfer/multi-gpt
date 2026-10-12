@@ -1436,7 +1436,7 @@
     }
 
     // Neue Version einer Antwort (Geschwister mit gleichem Vorgänger).
-    async function regenerate(article) {
+    async function regenerate(article, extra = {}) {
       if (controller || !modelsReady) {
         return;
       }
@@ -1451,7 +1451,7 @@
       scrollToBottom();
       sendButton.focus();
       await runStream(
-        withTools({ regenerate: true, model: model.id, message_id: Number(article.dataset.messageId) }),
+        withTools({ regenerate: true, model: model.id, message_id: Number(article.dataset.messageId), ...extra }),
         assistantEl,
         { replaced },
       );
@@ -1773,7 +1773,7 @@
 
     log.addEventListener("click", (event) => {
       const button = event.target.closest(
-        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-version-target], [data-delete-message]",
+        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message]",
       );
       const article = button?.closest(".chat-message");
       if (!button || !article || button.disabled) {
@@ -1787,6 +1787,10 @@
         openEditor(article);
       } else if (button.hasAttribute("data-regenerate-message")) {
         regenerate(article);
+      } else if (button.hasAttribute("data-swap-message")) {
+        // Austausch im Grafikspeicher bestätigt: mit dem Modell dieser Antwort neu.
+        const modelId = Number(button.dataset.swapMessage);
+        regenerate(article, modelId ? { swap: true, model: modelId } : { swap: true });
       } else if (button.hasAttribute("data-delete-message")) {
         deleteExchange(article);
       } else {

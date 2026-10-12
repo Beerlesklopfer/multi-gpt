@@ -407,6 +407,7 @@ def _stream(request, conversation: Conversation):
     if err:
         return err
     regenerate = data.get("regenerate") is True
+    swap = data.get("swap") is True  # Austausch im Grafikspeicher bestätigt
     content = data.get("content")
     attachment_ids = data.get("attachments")
     if attachment_ids is not None and not (
@@ -467,6 +468,7 @@ def _stream(request, conversation: Conversation):
         )
     except services.TurnError as exc:
         return _error(exc.message, exc.status)
+    turn.swap = swap
     return _event_stream(services.run_turn(turn))
 
 

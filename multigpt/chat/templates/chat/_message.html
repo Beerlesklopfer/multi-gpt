@@ -27,6 +27,11 @@
     <p class="chat-message-status chat-message-status-aborted">Abgebrochen{% if msg.error %}: {{ msg.error }}{% endif %}</p>
   {% elif msg.status == "error" %}
     <p class="chat-message-status chat-message-status-error">Fehler{% if msg.error %}: {{ msg.error }}{% endif %}</p>
+    {% if msg.tool_state.swap.unload %}
+      <p class="chat-message-swap">
+        <button type="button" class="button" data-swap-message="{{ msg.model_id|default:'' }}">{{ msg.tool_state.swap.unload|join:", " }} entladen und {{ msg.model.display_name|default:"das Modell" }} laden</button>
+      </p>
+    {% endif %}
   {% endif %}
   {% include "chat/_message_actions.html" %}
 </article>

@@ -590,6 +590,56 @@ def test_chat_without_room_shows_clear_error(lms, provider, gpt, chat_user):
     assert lms.actions() == []
 
 
+def test_plan_offers_swap_only_for_pinned_or_priority():
+    requester = AIModel(model_id="neu", load_priority=50)
+    need = int(10 * vram.GB)
+    with pytest.raises(model_manager.SwapPossible) as exc:
+        model_manager.plan(snap([slot("a", 13, pinned=True)]), requester, need, True)
+    assert exc.value.unload == ["a"]
+    # Mit Bestätigung weicht das angeheftete Modell.
+    pinned = snap([slot("a", 13, pinned=True)])
+    chosen = model_manager.plan(pinned, requester, need, True, swap=True)
+    assert [s.label for s in chosen] == ["a"]
+    # In Benutzung: kein Angebot, auch nicht mit swap.
+    busy = snap([slot("a", 13, busy=True)])
+    with pytest.raises(model_manager.ModelUnavailable) as exc:
+        model_manager.plan(busy, requester, need, True)
+    assert not isinstance(exc.value, model_manager.SwapPossible)
+    with pytest.raises(model_manager.ModelUnavailable):
+        model_manager.plan(busy, requester, need, True, swap=True)
+    # Indexierung (nicht interaktiv): nie ein Angebot.
+    with pytest.raises(model_manager.ModelUnavailable) as exc:
+        model_manager.plan(snap([slot("a", 13, pinned=True)]), requester, need, False)
+    assert not isinstance(exc.value, model_manager.SwapPossible)
+
+
+def test_chat_offers_swap_and_swaps_on_confirmation(lms, provider, gpt, chat_user, client):
+    qwen = make(provider, QWEN, load_context_length=8192)
+    gpt.pinned = True
+    gpt.save()
+    lms.loaded = {GPT: 32768}
+    conversation = Conversation.objects.create(user=chat_user)
+    turn = services.prepare_turn(chat_user, conversation, qwen, content="Hi")
+    list(services.run_turn(turn))
+    failed = Message.objects.get(role="assistant")
+    assert failed.tool_state["swap"] == {"unload": [GPT]}
+    client.force_login(chat_user)
+    html = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert "data-swap-message" in html and f"{GPT} entladen und" in html
+    with lms.router() as mock:
+        mock.post(f"{BASE}/chat/completions").mock(return_value=_sse("Hallo!"))
+        turn = services.prepare_turn(
+            chat_user, conversation, qwen, regenerate=True, regenerate_of=failed.pk
+        )
+        turn.swap = True
+        list(services.run_turn(turn))
+    assert lms.actions() == [("unload", GPT), ("load", QWEN)]
+    answer = Message.objects.filter(role="assistant").exclude(pk=failed.pk).get()
+    assert answer.content == "Hallo!" and "swap" not in answer.tool_state
+    gpt.refresh_from_db()
+    assert gpt.pinned  # Einstellung bleibt
+
+
 def test_lease_released_when_client_aborts(lms, gpt, chat_user):
     lms.loaded = {GPT: 32768}
     conversation = Conversation.objects.create(user=chat_user)

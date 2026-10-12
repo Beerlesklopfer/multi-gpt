@@ -732,6 +732,11 @@ input {
   color: var(--error);
 }
 
+/* Angebot unter „Zu wenig Grafikspeicher“: blockierende Modelle entladen */
+.chat-message-swap {
+  margin: 0.5rem 0 0;
+}
+
 /* Leiste unter einer Nachricht: Versionen, Kopieren, Bearbeiten, Neu erzeugen */
 .chat-message-actions {
   display: flex;

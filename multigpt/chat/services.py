@@ -168,6 +168,7 @@ class Turn:
     # Feste Kontext-Abläufe, z. B. {"web_search": True, "collections": [ids]}.
     options: dict = field(default_factory=dict)
     query: str = ""  # Text der Nutzerfrage dieser Runde (Suchanfrage)
+    swap: bool = False  # Austausch im Grafikspeicher bestätigt (model_manager.SwapPossible)
 
 
 # --- Hilfen --------------------------------------------------------------------
@@ -1478,9 +1479,14 @@ class _Loop:
                     history.append(ChatMessage("assistant", text))
             # Modellverwaltung (LM Studio, M7-09): vor dem Gebrauch laden, ggf.
             # Platz im Grafikspeicher schaffen; sonst klare Meldung statt Antwort.
-            error = yield from model_manager.chat_ready(turn.ai_model)
+            unavailable = yield from model_manager.chat_ready(turn.ai_model, swap=turn.swap)
+            error = unavailable.message if unavailable else ""
             if error:
                 status = Message.Status.ERROR
+            if isinstance(unavailable, model_manager.SwapPossible):
+                # Angebot unter der Fehlermeldung: diese Modelle entladen und neu versuchen.
+                self.state["swap"] = {"unload": unavailable.unload}
+                self._persist()
             # Kontext schützen (M4a-12): Länge laut Anbieter bzw. Admin; wird es
             # knapp, erst Werkzeuge nach Bedarf, dann älteren Verlauf kürzen.
             context = context_budget.context_length(turn.ai_model)

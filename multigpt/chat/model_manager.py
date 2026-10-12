@@ -33,6 +33,13 @@ genug frei macht; sonst wird nichts entladen und nichts geladen.
 **Gleichzeitigkeit:** Laden und Entladen je Anbieter unter einer PostgreSQL-
 Advisory-Lock (Sitzungsebene); wer wartet, sieht danach das geladene Modell.
 
+**Austausch auf Nachfrage:** Blockieren im Chat nur angeheftete Modelle oder
+solche höherer Priorität (nicht belegte, von MultiGPT geladene), wirft ``plan``
+``SwapPossible``: Der Chat zeigt die Meldung mit dem Angebot, diese Modelle zu
+entladen; bestätigt der Nutzer, läuft die Antwort mit ``swap=True`` erneut
+(``ensure_loaded``/``chat_ready``) und darf genau diese Modelle verdrängen. Das
+Anheften bleibt eingestellt – braucht jemand das Modell wieder, wird es geladen.
+
 **Fehler:** ``ModelUnavailable`` mit deutscher Meldung. Ein fehlgeschlagenes
 Laden sperrt weitere Versuche mit Backoff (1, 2, 4 … höchstens 30 min). Ist LM
 Studio selbst nicht erreichbar, greift die Verwaltung nicht ein – der
@@ -100,6 +107,19 @@ class ModelUnavailable(Exception):
     def __init__(self, message: str):
         super().__init__(message)
         self.message = message
+
+
+class SwapPossible(ModelUnavailable):
+    """Kein Platz, aber Entladen von ``unload`` (Modellnamen) auf Nachfrage reicht."""
+
+    def __init__(self, message: str, unload: list[str]):
+        super().__init__(message)
+        self.unload = unload
+
+
+# Gründe, die ein Nutzer im Chat per Austausch übergehen darf (nicht: in Benutzung,
+# fremd geladen, Indexierung läuft).
+SWAPPABLE = frozenset({"angeheftet", "höhere Priorität"})
 
 
 # --- Grundlagen -------------------------------------------------------------------
@@ -407,8 +427,12 @@ def _evictable(slot: Slot, requester: AIModel, interactive: bool, snap: Snapshot
     return "höhere Priorität"
 
 
-def plan(snap: Snapshot, ai_model: AIModel, need: int, interactive: bool) -> list[Slot]:
-    """Zu entladende Instanzen, damit ``need`` Byte frei werden; sonst ``ModelUnavailable``."""
+def plan(
+    snap: Snapshot, ai_model: AIModel, need: int, interactive: bool, swap: bool = False
+) -> list[Slot]:
+    """Zu entladende Instanzen, damit ``need`` Byte frei werden; sonst ``ModelUnavailable``
+    bzw. ``SwapPossible`` (Chat: mit ``swap=True`` dürfen auch angeheftete Modelle und
+    solche höherer Priorität weichen)."""
     name = model_name(ai_model)
     if need > snap.usable:
         raise ModelUnavailable(
@@ -421,7 +445,7 @@ def plan(snap: Snapshot, ai_model: AIModel, need: int, interactive: bool) -> lis
     blocked = []
     for slot in snap.slots:
         reason = _evictable(slot, ai_model, interactive, snap)
-        if reason:
+        if reason and not (swap and interactive and reason in SWAPPABLE):
             blocked.append((slot, reason))
         else:
             candidates.append(slot)
@@ -436,14 +460,23 @@ def plan(snap: Snapshot, ai_model: AIModel, need: int, interactive: bool) -> lis
     by = ", ".join(
         f"{slot.label} ({vram.gb_text(slot.bytes)}, {reason})" for slot, reason in blocked
     ) or ", ".join(f"{s.label} ({vram.gb_text(s.bytes)})" for s in snap.slots)
-    raise ModelUnavailable(
-        MSG_NO_ROOM.format(
-            name=name,
-            need=vram.gb_text(need),
-            free=vram.gb_text(max(0, snap.free)),
-            by=by or "–",
-        )
+    message = MSG_NO_ROOM.format(
+        name=name,
+        need=vram.gb_text(need),
+        free=vram.gb_text(max(0, snap.free)),
+        by=by or "–",
     )
+    swappable = [slot for slot, reason in blocked if reason in SWAPPABLE]
+    if interactive and not swap and swappable:
+        # Reicht es, wenn diese weichen? Dann den Austausch anbieten (nur die nötigen).
+        swappable.sort(key=lambda s: (s.priority, s.last_used or oldest))
+        unload = []
+        for slot in swappable:
+            unload.append(slot.label)
+            free += slot.bytes
+            if free >= need:
+                raise SwapPossible(message, unload)
+    raise ModelUnavailable(message)
 
 
 # --- Laden ---------------------------------------------------------------------------------
@@ -527,11 +560,13 @@ def ensure_loaded(
     interactive: bool,
     on_status: Callable[[str], None] | None = None,
     force: bool = False,
+    swap: bool = False,
 ) -> bool:
     """Modell geladen halten; ggf. Platz schaffen und laden. True, wenn geladen wurde.
 
     ``interactive``: ein Mensch wartet (Chat, Suche). ``force``: von Hand
-    (Verwalter) – ohne „automatisch laden“ und ohne Backoff-Sperre.
+    (Verwalter) – ohne „automatisch laden“ und ohne Backoff-Sperre. ``swap``: der
+    Nutzer hat den Austausch bestätigt (``SwapPossible``).
     Wirft ``ModelUnavailable``.
     """
     provider = ai_model.provider
@@ -565,8 +600,9 @@ def ensure_loaded(
             context = profile_context(ai_model, entry.max_context_length if entry else None)
             est = estimate_model(ai_model, entry, context, ai_model.load_parallel)
             snap = snapshot(provider, catalog)
-            for slot in plan(snap, ai_model, est.total, interactive):
-                _do_unload(provider, slot, f"Platz für Modell {ai_model.pk}")
+            for slot in plan(snap, ai_model, est.total, interactive, swap=swap):
+                why = "Austausch" if swap and slot.pinned else "Platz"
+                _do_unload(provider, slot, f"{why} für Modell {ai_model.pk}")
             ModelRuntime.objects.update_or_create(
                 ai_model=ai_model, defaults={"loading_since": timezone.now()}
             )
@@ -615,19 +651,20 @@ def use(ai_model: AIModel, *, interactive: bool = False, on_status=None):
         touch(ai_model)
 
 
-def chat_ready(ai_model: AIModel) -> Iterator[tuple[str, dict]]:
-    """Chat: Modell laden (mit Statusmeldung). Rückgabe (``yield from``): Fehlertext oder ""."""
+def chat_ready(ai_model: AIModel, swap: bool = False) -> Iterator[tuple[str, dict]]:
+    """Chat: Modell laden (mit Statusmeldung). Rückgabe (``yield from``): ``None`` oder
+    die Ausnahme (``ModelUnavailable``, ggf. ``SwapPossible`` mit Angebot)."""
     if not managed(ai_model.provider):
-        return ""
+        return None
     touch(ai_model)
     if is_loaded(ai_model):
-        return ""
+        return None
     yield "status", {"text": MSG_LOADING.format(name=model_name(ai_model)), "level": "info"}
     try:
-        ensure_loaded(ai_model, interactive=True)
+        ensure_loaded(ai_model, interactive=True, swap=swap)
     except ModelUnavailable as exc:
-        return exc.message
-    return ""
+        return exc
+    return None
 
 
 def hold(ai_model: AIModel, events: Iterator):
