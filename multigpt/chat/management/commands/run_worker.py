@@ -10,6 +10,12 @@ Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
 (``chat/mcp/status.py``) und löscht alte Einträge im Audit-Log der API
 (``node/audit.py``) und entlädt lokale Modelle nach Leerlauf
 (``chat/model_manager.py``) – ein eigener Timer ist nicht nötig.
+
+Parallele Indexierung (C31): Neben dem Haupt-Thread holen bis zu drei weitere
+Threads Jobs ab, so viele wie ``RagSettings.index_workers`` minus eins (ohne
+Neustart änderbar). ``SKIP LOCKED`` verteilt die Jobs, Laden und Entladen der
+Modelle läuft unter der Sperre je Anbieter (``model_manager``). Mit ``--once``
+(Tests, Fehlersuche) bleibt es bei einem Thread.
 """
 
 import logging
@@ -23,12 +29,60 @@ from django.db import DatabaseError, close_old_connections, connection
 from multigpt.chat import attachments as chat_attachments
 from multigpt.chat import model_manager
 from multigpt.chat.mcp import status as mcp_status
+from multigpt.chat.models import RagSettings
 from multigpt.chat.rag import jobs
 from multigpt.node import audit as api_audit
 from multigpt.node import sse as api_sse
 from multigpt.rag import crawl
 
 logger = logging.getLogger("multigpt.worker")
+
+MAX_LANES = 4  # wie MaxValueValidator von RagSettings.index_workers
+SETTINGS_TTL = 30.0  # Sekunden, so oft liest eine Spur die Einstellung neu
+
+
+def wanted_lanes() -> int:
+    try:
+        value = RagSettings.load().index_workers
+    except DatabaseError:
+        return 1
+    return max(1, min(MAX_LANES, value or 1))
+
+
+def lane(number: int, stop: threading.Event, poll: float) -> None:
+    """Zusätzliche Spur: holt Jobs, solange ``index_workers`` sie vorsieht."""
+    active_until = 0.0
+    active = False
+    try:
+        while not stop.is_set():
+            if not connection.in_atomic_block:
+                close_old_connections()
+            if time.monotonic() > active_until:
+                active = wanted_lanes() > number
+                active_until = time.monotonic() + SETTINGS_TTL
+            if not active:
+                stop.wait(SETTINGS_TTL)
+                continue
+            try:
+                job = jobs.work_once(stop.is_set)
+            except DatabaseError as exc:
+                logger.warning("Datenbankfehler in Spur %d: %s", number, type(exc).__name__)
+                if connection.in_atomic_block:
+                    raise
+                connection.close()
+                stop.wait(max(poll, 5.0))
+                continue
+            except Exception:
+                # Ein Fehler im Job darf die Spur nicht beenden (run_job fängt das
+                # normalerweise selbst ab).
+                logger.exception("Unerwarteter Fehler in Spur %d", number)
+                stop.wait(max(poll, 5.0))
+                continue
+            if job is None:
+                stop.wait(poll)
+    finally:
+        if not connection.in_atomic_block:
+            connection.close()
 
 
 class Command(BaseCommand):
@@ -58,6 +112,15 @@ class Command(BaseCommand):
         previous = {sig: signal.signal(sig, on_signal) for sig in (signal.SIGTERM, signal.SIGINT)}
         logger.info("Worker gestartet%s", " (einmalig)" if once else "")
         last_stale_check = 0.0
+        lanes = []
+        # Nicht in einer Transaktion (Tests): Threads hätten eigene Verbindungen.
+        if not once and not connection.in_atomic_block:
+            for number in range(1, MAX_LANES):
+                thread = threading.Thread(
+                    target=lane, args=(number, stop, poll), name=f"worker-{number}", daemon=True
+                )
+                thread.start()
+                lanes.append(thread)
         try:
             while not stop.is_set():
                 # Wie zwischen zwei Requests: veraltete/kaputte Verbindungen verwerfen
@@ -95,6 +158,10 @@ class Command(BaseCommand):
                         break
                     stop.wait(poll)
         finally:
+            stop.set()
+            for thread in lanes:
+                # Laufende Jobs halten an der nächsten Prüfstelle und werden wieder eingereiht.
+                thread.join(timeout=60)
             for sig, handler in previous.items():
                 signal.signal(sig, handler)
             logger.info("Worker beendet")

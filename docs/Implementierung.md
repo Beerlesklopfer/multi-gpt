@@ -248,7 +248,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 *Abhängig von: M2, M4a (für die Suche als Werkzeug), Fragen 4b, 4c.*
 
 - **M7-01** `Collection`, `Document`, Freigaben an Gruppen über `Share`. Upload mit Prüfung von Dateityp und Größe, Dateinamen werden nicht übernommen.
-- **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`.
+- **M7-02** Job-Tabelle und Kommando `make worker`. Der Worker holt Jobs mit `SELECT … FOR UPDATE SKIP LOCKED`, wiederholt fehlgeschlagene Jobs mit Obergrenze. Dazu die Unit `multi-gpt-worker.service`. **Seit 0.3.5 (C31):** `RagSettings.index_workers` (Standard 2, 1–4, Migration `chat 0038`): zusätzliche Threads („Spuren“) im selben Worker holen Jobs, solange die Einstellung sie vorsieht (alle 30 s neu gelesen); Wartung bleibt im Haupt-Thread; mit `--once` bzw. in einer Transaktion keine Threads.
 - **M7-03** Textextraktion für PDF, DOCX, TXT und MD (seit M7-11 auch Bilddateien), Zerteilung in ca. 800 Tokens mit 100 Überlappung und Fundstelle (seit M7-13: erste/letzte Seite, Absatz von–bis, Gliederungsabschnitt), Embeddings (ursprünglich über OpenAI, seit M7-09 lokal über LM Studio). **OCR für gescannte PDFs** mit Tesseract und deutschem Sprachpaket: Seiten ohne Textebene werden erkannt und per OCR gelesen. Das Paket bekommt dafür `tesseract-ocr` und `tesseract-ocr-deu` als Abhängigkeit.
 - **M7-04** Migration für `Chunk` mit fester Vektordimension (zuerst 1536 für OpenAI, mit M7-09 auf 768 für nomic-embed-text) und HNSW-Index (Kosinus). `make reindex`.
 - **M7-10** (Nutzerwunsch) Verzeichnisquellen:

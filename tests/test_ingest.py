@@ -764,3 +764,75 @@ def test_concurrent_claims_are_unique(media):
     for t in threads:
         t.join(20)
     assert len(claimed) == 12 and len(set(claimed)) == 12
+
+
+# --- Parallele Indexierung (C31) ----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_wanted_lanes_follows_settings():
+    from multigpt.chat.management.commands import run_worker
+    from multigpt.chat.models import RagSettings
+
+    cfg = RagSettings.load()
+    assert run_worker.wanted_lanes() == 2  # Standard
+    cfg.index_workers = 4
+    cfg.save()
+    assert run_worker.wanted_lanes() == 4
+    cfg.index_workers = 1
+    cfg.save()
+    assert run_worker.wanted_lanes() == 1
+
+
+@pytest.mark.django_db
+def test_lane_works_only_when_wanted(monkeypatch):
+    """Spur 1 holt Jobs bei index_workers=2, Spur 2 wartet nur."""
+    import threading
+
+    from multigpt.chat.management.commands import run_worker
+
+    for number, expected in ((1, 3), (2, 0)):
+        stop = threading.Event()
+        calls = []
+
+        def fake_work_once(should_stop, calls=calls, stop=stop):
+            calls.append(should_stop())
+            if len(calls) == 3:
+                stop.set()
+            return object()  # „Job erledigt“: sofort weiter
+
+        monkeypatch.setattr(jobs, "work_once", fake_work_once)
+        monkeypatch.setattr(run_worker, "SETTINGS_TTL", 0.01)
+        if number == 2:
+            timer = threading.Timer(0.1, stop.set)
+            timer.start()
+        run_worker.lane(number, stop, poll=0.01)
+        assert len(calls) == expected
+        assert calls == [False] * expected
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_worker_runs_two_documents_in_parallel(monkeypatch):
+    """Ohne --once (keine Test-Transaktion): zwei Spuren arbeiten gleichzeitig."""
+    import threading
+    import time as _time
+
+    from multigpt.chat.management.commands import run_worker
+
+    started = []
+    both = threading.Barrier(2, timeout=10)
+
+    def fake_work_once(should_stop):
+        if len(started) < 2:
+            started.append(threading.current_thread().name)
+            both.wait()  # klappt nur, wenn zwei Spuren gleichzeitig arbeiten
+            if len(started) == 2:
+                os.kill(os.getpid(), signal.SIGTERM)
+            return object()
+        _time.sleep(0.01)
+        return None
+
+    monkeypatch.setattr(jobs, "work_once", fake_work_once)
+    monkeypatch.setattr(run_worker, "SETTINGS_TTL", 0.01)
+    call_command("run_worker", "--poll", "0.01")
+    assert len(set(started)) == 2

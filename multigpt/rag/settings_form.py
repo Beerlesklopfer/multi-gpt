@@ -307,6 +307,7 @@ class RagSettingsForm(forms.ModelForm):
             "figure_max_edge",
             "chunk_tokens",
             "overlap_tokens",
+            "index_workers",
             "top_k",
             "hybrid",
             "crossref_enabled",

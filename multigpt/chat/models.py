@@ -1654,6 +1654,14 @@ class RagSettings(models.Model):
         blank=True,
         help_text="Optional; Crossref bittet um eine Adresse im User-Agent („polite pool“).",
     )
+    index_workers = models.PositiveSmallIntegerField(
+        "Dokumente gleichzeitig",
+        default=2,
+        validators=[MinValueValidator(1), MaxValueValidator(4)],
+        help_text="So viele Dokumente bearbeitet der Worker parallel (1–4). Mehr lohnt "
+        "nur, wenn LM Studio die Anfragen auch parallel abarbeitet: beim OCR-Modell "
+        "„Parallele Anfragen“ mindestens so hoch setzen. Gilt ohne Neustart.",
+    )
     chunk_tokens = models.PositiveIntegerField(
         "Abschnittsgröße (Tokens)",
         default=800,

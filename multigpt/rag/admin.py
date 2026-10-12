@@ -363,6 +363,7 @@ class RagSettingsAdmin(RagAdminMixin, admin.ModelAdmin):
                 "description": "Wirkt erst nach „Alles neu indexieren“.",
             },
         ),
+        ("Indexierung", {"fields": ["index_workers"]}),
         ("Suche", {"fields": ["top_k", "hybrid"]}),
         (
             "Literaturangaben",

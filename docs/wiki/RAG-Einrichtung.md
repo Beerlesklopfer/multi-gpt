@@ -292,6 +292,7 @@ Chat entstehen mit einem Hinweis ohne Dokumentquellen.
 | Bildgröße für das Modell (Pixel) | 1024 | längste Kante; größere Bilder werden vor dem Senden verkleinert |
 | Abschnittsgröße (Tokens) | 800 | 100 bis 4000 |
 | Überlappung (Tokens) | 100 | kleiner als die Abschnittsgröße |
+| Dokumente gleichzeitig | 2 | 1 bis 4, siehe „Der Worker“ |
 | Treffer je Frage | 6 | so viele Abschnitte gehen als Quellen an das Modell (1 bis 20) |
 | Volltextsuche dazunehmen | an | Vektor- und deutsche Volltextsuche zusammenführen (Reciprocal Rank Fusion) |
 
@@ -357,6 +358,12 @@ eingerichtet und der Worker gelaufen sein, bevor die Suche wieder Treffer liefer
 Der Worker holt Aufträge aus einer Tabelle in PostgreSQL (`SELECT … FOR UPDATE SKIP LOCKED`, so
 können mehrere Worker parallel laufen), indexiert die Dokumente und wiederholt vorübergehende
 Fehler.
+
+**Dokumente gleichzeitig** (RAG-Einstellungen, Abschnitt „Indexierung“, Standard 2, höchstens 4):
+So viele Dokumente bearbeitet der Worker parallel, ohne Neustart änderbar. Das lohnt nur, wenn
+LM Studio die Anfragen auch parallel abarbeitet: beim OCR-Modell „Parallele Anfragen“ (Lade-Profil,
+nur mit „Modelle verwalten“) mindestens so hoch setzen, sonst stehen die Anfragen in LM Studio
+an. Embedding-Modelle kennen diese Einstellung nicht; nomic verarbeitet die Pakete ohnehin schnell.
 
 **Debian-Paket:** Das Paket bringt die Unit `multi-gpt-worker.service` mit. Sie wird bei der
 Installation aktiviert und gestartet und bei Updates nach der Migration neu gestartet. Sie läuft
