@@ -370,7 +370,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M12-04** Prüfen, ob das Paket sauber aktualisiert und entfernt wird: `apt install` über eine ältere Version, `apt remove` und `apt purge`.
 
 ### M13 – Scratchpad
-*Abhängig von: M7-13 (Zitieren), M8 (Webquellen), M4a (Werkzeugergebnisse), Anhänge, M5-06 (Teilen), Projekte (M5-07, Modell `Project`; Projektfreigabe noch offen). Fragen 7a–7l. Neu eingeplant am 2026-10-10 (Nutzerwunsch).*
+*Abhängig von: M7-13 (Zitieren), M8 (Webquellen), M4a (Werkzeugergebnisse), Anhänge, M5-06 (Teilen), Projekte (M5-07, Modell `Project`; Projektfreigabe noch offen). Fragen 7a–7l: **entschieden am 2026-10-12 (LOP A13): Empfehlungen übernehmen** (Tabelle in Abschnitt 6). Neu eingeplant am 2026-10-10 (Nutzerwunsch).*
 
 Im Scratchpad sammelt der Nutzer Material aus sehr unterschiedlichen Quellen. Daraus entsteht ein belegtes Gesamtdokument. Jeder Eintrag trägt seine Herkunft und eine strukturierte Zitierangabe. Das Modell schreibt nur aus den Einträgen. Kurzbelege und Literaturverzeichnis setzt der Server. Plan 8h beschreibt den Ablauf, Plan 6 das Datenmodell.
 

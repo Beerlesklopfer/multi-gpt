@@ -2,17 +2,14 @@
 
 Stand: 2026-10-12 abends, 0.3.5 veröffentlicht (GitHub-Release und apt-Quelle). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen.
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
-Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja, A19 so lassen; umgesetzt für 0.3.6: A4 (`ask`-Chats im Projekt „API“), A10 (EUR-Konten auf USD umstellen, Admin-Aktion/Befehl), A11 (EZB-Kurs automatisch, Standard an), A15 (Mitteilungen an den Besitzer), A16 (scipy); A14 entschieden (ASGI-Dienst), Umsetzungsplan in Implementierung.md M14.
+Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja, A19 so lassen; umgesetzt für 0.3.6: A4 (`ask`-Chats im Projekt „API“), A10 (EUR-Konten auf USD umstellen, Admin-Aktion/Befehl), A11 (EZB-Kurs automatisch, Standard an), A15 (Mitteilungen an den Besitzer), A16 (scipy); A14 entschieden (ASGI-Dienst), Umsetzungsplan in Implementierung.md M14; A6 ja (Produktion hat die /mcp-Blöcke bereits), A13 Empfehlungen 7a–7l übernommen, A20 so lassen. Offen bleiben in A nur zurückgestellte Punkte (A12, A17, A24).
 
 ## A. Entscheidungen des Nutzers
 
 | Nr. | Thema | Frage | Empfehlung | Entscheidung |
 |---|---|---|---|---|
-| A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |  |
 | A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden | sobald dort Cloud-Modelle genutzt werden |
-| A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |  |
 | A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf | erst bei Bedarf |
-| A20 | Werkzeuge nach Bedarf (M4a-12) | Vorgabe „automatisch“ gilt auch für Cloud-Modelle (gpt-5 sieht n8n dann nur über find_tools bzw. Vorauswahl; spart je Anfrage rund 8 000 Tokens) – so lassen oder Cloud-Modelle auf „nie“? | so lassen |  |
 | A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört | erst, wenn der Chat während Läufen stört |
 
 ## B. Klärung im Betrieb
@@ -75,5 +72,5 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | M10 Sprache (Spracherkennung, Vorlesen) | offen |
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
-| M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Rest geplant, wartet auf A13 |
+| M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Fragen 7a–7l entschieden (Empfehlungen), Umsetzung offen |
 | M14 Runner | Umsetzungsplan steht (M14-01 … M14-15, ASGI-Dienst); wartet auf Entscheidungen 8b–8o (Implementierung.md §6 und M14) |
