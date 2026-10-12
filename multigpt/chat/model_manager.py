@@ -243,6 +243,14 @@ def remember_catalog(provider: Provider, catalog: list[lmstudio.CatalogModel]) -
         rt.save(update_fields=[*changed, "catalog_seen"])
 
 
+def load_parallel(ai_model: AIModel) -> int | None:
+    """``parallel`` fürs Laden: Embedding-Modelle lehnen es ab (LM Studio 0.4, am Gerät
+    geprüft 2026-10-12: HTTP 400 „not supported for embedding models: parallel“)."""
+    if ai_model.capability == AIModel.Capability.EMBEDDING:
+        return None
+    return ai_model.load_parallel
+
+
 def profile_context(ai_model: AIModel, max_context: int | None) -> int | None:
     value = ai_model.load_context_length or vram.default_context(ai_model.capability, max_context)
     if value and max_context:
@@ -567,7 +575,7 @@ def ensure_loaded(
                     provider,
                     entry.key if entry else ai_model.model_id,
                     context_length=context,
-                    parallel=ai_model.load_parallel,
+                    parallel=load_parallel(ai_model),
                 )
             except lmstudio.LmsError as exc:
                 message = MSG_LOAD_FAILED.format(name=name, error=exc.message)

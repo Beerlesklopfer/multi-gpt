@@ -837,3 +837,11 @@ def test_cli_load_requires_management(lms, provider, gpt):
     provider.save()
     with pytest.raises(CommandError):
         call_command("lms", "load", GPT)
+
+
+def test_parallel_never_sent_for_embedding_models(nomic, gpt):
+    """Am echten LM Studio: parallel bei Embedding-Modellen -> HTTP 400."""
+    nomic.load_parallel = 2
+    gpt.load_parallel = 2
+    assert model_manager.load_parallel(nomic) is None
+    assert model_manager.load_parallel(gpt) == 2
