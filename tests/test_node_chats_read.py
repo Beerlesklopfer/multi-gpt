@@ -3,7 +3,15 @@
 import pytest
 
 from multigpt.accounts.models import Role, User, UserGroup
-from multigpt.chat.models import AIModel, Conversation, Message, Provider, Share, ToolCall
+from multigpt.chat.models import (
+    AIModel,
+    Conversation,
+    Message,
+    Provider,
+    Share,
+    SourceRef,
+    ToolCall,
+)
 from multigpt.node import tool_chats
 from multigpt.node.tools import CallContext, ToolFailure
 
@@ -46,6 +54,9 @@ def setup():
         result={"text": "Gerät nicht gefunden", "is_error": True},
         status="error",
     )
+    SourceRef.objects.create(
+        message=a, kind=SourceRef.Kind.WEB, title="Lichtanleitung", url="https://licht.example/"
+    )
     conv.current_leaf = a
     conv.save()
     other = Conversation.objects.create(user=ben, title="Bens Geheimnis")
@@ -58,6 +69,13 @@ def test_read_chat_shows_messages_tools_and_errors(setup):
     assert "HassTurnOff" in text and "Schlafzimmer" in text and "Gerät nicht gefunden" in text
     assert "Der Anbieter hat die Antwort abgebrochen." in text
     assert "(Seite 1 von 1)" in text
+
+
+def test_read_chat_lists_sources(setup):
+    """Befund Chat 15 (Produktion): Antworten belegen mit [n], die Quellen fehlten."""
+    text = tool_chats.read_chat(ctx(setup["anna"]), {"chat_id": setup["conv"].pk}).text
+    assert "**Quellen:**" in text
+    assert "- [1] Lichtanleitung" in text and "https://licht.example/" in text
 
 
 def test_foreign_chat_is_hidden_even_for_admins(setup):

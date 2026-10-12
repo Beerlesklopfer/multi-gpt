@@ -2,7 +2,7 @@
 
 ``list_chats`` listet eigene und mit dem Konto geteilte Chats, ``read_chat`` liefert
 den angezeigten Verlauf eines Chats als Markdown – mit Werkzeugaufrufen (Argumente
-und Ergebnis gekürzt), Status und Fehlern, damit sich ein Problem aus der Ferne
+und Ergebnis gekürzt), Quellen, Status und Fehlern, damit sich ein Problem aus der Ferne
 nachvollziehen lässt. Lange Verläufe kommen seitenweise.
 
 Rechte: nur Chats, die das Konto selbst besitzt oder die mit ihm geteilt sind
@@ -18,7 +18,8 @@ import json
 from django.utils import timezone
 
 from multigpt.chat import services, sharing
-from multigpt.chat.models import Conversation, Message
+from multigpt.chat.models import Conversation, Message, SourceRef
+from multigpt.chat.templatetags.source_tags import source_items
 
 from . import scopes as S
 from .tools import (
@@ -115,6 +116,25 @@ def _tool_lines(message: Message) -> list[str]:
     return lines
 
 
+def _source_lines(msg, user) -> list[str]:
+    """Quellen [n] einer Antwort wie unter der Antwort in der Oberfläche: Webseiten
+    mit URL, Dokumente mit Zitierangabe und Fundstelle (ohne internen Link)."""
+    refs = list(msg.sources.all())
+    if not refs:
+        return []
+    lines = ["**Quellen:**"]
+    for ref, item in zip(refs, source_items(refs, user), strict=True):
+        line = f"- [{item['n']}] {item['label']}"
+        if ref.kind == SourceRef.Kind.WEB and ref.url and not item.get("restricted"):
+            line += f" – {ref.url}"
+        if item.get("location"):
+            line += f" ({item['location']})"
+        if item.get("removed"):
+            line += " (entfernt)"
+        lines.append(line)
+    return lines + [""]
+
+
 def render(conversation: Conversation, user) -> str:
     """Angezeigter Verlauf als Markdown, mit Werkzeugaufrufen und Status."""
     show_authors = sharing.is_shared(conversation) or sharing.has_other_authors(conversation)
@@ -139,6 +159,8 @@ def render(conversation: Conversation, user) -> str:
                 lines += tools + [""]
         if msg.content.strip():
             lines += [msg.content.rstrip(), ""]
+        if msg.role == Message.Role.ASSISTANT:
+            lines += _source_lines(msg, user)
         names = [a.display_name for a in msg.attachments.all() if a.tool_call_id is None]
         if names:
             lines += [f"*Anhänge: {', '.join(names)}*", ""]
