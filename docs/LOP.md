@@ -11,10 +11,10 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 | A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |  |
 | A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |  |
 | A6 | nginx | Eigene Änderungen an der Site: `location`-Blöcke für `/mcp/` und `/mcp/sse` beim Update übernehmen | Bestätigung genügt |  |
-| A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |
+| A8 | Projekte | Projekt-Anweisungen gelten auch für Empfänger in geteilten Chats – bestätigen? | ja |  |
 | A10 | Kosten | EUR-Bestandskonten (Altpreise) auf USD umziehen? | ja, beim nächsten Preis-Update | JA |
-| A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf |  JA |
-| A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden |  sobald dort Cloud-Modelle genutzt werden |
+| A11 | Kosten | EZB-Kurs automatisch abrufen? | ja, wenn der Server ins Internet darf | JA |
+| A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden | sobald dort Cloud-Modelle genutzt werden |
 | A13 | M13 Scratchpad | Fragen 7a–7l (siehe Implementierung.md, M13) | Empfehlungen übernehmen |  |
 | A14 | M14 Runner | Rückkanal: eigener ASGI-/WebSocket-Dienst oder Long-Polling? | ASGI-Dienst | ASGI-Dienst |
 | A15 | Chat teilen | Besitzer benachrichtigen, wenn ein Empfänger löscht (Chat oder seit 0.3.4 eine Antwort samt Folgeverlauf, Recht D)? | später | JA |
