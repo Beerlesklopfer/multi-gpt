@@ -1,14 +1,15 @@
 ---
 title: "Installation"
 description: "Install MultiGPT as a Debian package, with Docker, or for development with make."
-lead: "The current version is 0.3.0 with the additions from 0.3.1. There are no ready-made packages to download yet: if you want to try MultiGPT, you build the package from source with `make deb`. After that you can chat using your own API keys."
+lead: "The current version is 0.3.3. Ready-made packages for Debian 13 (amd64) are available from a dedicated apt repository, so updates arrive with `apt upgrade`. If you prefer to build yourself, use `make deb`. After that you can chat using your own API keys."
 menus:
   main:
     weight: 30
 ---
 
-> **Status 0.3.0/0.3.1:** `make deb` builds the package (`multi-gpt_<version>_amd64.deb`), and
-> versions are marked as Git tags. New dependencies are bubblewrap (calculations) plus Pango,
+> **Status 0.3.3:** For every version tag, GitHub Actions builds the package on Debian 13,
+> attaches it to the [GitHub release](https://github.com/Beerlesklopfer/multi-gpt/releases) and
+> publishes it in the apt repository (the last three versions). New dependencies are bubblewrap (calculations) plus Pango,
 > harfbuzz and the DejaVu fonts (PDF sheets). Coming from 0.2? Read
 > [Updating to 0.3](#updating-to-03). A test installation on a fresh Debian 13 is still
 > pending, and the Docker route is untested so far. The complete operations guide (with
@@ -23,7 +24,7 @@ menus:
   (the default on Debian 13).
 - For PDF sheets: `libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz-subset0` and
   `fonts-dejavu-core` – also installed by apt.
-- For building the package: `debhelper` and `dh-virtualenv`.
+- Only for building the package yourself: `debhelper` and `dh-virtualenv`.
 
 ## Option 1: Debian package (recommended)
 
@@ -32,19 +33,39 @@ and is started via systemd. It creates the system user `multi-gpt`; data lives i
 `/var/lib/multi-gpt`. nginx and TLS are part of the package: gunicorn listens on
 `127.0.0.1` only, with nginx in front of it on the same machine.
 
-**1. Build the package** (in the source folder):
+**1. Add the package source** (once):
+
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://beerlesklopfer.github.io/multi-gpt/apt/multi-gpt.gpg \
+  | sudo tee /etc/apt/keyrings/multi-gpt.gpg >/dev/null
+sudo tee /etc/apt/sources.list.d/multi-gpt.sources >/dev/null <<'EOF'
+Types: deb
+URIs: https://beerlesklopfer.github.io/multi-gpt/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/multi-gpt.gpg
+EOF
+sudo apt update
+```
+
+The key that signs the repository has the fingerprint `8822 DF96 2A10 31EC AD6A  6F40 3DE7 6675 16FC 28FF`
+(check with `gpg --show-keys /etc/apt/keyrings/multi-gpt.gpg`).
+
+**2. Install:**
+
+```
+sudo apt install multi-gpt
+```
+
+Updates then arrive with `sudo apt update && sudo apt upgrade`. Without the package source you
+can also use the `.deb` from the [GitHub release](https://github.com/Beerlesklopfer/multi-gpt/releases)
+(`sudo apt install ./multi-gpt_<version>_amd64.deb`) or build it yourself in the source folder:
 
 ```
 sudo apt install build-essential debhelper dh-virtualenv python3-dev python3-venv
-make deb
-```
-
-The `.deb` ends up in the parent folder.
-
-**2. Install** (in the folder containing the `.deb`):
-
-```
-sudo apt install ./multi-gpt_<version>_amd64.deb
+make deb    # the .deb ends up in the parent folder
 ```
 
 During installation the following happens:
@@ -128,7 +149,8 @@ the [wiki: SearXNG](https://github.com/Beerlesklopfer/multi-gpt/wiki/SearXNG) (G
 The package migrates the database itself on every update. When updating from 0.2 to 0.3.x,
 a few extra steps are needed once by hand (they are also listed in `debian/NEWS`):
 
-**1. Update the package** (this pulls in bubblewrap, Pango, harfbuzz and DejaVu):
+**1. Update the package** (this pulls in bubblewrap, Pango, harfbuzz and DejaVu) – with the
+package source from option 1 `sudo apt update && sudo apt upgrade`, otherwise:
 
 ```
 sudo apt install ./multi-gpt_<version>_amd64.deb

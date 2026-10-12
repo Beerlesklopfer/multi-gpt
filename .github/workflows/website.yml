@@ -1,4 +1,7 @@
-# Baut die Projektseite (docs/website, Hugo) und veröffentlicht sie auf GitHub Pages.
+# Baut die Projektseite (docs/website, Hugo) und veröffentlicht sie auf GitHub Pages,
+# zusammen mit dem apt-Repository unter /apt (aus den .deb der letzten Releases,
+# signiert mit dem Secret APT_SIGNING_KEY). Läuft auch nach jedem Paket-Release
+# (package.yml ruft diesen Workflow auf).
 # Voraussetzung im Repository: Settings → Pages → Source = "GitHub Actions".
 name: Website
 
@@ -8,15 +11,15 @@ on:
     paths:
       - "docs/website/**"
       - ".github/workflows/website.yml"
+      - "scripts/apt-repo.sh"
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      APT_SIGNING_KEY:
+        required: false
 
 permissions:
   contents: read
-
-# Nur ein Deployment gleichzeitig; ein laufendes wird nicht abgebrochen.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 defaults:
   run:
@@ -28,6 +31,8 @@ env:
   # hugo_<version>_checksums.txt des GitHub-Releases.
   HUGO_VERSION: "0.165.0"
   HUGO_SHA256: "5c3a37a5450b3e386e5b75a87a790fea2d04a796d75e171216c80ef48a32b432"
+  # So viele Versionen bleiben im apt-Repository (je Paket gut 80 MB; Pages: 1 GB).
+  APT_KEEP_RELEASES: "3"
 
 jobs:
   build:
@@ -61,6 +66,25 @@ jobs:
           hugo --source docs/website --minify --panicOnWarning \
             --baseURL "${{ steps.pages.outputs.base_url }}/"
 
+      - name: apt-Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/debs"
+          for tag in $(gh release list --exclude-drafts --exclude-pre-releases \
+                         --limit "${APT_KEEP_RELEASES}" --json tagName --jq '.[].tagName'); do
+            gh release download "$tag" --pattern '*.deb' --dir "${RUNNER_TEMP}/debs" || true
+          done
+          if ls "${RUNNER_TEMP}"/debs/*.deb >/dev/null 2>&1; then
+            [ -n "${APT_SIGNING_KEY}" ] || {
+              echo "::error::Secret APT_SIGNING_KEY fehlt – apt verweigert unsignierte Repositories."; exit 1; }
+            scripts/apt-repo.sh "${RUNNER_TEMP}/debs" docs/website/public/apt
+          else
+            echo "::notice::Noch kein Release mit .deb – apt-Repository entfällt."
+          fi
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
@@ -69,6 +93,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-24.04
+    # Nur ein Deployment gleichzeitig; ein laufendes wird nicht abgebrochen.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

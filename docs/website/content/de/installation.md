@@ -1,14 +1,15 @@
 ---
 title: "Installation"
 description: "MultiGPT als Debian-Paket, mit Docker oder für die Entwicklung mit make installieren."
-lead: "Aktuell ist Version 0.3.0 mit den Ergänzungen aus 0.3.1. Fertige Pakete zum Herunterladen gibt es noch nicht: Wer MultiGPT ausprobieren will, baut das Paket aus dem Quellcode mit `make deb`. Danach kann man mit eigenen API-Keys chatten."
+lead: "Aktuell ist Version 0.3.3. Fertige Pakete für Debian 13 (amd64) gibt es über eine eigene apt-Paketquelle; Updates kommen dann mit `apt upgrade`. Wer lieber selbst baut, nutzt `make deb`. Danach kann man mit eigenen API-Keys chatten."
 menus:
   main:
     weight: 30
 ---
 
-> **Stand 0.3.0/0.3.1:** `make deb` baut das Paket (`multi-gpt_<version>_amd64.deb`), Versionen
-> sind als Git-Tags markiert. Neu sind die Abhängigkeiten bubblewrap (Berechnungen) sowie
+> **Stand 0.3.3:** Zu jedem Versions-Tag baut GitHub Actions das Paket auf Debian 13, hängt es an
+> das [GitHub-Release](https://github.com/Beerlesklopfer/multi-gpt/releases) und stellt es in die
+> apt-Paketquelle (die letzten drei Versionen). Neu sind die Abhängigkeiten bubblewrap (Berechnungen) sowie
 > Pango, harfbuzz und DejaVu-Schriften (PDF-Blätter). Wer von 0.2 kommt, liest
 > [Update auf 0.3](#update-auf-03). Eine Testinstallation auf einem frischen Debian 13 steht
 > noch aus, der Docker-Weg ist bisher ungetestet. Die vollständige Betriebsanleitung (mit
@@ -23,7 +24,7 @@ menus:
   User-Namespaces (unter Debian 13 Standard).
 - Für PDF-Blätter: `libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz-subset0` und
   `fonts-dejavu-core` – installiert apt ebenfalls mit.
-- Für den Paketbau: `debhelper` und `dh-virtualenv`.
+- Nur für den eigenen Paketbau: `debhelper` und `dh-virtualenv`.
 
 ## Weg 1: Debian-Paket (empfohlen)
 
@@ -32,19 +33,39 @@ mit und wird über systemd gestartet. Es legt den Systemnutzer `multi-gpt` an, D
 in `/var/lib/multi-gpt`. nginx und TLS sind Teil des Pakets: gunicorn lauscht nur auf
 `127.0.0.1`, davor steht nginx auf demselben Rechner.
 
-**1. Paket bauen** (im Quellcode-Ordner):
+**1. Paketquelle einrichten** (einmalig):
+
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://beerlesklopfer.github.io/multi-gpt/apt/multi-gpt.gpg \
+  | sudo tee /etc/apt/keyrings/multi-gpt.gpg >/dev/null
+sudo tee /etc/apt/sources.list.d/multi-gpt.sources >/dev/null <<'EOF'
+Types: deb
+URIs: https://beerlesklopfer.github.io/multi-gpt/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/multi-gpt.gpg
+EOF
+sudo apt update
+```
+
+Der Schlüssel, mit dem die Paketquelle signiert ist, hat den Fingerabdruck
+`8822 DF96 2A10 31EC AD6A  6F40 3DE7 6675 16FC 28FF` (prüfen mit `gpg --show-keys /etc/apt/keyrings/multi-gpt.gpg`).
+
+**2. Installieren:**
+
+```
+sudo apt install multi-gpt
+```
+
+Updates kommen danach mit `sudo apt update && sudo apt upgrade`. Ohne Paketquelle geht es auch
+mit dem `.deb` aus dem [GitHub-Release](https://github.com/Beerlesklopfer/multi-gpt/releases)
+(`sudo apt install ./multi-gpt_<version>_amd64.deb`) oder selbst gebaut im Quellcode-Ordner:
 
 ```
 sudo apt install build-essential debhelper dh-virtualenv python3-dev python3-venv
-make deb
-```
-
-Das `.deb` liegt danach im übergeordneten Ordner.
-
-**2. Installieren** (im Ordner mit dem `.deb`):
-
-```
-sudo apt install ./multi-gpt_<version>_amd64.deb
+make deb    # das .deb liegt danach im übergeordneten Ordner
 ```
 
 Bei der Installation passiert Folgendes:
@@ -130,7 +151,8 @@ Anleitung steht im [Wiki: SearXNG](https://github.com/Beerlesklopfer/multi-gpt/w
 Das Paket migriert die Datenbank bei jedem Update selbst. Beim Update von 0.2 auf 0.3.x sind
 zusätzlich einige Schritte einmalig von Hand nötig (sie stehen auch in `debian/NEWS`):
 
-**1. Paket aktualisieren** (holt bubblewrap, Pango, harfbuzz und DejaVu mit):
+**1. Paket aktualisieren** (holt bubblewrap, Pango, harfbuzz und DejaVu mit) – mit der
+Paketquelle aus Weg 1 `sudo apt update && sudo apt upgrade`, sonst:
 
 ```
 sudo apt install ./multi-gpt_<version>_amd64.deb

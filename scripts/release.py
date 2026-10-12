@@ -98,8 +98,9 @@ def main() -> None:
 
     print(f"Version {version} vorbereitet: Commit und Tag {tag} gesetzt.")
     print("Weiter:")
-    print("  make deb                            # Paket bauen")
-    print(f"  git push origin main {tag}         # veröffentlichen")
+    print("  make deb                            # Paket lokal bauen (optional)")
+    print(f"  git push origin main {tag}         # veröffentlichen; GitHub baut das")
+    print("                                      # Paket, Release und apt-Quelle")
 
 
 if __name__ == "__main__":
