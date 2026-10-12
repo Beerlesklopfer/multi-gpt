@@ -30,7 +30,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Case, F, IntegerField, Value, When
 from django.utils import timezone
 
 from ..models import Document, IndexRun, Job
@@ -120,6 +120,15 @@ def enqueue_index(document: Document, run: IndexRun | None = None) -> Job:
 # --- Abholen -------------------------------------------------------------------
 
 
+# Reihenfolge beim Abholen: kleine, von Menschen ausgelöste Läufe vor großen.
+URGENT_RUN_KINDS = (IndexRun.Kind.UPLOAD, IndexRun.Kind.REINDEX_DOCUMENTS)
+PRIORITY = Case(
+    When(run__kind__in=URGENT_RUN_KINDS, then=Value(0)),
+    default=Value(1),
+    output_field=IntegerField(),
+)
+
+
 def claim_next() -> Job | None:
     """Nächsten fälligen Job sperren, auf „läuft“ setzen und zurückgeben."""
     now = timezone.now()
@@ -129,7 +138,10 @@ def claim_next() -> Job | None:
             .filter(status=Job.Status.PENDING, run_after__lte=now)
             # Nachzügler eines Laufs, der gerade abgebrochen wird, nicht mehr starten.
             .exclude(run__status=IndexRun.Status.CANCELLING)
-            .order_by("run_after", "id")
+            # Von Hand Hochgeladenes und gezielt neu Indexiertes zuerst, dann große
+            # Läufe (Verzeichnis einlesen, alles neu) in ihrer Reihenfolge – sonst
+            # wartet ein einzelnes Dokument hinter Hunderten aus einer Quelle.
+            .order_by(PRIORITY, "run_after", "id")
             .first()
         )
         if job is None:

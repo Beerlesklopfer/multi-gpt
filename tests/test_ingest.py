@@ -880,3 +880,16 @@ def test_lane_mode_runs_jobs_until_signal(monkeypatch):
     monkeypatch.setattr(jobs, "work_once", fake_work_once)
     call_command("run_worker", "--lane", "1", "--poll", "0.01")
     assert calls == [False]
+
+
+@pytest.mark.django_db
+def test_upload_jobs_jump_ahead_of_directory_scans(collection, media):
+    """Ein hochgeladenes Dokument wartet nicht hinter einer großen Verzeichnisquelle."""
+    from multigpt.chat.models import IndexRun
+
+    scan = IndexRun.objects.create(kind=IndexRun.Kind.DIRECTORY_SCAN)
+    upload = IndexRun.objects.create(kind=IndexRun.Kind.UPLOAD)
+    older = [jobs.enqueue_index(make_document(collection, "sample.txt"), scan) for _ in range(3)]
+    mine = jobs.enqueue_index(make_document(collection, "sample.md"), upload)
+    assert jobs.claim_next().pk == mine.pk
+    assert jobs.claim_next().pk == older[0].pk
