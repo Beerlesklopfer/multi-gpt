@@ -65,20 +65,24 @@ jobs:
           if-no-files-found: error
 
   packaging-tests:
-    # postinst/postrm mit Stubs; braucht unprivilegierte User-Namespaces (unshare),
-    # deshalb direkt auf dem Runner statt im Container.
+    # postinst/postrm mit Stubs gegen das nginx von Debian 13 (Ubuntu 24.04 hat nur
+    # 1.24, das postinst verlangt 1.25.1). nginx -t läuft unter "unshare -rn",
+    # deshalb privilegierter Container.
     runs-on: ubuntu-24.04
+    container:
+      image: debian:trixie
+      options: --privileged
     steps:
+      - name: Abhängigkeiten
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            ca-certificates make dash openssl nginx-light util-linux
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
-      - name: nginx und Namespaces
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q nginx-light
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: make test-packaging
         run: make test-packaging
 
