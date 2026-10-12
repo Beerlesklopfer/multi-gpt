@@ -4,14 +4,7 @@
 {# Sammlungen (M7, RAG): Dokumente für die Suche im Chat. #}
 <a href="{% url 'chat:collection_list' %}" class="sidebar-link"
    {% if request.resolver_match.url_name == "collection_list" %}aria-current="page"{% endif %}>Sammlungen</a>
-{# Eigener Verbrauch und Budget (M6-02) für alle Konten. #}
-<a href="{% url 'usage' %}" class="sidebar-link"
-   {% if request.resolver_match.url_name == "usage" %}aria-current="page"{% endif %}>Mein Verbrauch</a>
-{# Seite „Familie“ (M6-04) nur für Verwalter. #}
-{% load family_tags %}{% if request.user|can_manage_family %}
-<a href="{% url 'family:overview' %}" class="sidebar-link"
-   {% if request.resolver_match.namespace == "family" %}aria-current="page"{% endif %}>Familie</a>
-{% endif %}
+{# „Mein Verbrauch“ und „Familie“ stehen im persönlichen Menü rechts oben (accounts/_user_menu.html). #}
 <form class="chat-search" id="chat-search" role="search" method="get" action="{{ request.path }}">
   <label for="chat-search-input" class="sr-only">{% if show_archived %}Archiv durchsuchen{% else %}Chats durchsuchen{% endif %}</label>
   <input type="search" id="chat-search-input" name="q" value="{{ q }}" maxlength="100"

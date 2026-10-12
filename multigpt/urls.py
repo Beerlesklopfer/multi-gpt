@@ -1,12 +1,15 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from multigpt.accounts import views_settings, views_usage
+from multigpt.accounts import views_avatar, views_settings, views_usage
 from multigpt.node import sse as node_sse
 from multigpt.node import views as node_views
 from multigpt.node import views_keys
 
 urlpatterns = [
+    # Profilbild (persönliches Menü): ausliefern bzw. ändern (views_avatar).
+    path("konto/profilbild/<int:pk>/", views_avatar.avatar_image, name="avatar_image"),
+    path("einstellungen/profilbild/", views_avatar.avatar_update, name="avatar_update"),
     path("konto/", include("django.contrib.auth.urls")),
     path("admin/", admin.site.urls),
     path("familie/", include("multigpt.accounts.urls_family")),

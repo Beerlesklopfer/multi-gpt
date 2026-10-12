@@ -98,6 +98,19 @@ Das gilt auch für den Vergleich (die Spalten stehen im selben Verlauf) und für
 Verlaufs nach dem Ende der Antwort: Wer oben liest, wird nicht verschoben. Ist im System
 „Bewegung reduzieren“ eingestellt, springt „↓ Neueste“ ohne Animation.
 
+## Persönliches Menü und Profilbild
+
+Rechts oben steht das eigene Profilbild mit Namen; ein Klick öffnet das persönliche Menü:
+**Einstellungen**, **Profilbild ändern**, **Mein Verbrauch**, **API-Keys** (wenn die Rolle sie
+erlaubt), **Familie** und **Verwaltung** (nur Verwalter), **Passwort ändern** und **Abmelden**.
+Escape oder ein Klick daneben schließt es, Pfeil hoch/runter wandert durch die Einträge. Auf dem
+Handy steht nur das Bild.
+
+**Profilbild:** Einstellungen → „Profilbild“: JPG, PNG oder WebP bis 10 MB. MultiGPT schneidet es
+quadratisch zu, verkleinert es auf 256 Pixel und speichert es ohne Metadaten (Ort, Kamera). Ohne
+Bild erscheinen die Initialen auf einer Farbe, die fest zum Konto gehört. Angemeldete
+Familienmitglieder können die Profilbilder der anderen sehen.
+
 ## Antwort löschen
 
 Der Papierkorb unter einer Antwort löscht **die Frage dazu, alle Versionen dieser Antwort und den

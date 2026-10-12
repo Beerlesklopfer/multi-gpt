@@ -1,0 +1,32 @@
+{% comment %}Persönliches Menü rechts oben (Profilbild, Pulldown). Ohne JavaScript ein
+<details>; user_menu.js ergänzt Escape, Klick daneben und Pfeiltasten.{% endcomment %}
+{% load avatar_tags family_tags %}
+<details class="user-menu" id="user-menu">
+  <summary class="user-menu-button" aria-label="Persönliches Menü: {{ user }}">
+    {% avatar user 32 %}
+    <span class="user-menu-name">{{ user }}</span>
+    <span class="user-menu-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="user-menu-panel">
+    <div class="user-menu-head">
+      {% avatar user 48 %}
+      <div>
+        <p class="user-menu-title">{{ user }}</p>
+        <p class="user-menu-sub">{{ user.get_username }}{% if user.role %} · {{ user.role.name }}{% endif %}</p>
+      </div>
+    </div>
+    <ul class="user-menu-list" role="list">
+      <li><a href="{% url 'settings' %}">Einstellungen</a></li>
+      <li><a href="{% url 'settings' %}#profilbild">Profilbild ändern</a></li>
+      <li><a href="{% url 'usage' %}">Mein Verbrauch</a></li>
+      {% if user|can_use_api_keys %}<li><a href="{% url 'api_keys' %}">API-Keys</a></li>{% endif %}
+      {% if user|can_manage_family %}<li><a href="{% url 'family:overview' %}">Familie</a></li>{% endif %}
+      {% if user.is_staff %}<li><a href="{% url 'admin:index' %}">Verwaltung</a></li>{% endif %}
+      <li><a href="{% url 'password_change' %}">Passwort ändern</a></li>
+    </ul>
+    <form method="post" action="{% url 'logout' %}" class="user-menu-logout">
+      {% csrf_token %}
+      <button type="submit" class="user-menu-item-button">Abmelden</button>
+    </form>
+  </div>
+</details>

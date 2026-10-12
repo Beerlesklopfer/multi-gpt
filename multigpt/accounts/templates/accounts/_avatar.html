@@ -1,0 +1,2 @@
+{# Profilbild bzw. Initialen (Tag avatar). Name als alt/aria nur, wenn kein Text daneben steht: aufrufende Stelle entscheidet über aria-hidden. #}
+{% if url %}<img class="avatar" src="{{ url }}" alt="" width="{{ size }}" height="{{ size }}" style="--avatar-size: {{ size }}px" loading="lazy">{% else %}<span class="avatar avatar-initials" style="--avatar-size: {{ size }}px; --avatar-color: {{ color }}" aria-hidden="true">{{ initials }}</span>{% endif %}

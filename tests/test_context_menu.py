@@ -106,5 +106,6 @@ def test_migration_adds_field_with_default_on():
     assert operation.field.default is True
     loader = MigrationLoader(connection)
     leaves = loader.graph.leaf_nodes("accounts")
-    assert leaves == [("accounts", "0011_context_menu")]
+    assert len(leaves) == 1  # keine verzweigte Migrationskette
+    assert ("accounts", "0011_context_menu") in loader.graph.forwards_plan(leaves[0])
     assert ("accounts", "0010_role_api_access") in migration.Migration.dependencies

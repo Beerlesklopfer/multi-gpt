@@ -22,6 +22,23 @@
       <a href="{% url 'chat:index' %}" class="button">Zurück zum Chat</a>
     </form>
 
+    <h2 class="section-title" id="profilbild">Profilbild</h2>
+    {% load avatar_tags %}
+    <div class="avatar-settings">
+      {% avatar user 96 %}
+      <form method="post" action="{% url 'avatar_update' %}" enctype="multipart/form-data" class="form avatar-form">
+        {% csrf_token %}
+        <p class="page-intro">JPG, PNG oder WebP bis 10 MB. Das Bild wird quadratisch zugeschnitten,
+          verkleinert und ohne Metadaten (Ort, Kamera) gespeichert. Ohne Bild erscheinen die Initialen.</p>
+        <label for="avatar-input">Bild wählen</label>
+        <input type="file" id="avatar-input" name="avatar" accept="image/jpeg,image/png,image/webp">
+        <div class="avatar-actions">
+          <button type="submit" class="button button-primary">Hochladen</button>
+          {% if user.avatar_updated %}<button type="submit" name="remove" value="1" class="button">Profilbild entfernen</button>{% endif %}
+        </div>
+      </form>
+    </div>
+
     <h2 class="section-title">Konto</h2>
     <p><a href="{% url 'password_change' %}">Passwort ändern</a></p>
     <p><a href="{% url 'api_keys' %}">API-Keys (MCP-Zugang für n8n, Claude Desktop und andere Programme)</a></p>

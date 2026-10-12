@@ -12,6 +12,7 @@
     <script src="{% static 'chat/sidebar.js' %}" defer></script>
     <script src="{% static 'chat/projects.js' %}" defer></script>
     <script src="{% static 'chat/provider_status.js' %}" defer></script>
+    <script src="{% static 'chat/user_menu.js' %}" defer></script>
   {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
@@ -29,15 +30,7 @@
       {% load family_tags %}{% supervision_notice %}
       {# Monatsbudget (M6-03): Hinweis ab 80 %, bei 100 % Sperre kostenpflichtiger Modelle. #}
       {% load usage_tags %}{% budget_banner %}
-      <nav class="account" aria-label="Konto">
-        <span class="username">{{ user.get_full_name|default:user.get_username }}</span>
-        <a href="{% url 'settings' %}">Einstellungen</a>
-        <a href="{% url 'password_change' %}" class="account-password">Passwort ändern</a>
-        <form method="post" action="{% url 'logout' %}" class="logout-form">
-          {% csrf_token %}
-          <button type="submit" class="link-button">Abmelden</button>
-        </form>
-      </nav>
+      {% include "accounts/_user_menu.html" %}
     {% endif %}
   </header>
   <div class="frame">

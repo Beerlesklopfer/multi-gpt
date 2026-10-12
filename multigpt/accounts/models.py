@@ -181,6 +181,12 @@ class User(AbstractUser):
         help_text="Links in Antworten, die aus keiner Quelle und keinem Werkzeugergebnis "
         "stammen, bekommen ein Warnsymbol.",
     )
+    # Profilbild (persönliches Menü): Zeitpunkt der letzten Änderung, leer = kein Bild
+    # (dann Initialen). Die Bilddaten liegen in ``Avatar``, damit sie nicht bei
+    # jeder Anfrage mit dem Konto geladen werden; der Wert dient als Cache-Version.
+    avatar_updated = models.DateTimeField(
+        "Profilbild geändert", null=True, blank=True, editable=False
+    )
     # Kontextmenü im Chat (M13-01): Rechtsklick, Leiste bei Textauswahl, Umschalt+F10.
     context_menu = models.BooleanField(
         "Eigenes Kontextmenü",
@@ -220,3 +226,20 @@ class UserGroup(Group):
     class Meta:
         verbose_name = "Gruppe"
         verbose_name_plural = "Gruppen"
+
+
+class Avatar(models.Model):
+    """Profilbild eines Kontos: 256 px WebP ohne Metadaten (``accounts.avatar``),
+    wenige KB, in der Datenbank und damit im Backup."""
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, primary_key=True, related_name="avatar_image"
+    )
+    data = models.BinaryField("Bild (WebP)")
+
+    class Meta:
+        verbose_name = "Profilbild"
+        verbose_name_plural = "Profilbilder"
+
+    def __str__(self):
+        return f"Profilbild von Konto {self.user_id}"
