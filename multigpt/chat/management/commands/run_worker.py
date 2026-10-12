@@ -11,6 +11,10 @@ Einmal je Minute reiht er außerdem fällige Verzeichnisquellen zum Einlesen ein
 (``node/audit.py``) und entlädt lokale Modelle nach Leerlauf
 (``chat/model_manager.py``) – ein eigener Timer ist nicht nötig.
 
+Spuren über ``index_workers`` hinaus übernehmen nur eilige Aufträge (Hochladen,
+gezielt neu indexieren), damit ein einzelnes Dokument nicht hinter langen
+Dokumenten großer Läufe wartet.
+
 Parallele Indexierung (C31): Neben dem Hauptprozess holen bis zu drei weitere
 Prozesse (``run_worker --lane N``) Jobs ab, so viele wie
 ``RagSettings.index_workers`` minus eins (ohne Neustart änderbar). Prozesse statt
@@ -73,11 +77,11 @@ def run_lane(number: int, stop: threading.Event, poll: float, parent: int | None
             if time.monotonic() > active_until:
                 active = wanted_lanes() > number
                 active_until = time.monotonic() + SETTINGS_TTL
-            if not active:
-                stop.wait(SETTINGS_TTL)
-                continue
             try:
-                job = jobs.work_once(stop.is_set)
+                # Über „Dokumente gleichzeitig“ hinaus nur Eiliges (Hochgeladenes):
+                # Ein einzelnes Dokument wartet so nicht, bis große Läufe einen
+                # regulären Platz freigeben.
+                job = jobs.work_once(stop.is_set, urgent_only=not active)
             except DatabaseError as exc:
                 logger.warning("Datenbankfehler in Spur %d: %s", number, type(exc).__name__)
                 if connection.in_atomic_block:

@@ -129,13 +129,19 @@ PRIORITY = Case(
 )
 
 
-def claim_next() -> Job | None:
-    """Nächsten fälligen Job sperren, auf „läuft“ setzen und zurückgeben."""
+def claim_next(urgent_only: bool = False) -> Job | None:
+    """Nächsten fälligen Job sperren, auf „läuft“ setzen und zurückgeben.
+
+    ``urgent_only``: nur Aufträge aus Läufen „Hochladen“ bzw. „Dokumente neu
+    indexieren“ (für Spuren über „Dokumente gleichzeitig“ hinaus).
+    """
     now = timezone.now()
     with transaction.atomic():
+        qs = Job.objects.select_for_update(skip_locked=True, of=("self",))
+        if urgent_only:
+            qs = qs.filter(run__kind__in=URGENT_RUN_KINDS)
         job = (
-            Job.objects.select_for_update(skip_locked=True, of=("self",))
-            .filter(status=Job.Status.PENDING, run_after__lte=now)
+            qs.filter(status=Job.Status.PENDING, run_after__lte=now)
             # Nachzügler eines Laufs, der gerade abgebrochen wird, nicht mehr starten;
             # pausierte Läufe warten, bis sie fortgesetzt werden.
             .exclude(run__status__in=(IndexRun.Status.CANCELLING, IndexRun.Status.PAUSED))
@@ -614,9 +620,11 @@ def _run_job(job: Job, should_stop: Callable[[], bool] | None) -> str:
     return job.status
 
 
-def work_once(should_stop: Callable[[], bool] | None = None) -> Job | None:
+def work_once(
+    should_stop: Callable[[], bool] | None = None, *, urgent_only: bool = False
+) -> Job | None:
     """Einen fälligen Job abholen und ausführen; None, wenn keiner fällig ist."""
-    job = claim_next()
+    job = claim_next(urgent_only=urgent_only)
     if job is not None:
         run_job(job, should_stop)
     return job

@@ -371,7 +371,9 @@ Fehler.
 in der Liste, `mgpt-ctl index pause <ID>`, MCP `pause_run`). Der Lauf holt dann keine neuen
 Dokumente mehr; gerade laufende werden fertig. „Fortsetzen“ macht an derselben Stelle weiter.
 Von Hand Hochgeladenes kommt ohnehin vor großen Läufen (Verzeichnisquellen, „Alles neu
-indexieren“) dran.
+indexieren“) dran – und zwar sofort: Die zusätzlichen Spuren über „Dokumente gleichzeitig“ hinaus
+übernehmen ausschließlich solche eiligen Aufträge, auch wenn lange Dokumente großer Läufe alle
+regulären Plätze belegen.
 
 **Dokumente gleichzeitig** (RAG-Einstellungen, Abschnitt „Indexierung“, Standard 2, höchstens 4):
 So viele Dokumente bearbeitet der Worker parallel, ohne Neustart änderbar. Das lohnt nur, wenn

@@ -786,29 +786,25 @@ def test_wanted_lanes_follows_settings():
 
 @pytest.mark.django_db
 def test_lane_works_only_when_wanted(monkeypatch):
-    """Spur 1 holt Jobs bei index_workers=2, Spur 2 wartet nur."""
+    """Spur 1 holt bei index_workers=2 alle Jobs, Spur 2 nur eilige (Hochgeladenes)."""
     import threading
 
     from multigpt.chat.management.commands import run_worker
 
-    for number, expected in ((1, 3), (2, 0)):
+    for number, urgent in ((1, False), (2, True)):
         stop = threading.Event()
         calls = []
 
-        def fake_work_once(should_stop, calls=calls, stop=stop):
-            calls.append(should_stop())
+        def fake_work_once(should_stop, urgent_only=False, calls=calls, stop=stop):
+            calls.append(urgent_only)
             if len(calls) == 3:
                 stop.set()
             return object()  # „Job erledigt“: sofort weiter
 
         monkeypatch.setattr(jobs, "work_once", fake_work_once)
         monkeypatch.setattr(run_worker, "SETTINGS_TTL", 0.01)
-        if number == 2:
-            timer = threading.Timer(0.1, stop.set)
-            timer.start()
         run_worker.run_lane(number, stop, poll=0.01)
-        assert len(calls) == expected
-        assert calls == [False] * expected
+        assert calls == [urgent] * 3
 
 
 def test_lane_command_reuses_interpreter_and_entry(monkeypatch):
@@ -872,7 +868,7 @@ def test_worker_starts_and_stops_lane_processes(monkeypatch):
 def test_lane_mode_runs_jobs_until_signal(monkeypatch):
     calls = []
 
-    def fake_work_once(should_stop):
+    def fake_work_once(should_stop, urgent_only=False):
         calls.append(should_stop())
         os.kill(os.getpid(), signal.SIGTERM)
         return object()
@@ -942,3 +938,30 @@ def test_pause_resume_cli(collection, media):
         call_command("index", "pause", str(run.pk))
     call_command("index", "resume", str(run.pk), stdout=out)
     assert "fortgesetzt" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_extra_lane_takes_only_urgent_jobs(collection, media, monkeypatch):
+    """Spur über „Dokumente gleichzeitig“: nur Hochgeladenes, keine großen Läufe."""
+    import threading
+
+    from multigpt.chat.management.commands import run_worker
+    from multigpt.chat.models import IndexRun
+
+    scan = IndexRun.objects.create(kind=IndexRun.Kind.DIRECTORY_SCAN)
+    jobs.enqueue_index(make_document(collection, "sample.txt"), scan)
+    assert jobs.claim_next(urgent_only=True) is None
+    upload = IndexRun.objects.create(kind=IndexRun.Kind.UPLOAD)
+    mine = jobs.enqueue_index(make_document(collection, "sample.md"), upload)
+    seen = []
+    stop = threading.Event()
+
+    def fake_work_once(should_stop, urgent_only=False):
+        seen.append(urgent_only)
+        stop.set()
+        return None
+
+    monkeypatch.setattr(jobs, "work_once", fake_work_once)
+    run_worker.run_lane(3, stop, poll=0.01)  # Spur 3 bei index_workers=2: inaktiv
+    assert seen == [True]
+    assert jobs.claim_next(urgent_only=True).pk == mine.pk
