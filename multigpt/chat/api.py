@@ -203,6 +203,15 @@ def provider_status(request):
     return JsonResponse([status.serialize(p) for p in status.refresh_all()], safe=False)
 
 
+@require_GET
+@api_login_required
+def mcp_status_view(request):
+    """Verwalter: zuletzt offline geprüfte MCP-Server (LOP A2), für die Statusleiste."""
+    if not mcp_status.shows_offline_warning(request.user):
+        return _error("Nur für Verwalter.", 403)
+    return JsonResponse(mcp_status.offline_for(request.user), safe=False)
+
+
 def _check_model_reachable(ai_model: AIModel) -> JsonResponse | None:
     """Anbieter online und (lokal) Modell gemeldet? Sonst Fehler (M4-05)."""
     provider = ai_model.provider

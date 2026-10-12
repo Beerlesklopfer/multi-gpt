@@ -54,6 +54,7 @@ urlpatterns = [
         name="api_tool_confirm",
     ),
     path("providers/status/", api.provider_status, name="api_provider_status"),
+    path("mcp-servers/status/", api.mcp_status_view, name="api_mcp_status"),
     path(
         "conversations/<int:pk>/",
         api_manage.conversation_detail,

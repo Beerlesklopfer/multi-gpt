@@ -14,11 +14,14 @@
     {% endfor %}
   </ul>
 {% endif %}
-{# Nur Verwalter: zuletzt offline geprüfte MCP-Server (chat/mcp/status.py), Link in den Admin. #}
-{% if status_mcp %}
-  <ul class="provider-status mcp-status" aria-label="Status der MCP-Server (nur Verwalter)">
+{# Nur Verwalter: zuletzt offline geprüfte MCP-Server (chat/mcp/status.py), Link in den Admin.
+   provider_status.js hält die Liste aktuell (LOP A2); Aufbau dort gleich. #}
+{% if status_mcp_live %}
+  <ul class="provider-status mcp-status" id="mcp-status" aria-label="Status der MCP-Server (nur Verwalter)"
+      data-url="{% url 'chat:api_mcp_status' %}"
+      data-admin-template="{% url 'admin:chat_mcpserver_change' 0 %}"{% if not status_mcp %} hidden{% endif %}>
     {% for s in status_mcp %}
-      <li class="provider-status-item" data-online="false" title="MCP-Server {{ s.name }} offline – {{ s.error }}">
+      <li class="provider-status-item" data-online="false" data-mcp-id="{{ s.id }}" title="MCP-Server {{ s.name }} offline – {{ s.error }}">
         <span class="status-dot" aria-hidden="true"></span>
         <a class="provider-status-text" href="{% url 'admin:chat_mcpserver_change' s.id %}">MCP {{ s.name }} offline – {{ s.error_short }}</a>
       </li>

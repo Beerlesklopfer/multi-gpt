@@ -655,3 +655,30 @@ def test_status_bar_mcp_only_for_admins(client, adult, django_user_model, passwo
     )
     html = admin.get(reverse("chat:index")).content.decode()
     assert "MCP Unten offline – Zugang abgelehnt" in html
+
+
+def test_mcp_status_api_live_for_admins(client, adult, django_user_model, password):
+    """LOP A2: Verwalter bekommen den Stand per API (Statusleiste live), andere nicht."""
+    from django.test import Client as DjangoClient
+
+    url = reverse("chat:api_mcp_status")
+    assert client.get(url).status_code == 403  # normales Konto
+    admin = DjangoClient()
+    admin.force_login(
+        django_user_model.objects.create_superuser("jo", "jo@example.invalid", password)
+    )
+    assert admin.get(url).json() == []
+    html = admin.get(reverse("chat:index")).content.decode()
+    assert 'id="mcp-status"' in html  # leer, aber für die Live-Anzeige vorhanden
+    server = _offline(_server(name="n8n"), error="Serverfehler (HTTP 502): Später erneut prüfen.")
+    data = admin.get(url).json()
+    assert data == [
+        {
+            "id": server.pk,
+            "name": "n8n",
+            "error": "Serverfehler (HTTP 502): Später erneut prüfen.",
+            "error_short": "Serverfehler (HTTP 502)",
+        }
+    ]
+    html = client.get(reverse("chat:index")).content.decode()
+    assert 'id="mcp-status"' not in html

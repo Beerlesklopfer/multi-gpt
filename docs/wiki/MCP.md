@@ -87,8 +87,10 @@ Server-ID und die Kurzursache, und nur, wenn sich der Status ändert.
   Statuszeile („MCP-Server „…“ ist offline – seine Werkzeuge stehen nicht zur Verfügung“); die
   Antwort läuft ohne diese Werkzeuge weiter.
 - Verwalter sehen offline-Server zusätzlich dezent in der Statusleiste oben, mit Link zum Server
-  im Admin. Server, die online sind, erscheinen dort nicht. Andere Konten sehen MCP-Server in der
-  Statusleiste nie.
+  im Admin. Server, die online sind, erscheinen dort nicht. Seit 0.3.5 hält sich die Anzeige von
+  selbst aktuell (alle 30 s, solange der Tab sichtbar ist): Fällt ein Server wie n8n aus oder ist
+  er wieder da, ändert sich die Leiste ohne Neuladen, mit Hinweis in der Statuszeile. Andere Konten
+  sehen MCP-Server in der Statusleiste nie.
 
 ## Werkzeuge einstufen
 

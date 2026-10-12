@@ -8,7 +8,8 @@ Seite die Seitenleiste wirklich zeigt (nicht bei Login, JSON, Admin).
 from django import template
 
 from .. import projects, sharing
-from ..models import Conversation, McpServer, Provider
+from ..mcp import status as mcp_status
+from ..models import Conversation, Provider
 from ..providers.base import short_error
 
 register = template.Library()
@@ -73,28 +74,16 @@ def provider_status_indicator(context):
     )
     for p in providers:
         p["error_short"] = short_error(p["last_error"])
-    return {"status_providers": providers, "status_mcp": _offline_mcp(context)}
+    request = context.get("request")
+    return {
+        "status_providers": providers,
+        "status_mcp": _offline_mcp(context),
+        # Verwalter: Liste live halten (provider_status.js), auch wenn gerade leer.
+        "status_mcp_live": mcp_status.shows_offline_warning(getattr(request, "user", None)),
+    }
 
 
 def _offline_mcp(context) -> list[dict]:
-    """Nur für Verwalter: aktive MCP-Server, die zuletzt offline geprüft wurden.
-
-    Gespeicherter Stand (chat/mcp/status.py), kein Netzaufruf; online-Server
-    erscheinen nicht, damit die Leiste ruhig bleibt.
-    """
+    """Nur für Verwalter: zuletzt offline geprüfte MCP-Server (``mcp.status.offline_for``)."""
     request = context.get("request")
-    user = getattr(request, "user", None)
-    if not (user and user.is_staff and user.has_perm("chat.view_mcpserver")):
-        return []
-    servers = McpServer.objects.filter(
-        active=True, online=False, last_checked__isnull=False
-    ).exclude(last_error="")
-    return [
-        {
-            "id": s.pk,
-            "name": s.name,
-            "error": s.last_error,
-            "error_short": short_error(s.last_error),
-        }
-        for s in servers.order_by("name")[:5]
-    ]
+    return mcp_status.offline_for(getattr(request, "user", None))

@@ -455,3 +455,30 @@ def offline_hint(names: list[str]) -> str:
     if len(names) == 1:
         return f"MCP-Server {quoted} ist offline – seine Werkzeuge stehen nicht zur Verfügung."
     return f"MCP-Server {quoted} sind offline – ihre Werkzeuge stehen nicht zur Verfügung."
+
+
+# --- Anzeige für Verwalter (LOP A2) ----------------------------------------------
+
+
+def shows_offline_warning(user) -> bool:
+    """Warnung „MCP-Server offline“ in der Statusleiste: nur für Verwalter."""
+    return bool(user and user.is_staff and user.has_perm("chat.view_mcpserver"))
+
+
+def offline_for(user, limit: int = 5) -> list[dict]:
+    """Aktive MCP-Server, die zuletzt offline geprüft wurden (gespeicherter Stand,
+    kein Netzaufruf); online-Server erscheinen nicht, damit die Leiste ruhig bleibt."""
+    if not shows_offline_warning(user):
+        return []
+    servers = McpServer.objects.filter(
+        active=True, online=False, last_checked__isnull=False
+    ).exclude(last_error="")
+    return [
+        {
+            "id": s.pk,
+            "name": s.name,
+            "error": s.last_error,
+            "error_short": short_error(s.last_error),
+        }
+        for s in servers.order_by("name")[:limit]
+    ]

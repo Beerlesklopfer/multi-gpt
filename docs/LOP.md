@@ -7,7 +7,6 @@ Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gr
 
 | Nr. | Thema | Frage | Empfehlung |
 |---|---|---|---|
-| A2 | n8n „Pflicht“ | Zusätzlich Warnung in der Statusleiste für Verwalter, wenn n8n offline ist? | ja, als Warnung |
 | A3 | API-Keys | Keys auch für Jugendliche? | vorerst nein |
 | A4 | API-Keys | `ask`-Chats in einem Projekt „API“ sammeln? | ja, als Option je Key |
 | A5 | API-Keys | Werkzeug-Rückfragen über die API bestätigen? | nein, nur in MultiGPT |

@@ -192,4 +192,97 @@
     schedule();
     poll();
   });
+
+  // Verwalter (LOP A2): offline geprüfte MCP-Server, z. B. n8n, live in der Leiste.
+  // Gespeicherter Stand des Workers (chat/mcp/status.py), kein Netzaufruf.
+  document.addEventListener("DOMContentLoaded", () => {
+    const list = document.getElementById("mcp-status");
+    if (!list) {
+      return;
+    }
+    const known = new Map(
+      Array.from(list.querySelectorAll("li[data-mcp-id]"), (li) => [li.dataset.mcpId, true]),
+    );
+    let timer = null;
+    let inflight = false;
+
+    function render(servers) {
+      list.replaceChildren(
+        ...servers.map((s) => {
+          const li = document.createElement("li");
+          li.className = "provider-status-item";
+          li.dataset.online = "false";
+          li.dataset.mcpId = String(s.id);
+          li.title = `MCP-Server ${s.name} offline – ${s.error || ""}`;
+          const dot = document.createElement("span");
+          dot.className = "status-dot";
+          dot.setAttribute("aria-hidden", "true");
+          const link = document.createElement("a");
+          link.className = "provider-status-text";
+          link.href = window.MultiGPT.fillTemplate(list.dataset.adminTemplate, s.id);
+          link.textContent = `MCP ${s.name} offline – ${s.error_short || ""}`;
+          li.append(dot, link);
+          return li;
+        }),
+      );
+      list.hidden = servers.length === 0;
+    }
+
+    async function poll() {
+      if (inflight || document.hidden) {
+        return;
+      }
+      inflight = true;
+      let servers;
+      try {
+        const response = await fetch(list.dataset.url, {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          return;
+        }
+        servers = await response.json();
+      } catch {
+        return;
+      } finally {
+        inflight = false;
+      }
+      if (!Array.isArray(servers)) {
+        return;
+      }
+      const now = new Set(servers.map((s) => String(s.id)));
+      for (const s of servers) {
+        if (!known.has(String(s.id))) {
+          window.MultiGPT.announce(`MCP-Server ${s.name} ist offline.`, true);
+        }
+      }
+      for (const id of known.keys()) {
+        if (!now.has(id)) {
+          window.MultiGPT.announce("Ein MCP-Server ist wieder online.", false);
+        }
+      }
+      known.clear();
+      for (const id of now) {
+        known.set(id, true);
+      }
+      render(servers);
+    }
+
+    function schedule() {
+      window.clearInterval(timer);
+      timer = null;
+      if (!document.hidden) {
+        timer = window.setInterval(poll, POLL_MS);
+      }
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        poll();
+      }
+      schedule();
+    });
+    schedule();
+  });
 })();
