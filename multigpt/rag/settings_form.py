@@ -246,7 +246,10 @@ CONTEXT_CAPABILITY = {
 }
 
 
-class RagSettingsForm(forms.ModelForm):
+class RagSettingsForm(admin_lmstudio.DefaultsWhenMissingMixin, forms.ModelForm):
+    # Neue Felder dürfen in älteren Formularen/Skripten fehlen (bisheriger Wert bzw. Standard).
+    defaulted_fields = ("index_workers",)
+
     embedding_model = forms.ChoiceField(
         label="Embedding-Modell",
         required=False,
