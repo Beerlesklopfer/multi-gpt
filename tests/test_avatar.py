@@ -105,7 +105,7 @@ def test_menu_entries_follow_rights(client):
     assert reverse("admin:index") in html and reverse("family:overview") in html
 
 
-def test_version_shown_in_menu_login_and_admin(client):
+def test_version_shown_in_sidebar_login_and_admin(client):
     from multigpt.version import app_version
 
     version = app_version()
@@ -114,5 +114,6 @@ def test_version_shown_in_menu_login_and_admin(client):
     assert f"MultiGPT {version}" in login
     admin = make_user("jo", role_key="admin", is_staff=True, is_superuser=True)
     client.force_login(admin)
-    assert f"MultiGPT {version}" in client.get(reverse("chat:index")).content.decode()
+    page = client.get(reverse("chat:index")).content.decode()
+    assert f'<p class="sidebar-version">MultiGPT {version}</p>' in page
     assert f"MultiGPT-Verwaltung {version}" in client.get(reverse("admin:index")).content.decode()
