@@ -1,3 +1,19 @@
+multi-gpt (0.3.5) unstable; urgency=medium
+
+  * NEWS und Website: 0.3.5
+  * Persönliches Menü rechts oben mit Profilbild (Avatar)
+  * Templates: mehrzeilige {# #}-Kommentare erschienen als Text (Statusleiste, API-Key-Seite)
+  * OCR: entladenes Modell einmal neu anfragen statt Tesseract; LM-Studio-Meldung im Log
+  * Statusleiste: offline MCP-Server (z. B. n8n) für Verwalter live (LOP A2)
+  * Indexierung: Spuren als eigene Prozesse statt Threads (GIL)
+  * Chat: Bild aus dem Antworttext nicht noch einmal in der Anhangsliste zeigen
+  * RAG-Einstellungen: „Dokumente gleichzeitig“ darf im Formular fehlen (bisheriger Wert)
+  * Indexierung: mehrere Dokumente gleichzeitig (LOP C31)
+  * CI: Website nach dem Release über main anstoßen (Pages erlaubt nur main)
+  * Modellverwaltung: parallel nie für Embedding-Modelle (LM Studio lehnt es ab)
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 20:55:50 +0200
+
 multi-gpt (0.3.4) unstable; urgency=medium
 
   * NEWS und Website: 0.3.4
