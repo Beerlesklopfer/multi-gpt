@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-12, nach 0.3.3 (0.3.4 lokal: Entladen nach Indexierung, Prompt-Caching, Eingabe-Historie, Antwort löschen). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
+Stand: 2026-10-12, nach 0.3.5. Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen (statt nomic anzuheften).
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 
 ## A. Entscheidungen des Nutzers

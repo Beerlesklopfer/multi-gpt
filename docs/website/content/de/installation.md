@@ -1,13 +1,13 @@
 ---
 title: "Installation"
 description: "MultiGPT als Debian-Paket, mit Docker oder für die Entwicklung mit make installieren."
-lead: "Aktuell ist Version 0.3.4. Fertige Pakete für Debian 13 (amd64) gibt es über eine eigene apt-Paketquelle; Updates kommen dann mit `apt upgrade`. Wer lieber selbst baut, nutzt `make deb`. Danach kann man mit eigenen API-Keys chatten."
+lead: "Aktuell ist Version 0.3.5. Fertige Pakete für Debian 13 (amd64) gibt es über eine eigene apt-Paketquelle; Updates kommen dann mit `apt upgrade`. Wer lieber selbst baut, nutzt `make deb`. Danach kann man mit eigenen API-Keys chatten."
 menus:
   main:
     weight: 30
 ---
 
-> **Stand 0.3.4:** Zu jedem Versions-Tag baut GitHub Actions das Paket auf Debian 13, hängt es an
+> **Stand 0.3.5:** Zu jedem Versions-Tag baut GitHub Actions das Paket auf Debian 13, hängt es an
 > das [GitHub-Release](https://github.com/Beerlesklopfer/multi-gpt/releases) und stellt es in die
 > apt-Paketquelle (die letzten drei Versionen). Neu sind die Abhängigkeiten bubblewrap (Berechnungen) sowie
 > Pango, harfbuzz und DejaVu-Schriften (PDF-Blätter). Wer von 0.2 kommt, liest

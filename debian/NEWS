@@ -1,3 +1,25 @@
+multi-gpt (0.3.5) unstable; urgency=medium
+
+  Persönliches Menü: Rechts oben steht jetzt das Profilbild mit Namen; ein
+  Klick öffnet Einstellungen, Profilbild, Mein Verbrauch, API-Keys, Familie,
+  Verwaltung, Passwort und Abmelden. „Mein Verbrauch“ und „Familie“ sind aus
+  der Seitenleiste dorthin gewandert. Ein Profilbild lässt sich unter
+  Einstellungen → Profilbild hochladen, sonst erscheinen die Initialen.
+
+  Indexierung: Mehrere Dokumente gleichzeitig (RAG-Einstellungen,
+  „Dokumente gleichzeitig“, Standard 2). Der Worker startet dafür weitere
+  Prozesse (run_worker --lane N). Beim OCR-Modell „Parallele Anfragen“
+  passend setzen. Wurde das OCR-Modell während der Arbeit entladen, fragt
+  MultiGPT die Seite einmal neu an, statt auf Tesseract zu wechseln.
+
+  Nutzen mehrere MultiGPT-Installationen dasselbe LM Studio, darf
+  „Modelle verwalten“ nur bei einer eingeschaltet sein.
+
+  Verwalter sehen offline MCP-Server (z. B. n8n) jetzt live in der
+  Statusleiste, ohne die Seite neu zu laden.
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 21:00:00 +0200
+
 multi-gpt (0.3.4) unstable; urgency=medium
 
   Paketquelle: MultiGPT gibt es jetzt per apt (Debian 13, amd64). Einrichtung
