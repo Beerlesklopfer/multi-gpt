@@ -10,7 +10,8 @@ multi-gpt (0.3.6) unstable; urgency=medium
   Budgets (EUR) bleiben unverändert.
 
   MCP/API-Keys: Neues Recht „Chats lesen“ (chat.read) mit den Werkzeugen
-  list_chats und read_chat – nur eigene und mit dem Konto geteilte Chats.
+  list_chats und read_chat (mit den Quellen jeder Antwort) – nur eigene und
+  mit dem Konto geteilte Chats.
   Rollen, die Modelle fragen dürfen, bekommen es per Migration; am Key muss
   es ausdrücklich gewählt werden. Chats, die ask über einen Key anlegt,
   landen standardmäßig im Projekt „API“ (Schalter je Key, mgpt-ctl apikey

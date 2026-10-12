@@ -1,5 +1,6 @@
 multi-gpt (0.3.6) unstable; urgency=medium
 
+  * MCP: read_chat zeigt die Quellen [n] jeder Antwort
   * MCP: read_chat lieferte reinen Text statt ToolOutput (HTTP 500 auf der Produktion)
   * Versionsanzeige unten in der Seitenleiste, auf der Anmeldeseite und im Admin
   * Releases: Beschreibung auf GitHub englisch aus docs/releases/<version>.md
