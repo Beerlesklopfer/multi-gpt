@@ -245,6 +245,24 @@
         link.classList.add("attachment-thumb");
         link.setAttribute("aria-label", `Bild ${label} öffnen`);
         link.append(img);
+        // Steht das Bild im Text, nicht noch einmal in der Liste darunter zeigen
+        // (sonst doppelt). Klick öffnet dieselbe Großansicht wie dort
+        // (attachments.js); Strg/Mittelklick öffnet wie gewohnt einen neuen Tab.
+        item.hidden = true;
+        const listLink = item.querySelector("a[data-attachment-image]");
+        if (listLink) {
+          link.addEventListener("click", (event) => {
+            if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) {
+              return;
+            }
+            event.preventDefault();
+            listLink.click();
+          });
+        }
+        const list = item.parentElement;
+        if (list && ![...list.children].some((child) => !child.hidden)) {
+          list.hidden = true;
+        }
       } else {
         link.textContent = `${label} – Ansehen`;
       }
