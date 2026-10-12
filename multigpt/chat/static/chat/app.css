@@ -298,6 +298,14 @@ input {
   padding-top: 0.35rem;
 }
 
+.user-menu-version {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 1rem 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 /* Mitteilungen (A15): Zahl ungelesener am Profilbild und im Menü, Seite. */
 .user-menu-avatar {
   position: relative;

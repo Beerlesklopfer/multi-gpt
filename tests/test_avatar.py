@@ -103,3 +103,16 @@ def test_menu_entries_follow_rights(client):
     client.force_login(admin)
     html = client.get(reverse("chat:index")).content.decode()
     assert reverse("admin:index") in html and reverse("family:overview") in html
+
+
+def test_version_shown_in_menu_login_and_admin(client):
+    from multigpt.version import app_version
+
+    version = app_version()
+    assert version and version != "0"
+    login = client.get(reverse("login")).content.decode()
+    assert f"MultiGPT {version}" in login
+    admin = make_user("jo", role_key="admin", is_staff=True, is_superuser=True)
+    client.force_login(admin)
+    assert f"MultiGPT {version}" in client.get(reverse("chat:index")).content.decode()
+    assert f"MultiGPT-Verwaltung {version}" in client.get(reverse("admin:index")).content.decode()

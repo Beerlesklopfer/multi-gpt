@@ -31,7 +31,6 @@ import inspect
 import io
 import logging
 from dataclasses import dataclass
-from importlib import metadata
 
 import mcp_types as T
 from mcp.shared.inbound import (
@@ -42,6 +41,8 @@ from mcp.shared.inbound import (
 )
 from mcp_types import PROTOCOL_VERSION_META_KEY, SERVER_INFO_META_KEY
 from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS, MODERN_PROTOCOL_VERSIONS
+
+from multigpt.version import app_version
 
 from . import tools as node_tools
 from .runs import RunError
@@ -74,10 +75,7 @@ INSTRUCTIONS = (
 
 
 def server_version() -> str:
-    try:
-        return metadata.version("multi-gpt")
-    except metadata.PackageNotFoundError:  # pragma: no cover - Entwicklung ohne Installation
-        return "0"
+    return app_version()
 
 
 def server_info() -> dict:
