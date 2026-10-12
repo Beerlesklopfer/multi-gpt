@@ -1,8 +1,16 @@
 {% extends "admin/change_form.html" %}
 {% load admin_urls %}
-{# Nur Metadaten; Knopf „Lauf abbrechen“ (POST) für offene Läufe. #}
+{# Nur Metadaten; Knöpfe „Pausieren/Fortsetzen“ und „Lauf abbrechen“ (POST) für offene Läufe. #}
 
 {% block object-tools-items %}
+  {% if original and original.status == "running" or original.status == "paused" %}
+  <li>
+    <form method="post" action="{% url 'admin:rag_indexrunproxy_pause' original.pk|admin_urlquote %}" class="rag-tool-form">
+      {% csrf_token %}
+      <button type="submit" class="rag-tool-button" title="{% if original.status == 'paused' %}Der Lauf holt wieder Dokumente ab{% else %}Keine neuen Dokumente; das laufende wird noch fertig{% endif %}">{% if original.status == "paused" %}Fortsetzen{% else %}Pausieren{% endif %}</button>
+    </form>
+  </li>
+  {% endif %}
   {% if original and original.is_open %}
   <li>
     <form method="post" action="{% url 'admin:rag_indexrunproxy_cancel' original.pk|admin_urlquote %}" class="rag-tool-form">

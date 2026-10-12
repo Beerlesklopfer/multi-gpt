@@ -136,8 +136,9 @@ def claim_next() -> Job | None:
         job = (
             Job.objects.select_for_update(skip_locked=True, of=("self",))
             .filter(status=Job.Status.PENDING, run_after__lte=now)
-            # Nachzügler eines Laufs, der gerade abgebrochen wird, nicht mehr starten.
-            .exclude(run__status=IndexRun.Status.CANCELLING)
+            # Nachzügler eines Laufs, der gerade abgebrochen wird, nicht mehr starten;
+            # pausierte Läufe warten, bis sie fortgesetzt werden.
+            .exclude(run__status__in=(IndexRun.Status.CANCELLING, IndexRun.Status.PAUSED))
             # Von Hand Hochgeladenes und gezielt neu Indexiertes zuerst, dann große
             # Läufe (Verzeichnis einlesen, alles neu) in ihrer Reihenfolge – sonst
             # wartet ein einzelnes Dokument hinter Hunderten aus einer Quelle.
@@ -374,6 +375,34 @@ def cancel_run(run_id: int) -> tuple[int, int] | None:
         _complete_if_done(run, now)
     logger.info("Lauf %s: Abbruch, %d Aufträge entfernt, %d markiert", run_id, removed, marked)
     return removed, marked
+
+
+def pause_run(run_id: int) -> int | None:
+    """Lauf pausieren: Es werden keine weiteren Aufträge abgeholt; laufende
+    Dokumente werden noch fertig. Rückgabe: Zahl laufender Aufträge oder None,
+    wenn der Lauf nicht läuft (beendet, schon pausiert, wird abgebrochen)."""
+    with transaction.atomic():
+        run = IndexRun.objects.select_for_update().filter(pk=run_id).first()
+        if run is None or run.status != IndexRun.Status.RUNNING:
+            return None
+        run.status = IndexRun.Status.PAUSED
+        run.save(update_fields=["status"])
+        running = run.jobs.filter(status=Job.Status.RUNNING).count()
+    logger.info("Lauf %s pausiert (%d Aufträge laufen noch zu Ende)", run_id, running)
+    return running
+
+
+def resume_run(run_id: int) -> bool:
+    """Pausierten Lauf fortsetzen; False, wenn er nicht pausiert ist."""
+    with transaction.atomic():
+        run = IndexRun.objects.select_for_update().filter(pk=run_id).first()
+        if run is None or run.status != IndexRun.Status.PAUSED:
+            return False
+        run.status = IndexRun.Status.RUNNING
+        run.save(update_fields=["status"])
+        _complete_if_done(run)  # nichts mehr offen: gleich beenden
+    logger.info("Lauf %s fortgesetzt", run_id)
+    return True
 
 
 # --- Läufe ---------------------------------------------------------------------

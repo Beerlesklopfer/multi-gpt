@@ -5,6 +5,7 @@ Unterbefehle::
     index status [--follow] [--run ID] [--interval S]   Läufe, Warteschlange, Worker
     index runs [--open] [--limit N]                     letzte Läufe als Tabelle
     index cancel <lauf>                                 Lauf abbrechen
+    index pause <lauf> / index resume <lauf>            Lauf pausieren bzw. fortsetzen
     index scan <quelle>                                 Verzeichnisquelle jetzt einlesen
     index upload <sammlung> <dateien…> --as <konto>     Dateien hochladen (Rechte des Kontos)
     index reindex [--collection ID] [--document ID] [--errors-only]
@@ -92,6 +93,10 @@ class Command(BaseCommand):
 
         cancel = sub.add_parser("cancel", help="Lauf abbrechen.")
         cancel.add_argument("run", type=int, help="ID des Laufs.")
+        pause = sub.add_parser("pause", help="Lauf pausieren (laufende Dokumente werden fertig).")
+        pause.add_argument("run", type=int, help="ID des Laufs.")
+        resume = sub.add_parser("resume", help="Pausierten Lauf fortsetzen.")
+        resume.add_argument("run", type=int, help="ID des Laufs.")
 
         scan = sub.add_parser("scan", help="Verzeichnisquelle jetzt einlesen.")
         scan.add_argument("source", type=int, help="ID der Verzeichnisquelle (index sources).")
@@ -236,6 +241,25 @@ class Command(BaseCommand):
         )
         if marked:
             self.stdout.write("Laufende Aufträge enden nach dem aktuellen Schritt.")
+
+    def _pause(self, options):
+        run = IndexRun.objects.filter(pk=options["run"]).first()
+        if run is None:
+            raise CommandError(f"Lauf #{options['run']} nicht gefunden.")
+        running = jobs.pause_run(run.pk)
+        if running is None:
+            raise CommandError(f"Lauf #{run.pk} läuft nicht (Status: {run.get_status_display()}).")
+        self.stdout.write(self.style.SUCCESS(f"Lauf #{run.pk} pausiert."))
+        if running:
+            self.stdout.write(f"{running} Dokument(e) werden noch fertig indexiert.")
+
+    def _resume(self, options):
+        run = IndexRun.objects.filter(pk=options["run"]).first()
+        if run is None:
+            raise CommandError(f"Lauf #{options['run']} nicht gefunden.")
+        if not jobs.resume_run(run.pk):
+            raise CommandError(f"Lauf #{run.pk} ist nicht pausiert.")
+        self.stdout.write(self.style.SUCCESS(f"Lauf #{run.pk} wird fortgesetzt."))
 
     def _scan(self, options):
         if not source_paths.enabled():

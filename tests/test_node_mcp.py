@@ -251,7 +251,13 @@ def test_tools_list_follows_scopes(client, anna):
     }
     _, index = make_key(anna, [S.INDEX_CONTROL], name="index")
     # start_scan und list_sources nur für Verwalter
-    assert tool_names(client, index) == {"run_status", "list_runs", "cancel_run"}
+    assert tool_names(client, index) == {
+        "run_status",
+        "list_runs",
+        "cancel_run",
+        "pause_run",
+        "resume_run",
+    }
     _, files = make_key(anna, [S.FILES_READ], name="files")
     assert tool_names(client, files) == {"get_file"}
     # Werkzeug ohne Scope -> wie unbekannt

@@ -313,6 +313,18 @@ def cancel_jobs(queryset) -> tuple[int, int]:
     return jobs.cancel_jobs(queryset.values_list("pk", flat=True), remove_finished=True)
 
 
+def pause_runs(queryset) -> int:
+    """Laufende Läufe pausieren; Rückgabe: Zahl pausierter Läufe."""
+    ids = queryset.filter(status=IndexRun.Status.RUNNING).values_list("pk", flat=True)
+    return sum(1 for run_id in ids if jobs.pause_run(run_id) is not None)
+
+
+def resume_runs(queryset) -> int:
+    """Pausierte Läufe fortsetzen; Rückgabe: Zahl fortgesetzter Läufe."""
+    ids = queryset.filter(status=IndexRun.Status.PAUSED).values_list("pk", flat=True)
+    return sum(1 for run_id in ids if jobs.resume_run(run_id))
+
+
 def cancel_runs(queryset) -> tuple[int, int, int]:
     """Läufe abbrechen. Rückgabe ``(abgebrochene Läufe, Aufträge entfernt, markiert)``."""
     runs = removed = marked = 0

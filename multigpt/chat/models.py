@@ -1867,12 +1867,14 @@ class IndexRun(models.Model):
 
     class Status(models.TextChoices):
         RUNNING = "running", "läuft"
+        # Pause: keine neuen Aufträge, das laufende Dokument wird noch fertig.
+        PAUSED = "paused", "pausiert"
         CANCELLING = "cancelling", "wird abgebrochen"
         CANCELLED = "cancelled", "abgebrochen"
         FINISHED = "finished", "beendet"
         FAILED = "failed", "fehlgeschlagen"
 
-    OPEN = (Status.RUNNING, Status.CANCELLING)
+    OPEN = (Status.RUNNING, Status.PAUSED, Status.CANCELLING)
 
     kind = models.CharField("Art", max_length=30, choices=Kind.choices)
     status = models.CharField(

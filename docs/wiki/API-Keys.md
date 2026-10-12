@@ -93,7 +93,7 @@ Der Key steht auf stdout (z. B. `> key.txt`), die Hinweise auf stderr. Weitere O
 | `chat.ask` | Einem Modell eine Aufgabe geben (Modell im Rahmen der Rolle, Budget des Kontos) | `ask`, `list_models` |
 | `docs.read` | Sammlungen und Dokumente auflisten, durchsuchen, lesen | `list_collections`, `search_documents`, `list_documents`, `document_info`, `read_document` |
 | `docs.write` | Dateien hochladen, Dokumente löschen, neu indexieren (eigene bzw. schreibbare Sammlungen) und die Läufe dazu verfolgen | `upload_document`, `delete_document`, `reindex`, `run_status`, `list_runs` |
-| `index.control` | Läufe überwachen und abbrechen; Verzeichnisquellen einlesen (**nur Verwalter**) | `run_status`, `list_runs`, `cancel_run`, `list_sources`, `start_scan` |
+| `index.control` | Läufe überwachen, pausieren, fortsetzen und abbrechen; Verzeichnisquellen einlesen (**nur Verwalter**) | `run_status`, `list_runs`, `cancel_run`, `pause_run`, `resume_run`, `list_sources`, `start_scan` |
 | `files.read` | Erzeugte Anhänge und Dokumente abholen | `get_file` |
 | `tools.run` | Werkzeuge direkt aufrufen, mit denselben Rollenrechten und Budgets wie im Chat | `create_pdf`, `generate_image`, `run_python`, `fetch_url`, `web_search` |
 | `usage.read` | Eigener Verbrauch und Budgetstand | `usage` |
@@ -127,6 +127,8 @@ Startwerte: Verwalter und Erwachsene haben das Recht mit allen Scopes, Jugendlic
 | `reindex` | `collection` **oder** `document`/`documents` | Lauf (`id`) |
 | `run_status`, `list_runs` | `run_id` bzw. `open_only`, `limit` | Status, Zähler, Fortschritt |
 | `cancel_run` | `run_id` | entfernte/markierte Aufträge |
+| `pause_run` | `run_id` | Zahl der Dokumente, die noch fertig werden |
+| `resume_run` | `run_id` | neuer Status |
 | `list_sources`, `start_scan` | – bzw. `source` | Verzeichnisquellen bzw. Lauf |
 | `get_file` | `attachment_id` **oder** `document_id` | Datei als eingebettete Ressource (base64) |
 | `create_pdf`, `generate_image`, `run_python`, `fetch_url`, `web_search` | wie im Chat | Text wie für das Chatmodell, erzeugte Dateien direkt im Ergebnis (siehe unten) |

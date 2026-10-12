@@ -893,3 +893,52 @@ def test_upload_jobs_jump_ahead_of_directory_scans(collection, media):
     mine = jobs.enqueue_index(make_document(collection, "sample.md"), upload)
     assert jobs.claim_next().pk == mine.pk
     assert jobs.claim_next().pk == older[0].pk
+
+
+@pytest.mark.django_db
+def test_pause_and_resume_run(collection, media, embed):
+    """Pausierter Lauf: keine neuen Aufträge, laufende werden fertig; fortsetzen."""
+    from multigpt.chat.models import IndexRun
+
+    run = IndexRun.objects.create(kind=IndexRun.Kind.UPLOAD, collection=collection)
+    names = ("sample.txt", "sample.md")
+    first, second = (jobs.enqueue_index(make_document(collection, n), run) for n in names)
+    running = jobs.claim_next()
+    assert running.pk == first.pk
+    assert jobs.pause_run(run.pk) == 1  # einer läuft noch zu Ende
+    assert jobs.pause_run(run.pk) is None  # schon pausiert
+    run.refresh_from_db()
+    assert run.status == IndexRun.Status.PAUSED and run.is_open
+    assert jobs.claim_next() is None  # wartet
+    jobs.run_job(running, lambda: False)
+    run.refresh_from_db()
+    assert run.status == IndexRun.Status.PAUSED  # zweites Dokument steht noch aus
+    assert jobs.resume_run(run.pk)
+    assert not jobs.resume_run(run.pk)
+    assert jobs.claim_next().pk == second.pk
+    # Abbrechen geht auch aus der Pause.
+    run2 = IndexRun.objects.create(kind=IndexRun.Kind.UPLOAD, collection=collection)
+    jobs.enqueue_index(make_document(collection, "sample.docx"), run2)
+    jobs.pause_run(run2.pk)
+    assert jobs.cancel_run(run2.pk) == (1, 0)
+    run2.refresh_from_db()
+    assert run2.status == IndexRun.Status.CANCELLED
+
+
+@pytest.mark.django_db
+def test_pause_resume_cli(collection, media):
+    from io import StringIO
+
+    from django.core.management.base import CommandError
+
+    from multigpt.chat.models import IndexRun
+
+    run = IndexRun.objects.create(kind=IndexRun.Kind.UPLOAD, collection=collection)
+    jobs.enqueue_index(make_document(collection, "sample.txt"), run)
+    out = StringIO()
+    call_command("index", "pause", str(run.pk), stdout=out)
+    assert "pausiert" in out.getvalue()
+    with pytest.raises(CommandError):
+        call_command("index", "pause", str(run.pk))
+    call_command("index", "resume", str(run.pk), stdout=out)
+    assert "fortgesetzt" in out.getvalue()

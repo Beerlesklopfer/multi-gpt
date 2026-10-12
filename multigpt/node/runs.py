@@ -41,6 +41,9 @@ MSG_ADMIN_ONLY = "Verzeichnisquellen einlesen dürfen nur Verwalter."
 MSG_SOURCES_OFF = "Verzeichnisquellen sind nicht eingerichtet (RAG_SOURCE_ROOTS)."
 MSG_CANNOT_CANCEL = "Diesen Lauf darf nur ein Verwalter abbrechen."
 MSG_NOT_OPEN = "Der Lauf ist schon beendet."
+MSG_CANNOT_PAUSE = "Diesen Lauf darf nur ein Verwalter pausieren oder fortsetzen."
+MSG_NOT_RUNNING = "Der Lauf läuft nicht (beendet, schon pausiert oder wird abgebrochen)."
+MSG_NOT_PAUSED = "Der Lauf ist nicht pausiert."
 
 # Läufe, die Nicht-Verwalter (mit Schreibrecht auf die Sammlung) abbrechen dürfen.
 _USER_KINDS = (
@@ -293,6 +296,28 @@ def cancel(user, run: IndexRun) -> dict:
     run.refresh_from_db()
     logger.info("Lauf %s abgebrochen (Konto %s)", run.pk, user.pk)
     return {"removed": outcome[0], "marked": outcome[1], "status": run.status}
+
+
+def pause(user, run: IndexRun) -> dict:
+    """Lauf pausieren (Rechte wie Abbrechen); ``{"running": n, "status": …}``."""
+    if not can_cancel(user, run):
+        raise RunError(MSG_CANNOT_PAUSE)
+    running = jobs.pause_run(run.pk)
+    if running is None:
+        raise RunError(MSG_NOT_RUNNING)
+    run.refresh_from_db()
+    logger.info("Lauf %s pausiert (Konto %s)", run.pk, user.pk)
+    return {"running": running, "status": run.status}
+
+
+def resume(user, run: IndexRun) -> dict:
+    if not can_cancel(user, run):
+        raise RunError(MSG_CANNOT_PAUSE)
+    if not jobs.resume_run(run.pk):
+        raise RunError(MSG_NOT_PAUSED)
+    run.refresh_from_db()
+    logger.info("Lauf %s fortgesetzt (Konto %s)", run.pk, user.pk)
+    return {"status": run.status}
 
 
 def list_sources(user, *, allowed_ids=None) -> list[DirectorySource]:

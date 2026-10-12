@@ -913,7 +913,7 @@ class IndexRunAdmin(RagAdminMixin, admin.ModelAdmin):
         "duration_display",
     ]
     list_filter = ["status", "kind"]
-    actions = ["cancel_action"]
+    actions = ["pause_action", "resume_action", "cancel_action"]
     fields = [
         "id",
         "kind",
@@ -964,6 +964,11 @@ class IndexRunAdmin(RagAdminMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.cancel_view),
                 name="rag_indexrunproxy_cancel",
             ),
+            path(
+                "<path:object_id>/pause/",
+                self.admin_site.admin_view(self.pause_view),
+                name="rag_indexrunproxy_pause",
+            ),
             *super().get_urls(),
         ]
 
@@ -996,10 +1001,47 @@ class IndexRunAdmin(RagAdminMixin, admin.ModelAdmin):
     def cancel_action(self, request, queryset):
         self._cancel(request, queryset)
 
+    def pause_view(self, request, object_id):
+        """Knopf „Pausieren“ bzw. „Fortsetzen“ (POST) je nach Zustand."""
+        if denied := _post_only(request):
+            return denied
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            raise Http404("Nicht gefunden.")
+        queryset = IndexRun.objects.filter(pk=obj.pk)
+        if obj.status == IndexRun.Status.PAUSED:
+            self.resume_action(request, queryset)
+        else:
+            self.pause_action(request, queryset)
+        return HttpResponseRedirect(reverse("admin:rag_indexrunproxy_change", args=[obj.pk]))
+
+    @admin.action(description="Lauf pausieren")
+    def pause_action(self, request, queryset):
+        count = services.pause_runs(queryset)
+        if not count:
+            self.message_user(request, "Kein laufender Lauf ausgewählt.", messages.INFO)
+            return
+        self.message_user(
+            request,
+            f"{count} Lauf/Läufe pausiert. Dokumente, die gerade indexiert werden, "
+            "werden noch fertig; danach wartet der Lauf, bis er fortgesetzt wird.",
+        )
+
+    @admin.action(description="Lauf fortsetzen")
+    def resume_action(self, request, queryset):
+        count = services.resume_runs(queryset)
+        if not count:
+            self.message_user(request, "Kein pausierter Lauf ausgewählt.", messages.INFO)
+            return
+        self.message_user(request, f"{count} Lauf/Läufe fortgesetzt.")
+
     @admin.display(description="Status", ordering="status")
     def status_badge(self, obj):
         css = {
             IndexRun.Status.RUNNING: "running",
+            IndexRun.Status.PAUSED: "pending",
             IndexRun.Status.CANCELLING: "pending",
             IndexRun.Status.FINISHED: "done",
             IndexRun.Status.FAILED: "failed",

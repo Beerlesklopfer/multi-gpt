@@ -34,6 +34,19 @@ def cancel_run(ctx, args):
     return json_output({"run_id": run.pk, **outcome}, f"Lauf #{run.pk} wird abgebrochen.{note}")
 
 
+def pause_run(ctx, args):
+    run = runs.get_run(ctx.user, arg_int(args, "run_id", required=True))
+    outcome = runs.pause(ctx.user, run)
+    note = f" {outcome['running']} Dokument(e) werden noch fertig." if outcome["running"] else ""
+    return json_output({"run_id": run.pk, **outcome}, f"Lauf #{run.pk} pausiert.{note}")
+
+
+def resume_run(ctx, args):
+    run = runs.get_run(ctx.user, arg_int(args, "run_id", required=True))
+    outcome = runs.resume(ctx.user, run)
+    return json_output({"run_id": run.pk, **outcome}, f"Lauf #{run.pk} wird fortgesetzt.")
+
+
 def list_sources(ctx, args):
     items = runs.list_sources(ctx.user, allowed_ids=ctx.source_ids)
     return json_output(
@@ -98,6 +111,27 @@ register(
         input_schema=schema(_RUN_ID, required=["run_id"]),
         handler=cancel_run,
         destructive=True,
+    )
+)
+register(
+    NodeTool(
+        name="pause_run",
+        title="Lauf pausieren",
+        description="Pausiert einen laufenden Lauf: Es werden keine weiteren Dokumente "
+        "abgeholt, gerade laufende werden noch fertig. Mit resume_run fortsetzen.",
+        scopes=(S.INDEX_CONTROL,),
+        input_schema=schema(_RUN_ID, required=["run_id"]),
+        handler=pause_run,
+    )
+)
+register(
+    NodeTool(
+        name="resume_run",
+        title="Lauf fortsetzen",
+        description="Setzt einen pausierten Lauf fort.",
+        scopes=(S.INDEX_CONTROL,),
+        input_schema=schema(_RUN_ID, required=["run_id"]),
+        handler=resume_run,
     )
 )
 register(

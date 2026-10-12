@@ -35,6 +35,8 @@ sudo mgpt-ctl index status --follow           # laufend aktualisieren wie top (S
 sudo mgpt-ctl index status --follow --run 12  # einen Lauf verfolgen, endet mit dem Lauf
 sudo mgpt-ctl index runs [--open] [--limit 50]
 sudo mgpt-ctl index cancel 12                 # Lauf abbrechen
+sudo mgpt-ctl index pause 12                  # Lauf pausieren (laufende Dokumente werden fertig)
+sudo mgpt-ctl index resume 12                 # pausierten Lauf fortsetzen
 sudo mgpt-ctl index sources                   # Verzeichnisquellen mit ID
 sudo mgpt-ctl index scan 3                    # Verzeichnisquelle 3 jetzt einlesen (Crawler)
 sudo mgpt-ctl index upload Haus a.pdf b.docx --as anna   # Dateien in Annas Sammlung „Haus“
@@ -47,6 +49,7 @@ sudo mgpt-ctl index reindex [--collection 3] [--document 42] [--errors-only]
 | `status --run <ID>` | Zähler eines Laufs (Dateien gefunden/geprüft/neu/geändert/entfernt, Dokumente eingereiht/fertig/Fehler/abgebrochen, Dauer). |
 | `runs --open` | Nur laufende bzw. abbrechende Läufe. |
 | `cancel <ID>` | Wartende Aufträge entfallen, laufende enden nach dem aktuellen Schritt; Indexiertes bleibt. |
+| `pause <ID>` / `resume <ID>` | Pause: keine neuen Dokumente, gerade laufende werden fertig; der Lauf bleibt offen (Status „pausiert“) und lässt sich fortsetzen oder abbrechen. |
 | `scan <ID>` | Wie „Jetzt einlesen“ im Admin. Läuft schon ein Lauf der Quelle, bleibt es bei diesem. |
 | `upload <Sammlung> <Dateien…> --as <Konto>` | Sammlung per ID oder Name (aus Sicht des Kontos); Typ- und Größenprüfung wie in der Oberfläche. |
 | `reindex` | Wie der Befehl `reindex`, die Aufträge hängen an einem Lauf. |
