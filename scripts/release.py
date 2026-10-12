@@ -48,6 +48,9 @@ def main() -> None:
     if run("git", "tag", "--list", tag):
         fail(f"Tag {tag} existiert bereits.")
 
+    notes = ROOT / "docs" / "releases" / f"{version}.md"
+    if not notes.is_file():
+        fail(f"Englische Release-Notizen fehlen: {notes.relative_to(ROOT)} (Text für GitHub).")
     current = run("dpkg-parsechangelog", "-l", str(CHANGELOG), "-S", "Version")
     newer = subprocess.run(["dpkg", "--compare-versions", version, "gt", current], cwd=ROOT)
     if newer.returncode != 0:

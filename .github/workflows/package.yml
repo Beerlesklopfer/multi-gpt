@@ -120,13 +120,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           version=${TAG#v}
-          # Abschnitt dieser Version aus debian/NEWS (falls vorhanden) und debian/changelog.
-          section() { awk -v v="($version)" '$2 == v {on=1; next} /^ -- / && on {exit} on' "$1"; }
+          # Release-Text auf Englisch aus docs/releases/<version>.md (Pflicht).
+          notes_src="docs/releases/${version}.md"
+          [ -f "$notes_src" ] || { echo "::error::$notes_src fehlt (englische Release-Notizen)"; exit 1; }
           {
-            news=$(section debian/NEWS)
-            if [ -n "$news" ]; then printf '## Hinweise\n%s\n\n' "$news"; fi
-            printf '## Änderungen\n%s\n\n' "$(section debian/changelog)"
-            printf 'Installation per apt: https://%s.github.io/%s/installation/\n' \
+            cat "$notes_src"
+            printf '\n## Installation\n\nInstall or update via apt: https://%s.github.io/%s/installation/\n' \
               "${GITHUB_REPOSITORY_OWNER,,}" "${GITHUB_REPOSITORY#*/}"
           } > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
