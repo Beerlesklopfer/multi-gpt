@@ -1,3 +1,25 @@
+multi-gpt (0.3.4) unstable; urgency=medium
+
+  Paketquelle: MultiGPT gibt es jetzt per apt (Debian 13, amd64). Einrichtung
+  siehe README bzw. https://beerlesklopfer.github.io/multi-gpt/installation/;
+  Updates kommen danach mit apt upgrade.
+
+  Modellverwaltung (LM Studio): Modelle der Indexierung (Embedding, OCR,
+  Abbildungen) werden nur für den Lauf geladen und 2 Minuten danach wieder
+  entladen (Schalter "nach der Indexierung entladen" am Modell, Standard an).
+  Wirkt nur bei Anbietern mit "Modelle verwalten". In LM Studio sollte
+  "JIT models auto-evict" aus sein.
+
+  Anthropic: Prompt-Caching für Systemprompt, Werkzeuge und Verlauf. Damit die
+  Ersparnis in den Buchungen steht, an den Anthropic-Modellen die Preise
+  "Eingabe aus Cache" und "Cache schreiben (5 Min.)" eintragen.
+
+  Chat: Pfeil hoch/runter holt frühere Nachrichten ins Eingabefeld zurück.
+  Eine Antwort lässt sich samt Frage und allem danach löschen (geteilte Chats:
+  Recht D); Kosten bleiben gebucht.
+
+ -- Joerg Bernau <joerg@bernau.family>  Mon, 12 Oct 2026 16:00:00 +0200
+
 multi-gpt (0.3.3) unstable; urgency=medium
 
   MCP-Server: Die eingebauten Werkzeuge liefern ihr Ergebnis jetzt direkt.
