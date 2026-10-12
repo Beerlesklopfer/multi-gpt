@@ -81,6 +81,10 @@ jobs:
           # Legt sonst erst der erste Start von nginx an.
           mkdir -p /var/lib/nginx/{body,fastcgi,proxy,scgi,uwsgi}
           useradd -m -s /bin/bash tester
+          # Ubuntu-Host: unprivilegierte User-Namespaces (unshare -rn) sonst per AppArmor gesperrt.
+          f=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [ -e "$f" ]; then echo 0 > "$f"; fi
+          su tester -c 'unshare -rn true' && echo "unshare ok"
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,7 +93,10 @@ jobs:
       - name: make test-packaging
         run: |
           chown -R tester .
-          su tester -c "make test-packaging"
+          su tester -c "make test-packaging" || {
+            su tester -c 'source tests/packaging/harness.sh; new_root; run_setup; cat "$R/out"'
+            exit 1
+          }
 
   release:
     needs: [build, packaging-tests]
