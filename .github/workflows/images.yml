@@ -30,8 +30,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag, z. B. v0.4.0"
+        description: "Tag, z. B. v0.4.0 (oder main)"
         required: true
+  # Zum Testen vor einem Release: bei Änderungen am Image auf main bauen und als
+  # :main bzw. :main-<commit> ablegen (nie :latest, nie ins Paket).
+  push:
+    branches: [main]
+    paths:
+      - "containers/**"
+      - "runner_agent/mgpt_*.py"
+      - ".github/workflows/images.yml"
 
 permissions:
   contents: read
@@ -73,10 +81,17 @@ jobs:
 
       - name: Version prüfen
         run: |
-          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
-          [ "v${version}" = "${TAG}" ] || {
-            echo "::error::Tag ${TAG} passt nicht zu pyproject.toml (${version})"; exit 1; }
           owner=${GITHUB_REPOSITORY_OWNER,,}
+          if [ "${TAG}" = "main" ]; then
+            # Testbau von main: kein Release, eigene Tags.
+            version="main-${GITHUB_SHA::7}"
+            echo "CHANNEL=main" >> "$GITHUB_ENV"
+          else
+            version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+            [ "v${version}" = "${TAG}" ] || {
+              echo "::error::Tag ${TAG} passt nicht zu pyproject.toml (${version})"; exit 1; }
+            echo "CHANNEL=latest" >> "$GITHUB_ENV"
+          fi
           echo "VERSION=${version}" >> "$GITHUB_ENV"
           echo "IMAGE=${REGISTRY}/${owner}/${{ matrix.name }}" >> "$GITHUB_ENV"
 
@@ -118,8 +133,9 @@ jobs:
         run: |
           printf '%s' "$GH_TOKEN" | podman login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin
           podman push --digestfile digest.txt "${IMAGE}:${VERSION}"
-          podman tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
-          podman push "${IMAGE}:latest"
+          # Release: zusätzlich :latest; Testbau von main: zusätzlich :main.
+          podman tag "${IMAGE}:${VERSION}" "${IMAGE}:${CHANNEL}"
+          podman push "${IMAGE}:${CHANNEL}"
           podman logout "$REGISTRY"
           digest=$(cat digest.txt)
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Digest fehlt"; exit 1; }
