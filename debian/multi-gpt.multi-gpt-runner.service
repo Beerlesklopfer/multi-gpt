@@ -1,0 +1,48 @@
+[Unit]
+Description=MultiGPT Runner-Dienst (WebSocket /runner/ws für gekoppelte Runner)
+# Nur Reihenfolge: die Datenbank kann auch auf einem anderen Rechner laufen.
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+# uvicorn meldet sich nicht per sd_notify.
+Type=simple
+User=multi-gpt
+Group=multi-gpt
+WorkingDirectory=/var/lib/multi-gpt
+Environment=DJANGO_SETTINGS_MODULE=multigpt.settings
+Environment=STATIC_ROOT=/usr/share/python/multi-gpt/static
+EnvironmentFile=/etc/multi-gpt/.env
+# Adresse aus MULTI_GPT_RUNNER_BIND (Standard 127.0.0.1:8001; davor nginx mit
+# location = /runner/ws). -P: das Arbeitsverzeichnis nicht in sys.path aufnehmen.
+ExecStart=/usr/share/python/multi-gpt/bin/python -P -m django runner_gateway
+# Die Agents verbinden sich nach einem Neustart mit Backoff selbst neu.
+KillMode=mixed
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=5
+UMask=0027
+
+StateDirectory=multi-gpt
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# Härtung wie beim Worker; der Dienst braucht keine Capabilities.
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -4,8 +4,9 @@
 #   SECRET_KEY, FIELD_ENCRYPTION_KEY, ALLOWED_HOSTS (der Health-Check braucht
 #   keinen Eintrag), POSTGRES_PASSWORD (URL-sicher, z. B.
 #   `openssl rand -hex 24`). Vorlage: .env.example (`make install` erzeugt .env).
-#   DATABASE_URL, STATIC_ROOT, MEDIA_ROOT, DEBUG und MULTI_GPT_BIND setzt diese
-#   Datei für den Container selbst; Werte aus .env werden dafür überschrieben.
+#   DATABASE_URL, STATIC_ROOT, MEDIA_ROOT, DEBUG, MULTI_GPT_BIND und
+#   MULTI_GPT_RUNNER_BIND setzt diese Datei für den Container selbst; Werte aus
+#   .env werden dafür überschrieben.
 #
 # Erster Start:
 #   docker compose build
@@ -82,6 +83,33 @@ services:
       DEBUG: "False"
       STATIC_ROOT: /usr/share/python/multi-gpt/static
       MEDIA_ROOT: /var/lib/multi-gpt/media
+    volumes:
+      - multi-gpt-data:/var/lib/multi-gpt
+
+  # Runner-Dienst (M14): WebSocket /runner/ws für gekoppelte Runner, gleiches
+  # Image. Davor gehört ein Reverse-Proxy mit TLS, der /runner/ws mit Upgrade
+  # hierher weiterreicht (Beispiel: deploy/nginx/multi-gpt, location = /runner/ws).
+  runner:
+    image: multi-gpt:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: ["python", "-P", "-m", "django", "runner_gateway"]
+    stop_grace_period: 15s
+    ports:
+      - "127.0.0.1:8001:8001"
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      DATABASE_URL: postgres://multi-gpt:${POSTGRES_PASSWORD}@db:5432/multi-gpt
+      DEBUG: "False"
+      STATIC_ROOT: /usr/share/python/multi-gpt/static
+      MEDIA_ROOT: /var/lib/multi-gpt/media
+      MULTI_GPT_RUNNER_BIND: 0.0.0.0:8001
     volumes:
       - multi-gpt-data:/var/lib/multi-gpt
 

@@ -183,7 +183,8 @@ multi_gpt_restore_default_site() {
 }
 
 # Erzeugt die eingebundenen Dateien in $1 und aktualisiert die .env
-# (MULTI_GPT_BIND, ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS; bei der ersten
+# (MULTI_GPT_BIND, MULTI_GPT_RUNNER_BIND falls gesetzt, ALLOWED_HOSTS,
+# CSRF_TRUSTED_ORIGINS; bei der ersten
 # nginx-Einrichtung zusätzlich SECURE_COOKIES und AXES_PROXY_COUNT).
 multi_gpt_generate() {
     MGPT_STAGE_DIR="$1" \
@@ -269,6 +270,25 @@ if bind != new_bind:
             "der Zugriff läuft über nginx (HTTPS)."
         )
 
+# Runner-Dienst (M14, WebSocket /runner/ws): ebenfalls nur lokal. Ohne Eintrag
+# gilt der Standard des Dienstes (127.0.0.1:8001), die .env bleibt dann unverändert.
+runner_bind = get("MULTI_GPT_RUNNER_BIND") or ""
+match = re.fullmatch(r"(?:[^:]*|\[[0-9A-Fa-f:.]*\]):([0-9]{1,5})", runner_bind)
+runner_port = int(match.group(1)) if match and not runner_bind.startswith("unix:") else 8001
+if runner_bind and (not match or not 1 <= runner_port <= 65535):
+    warn(f"MULTI_GPT_RUNNER_BIND {runner_bind!r} ist ungültig – verwende Port 8001.")
+    runner_port = 8001
+if runner_port == port:
+    runner_port = 8002 if port == 8001 else 8001
+    warn(f"Runner-Dienst und gunicorn auf Port {port} – Runner-Dienst auf {runner_port}.")
+    runner_bind = runner_bind or "(Standard 127.0.0.1:8001)"
+if runner_bind and runner_bind != f"127.0.0.1:{runner_port}":
+    put("MULTI_GPT_RUNNER_BIND", f"127.0.0.1:{runner_port}")
+    note(
+        f"MULTI_GPT_RUNNER_BIND {runner_bind} -> 127.0.0.1:{runner_port}: der Runner-Dienst "
+        "lauscht nur lokal, die Runner verbinden sich über nginx (wss://…/runner/ws)."
+    )
+
 # Hostnamen und Adressen
 names = []
 for name in E.get("MGPT_SERVER_NAMES", "").replace(",", " ").split():
@@ -318,13 +338,17 @@ if first:
     if proxies is None or proxies in {"", "0"}:
         put("AXES_PROXY_COUNT", "1")
 
-tmp = env_file + ".dpkg-new"
-with open(tmp, "w", encoding="utf-8") as fh:
-    fh.write("\n".join(lines) + "\n")
-st = os.stat(env_file)
-os.chown(tmp, st.st_uid, st.st_gid)
-os.chmod(tmp, 0o640)
-os.replace(tmp, env_file)
+
+
+def write_env():
+    tmp = env_file + ".dpkg-new"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    st = os.stat(env_file)
+    os.chown(tmp, st.st_uid, st.st_gid)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, env_file)
+
 
 # TLS
 cert = E.get("MGPT_TLS_CERT", "").strip()
@@ -352,6 +376,18 @@ if not own_cert:
     warn("  Browser warnen vor der Verbindung, das Mikrofon ist ggf. eingeschränkt.")
     warn("  Eigenes Zertifikat eintragen: sudo dpkg-reconfigure multi-gpt")
     print(file=sys.stderr)
+
+# Runner (M14, Frage 8i): Beim snakeoil-Zertifikat hält der Agent dessen
+# SHA-256-Fingerprint fest; die Kopplungsseite berechnet ihn aus RUNNER_TLS_CERT.
+# Mit eigenem Zertifikat prüft der Agent normal gegen die CA – ein vom Paket
+# gesetzter snakeoil-Eintrag wird dann wieder entfernt (eigene Werte bleiben).
+runner_cert = get("RUNNER_TLS_CERT")
+if not own_cert and not runner_cert:
+    put("RUNNER_TLS_CERT", cert)
+elif own_cert and runner_cert == E["MGPT_SNAKEOIL_CERT"]:
+    lines[:] = [line for line in lines if not line.startswith("RUNNER_TLS_CERT=")]
+    note("RUNNER_TLS_CERT entfernt: Runner prüfen jetzt das eigene Zertifikat.")
+write_env()
 
 # Upload-Grenze: Dokumente (DOCUMENT_MAX_UPLOAD_MB) plus Puffer für den Rest
 # des multipart-Requests.
@@ -430,6 +466,10 @@ files = {
         "    keepalive 8;",
         "    # kürzer als der keepalive von gunicorn (5 s)",
         "    keepalive_timeout 4s;",
+        "}",
+        "# Runner-Dienst (WebSocket, M14); ohne keepalive, die Verbindungen leben lange.",
+        "upstream multi_gpt_runner {",
+        f"    server 127.0.0.1:{runner_port};",
         "}",
     ],
     "http.conf": [*HEAD, *listen(80), server_name],
@@ -631,6 +671,8 @@ print("MULTI_GPT_BIND=127.0.0.1:8000")
 print("#MULTI_GPT_WORKERS=2")
 print("#MULTI_GPT_THREADS=8")
 print("#MULTI_GPT_TIMEOUT=300")
+print("# Runner service (WebSocket /runner/ws behind nginx), localhost only")
+print("#MULTI_GPT_RUNNER_BIND=127.0.0.1:8001")
 PY
         chown root:multi-gpt "$ENV_FILE.dpkg-new"
         chmod 0640 "$ENV_FILE.dpkg-new"

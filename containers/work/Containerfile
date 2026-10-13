@@ -1,0 +1,76 @@
+# Arbeits-Image des Runners (M14, Frage 8c): Aus ihm startet der Runner-Agent je
+# Sitzung einen wegwerfbaren Arbeitscontainer. Der Agent legt die Optionen
+# selbst fest (tmpfs /workspace und /tmp, ReadonlyRootfs, CapDrop=ALL,
+# no-new-privileges, Grenzen, Netz aus bzw. Positivliste) – das Image bringt nur
+# die Werkzeuge mit und hat kein Volume.
+#
+# Bauen (aus der Wurzel des Projekts, Kontext "."):
+#   podman build -f containers/work/Containerfile -t multigpt-runner-work:dev .
+# Beim Tag baut und veröffentlicht .github/workflows/images.yml das Image.
+
+ARG DEBIAN_RELEASE=trixie
+FROM docker.io/library/debian:${DEBIAN_RELEASE}-slim
+
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="MultiGPT Runner – Arbeits-Image" \
+      org.opencontainers.image.description="Arbeitsumgebung für Runner-Sitzungen von MultiGPT (Shell, git, Python, Node)" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.version="${VERSION}" \
+      multigpt.image="work"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# python3/-venv, git, nodejs/npm: Arbeiten im Arbeitsstand. openssh-client und
+# inetutils-telnet: Werkzeuge ssh/telnet – ohne Freigabe des Servers nicht
+# nutzbar, weil der Agent das Netz sonst sperrt (8w). procps: ps/kill im PTY.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        coreutils \
+        git \
+        inetutils-telnet \
+        less \
+        nodejs \
+        npm \
+        openssh-client \
+        procps \
+        python3 \
+        python3-venv \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /var/log/apt/* /var/log/dpkg.log
+
+# Hilfsprogramme des Agents (nur Standardbibliothek):
+#   mgpt-fs     Dateiwerkzeuge mit sicherer Pfadauflösung unter /workspace
+#   mgpt-serve  statischer HTTP-Server der Vorschau (8p, keine Templates)
+#   mgpt-relay  TCP-Weiterleitung nur zu freigegebenen Zielen (ssh/telnet, 8w)
+COPY --chmod=0755 runner_agent/mgpt_fs.py /usr/local/bin/mgpt-fs
+COPY --chmod=0755 runner_agent/mgpt_serve.py /usr/local/bin/mgpt-serve
+COPY --chmod=0755 runner_agent/mgpt_relay.py /usr/local/bin/mgpt-relay
+
+# - Nutzer 1000:1000 ohne Passwort und ohne Anmelde-Shell-Datei; HOME liegt im
+#   tmpfs /tmp (das Wurzeldateisystem ist schreibgeschützt).
+# - git: Identität für die Commits je Werkzeugaufruf (8r), Hauptzweig main.
+# - Keine setuid-/setgid-Programme (Ausbruchsfläche; no-new-privileges wirkt
+#   zusätzlich).
+RUN groupadd --gid 1000 mgpt \
+    && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /tmp --shell /bin/bash mgpt \
+    && install -d -m 0755 -o 1000 -g 1000 /workspace \
+    && git config --system user.name "MultiGPT Runner" \
+    && git config --system user.email "runner@multigpt.invalid" \
+    && git config --system init.defaultBranch main \
+    && git config --system advice.detachedHead false \
+    && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+    && python3 -c 'import sys; assert sys.version_info >= (3, 11)'
+
+ENV HOME=/tmp \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false
+
+USER 1000:1000
+WORKDIR /workspace
+# Vorschau-Server (mgpt-serve) im Container, 8x.
+EXPOSE 8080
+CMD ["sleep", "infinity"]

@@ -61,6 +61,8 @@ debian/*.substvars
 debian/*.debhelper.log
 debian/*.debhelper
 debian/debhelper-build-stamp
+# Digests der Runner-Images, erzeugt von der CI (package.yml)
+debian/runner-images.env
 
 # Temporäre Wurzeln der Paket-Tests
 tests/packaging/root.*

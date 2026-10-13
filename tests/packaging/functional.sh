@@ -18,7 +18,9 @@ echo "body{}" > "$R/static/css/app.0123456789ab.css"; gzip -k "$R/static/css/app
 echo "plain" > "$R/static/css/app.css"
 echo "GEHEIM-INHALT" > "$R/media/documents/1/abc.txt"
 python3 "$T/backend.py" 8123 & BP=$!
-trap 'kill $BP 2>/dev/null; "$R/bin/nginx" -s quit 2>/dev/null' EXIT
+# Runner-Dienst (M14): Standardport 8001 (MULTI_GPT_RUNNER_BIND nicht gesetzt)
+python3 "$T/backend.py" 8001 & RP=$!
+trap 'kill $BP $RP 2>/dev/null; "$R/bin/nginx" -s quit 2>/dev/null' EXIT
 "$R/bin/nginx" || { cat "$R/log/error.log"; exit 1; }
 sleep 0.5
 C="curl -sk --resolve nas.intranet.example:443:127.0.0.1 --resolve nas.intranet.example:80:127.0.0.1"
@@ -91,11 +93,24 @@ r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Conten
 check "40 MB an /mcp/ erlaubt (base64-Grenze 44m) ($r)" test "$r" = 200
 r=$($C -o /dev/null -w '%{http_code}' -X POST --data-binary @"$R/40m" -H 'Content-Type: application/json' "$U/mcp/messages?session_id=x")
 check "40 MB an /mcp/messages erlaubt ($r)" test "$r" = 202
+# Runner-WebSocket (/runner/ws): Upgrade durch nginx (101), Rahmen in beide
+# Richtungen, Close-Code des Dienstes (4401 = falscher Token) kommt beim Agent an.
+j=$(python3 "$T/wsclient.py" nas.intranet.example /runner/ws)
+check "Runner-WebSocket: 101 durch nginx" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['status']==101 and d['headers']['upgrade'].lower()=='websocket', d" "$j"
+check "Runner-WebSocket: Close 4401 kommt an" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['close']==4401, d" "$j"
+check "Runner-WebSocket: Host und X-Forwarded-* am Dienst" python3 -c "
+import json,sys; h=json.loads(sys.argv[1])['text']['headers']
+assert h['Host']=='nas.intranet.example' and h['X-Forwarded-Proto']=='https' and h['X-Forwarded-For']=='127.0.0.1', h" "$j"
+check "Runner-WebSocket: Upgrade und Connection upgrade weitergereicht" python3 -c "
+import json,sys; h=json.loads(sys.argv[1])['text']['headers']
+assert h['Upgrade']=='websocket' and h['Connection']=='upgrade', h" "$j"
+j=$(python3 "$T/wsclient.py" nas.intranet.example /chat/ws)
+check "WebSocket nur unter /runner/ws (sonst kein 101)" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['status']!=101, d" "$j"
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example -tls1_1 2>&1 | grep -c "Cipher is (NONE)\|alert\|no protocols")
 check "TLS 1.1 abgelehnt" test "$tls" -ge 1
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example 2>/dev/null | grep -E "^(New|Negotiated|Server Temp Key)|Protocol" | head -3)
 echo "    TLS: $(tr '\n' ' ' <<<"$tls")"
-"$R/bin/nginx" -s quit; kill $BP
+"$R/bin/nginx" -s quit; kill $BP $RP
 echo "Fehlschläge: $FAILS"
 rm -rf "$T"/root.*
 exit $FAILS

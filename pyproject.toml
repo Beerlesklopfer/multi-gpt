@@ -33,7 +33,13 @@ dependencies = [
     "python-docx>=1.2",
     "scipy>=1.16",
     "sympy>=1.14",
+    # starlette, uvicorn, websockets: Runner-Dienst (M14, ASGI mit WebSocket unter
+    # /runner/ws). starlette und uvicorn kommen auch mit mcp, der Code nutzt sie aber
+    # direkt; uvicorn nimmt WebSocket-Upgrades nur mit websockets (oder wsproto) an.
+    "starlette>=0.46",
+    "uvicorn>=0.30",
     "weasyprint>=70.0",
+    "websockets>=15",
     "whitenoise>=6.9",
 ]
 
@@ -55,7 +61,11 @@ include = ["multigpt*"]
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "multigpt.settings"
 testpaths = ["tests"]
-addopts = "-ra"
+# Ende-zu-Ende-Tests mit echtem Podman (M14-15) laufen nur über `make test-runner`.
+addopts = "-ra -m 'not podman'"
+markers = [
+    "podman: Ende-zu-Ende-Test mit echtem Podman (nur eigene Testobjekte, make test-runner)",
+]
 
 [tool.ruff]
 line-length = 100

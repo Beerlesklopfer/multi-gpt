@@ -7,7 +7,9 @@
 # postinst bei jeder Konfiguration neu aus den debconf-Antworten und aus
 # /etc/multi-gpt/.env (Handänderungen dort gehen verloren):
 #
-#   upstream.conf    upstream multi_gpt_app (127.0.0.1:<Port aus MULTI_GPT_BIND>)
+#   upstream.conf    upstream multi_gpt_app (127.0.0.1:<Port aus MULTI_GPT_BIND>),
+#                    upstream multi_gpt_runner (127.0.0.1:<Port aus
+#                    MULTI_GPT_RUNNER_BIND, Standard 8001>)
 #   http.conf        listen 80 [default_server], server_name
 #   https.conf       listen 443 [default_server], server_name, Zertifikat und
 #                    Schlüssel, client_max_body_size (DOCUMENT_MAX_UPLOAD_MB
@@ -121,6 +123,26 @@ server {
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         include /etc/multi-gpt/nginx/mcp.conf;
+    }
+
+    # Runner-Dienst (M14): WebSocket der gekoppelten Runner (multi-gpt-runner,
+    # uvicorn). proxy_set_header in einer location ersetzt alle geerbten
+    # Einträge (auch Connection ""), deshalb stehen Host und X-Forwarded-* hier
+    # noch einmal. "upgrade" steht fest statt über map $connection_upgrade, die
+    # andere Sites oft selbst definieren. 120 s genügen: Ping (20 s) und
+    # Heartbeat (30 s) halten die Verbindung ständig in Gang. Der Token steht nie
+    # in der URL, sondern im ersten Rahmen (hello).
+    location = /runner/ws {
+        proxy_pass http://multi_gpt_runner;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
     }
 
     location / {

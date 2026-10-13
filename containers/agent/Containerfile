@@ -1,0 +1,51 @@
+# Agent-Image des Runners (M14, Frage 8g): Der Agent läuft auf dem Rechner mit
+# dem Browser als Container (Quadlet, multigpt-runner.container) mit dem
+# Podman-Socket des Nutzers. Er verbindet sich nur ausgehend per wss mit
+# MultiGPT und startet die Arbeitscontainer ausschließlich nach fester Vorlage
+# (erlaubtes Image mit Digest, nur tmpfs, keine Privilegien).
+#
+# Bauen (aus der Wurzel des Projekts, Kontext "."):
+#   podman build -f containers/agent/Containerfile -t multigpt-runner:dev .
+# Beim Tag baut und veröffentlicht .github/workflows/images.yml das Image.
+
+ARG DEBIAN_RELEASE=trixie
+FROM docker.io/library/debian:${DEBIAN_RELEASE}-slim
+
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="MultiGPT Runner – Agent" \
+      org.opencontainers.image.description="Runner-Agent von MultiGPT: koppelt den Rechner per Token und steuert die Arbeitscontainer" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.version="${VERSION}" \
+      multigpt.image="agent"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /var/log/apt/* /var/log/dpkg.log
+
+# Abhängigkeiten des Agents (wie im venv des Servers geprüft): websockets
+# (Verbindung), httpx (REST-API von Podman über den Unix-Socket), mcp (nur der
+# Low-Level-Server je pipe).
+RUN python3 -m venv /opt/mgpt/venv \
+    && /opt/mgpt/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
+        "websockets==17.2" "httpx==0.28.1" "mcp==2.3.0" \
+    && find /opt/mgpt/venv -name __pycache__ -prune -exec rm -rf {} +
+
+COPY runner_agent/ /opt/mgpt/runner_agent/
+RUN find /opt/mgpt/runner_agent -name __pycache__ -prune -exec rm -rf {} + \
+    && /opt/mgpt/venv/bin/python -c 'import sys; sys.path.insert(0, "/opt/mgpt"); import runner_agent'
+
+# Konfiguration nur über die Umgebung (Quadlet): MGPT_URL, MGPT_CA_SHA256,
+# MGPT_IMAGES; der Token liegt als Podman-Secret in /run/secrets/token, der
+# Podman-Socket unter /run/podman.sock. Läuft als root des Nutzer-Namensraums
+# (rootless Podman: der Nutzer des Rechners), damit er den Socket öffnen darf.
+ENV PATH="/opt/mgpt/venv/bin:${PATH}" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MGPT_TOKEN_FILE=/run/secrets/token \
+    MGPT_PODMAN_SOCKET=/run/podman.sock
+WORKDIR /opt/mgpt
+# -P: kein Arbeitsverzeichnis in sys.path; das Paket kommt über PYTHONPATH.
+ENV PYTHONPATH=/opt/mgpt
+ENTRYPOINT ["python", "-P", "-m", "runner_agent"]

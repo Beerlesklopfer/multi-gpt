@@ -21,10 +21,20 @@ check "Site bindet mcp.conf ein" grep -q "include $R/etc/multi-gpt/nginx/mcp.con
 check "Site: /mcp/sse ungepuffert" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_buffering off;'"
 check "Site: /mcp/sse read_timeout 3600s" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_read_timeout 3600s;'"
 check "Site: /mcp/sse bindet mcp.conf ein" bash -c "grep -A8 'location ~ ^/mcp/(sse|messages)' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'mcp.conf;'"
+check "upstream Runner-Dienst 8001" bash -c "grep -A1 'upstream multi_gpt_runner {' '$R/etc/multi-gpt/nginx/upstream.conf' | grep -q 'server 127.0.0.1:8001;'"
+check "Runner ohne keepalive" bash -c "! sed -n '/multi_gpt_runner/,/}/p' '$R/etc/multi-gpt/nginx/upstream.conf' | grep -q keepalive"
+check "MULTI_GPT_RUNNER_BIND nicht eingetragen" bash -c "! grep -q '^MULTI_GPT_RUNNER_BIND=' '$R/etc/multi-gpt/.env'"
+check "Site: location = /runner/ws" bash -c "grep -A12 'location = /runner/ws {' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_pass http://multi_gpt_runner;'"
+for d in 'proxy_set_header Upgrade \$http_upgrade;' 'proxy_set_header Connection \"upgrade\";' 'proxy_set_header Host \$host;' \
+         'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' 'proxy_set_header X-Forwarded-Proto \$scheme;' \
+         'proxy_http_version 1.1;' 'proxy_buffering off;' 'proxy_read_timeout 120s;'; do
+  check "Site: /runner/ws $d" bash -c "sed -n '/location = \/runner\/ws {/,/}/p' '$R/etc/nginx/sites-available/multi-gpt' | grep -qF \"$d\""
+done
 check "ALLOWED_HOSTS" test "$(envv ALLOWED_HOSTS)" = "localhost,127.0.0.1,nas.intranet.example,nas,192.168.24.250,172.17.0.1"
 check "CSRF" test "$(envv CSRF_TRUSTED_ORIGINS)" = "https://nas.intranet.example,https://nas,https://192.168.24.250,https://172.17.0.1"
 check "SECURE_COOKIES True" test "$(envv SECURE_COOKIES)" = True
 check "AXES_PROXY_COUNT 1" test "$(envv AXES_PROXY_COUNT)" = 1
+check "RUNNER_TLS_CERT = snakeoil (Fingerprint für Runner)" test "$(envv RUNNER_TLS_CERT)" = "$R/etc/ssl/certs/ssl-cert-snakeoil.pem"
 check "nginx -t ok" nginx_ok
 check "reload" grep -q "deb-systemd-invoke reload nginx.service" "$R/calls"
 check "keine .dpkg-old" bash -c "! ls '$R'/etc/multi-gpt/nginx/*.dpkg-old 2>/dev/null"
@@ -83,10 +93,14 @@ LOG_LEVEL=INFO
 #AXES_PROXY_COUNT=1
 DOCUMENT_MAX_UPLOAD_MB=50
 MULTI_GPT_BIND=192.168.24.250:8123
+MULTI_GPT_RUNNER_BIND=0.0.0.0:8124
 E
 chmod 640 "$R/etc/multi-gpt/.env"
 run_setup "nas.intranet.example nas multigpt.intern"
 check "Bind lokal, Port behalten" test "$(envv MULTI_GPT_BIND)" = 127.0.0.1:8123
+check "Runner-Bind lokal, Port behalten" test "$(envv MULTI_GPT_RUNNER_BIND)" = 127.0.0.1:8124
+check "Hinweis Runner-Bind" grep -q "MULTI_GPT_RUNNER_BIND 0.0.0.0:8124 -> 127.0.0.1:8124" "$R/out"
+check "upstream Runner-Port" grep -q "server 127.0.0.1:8124;" "$R/etc/multi-gpt/nginx/upstream.conf"
 check "Hinweis Bind" grep -q "MULTI_GPT_BIND 192.168.24.250:8123 -> 127.0.0.1:8123" "$R/out"
 check "upstream Port" grep -q "server 127.0.0.1:8123;" "$R/etc/multi-gpt/nginx/upstream.conf"
 check "client_max_body_size 60m" grep -q "client_max_body_size 60m;" "$R/etc/multi-gpt/nginx/https.conf"
@@ -138,7 +152,20 @@ run_setup "nas.intranet.example" "$R/own.pem" "$R/own.key"
 check "HSTS" grep -q 'Strict-Transport-Security "max-age=63072000"' "$R/etc/multi-gpt/nginx/headers.conf"
 check "eigenes Zertifikat" grep -q "ssl_certificate $R/own.pem;" "$R/etc/multi-gpt/nginx/https.conf"
 check "keine snakeoil-Warnung" bash -c "! grep -q snakeoil-Zertifikat '$R/out'"
+check "kein RUNNER_TLS_CERT bei eigenem Zertifikat" bash -c "! grep -q '^RUNNER_TLS_CERT=' '$R/etc/multi-gpt/.env'"
 check "nginx -t ok" nginx_ok
+
+echo "G3: erst snakeoil, dann eigenes Zertifikat -> RUNNER_TLS_CERT entfernt; eigener Wert bleibt"
+new_root; run_setup "nas.intranet.example"
+check "snakeoil eingetragen" test "$(envv RUNNER_TLS_CERT)" = "$R/etc/ssl/certs/ssl-cert-snakeoil.pem"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 -subj /CN=nas.intranet.example \
+   -keyout "$R/own.key" -out "$R/own.pem" 2>/dev/null
+run_setup "nas.intranet.example" "$R/own.pem" "$R/own.key"
+check "Eintrag entfernt" bash -c "! grep -q '^RUNNER_TLS_CERT=' '$R/etc/multi-gpt/.env'"
+check "Hinweis" grep -q "RUNNER_TLS_CERT entfernt" "$R/out"
+echo "RUNNER_TLS_CERT=/srv/eigene-ca.pem" >> "$R/etc/multi-gpt/.env"
+run_setup "nas.intranet.example"
+check "eigener Wert bleibt (auch bei snakeoil)" test "$(envv RUNNER_TLS_CERT)" = /srv/eigene-ca.pem
 
 echo "G2: Zertifikat angegeben, Schlüssel fehlt -> snakeoil"
 new_root; run_setup "nas" "$R/etc/ssl/certs/ssl-cert-snakeoil.pem" "" ; run_setup "nas" "/nicht/da.pem" "/nicht/da.key"
@@ -169,6 +196,19 @@ new_root; MULTI_GPT_SKIP_NGINX=1 run_setup
 check "Site nicht aktiviert" test ! -e "$R/etc/nginx/sites-enabled/multi-gpt"
 check "default unverändert" test -L "$R/etc/nginx/sites-enabled/default"
 check ".env trotzdem gesetzt" test "$(envv SECURE_COOKIES)" = True
+
+echo "M: Runner-Bind kollidiert mit gunicorn bzw. ist ungültig"
+new_root; sed -i 's/^MULTI_GPT_BIND=.*/MULTI_GPT_BIND=127.0.0.1:8001/' "$R/etc/multi-gpt/.env"
+run_setup
+check "Runner weicht auf 8002 aus" grep -q "server 127.0.0.1:8002;" "$R/etc/multi-gpt/nginx/upstream.conf"
+check "Runner-Bind eingetragen" test "$(envv MULTI_GPT_RUNNER_BIND)" = 127.0.0.1:8002
+check "Warnung Port" grep -q "Runner-Dienst und gunicorn auf Port 8001" "$R/out"
+check "nginx -t ok" nginx_ok
+new_root; echo 'MULTI_GPT_RUNNER_BIND=quatsch' >> "$R/etc/multi-gpt/.env"
+run_setup
+check "ungültig -> Warnung" grep -q "MULTI_GPT_RUNNER_BIND 'quatsch' ist ungültig" "$R/out"
+check "ungültig -> 8001" test "$(envv MULTI_GPT_RUNNER_BIND)" = 127.0.0.1:8001
+check "nginx -t ok" nginx_ok
 
 echo "L: vorab angelegte .env ohne Pflichtschlüssel (z. B. nur RAG_SOURCE_ROOTS)"
 new_root

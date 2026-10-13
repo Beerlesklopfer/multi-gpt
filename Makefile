@@ -19,7 +19,7 @@ GH      ?= $(or $(shell command -v gh 2>/dev/null),$(HOME)/go/bin/gh)
 REMOTE  ?= origin
 
 .DEFAULT_GOAL := help
-.PHONY: help install migrate user dev run static sync-models worker reindex test test-packaging lint fmt deb release website website-serve deploy db-create clean
+.PHONY: help install migrate user dev run run-runner static sync-models worker reindex test test-runner test-packaging runner-images lint fmt deb release website website-serve deploy db-create clean
 
 help: ## Diese Hilfe anzeigen
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -60,6 +60,13 @@ run: ## gunicorn im Vordergrund starten
 	set -a; [ ! -f .env ] || . ./.env; set +a; \
 	exec $(BIN)/gunicorn -c deploy/gunicorn.conf.py multigpt.wsgi:application
 
+# Runner-Dienst (M14): ASGI mit WebSocket /runner/ws auf MULTI_GPT_RUNNER_BIND
+# (Standard 127.0.0.1:8001). Ein Agent verbindet sich in der Entwicklung direkt
+# auf ws://127.0.0.1:8001/runner/ws (MGPT_INSECURE_DEV=1).
+run-runner: ## Runner-Dienst (WebSocket /runner/ws) im Vordergrund starten
+	set -a; [ ! -f .env ] || . ./.env; set +a; \
+	exec $(MANAGE) runner_gateway
+
 static: ## Statische Dateien sammeln (collectstatic)
 	$(MANAGE) collectstatic --noinput
 
@@ -75,6 +82,13 @@ reindex: ## Alle Dokumente neu indexieren (nach Wechsel des Embedding-Modells)
 test: ## Tests ausführen (pytest, braucht PostgreSQL)
 	$(BIN)/pytest
 
+# Ende-zu-Ende mit echtem Podman (Marker podman, M14-15); in `make test`
+# ausgeschlossen (addopts in pyproject.toml). Legt nur eigene Testobjekte an
+# (Label multigpt.test=1, Namen mgpt-test-*).
+test-runner: ## Runner-Tests mit echtem Podman (Marker podman)
+	@command -v podman >/dev/null || { echo "test-runner: podman fehlt." >&2; exit 1; }
+	$(BIN)/pytest -m podman
+
 test-packaging: ## Paket-Skripte (postinst/postrm/config, nginx) mit Stubs prüfen
 	bash tests/packaging/cases.sh
 	bash tests/packaging/config_cases.sh
@@ -86,6 +100,14 @@ lint: ## Code prüfen (ruff check + Formatprüfung)
 fmt: ## Code formatieren und Autofixes anwenden
 	$(BIN)/ruff check --fix .
 	$(BIN)/ruff format .
+
+# Images des Runners (M14-13) lokal bauen: Arbeits-Image (Sitzungscontainer)
+# und Agent-Image. Veröffentlicht werden sie beim Tag vom Workflow images.yml.
+RUNNER_IMAGE_TAG ?= dev
+RUNNER_IMAGE_PREFIX ?= localhost/multigpt-runner
+runner-images: ## Arbeits- und Agent-Image des Runners lokal bauen (podman)
+	podman build -f containers/work/Containerfile -t $(RUNNER_IMAGE_PREFIX)-work:$(RUNNER_IMAGE_TAG) .
+	podman build -f containers/agent/Containerfile -t $(RUNNER_IMAGE_PREFIX):$(RUNNER_IMAGE_TAG) .
 
 release: ## Neue Version vorbereiten: changelog, pyproject, Commit und Tag (VERSION=x.y.z)
 	@$(PYTHON) scripts/release.py "$(VERSION)"

@@ -8,7 +8,9 @@ compose.yaml
 venv/
 env/
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.py[cod]
 *.egg-info/
 build/
 dist/

@@ -1,0 +1,177 @@
+# Baut zu jedem Versions-Tag (v*) die beiden Images des Runners (M14-13) und
+# veröffentlicht sie auf ghcr.io:
+#   ghcr.io/<owner>/multigpt-work    Arbeits-Image (containers/work/Containerfile)
+#   ghcr.io/<owner>/multigpt-runner  Agent-Image  (containers/agent/Containerfile)
+# Maßgeblich ist der Digest (name@sha256:…): Ihn tragen die Einstellungen des
+# Servers und die Quadlet-Datei ein, der Agent startet nur Images mit Digest aus
+# seiner Positivliste. Die Digests stehen in der Zusammenfassung des Laufs und
+# im Artefakt image-digests (images.txt für das Release, runner-images.env für
+# das Debian-Paket: /usr/share/multi-gpt/runner-images.env).
+#
+# Aufgerufen von package.yml beim Tag, vor dem Bau des Debian-Pakets. Von Hand:
+# Actions → Runner-Images → "Run workflow" mit dem Tag (hängt images.txt an ein
+# vorhandenes Release).
+# Einmalig nach dem ersten Lauf: Die Pakete auf ghcr.io sind zunächst privat;
+# für Runner ohne Anmeldung unter Packages → Package settings auf "Public" stellen.
+name: Runner-Images
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag, z. B. v0.4.0"
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag, z. B. v0.4.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  REGISTRY: ghcr.io
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - kind: work
+            name: multigpt-runner-work
+            var: RUNNER_WORK_IMAGE
+          - kind: agent
+            name: multigpt-runner
+            var: RUNNER_AGENT_IMAGE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Version prüfen
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          [ "v${version}" = "${TAG}" ] || {
+            echo "::error::Tag ${TAG} passt nicht zu pyproject.toml (${version})"; exit 1; }
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "IMAGE=${REGISTRY}/${owner}/${{ matrix.name }}" >> "$GITHUB_ENV"
+
+      - name: Image bauen
+        run: |
+          podman build --pull=always \
+            --build-arg "VERSION=${VERSION}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            -f "containers/${{ matrix.kind }}/Containerfile" \
+            -t "${IMAGE}:${VERSION}" .
+
+      - name: Rauchtest Arbeits-Image
+        if: matrix.kind == 'work'
+        # Mit denselben Einschränkungen, die der Agent setzt (ohne Netz, nur tmpfs).
+        run: |
+          podman run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 256 \
+            --tmpfs /workspace:rw,size=64m,mode=0700,U --tmpfs /tmp:rw,size=64m \
+            "${IMAGE}:${VERSION}" bash -euc '
+              [ "$(id -u):$(id -g)" = "1000:1000" ]
+              python3 --version; git --version; node --version; npm --version
+              ssh -V; command -v telnet; command -v timeout
+              for p in mgpt-fs mgpt-serve mgpt-relay; do test -x "/usr/local/bin/$p"; done
+              [ -z "$(find / -xdev -type f -perm /6000 2>/dev/null)" ] || { echo "setuid gefunden"; exit 1; }
+              cd /workspace && git init -q && echo ok > a.txt && git add -A && git commit -qm test
+              git bundle create /tmp/t.bundle --all && git bundle verify -q /tmp/t.bundle'
+
+      - name: Rauchtest Agent-Image
+        if: matrix.kind == 'agent'
+        run: |
+          podman run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint python "${IMAGE}:${VERSION}" \
+            -P -c 'import runner_agent, websockets, httpx, mcp; print("ok")'
+
+      - name: Veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | podman login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin
+          podman push --digestfile digest.txt "${IMAGE}:${VERSION}"
+          podman tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
+          podman push "${IMAGE}:latest"
+          podman logout "$REGISTRY"
+          digest=$(cat digest.txt)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Digest fehlt"; exit 1; }
+          mkdir -p out
+          echo "${IMAGE}:${VERSION}@${digest}" > "out/${{ matrix.name }}.txt"
+          echo "${{ matrix.var }}=${IMAGE}:${VERSION}@${digest}" > "out/${{ matrix.name }}.env"
+          echo "- \`${IMAGE}:${VERSION}@${digest}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Digest als Artefakt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.name }}
+          path: out/${{ matrix.name }}.*
+          if-no-files-found: error
+
+  digests:
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Digests holen
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Zusammenfassen
+        run: |
+          {
+            echo "# MultiGPT runner images ${TAG} (pull by digest)"
+            cat digests/multigpt-runner.txt digests/multigpt-runner-work.txt
+          } > images.txt
+          {
+            echo "# Runner-Images (M14) dieses Pakets, erzeugt von images.yml – Werte in"
+            echo "# /etc/multi-gpt/.env gehen vor."
+            cat digests/multigpt-runner.env digests/multigpt-runner-work.env
+          } > runner-images.env
+          cat images.txt runner-images.env
+          { echo '```'; cat images.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Artefakt image-digests
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-digests
+          path: |
+            images.txt
+            runner-images.env
+          if-no-files-found: error
+      - name: An das Release hängen (falls vorhanden)
+        # Beim Aufruf aus package.yml hängt dessen Job release die Datei an.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" images.txt --clobber
+          else
+            echo "::notice::Release ${TAG} gibt es noch nicht – Digests im Artefakt image-digests."
+          fi

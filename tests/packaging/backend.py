@@ -1,4 +1,7 @@
+import base64
+import hashlib
 import json
+import struct
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,7 +13,37 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def websocket(self):
+        """Runner-Dienst (M14) im Kleinen: 101, Kopfzeilen als Textrahmen, Close 4401."""
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        accept = base64.b64encode(
+            hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
+        ).decode()
+        self.send_response(101)
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        self.wfile.flush()
+        # Erster Rahmen des Clients (hello, maskiert) lesen und verwerfen.
+        head = self.rfile.read(2)
+        n = head[1] & 0x7F
+        if n == 126:
+            n = struct.unpack("!H", self.rfile.read(2))[0]
+        elif n == 127:
+            n = struct.unpack("!Q", self.rfile.read(8))[0]
+        self.rfile.read(4 + n)
+        info = json.dumps({"path": self.path, "headers": dict(self.headers)}).encode()
+        self.wfile.write(bytes([0x81, 126]) + struct.pack("!H", len(info)) + info)
+        reason = struct.pack("!H", 4401) + b"token"
+        self.wfile.write(bytes([0x88, len(reason)]) + reason)
+        self.wfile.flush()
+        self.close_connection = True
+
     def do_GET(self):
+        if self.headers.get("Upgrade", "").lower() == "websocket":
+            self.websocket()
+            return
         if self.path.startswith("/api/conversations/1/messages/") or self.path == "/mcp/sse":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")

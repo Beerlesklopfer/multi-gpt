@@ -50,15 +50,27 @@ override_dh_dwz:
 override_dh_shlibdeps:
 	dh_shlibdeps --exclude=/site-packages/
 
-# Zwei Units: Weboberfläche (debian/multi-gpt.service) und Worker für die
-# Indexierung (debian/multi-gpt.multi-gpt-worker.service, M7). Jeweils mit
-# --name, damit jeder Aufruf genau seine Unit behandelt (ohne --name würde der
-# zweite Aufruf beide Units erneut einbinden). Beide werden bei Installation
-# aktiviert und gestartet, beim Upgrade nach der Migration im postinst neu
-# gestartet (compat 13: --restart-after-upgrade).
+# Drei Units: Weboberfläche (debian/multi-gpt.service), Worker für die
+# Indexierung (debian/multi-gpt.multi-gpt-worker.service, M7) und Runner-Dienst
+# (debian/multi-gpt.multi-gpt-runner.service, M14: WebSocket /runner/ws).
+# Jeweils mit --name, damit jeder Aufruf genau seine Unit behandelt (ohne
+# --name würden spätere Aufrufe alle Units erneut einbinden). Alle werden bei
+# Installation aktiviert und gestartet, beim Upgrade nach der Migration im
+# postinst neu gestartet (compat 13: --restart-after-upgrade).
 override_dh_installsystemd:
 	dh_installsystemd --name=multi-gpt
 	dh_installsystemd --name=multi-gpt-worker
+	dh_installsystemd --name=multi-gpt-runner
+
+# Digests der Runner-Images (M14-13): Beim Tag legt die CI (package.yml, aus
+# images.yml) debian/runner-images.env an; Django liest daraus die Standardwerte
+# von RUNNER_AGENT_IMAGE und RUNNER_WORK_IMAGE (/etc/multi-gpt/.env geht vor).
+# Lokal (make deb, Docker) fehlt die Datei, dann gelten die Tags aus settings.py.
+execute_after_dh_install:
+	if [ -f debian/runner-images.env ]; then \
+	    install -D -m 0644 debian/runner-images.env \
+	        debian/multi-gpt/usr/share/multi-gpt/runner-images.env; \
+	fi
 
 # dh_auto_clean ist durch die Sequenz entfernt; Reste des Wheel-Builds
 # (setuptools baut im Quellbaum) selbst wegräumen.
