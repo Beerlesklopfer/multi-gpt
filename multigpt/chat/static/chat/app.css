@@ -4371,3 +4371,14 @@ span.message-source-link {
 .runner-live {
   margin-top: 1.5rem;
 }
+
+/* Seite „Runner“: Name nicht zeichenweise umbrechen, lange Rechnernamen dürfen umbrechen */
+.runner-table th:first-child,
+.runner-table td:first-child {
+  min-width: 9rem;
+}
+
+.runner-table td:nth-child(3) {
+  min-width: 14rem;
+  overflow-wrap: anywhere;
+}
