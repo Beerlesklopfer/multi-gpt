@@ -512,6 +512,8 @@ Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder
 
 **Grundsatz (Nutzer, 2026-10-13):** M14 ist der nächste Schritt. Das LLM ist im Container eingesperrt und arbeitet nur dort; der Container exportiert nur fest vorgegebene Ports (keine, die Modell oder Nutzer frei wählen). Welche Ports das sind, legt Frage 8x fest.
 
+**MultiGPT bleibt der zentrale Punkt (Nutzer, 2026-10-13):** Wegen Rechtesteuerung und Kontingentierung läuft jeder Zugriff auf einen Runner über MultiGPT: Chat, Agententeam (M15-Keys) und n8n. Es gibt keinen direkten Weg zum Runner oder zum Podman des Rechners, weder für Menschen noch für Agenten. Rechte, Kontingent, Rückfragen und Audit-Log prüft immer der Server.
+
 **Entscheidung des Nutzers vom 2026-10-13 (ersetzt „Sitzung = eigenes Volume“, Sicherung per `volume export` und die Größenprüfung der Volumes):** Der Runner ist das Coding-Werkzeug von MultiGPT. Anlass war Chat 17 der Produktion: Ein Modell hat HTML/JS-Code als PDF abgelegt, weil es kein Werkzeug für Code-Dateien gab. Ein eigenes `write_files` auf dem Server entfällt dafür.
 
 - **Arbeitsstand als git-Bundle in der Datenbank:** Neues Modell `RunnerWorkspace` (Besitzer, Name, Zuordnung zum Chat, `bundle` als BLOB/`BinaryField`, Größe, letzter Commit, geändert). Das Bundle enthält alle Refs (`git bundle create … --all`) und damit die ganze Historie. Damit ist jeder Stand zurückholbar, und die Datensicherung der Datenbank sichert die Arbeitsstände mit.
