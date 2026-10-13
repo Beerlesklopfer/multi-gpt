@@ -106,9 +106,15 @@ def test_quadlet_template_with_fingerprint_and_no_escaping():
 
 def test_containerfiles_copy_agent_helpers():
     work = (ROOT / "containers" / "work" / "Containerfile").read_text(encoding="utf-8")
-    for name in ("mgpt_fs", "mgpt_serve", "mgpt_relay"):
+    # mgpt-serve im Image ist die lighttpd-Hülle (mgpt_serve.py bleibt für die FakeEngine).
+    for name in ("mgpt_fs", "mgpt_lighttpd", "mgpt_relay"):
         assert f"runner_agent/{name}.py" in work
         assert (ROOT / "runner_agent" / f"{name}.py").is_file()
+    assert "runner_agent/mgpt_lighttpd.py /usr/local/bin/mgpt-serve" in work
+    for package in ("lighttpd", "lighttpd-mod-openssl", "curl", "jq", "ripgrep", "wget"):
+        assert f"\n        {package} \\" in work
+    assert "build-essential" not in work  # Compiler nur über apt_install
+    assert "EXPOSE 8080 8443" in work
     assert "USER 1000:1000" in work
     agent = (ROOT / "containers" / "agent" / "Containerfile").read_text(encoding="utf-8")
     assert 'ENTRYPOINT ["python", "-P", "-m", "runner_agent"]' in agent

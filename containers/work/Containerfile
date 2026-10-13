@@ -23,32 +23,55 @@ LABEL org.opencontainers.image.title="MultiGPT Runner – Arbeits-Image" \
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# python3/-venv, git, nodejs/npm: Arbeiten im Arbeitsstand. openssh-client und
-# inetutils-telnet: Werkzeuge ssh/telnet – ohne Freigabe des Servers nicht
-# nutzbar, weil der Agent das Netz sonst sperrt (8w). procps: ps/kill im PTY.
+# Standardwerkzeuge (Nutzer, 2026-10-14; ohne Compiler – dafür apt_install):
+#   Arbeiten:  bash, coreutils, git, less, nano, vim-tiny, make, patch, file, tree,
+#              ripgrep, jq, sqlite3, rsync, zip, unzip, curl, wget, procps
+#   Sprachen:  python3 mit pip/venv, nodejs mit npm
+#   Web:       lighttpd (nur statische Dateien) mit mod_openssl, openssl (Wegwerf-
+#              Zertifikat für 443)
+#   Netz:      openssh-client und inetutils-telnet (Werkzeuge ssh/telnet – ohne
+#              Freigabe des Servers nicht nutzbar, der Agent sperrt das Netz, 8w)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
         coreutils \
+        curl \
+        file \
         git \
         inetutils-telnet \
+        jq \
         less \
+        lighttpd \
+        lighttpd-mod-openssl \
+        make \
+        nano \
         nodejs \
         npm \
         openssh-client \
+        openssl \
+        patch \
         procps \
         python3 \
+        python3-pip \
         python3-venv \
+        ripgrep \
+        rsync \
+        sqlite3 \
+        tree \
+        unzip \
+        vim-tiny \
+        wget \
+        zip \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /var/log/apt/* /var/log/dpkg.log
 
 # Hilfsprogramme des Agents (nur Standardbibliothek):
 #   mgpt-fs     Dateiwerkzeuge mit sicherer Pfadauflösung unter /workspace
-#   mgpt-serve  statischer HTTP-Server der Vorschau (8p, keine Templates)
+#   mgpt-serve  startet lighttpd (statisch, http 8080 und https 8443, 8p/8x)
 #   mgpt-relay  TCP-Weiterleitung nur zu freigegebenen Zielen (ssh/telnet, 8w)
 #               bzw. HTTP-Proxy nur zu den Paket-Hosts (Modus Paketquellen)
 COPY --chmod=0755 runner_agent/mgpt_fs.py /usr/local/bin/mgpt-fs
-COPY --chmod=0755 runner_agent/mgpt_serve.py /usr/local/bin/mgpt-serve
+COPY --chmod=0755 runner_agent/mgpt_lighttpd.py /usr/local/bin/mgpt-serve
 COPY --chmod=0755 runner_agent/mgpt_relay.py /usr/local/bin/mgpt-relay
 
 # apt über den Proxy: kein Pipelining (der Proxy leitet je Verbindung genau eine
@@ -74,8 +97,12 @@ RUN groupadd --gid 1000 mgpt \
     && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
     && python3 -c 'import sys; assert sys.version_info >= (3, 11)'
 
+# pip: Das System ist „externally managed“ (PEP 668) und schreibgeschützt;
+# --user bzw. ein venv im Arbeitsbereich sind erlaubt.
 ENV HOME=/tmp \
     LANG=C.UTF-8 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
@@ -83,6 +110,8 @@ ENV HOME=/tmp \
 
 USER 1000:1000
 WORKDIR /workspace
-# Vorschau-Server (mgpt-serve) im Container, 8x.
-EXPOSE 8080
+# Webserver (mgpt-serve → lighttpd) im Container: 8080 http, 8443 https. Der
+# Agent veröffentlicht sie als 10080 und 10443 (80 und 443 kann Nutzer 1000 ohne
+# Capabilities nicht binden).
+EXPOSE 8080 8443
 CMD ["sleep", "infinity"]
