@@ -35,6 +35,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// `/info` sammelt Speicherstatistiken und braucht auf belasteten Rechnern länger.
 const INFO_TIMEOUT: Duration = Duration::from_secs(150);
+/// Ziehen eines fehlenden Arbeits-Images (einige hundert MB).
+const PULL_TIMEOUT: Duration = Duration::from_secs(1800);
 
 /// Prozentkodierung für Pfadsegmente und Abfragewerte (alles außer unreserved).
 pub fn quote(text: &str) -> String {
@@ -115,6 +117,59 @@ impl PodmanEngine {
     }
 
     /// JSON-Aufruf; Status außerhalb `ok` wird zum Fehler mit der Meldung von Podman.
+    /// Fehlendes Image ziehen (`policy=missing`). Aufrufer prüft vorher die Vorlage;
+    /// hier zusätzlich: nur Referenzen mit Digest.
+    pub async fn ensure_image(&self, image: &str) -> EngineResult<()> {
+        if !image.contains("@sha256:") {
+            return Err(EngineError::new("Image ohne Digest wird nicht gezogen."));
+        }
+        let exists = self
+            .request(
+                Method::GET,
+                &format!("/images/{}/exists", quote(image)),
+                &[],
+                None,
+                &[204, 404],
+            )
+            .await?;
+        if exists.status == 204 {
+            return Ok(());
+        }
+        tracing::info!("Ziehe Arbeits-Image {image} …");
+        let response = self
+            .request_within(
+                PULL_TIMEOUT,
+                Method::POST,
+                "/images/pull",
+                &[
+                    ("reference", image.to_string()),
+                    ("policy", "missing".to_string()),
+                    ("quiet", "true".to_string()),
+                ],
+                None,
+                &[200],
+            )
+            .await?;
+        // Antwort ist ein Strom von JSON-Zeilen; ein Fehler steht im Feld "error".
+        let failure = response
+            .body
+            .split(|b| *b == b'\n')
+            .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
+            .filter_map(|value| {
+                value
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .find(|error| !error.is_empty());
+        if let Some(error) = failure {
+            return Err(EngineError::new(format!(
+                "Arbeits-Image konnte nicht gezogen werden: {error}"
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn request(
         &self,
         method: Method,
@@ -460,6 +515,10 @@ impl Engine for PodmanEngine {
 
     async fn create_container(&self, body: &Value) -> EngineResult<()> {
         template::check_body(body, &self.bounds)?;
+        // Nur das eben geprüfte Image (mit Digest, aus der Positivliste) bei Bedarf ziehen.
+        if let Some(image) = body.get("image").and_then(Value::as_str) {
+            self.ensure_image(image).await?;
+        }
         self.request(Method::POST, "/containers/create", &[], Some(body), &[201])
             .await
             .map(|_| ())
