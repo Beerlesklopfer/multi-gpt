@@ -1,14 +1,16 @@
 // MultiGPT – Terminal einer Runner-Sitzung im Browser (M14, Entscheidung 8p).
 // xterm.js (lokal, chat/vendor/xterm) zeigt den PTY-Strom; er läuft immer über
-// MultiGPT (SSE /runner/api/sitzungen/<uuid>/pty/), nie direkt zum Runner.
-// Eingaben gehen gesammelt per POST zurück. Ausgaben sind nicht vertrauenswürdig:
+// MultiGPT, nie direkt zum Runner: bevorzugt über einen WebSocket zum
+// Runner-Dienst (/runner/pty/<uuid>, Tastendrücke sofort), sonst über SSE
+// (/runner/api/sitzungen/<uuid>/pty/) mit Eingaben per POST. Ausgaben sind nicht vertrauenswürdig:
 // xterm stellt sie nur als Terminaltext dar (kein HTML).
 // Schnittstelle: window.MultiGPT.runnerTerminal.open({...}) -> {close()}; auf der
 // Sitzungsseite verdrahtet sich der Knopf [data-runner-terminal-open] selbst.
 "use strict";
 
 (() => {
-  const INPUT_DELAY = 25; // ms: Tastendrücke bündeln
+  const INPUT_DELAY = 25; // ms: Tastendrücke bündeln (nur alter Weg und vor dem Prompt)
+  const MAX_RECONNECTS = 3;
   const RESIZE_DELAY = 200;
 
   function decode(b64) {
@@ -47,7 +49,8 @@
   }
 
   function open(options) {
-    const { screen, stateEl, streamUrl, inputTemplate, resizeTemplate, onEnd, focusOut } = options;
+    const { screen, stateEl, streamUrl, wsUrl, inputTemplate, resizeTemplate, onEnd, focusOut } =
+      options;
     const { requestJson } = window.MultiGPT;
     const setState = (text) => {
       if (stateEl) {
@@ -91,19 +94,15 @@
     let pending = "";
     let inputTimer = null;
     let resizeTimer = null;
-
-    const url = new URL(streamUrl, window.location.href);
-    url.searchParams.set("cols", String(term.cols));
-    url.searchParams.set("rows", String(term.rows));
-    const source = new EventSource(url.toString(), { withCredentials: true });
-    setState("Verbinde …");
+    let transport = null; // {name, input(data), resize(), close()}
+    let reconnects = 0;
 
     function finish(text) {
       if (closed) {
         return;
       }
       closed = true;
-      source.close();
+      transport?.close();
       window.clearTimeout(inputTimer);
       window.clearTimeout(resizeTimer);
       window.removeEventListener("resize", onWindowResize);
@@ -112,9 +111,189 @@
       onEnd?.(text);
     }
 
-    async function flushInput() {
+    function opened(id) {
+      pty = String(id);
+      setState("Verbunden.");
+      term.focus();
+      window.setTimeout(() => {
+        ready = true; // spätestens nach 3 s, auch ohne Prompt
+      }, 3000);
+    }
+
+    function output(b64) {
+      ready = true;
+      term.write(decode(b64));
+    }
+
+    function exited(code) {
+      finish(code == null ? "Programm beendet." : `Programm beendet (Exit-Code ${code}).`);
+    }
+
+    // --- Direkter WebSocket zum Runner-Dienst (/runner/pty/<uuid>) ---------------
+    // Tastendrücke gehen sofort hinaus; die Ausgabe kommt ohne Umweg über die
+    // Datenbank. Ist der WebSocket nicht erreichbar (z. B. ohne nginx-Location)
+    // oder meldet der Dienst „fallback“, gilt der alte Weg (SSE + POST).
+    function startDirect() {
+      const url = new URL(wsUrl, window.location.href);
+      url.protocol = url.protocol === "https:" || url.protocol === "wss:" ? "wss:" : "ws:";
+      url.searchParams.set("cols", String(term.cols));
+      url.searchParams.set("rows", String(term.rows));
+      let socket;
+      try {
+        socket = new WebSocket(url.toString());
+      } catch {
+        startSse();
+        return;
+      }
+      let gotOpen = false;
+      let ended = false;
+      const send = (frame) => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(frame));
+          return true;
+        }
+        return false;
+      };
+      transport = {
+        name: "direct",
+        input(data) {
+          if (!send({ type: "input", data })) {
+            pending = data + pending; // nach dem Wiederaufbau senden
+          }
+        },
+        resize() {
+          send({ type: "resize", cols: term.cols, rows: term.rows });
+        },
+        close() {
+          ended = true;
+          send({ type: "close" });
+          socket.close(1000);
+        },
+      };
+      socket.onmessage = (event) => {
+        let frame;
+        try {
+          frame = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (frame.type === "open") {
+          gotOpen = true;
+          reconnects = 0;
+          opened(frame.pty);
+          if (pending) {
+            flushInput();
+          }
+        } else if (frame.type === "data") {
+          output(frame.data);
+        } else if (frame.type === "exit") {
+          ended = true;
+          exited(frame.code);
+        } else if (frame.type === "end") {
+          ended = true;
+          finish(frame.message || "Terminal geschlossen.");
+        } else if (frame.type === "failure") {
+          ended = true;
+          if (frame.fallback && !gotOpen) {
+            startSse();
+          } else {
+            finish(frame.message || "Fehler im Runner.");
+          }
+        }
+      };
+      socket.onclose = () => {
+        if (ended || closed) {
+          return;
+        }
+        if (!gotOpen) {
+          // Nie verbunden: Dienst nicht erreichbar → alter Weg.
+          startSse();
+          return;
+        }
+        // Verbindung abgebrochen: neu aufbauen (neue Shell).
+        pty = null;
+        ready = false;
+        reconnects += 1;
+        if (reconnects > MAX_RECONNECTS) {
+          finish("Verbindung getrennt.");
+          return;
+        }
+        setState("Verbindung getrennt – verbinde neu …");
+        term.write("\r\n\x1b[2m[Verbindung getrennt – neue Shell]\x1b[0m\r\n");
+        window.setTimeout(() => {
+          if (!closed) {
+            startDirect();
+          }
+        }, 500 * reconnects);
+      };
+    }
+
+    // --- Alter Weg: SSE für die Ausgabe, POST für Eingaben ---------------------------
+    function startSse() {
+      if (closed) {
+        return;
+      }
+      const url = new URL(streamUrl, window.location.href);
+      url.searchParams.set("cols", String(term.cols));
+      url.searchParams.set("rows", String(term.rows));
+      const source = new EventSource(url.toString(), { withCredentials: true });
+      transport = {
+        name: "sse",
+        async input(data) {
+          try {
+            const response = await requestJson("POST", fill(inputTemplate, pty), { data });
+            if (!response.ok) {
+              finish(`Eingabe abgelehnt (${response.status}).`);
+            }
+          } catch {
+            finish("Verbindung zum Server unterbrochen.");
+          }
+        },
+        resize() {
+          requestJson("POST", fill(resizeTemplate, pty), {
+            cols: term.cols,
+            rows: term.rows,
+          }).catch(() => {});
+        },
+        close() {
+          source.close();
+        },
+      };
+      const parse = (event) => {
+        try {
+          return JSON.parse(event.data || "{}");
+        } catch {
+          return {};
+        }
+      };
+      source.addEventListener("open", (event) => {
+        // Hinweis: auch das eingebaute „open“ der EventSource kommt hier an (ohne data).
+        const data = parse(event);
+        if (data.pty) {
+          opened(data.pty);
+        }
+      });
+      source.addEventListener("data", (event) => {
+        output(parse(event).data);
+      });
+      source.addEventListener("exit", (event) => {
+        exited(parse(event).code);
+      });
+      source.addEventListener("end", (event) => {
+        finish(parse(event).message || "Terminal geschlossen.");
+      });
+      source.addEventListener("failure", (event) => {
+        finish(parse(event).message || "Fehler im Runner.");
+      });
+      source.onerror = () => {
+        // Kein automatisches Neuverbinden: das öffnete eine neue Shell.
+        finish(pty ? "Verbindung getrennt." : "Terminal konnte nicht geöffnet werden.");
+      };
+    }
+
+    function flushInput() {
       inputTimer = null;
-      if (!pty || !pending || closed) {
+      if (!pty || !pending || closed || !transport) {
         return;
       }
       if (!ready) {
@@ -123,24 +302,15 @@
       }
       const data = pending;
       pending = "";
-      try {
-        const response = await requestJson("POST", fill(inputTemplate, pty), { data });
-        if (!response.ok) {
-          finish(`Eingabe abgelehnt (${response.status}).`);
-        }
-      } catch {
-        finish("Verbindung zum Server unterbrochen.");
-      }
+      transport.input(data);
     }
 
     function sendResize() {
       resizeTimer = null;
-      if (!pty || closed) {
+      if (!pty || closed || !transport) {
         return;
       }
-      requestJson("POST", fill(resizeTemplate, pty), { cols: term.cols, rows: term.rows }).catch(
-        () => {},
-      );
+      transport.resize();
     }
 
     function onWindowResize() {
@@ -153,7 +323,12 @@
 
     term.onData((data) => {
       pending += data;
-      if (!inputTimer) {
+      if (inputTimer) {
+        return;
+      }
+      if (transport?.name === "direct" && ready) {
+        flushInput(); // sofort senden
+      } else {
         inputTimer = window.setTimeout(flushInput, INPUT_DELAY);
       }
     });
@@ -163,43 +338,12 @@
     });
     window.addEventListener("resize", onWindowResize);
 
-    const parse = (event) => {
-      try {
-        return JSON.parse(event.data || "{}");
-      } catch {
-        return {};
-      }
-    };
-    source.addEventListener("open", (event) => {
-      // Hinweis: auch das eingebaute „open“ der EventSource kommt hier an (ohne data).
-      const data = parse(event);
-      if (data.pty) {
-        pty = String(data.pty);
-        setState("Verbunden.");
-        term.focus();
-        window.setTimeout(() => {
-          ready = true; // spätestens nach 3 s, auch ohne Prompt
-        }, 3000);
-      }
-    });
-    source.addEventListener("data", (event) => {
-      ready = true;
-      term.write(decode(parse(event).data));
-    });
-    source.addEventListener("exit", (event) => {
-      const code = parse(event).code;
-      finish(code == null ? "Programm beendet." : `Programm beendet (Exit-Code ${code}).`);
-    });
-    source.addEventListener("end", (event) => {
-      finish(parse(event).message || "Terminal geschlossen.");
-    });
-    source.addEventListener("failure", (event) => {
-      finish(parse(event).message || "Fehler im Runner.");
-    });
-    source.onerror = () => {
-      // Kein automatisches Neuverbinden: das öffnete eine neue Shell.
-      finish(pty ? "Verbindung getrennt." : "Terminal konnte nicht geöffnet werden.");
-    };
+    setState("Verbinde …");
+    if (wsUrl && typeof window.WebSocket === "function") {
+      startDirect();
+    } else {
+      startSse();
+    }
 
     return {
       close() {
@@ -251,6 +395,7 @@
         screen,
         stateEl,
         streamUrl: button.dataset.ptyUrl,
+        wsUrl: button.dataset.ptyWsUrl,
         inputTemplate: button.dataset.ptyInputTemplate,
         resizeTemplate: button.dataset.ptyResizeTemplate,
         focusOut: () => closeButton.focus(),

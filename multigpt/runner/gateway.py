@@ -26,6 +26,11 @@ Je Prozess gibt es einen ``Hub`` mit den Verbindungen dieses Prozesses
 6. Ende: Runner offline, Sitzungen ``unknown``; alle wartenden Abnehmer
    bekommen ``error`` mit Code ``offline``.
 
+**Browser-Terminal** (``/runner/pty/<uuid>``, ``pty_direct.py``): Der Browser
+hält einen WebSocket direkt zu diesem Dienst; ``pty_*`` gehen über die
+Verbindung des Runners in diesem Prozess, die Ausgabe zurück im Speicher
+(``Hub.terminals``) – ohne Warteschlange und NOTIFY.
+
 **Drosselung:** Rahmen je Token über einen Token-Eimer (``RATE_PER_SECOND``,
 ``RATE_BURST``); darüber Close 4429. Widerruf, Rechteänderung und Stopp wegen
 Kontingent kommen über ``mgpt_runner_ctl`` und wirken sofort.
@@ -250,7 +255,25 @@ class Connection:
             channel = self.routes.get(("session", frame["session"]), "")
         return channel
 
+    def _to_terminal(self, frame: dict) -> bool:
+        """Ausgabe eines direkt verbundenen Browser-Terminals (``pty_direct``):
+        im Speicher weiterreichen, ohne Warteschlange."""
+        kind = frame["type"]
+        if kind in ("pty_data", "pty_exit"):
+            key = frame["pty"]
+        elif kind == "error":
+            key = frame.get("ref")
+        else:
+            return False
+        terminal = self.hub.terminals.get(key) if key else None
+        if terminal is None or terminal.conn is not self:
+            return False
+        terminal.deliver(frame)
+        return True
+
     async def forward_to_server(self, frame: dict) -> None:
+        if self.hub.terminals and self._to_terminal(frame):
+            return
         channel = self._reply_channel(frame)
         if channel:
             await db(store.post_reply, self.runner_id, channel, frame)
@@ -407,6 +430,8 @@ class Hub:
     def __init__(self):
         self.connections: dict[int, Connection] = {}
         self.buckets: dict[int, TokenBucket] = {}
+        # Browser-Terminals mit direktem WebSocket (pty_direct): PTY-ID → Terminal.
+        self.terminals: dict = {}
         self.listener: Listener | None = None
         self._lock = asyncio.Lock()
         self._cleanups: set[asyncio.Future] = set()
@@ -682,7 +707,19 @@ def _notify_connected(runner_id: int, conn_id: str) -> None:
 
 def build_app() -> Starlette:
     """ASGI-App des Runner-Dienstes (je Aufruf ein eigener ``Hub``)."""
+    from . import pty_direct  # importiert dieses Modul
+
     hub = Hub()
-    app = Starlette(routes=[WebSocketRoute(PATH, hub.endpoint)], lifespan=hub.lifespan)
+
+    async def terminal(websocket: WebSocket) -> None:
+        await pty_direct.endpoint(hub, websocket)
+
+    app = Starlette(
+        routes=[
+            WebSocketRoute(PATH, hub.endpoint),
+            WebSocketRoute(pty_direct.PATH, terminal),
+        ],
+        lifespan=hub.lifespan,
+    )
     app.state.hub = hub
     return app

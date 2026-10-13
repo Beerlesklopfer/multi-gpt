@@ -30,6 +30,12 @@ for d in 'proxy_set_header Upgrade \$http_upgrade;' 'proxy_set_header Connection
          'proxy_http_version 1.1;' 'proxy_buffering off;' 'proxy_read_timeout 120s;'; do
   check "Site: /runner/ws $d" bash -c "sed -n '/location = \/runner\/ws {/,/}/p' '$R/etc/nginx/sites-available/multi-gpt' | grep -qF \"$d\""
 done
+check "Site: location ^~ /runner/pty/" bash -c "grep -A12 'location ^~ /runner/pty/ {' '$R/etc/nginx/sites-available/multi-gpt' | grep -q 'proxy_pass http://multi_gpt_runner;'"
+for d in 'proxy_set_header Upgrade \$http_upgrade;' 'proxy_set_header Connection \"upgrade\";' 'proxy_set_header Host \$host;' \
+         'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' 'proxy_set_header X-Forwarded-Proto \$scheme;' \
+         'proxy_http_version 1.1;' 'proxy_buffering off;' 'proxy_read_timeout 900s;'; do
+  check "Site: /runner/pty/ $d" bash -c "sed -n '/location ^~ \/runner\/pty\/ {/,/}/p' '$R/etc/nginx/sites-available/multi-gpt' | grep -qF \"$d\""
+done
 check "ALLOWED_HOSTS" test "$(envv ALLOWED_HOSTS)" = "localhost,127.0.0.1,nas.intranet.example,nas,192.168.24.250,172.17.0.1"
 check "CSRF" test "$(envv CSRF_TRUSTED_ORIGINS)" = "https://nas.intranet.example,https://nas,https://192.168.24.250,https://172.17.0.1"
 check "SECURE_COOKIES True" test "$(envv SECURE_COOKIES)" = True

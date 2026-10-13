@@ -104,6 +104,13 @@ assert h['Host']=='nas.intranet.example' and h['X-Forwarded-Proto']=='https' and
 check "Runner-WebSocket: Upgrade und Connection upgrade weitergereicht" python3 -c "
 import json,sys; h=json.loads(sys.argv[1])['text']['headers']
 assert h['Upgrade']=='websocket' and h['Connection']=='upgrade', h" "$j"
+# Terminal im Browser (/runner/pty/<uuid>): Upgrade zum Runner-Dienst, Cookie
+# und Origin kommen dort an (der Dienst prüft beides selbst).
+j=$(python3 "$T/wsclient.py" nas.intranet.example /runner/pty/00000000-0000-4000-8000-000000000000 "Origin: https://nas.intranet.example" "Cookie: sessionid=x")
+check "Terminal-WebSocket: 101 durch nginx zum Runner-Dienst" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['status']==101 and d['text']['path'].startswith('/runner/pty/'), d" "$j"
+check "Terminal-WebSocket: Origin, Cookie und Host am Dienst" python3 -c "
+import json,sys; h=json.loads(sys.argv[1])['text']['headers']
+assert h['Origin']=='https://nas.intranet.example' and h['Cookie']=='sessionid=x' and h['Host']=='nas.intranet.example', h" "$j"
 j=$(python3 "$T/wsclient.py" nas.intranet.example /chat/ws)
 check "WebSocket nur unter /runner/ws (sonst kein 101)" python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['status']!=101, d" "$j"
 tls=$(echo | openssl s_client -connect 127.0.0.1:443 -servername nas.intranet.example -tls1_1 2>&1 | grep -c "Cipher is (NONE)\|alert\|no protocols")
