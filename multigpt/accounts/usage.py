@@ -200,6 +200,7 @@ def usage_by_model(
     user_field = ["user_id"] if by_user else []
     rows = (
         _entries(user, start, end)
+        .exclude(kind=UsageEntry.Kind.RUNTIME)  # Runner-Laufzeit hat kein Modell
         .values(
             *user_field,
             "ai_model",
@@ -249,7 +250,8 @@ def usage_by_account(user, start, end, *, by_user: bool = False) -> list[dict]:
     Zeilen: ``account_id``, ``account``, ``kind`` (monetary | tokens | flat),
     ``currency``, ``answers``, ``files``, ``requests``, ``tokens_in``,
     ``tokens_out``, ``cached_read``, ``cache_write`` (5 Min. + 1 Std.),
-    ``reasoning``, ``amount`` (Kontowährung, nur bepreiste Buchungen), ``eur``
+    ``reasoning``, ``minutes`` (Container-Minuten, nur Laufzeitkonto), ``amount``
+    (Kontowährung, nur bepreiste Buchungen), ``eur``
     (bekannt), ``eur_missing`` (Buchungen ohne Kurs), ``unpriced`` (monetär
     ohne Preis). Mit ``by_user`` zusätzlich ``user_id``.
     """
@@ -268,6 +270,7 @@ def usage_by_account(user, start, end, *, by_user: bool = False) -> list[dict]:
             cached_read=Coalesce(Sum("cached_read"), 0),
             cache_write=Coalesce(Sum(F("cache_write") + F("cache_write_1h")), 0),
             reasoning=Coalesce(Sum("reasoning"), 0),
+            minutes=Coalesce(budgets.minutes_sum(), 0),
             # Nur Buchungen in der heutigen Kontowährung (nach „Auf USD umstellen“
             # stehen ältere in EUR; deren EUR-Betrag zählt in ``eur`` mit).
             amount_sum=Sum("amount", filter=Q(currency=F("account__currency"))),
@@ -299,6 +302,7 @@ def usage_by_account(user, start, end, *, by_user: bool = False) -> list[dict]:
                         "cached_read",
                         "cache_write",
                         "reasoning",
+                        "minutes",
                         "eur_missing",
                         "unpriced",
                     )
@@ -481,6 +485,15 @@ def format_tokens(value) -> str:
         return f"{int(value):,} Tokens".replace(",", ".")
     except (TypeError, ValueError):
         return "–"
+
+
+def format_minutes(value) -> str:
+    """Container-Minuten: 1234 -> „1.234 Minuten“, 1 -> „1 Minute“."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return "–"
+    return f"{number:,} Minute{'' if number == 1 else 'n'}".replace(",", ".")
 
 
 def format_amount(value, currency: str) -> str:

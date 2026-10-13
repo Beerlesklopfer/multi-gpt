@@ -666,7 +666,8 @@ def test_usage_page_per_account(client, member, gpt, llama):
     assert "1,63 $" in html and "Kurs fehlt" in html  # 750k × 2 + 250k × 0,5 = 1,625
     assert "1.234" in html
     data = client.get(reverse("api_usage")).json()
-    assert data["accounts"] == []  # keine Budgets je Konto
+    # keine Budgets je Konto (außer dem Laufzeit-Kontingent des Runners, M14-11)
+    assert [a for a in data["accounts"] if a["unit"] != "min"] == []
     other = client.get(reverse("usage"), {"monat": "1999-01"})
     assert other.status_code == 200  # unbekannter Monat -> laufender
 
@@ -765,6 +766,8 @@ def test_ecb_fetch_only_fixed_url_without_redirects(settings):
 
 
 def test_budget_snapshot_without_budgets_needs_no_usage_query(member, django_assert_num_queries):
+    # Startwert der Migration: Laufzeit-Kontingent für Erwachsene (M14-11).
+    AccountBudget.objects.filter(account__kind="runtime").delete()
     with django_assert_num_queries(1):  # nur die Budgets je Konto
         snap = budgets.snapshot(member)
     assert snap.total is None and snap.accounts == {}

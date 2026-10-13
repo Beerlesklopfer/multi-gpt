@@ -829,6 +829,7 @@
         option.dataset.reasoning = Array.isArray(model.reasoning_levels)
           ? model.reasoning_levels.join(",")
           : "";
+        option.dataset.reasoningDefault = model.reasoning_default || "";
         if (model.is_local || model.online === false) {
           option.className = isAvailable(model) ? "model-online" : "model-offline";
         }
@@ -1091,6 +1092,15 @@
         reasoningModelHint.textContent = `${
           options.length > 1 ? "Die gewählten Modelle kennen" : "Das gewählte Modell kennt"
         }: ${names.join(", ")}.`;
+        // Vorgabe des Modells (gilt ohne Wahl im Chat und ohne Projektvorgabe).
+        const label = (value) =>
+          [...reasoningSelect.options].find((o) => o.value === value)?.textContent || value;
+        const defaults = options
+          .filter((o) => o.dataset.reasoningDefault)
+          .map((o) => `${o.textContent.trim()}: ${label(o.dataset.reasoningDefault)}`);
+        if (defaults.length) {
+          reasoningModelHint.textContent += ` Vorgabe des Modells ohne eigene Wahl – ${defaults.join(", ")}.`;
+        }
       }
       reasoningModelHint.hidden = false;
     }
@@ -1248,6 +1258,8 @@
           return;
         }
         for await (const { event, data } of readEvents(response)) {
+          // Für Erweiterungen (z. B. runner_chat.js: runner_todo, runner_session).
+          document.dispatchEvent(new CustomEvent("multigpt:stream-event", { detail: { event, data } }));
           if (event === "start") {
             started = true;
             if (opts.userEl && data.user_message_id != null) {

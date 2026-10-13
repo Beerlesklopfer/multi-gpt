@@ -54,7 +54,7 @@
               <tr>
                 <th scope="row">
                   {{ row.account }}
-                  <span class="usage-provider">{% if row.kind == "tokens" %}nur Tokens{% elif row.kind == "flat" %}Pauschale{% else %}{{ row.currency }}{% endif %}</span>
+                  <span class="usage-provider">{% if row.kind == "tokens" %}nur Tokens{% elif row.kind == "flat" %}Pauschale{% elif row.kind == "runtime" %}Container-Laufzeit{% else %}{{ row.currency }}{% endif %}</span>
                 </th>
                 <td class="num">{{ row.answers|tokens }}{% if row.files %} <span class="usage-provider">+ {{ row.files|tokens }} Datei{{ row.files|pluralize:"en" }}</span>{% endif %}</td>
                 <td class="num">{{ row.tokens_in|tokens }}</td>
@@ -67,6 +67,8 @@
                     {% if row.unpriced %}<span class="usage-provider">{{ row.unpriced }}× ohne Preis</span>{% endif %}
                   {% elif row.kind == "flat" %}
                     <span class="usage-provider">{{ row.requests|tokens }} Anfragen</span>
+                  {% elif row.kind == "runtime" %}
+                    {{ row.minutes|minutes }}
                   {% else %}–{% endif %}
                 </td>
               </tr>

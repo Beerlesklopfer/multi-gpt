@@ -5,6 +5,9 @@
   **Gesamtbudget (EUR)** über alle monetären Konten (``User.monthly_budget``).
 - Token-Konten: Monatskontingent in Tokens (Eingabe + Ausgabe), leer = unbegrenzt.
 - Pauschalkonten: kein Budget, nur gezählt.
+- Laufzeitkonto (M14-11): Kontingent in Container-Minuten je Monat (Einheit
+  „min“); sperrt keine Modelle, sondern neue Runner-Sitzungen
+  (``billing.runtime``).
 - Sperre: Ist ein Konto ausgeschöpft, sind nur *dessen* Modelle gesperrt;
   ist das Gesamtbudget ausgeschöpft, alle kostenpflichtigen Modelle monetärer
   Konten. Modelle ohne Preis bleiben frei (sie erhöhen den Verbrauch nie).
@@ -23,7 +26,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from django.db.models import F, Q, Sum
+from django.db.models import F, IntegerField, Q, Sum
+from django.db.models.fields.json import KT
+from django.db.models.functions import Cast
 
 from .models import AccountBudget, BillingAccount, ExchangeRate, UsageEntry
 
@@ -36,6 +41,15 @@ ZERO = Decimal(0)
 TOTAL_EXHAUSTED_MESSAGE = (
     "Monatsbudget ausgeschöpft – bis zum Monatsende sind nur lokale Modelle nutzbar."
 )
+RUNTIME_EXHAUSTED_MESSAGE = (
+    "Laufzeit-Kontingent des Runners ausgeschöpft – bis zum Monatsende starten keine "
+    "Sitzungen mehr. Deine Arbeitsstände bleiben erhalten."
+)
+
+
+def minutes_sum():
+    """Aggregat: gebuchte Container-Minuten (``units.runtime_minute``)."""
+    return Sum(Cast(KT("units__runtime_minute"), IntegerField()), filter=Q(kind="runtime"))
 
 
 def level_for(spent, limit) -> str:
@@ -53,7 +67,7 @@ class AccountState:
     """Stand eines Budgets im Monat. ``account`` None = Gesamtbudget (EUR)."""
 
     account: BillingAccount | None
-    unit: str  # "eur" | "tokens"
+    unit: str  # "eur" | "tokens" | "min"
     spent: Decimal | int
     limit: Decimal | int | None
     level: str
@@ -83,6 +97,8 @@ class AccountState:
     def blocked_text(self) -> str:
         if self.account is None:
             return TOTAL_EXHAUSTED_MESSAGE
+        if self.unit == "min":
+            return RUNTIME_EXHAUSTED_MESSAGE
         if self.unit == "tokens":
             return (
                 f"Token-Kontingent für „{self.name}“ ausgeschöpft – bis zum Monatsende "
@@ -99,12 +115,14 @@ class AccountState:
             return self.blocked_text()
         if self.level != LEVEL_WARNING:
             return ""
-        from multigpt.accounts.usage import format_eur, format_tokens
+        from multigpt.accounts.usage import format_eur, format_minutes, format_tokens
 
-        fmt = format_tokens if self.unit == "tokens" else format_eur
+        fmt = {"tokens": format_tokens, "min": format_minutes}.get(self.unit, format_eur)
         what = "deines Monatsbudgets" if self.account is None else f"des Budgets für „{self.name}“"
         if self.unit == "tokens":
             what = f"deines Token-Kontingents für „{self.name}“"
+        elif self.unit == "min":
+            what = "deines Laufzeit-Kontingents (Runner)"
         return f"{self.percent} % {what} sind verbraucht ({fmt(self.spent)} von {fmt(self.limit)})."
 
 
@@ -148,6 +166,7 @@ def spent_by_account(users, start, end, *, by_user: bool = False) -> dict:
         eur=Sum("amount_eur"),
         unknown=Sum("amount", filter=Q(amount_eur__isnull=True)),
         tokens=Sum(F("tokens_in") + F("tokens_out")),
+        minutes=minutes_sum(),
     )
     result = {}
     rate = None
@@ -160,6 +179,7 @@ def spent_by_account(users, start, end, *, by_user: bool = False) -> dict:
         result[key] = {
             "eur": eur,
             "tokens": int(row["tokens"] or 0),
+            "minutes": int(row["minutes"] or 0),
             "estimated": bool(row["unknown"]),
         }
     return result
@@ -195,7 +215,11 @@ def snapshot(user, now=None) -> Snapshot:
         aid: row
         for aid, row in limits_for(user).items()
         if row.account.kind != BillingAccount.Kind.FLAT
-        and (row.monthly_budget is not None or row.monthly_tokens is not None)
+        and (
+            row.monthly_budget is not None
+            or row.monthly_tokens is not None
+            or row.monthly_minutes is not None
+        )
     }
     if total_limit is None and not limits:
         return Snapshot(None)
@@ -208,9 +232,11 @@ def snapshot(user, now=None) -> Snapshot:
     states = {}
     for aid, row in limits.items():
         account = row.account
-        used = spent.get(aid, {"eur": ZERO, "tokens": 0})
+        used = spent.get(aid, {"eur": ZERO, "tokens": 0, "minutes": 0})
         if account.kind == BillingAccount.Kind.TOKENS:
             limit, value, unit = row.monthly_tokens, used["tokens"], "tokens"
+        elif account.kind == BillingAccount.Kind.RUNTIME:
+            limit, value, unit = row.monthly_minutes, used["minutes"], "min"
         else:
             limit, value, unit = row.monthly_budget, used["eur"], "eur"
         if limit is None:

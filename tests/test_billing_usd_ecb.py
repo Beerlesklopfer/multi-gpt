@@ -303,7 +303,7 @@ def test_switch_keeps_budgets_in_eur(gpt, member):
     usd_switch.apply(usd_switch.plan(account))
     gpt.provider.refresh_from_db()
     book(member, gpt, timezone.now())  # 6 USD = 3 EUR
-    budget = AccountBudget.objects.get()
+    budget = AccountBudget.objects.get(account=account)
     assert budget.monthly_budget == Decimal("10")
     snap = budgets.snapshot(member)
     assert snap.accounts[account.pk].spent == Decimal("6")

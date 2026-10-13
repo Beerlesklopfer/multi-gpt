@@ -125,7 +125,8 @@ def _with_cost_text(rows: list[dict]) -> list[dict]:
 
 def _with_account_text(rows: list[dict]) -> list[dict]:
     """Anzeigetexte je Abrechnungskonto: monetär Kontowährung (und EUR),
-    Token-Konten Tokens mit Cache/Reasoning, Pauschalkonten nur gezählt."""
+    Token-Konten Tokens mit Cache/Reasoning, Pauschalkonten nur gezählt,
+    das Laufzeitkonto in Container-Minuten."""
     for row in rows:
         detail = []
         if row["cached_read"] or row["cache_write"]:
@@ -142,6 +143,8 @@ def _with_account_text(rows: list[dict]) -> list[dict]:
             row["cost_text"] = text
         elif row["kind"] == "flat":
             row["cost_text"] = f"Pauschale, {row['requests']} Anfragen"
+        elif row["kind"] == "runtime":
+            row["cost_text"] = f"Laufzeit {usage.format_minutes(row['minutes'])}"
         else:
             row["cost_text"] = "nur Tokens"
     return rows

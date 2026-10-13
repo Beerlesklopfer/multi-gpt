@@ -9,7 +9,8 @@ eigener Logik (pricing, booking, budgets). ``chat`` kennt nur
   Konto, ein Konto kann mehrere Anbieter bündeln (z. B. OpenRouter neben dem
   direkten Zugang). Art: ``monetary`` (Preise in EUR oder USD), ``tokens``
   (nur Token-Zählung, z. B. LM Studio), ``flat`` (Pauschale/Abo, je Anfrage
-  0, nur gezählt).
+  0, nur gezählt), ``runtime`` (Container-Minuten des Runners, M14-11; genau
+  ein Konto, ohne Anbieter).
 - ``ModelPrice``: Preisversion eines Modells ab ``valid_from``, in der Währung
   des Kontos, je 1 Mio. Tokens. Alte Buchungen behalten ihren Betrag; die
   verwendete Version steht in der Buchung.
@@ -46,6 +47,7 @@ UNITS = {
     "audio_minute": ("Audio, je Minute (Spracherkennung)", 1),
     "tts_characters": ("Sprachausgabe, je 1 Mio. Zeichen", 1_000_000),
     "request": ("Anfrage, je Aufruf", 1),
+    "runtime_minute": ("Container-Laufzeit, je Minute", 1),
 }
 UNIT_KEY = re.compile(r"^(?P<base>[a-z_]+)(?::[a-z0-9x_-]{1,30}){0,2}$")
 
@@ -63,6 +65,7 @@ class BillingAccount(models.Model):
         MONETARY = "monetary", "monetär (Preise je Token)"
         TOKENS = "tokens", "nur Tokens (z. B. lokal)"
         FLAT = "flat", "Pauschale/Abo (nur gezählt)"
+        RUNTIME = "runtime", "Laufzeit (Container-Minuten)"
 
     class Currency(models.TextChoices):
         EUR = "EUR", "Euro (EUR)"
@@ -110,6 +113,14 @@ class BillingAccount(models.Model):
             raise ValidationError({"currency": "Monetäre Konten brauchen eine Währung."})
         if self.kind != self.Kind.MONETARY:
             self.currency = ""
+        if self.kind == self.Kind.RUNTIME:
+            others = BillingAccount.objects.filter(kind=self.Kind.RUNTIME).exclude(pk=self.pk)
+            if others.exists():
+                raise ValidationError({"kind": "Es gibt schon ein Laufzeitkonto."})
+            if self.pk and self.providers.exists():
+                raise ValidationError(
+                    {"kind": "Ein Laufzeitkonto bündelt keine Anbieter; bitte zuerst umhängen."}
+                )
         if self.pk:
             old = BillingAccount.objects.filter(pk=self.pk).values("kind", "currency").first()
             changed = old and (old["kind"], old["currency"]) != (self.kind, self.currency)
@@ -278,12 +289,15 @@ class UsageEntry(models.Model):
     unbekannt, z. B. Kurs fehlt; nie stillschweigend 0). Token-Felder: wie
     ``providers.base.Usage`` (Ein-/Ausgabe gesamt, Teilmengen daneben).
     Gebucht wird auf den Verfasser (``Message.author``, sonst Besitzer).
+    Laufzeit (``runtime``): eine Buchung je Runner-Sitzung und Kalendermonat,
+    ``units={"runtime_minute": n}``, fortgeschrieben (``billing.runtime``).
     """
 
     class Kind(models.TextChoices):
         ANSWER = "answer", "Antwort"
         ATTACHMENT = "attachment", "Datei/Anhang"
         TOOL = "tool", "Werkzeuggebühr"
+        RUNTIME = "runtime", "Container-Laufzeit"
 
     kind = models.CharField("Art", max_length=12, choices=Kind.choices, default=Kind.ANSWER)
     account = models.ForeignKey(
@@ -389,7 +403,8 @@ class AccountBudget(models.Model):
     """Monatsbudget bzw. Token-Kontingent je Konto für eine Rolle oder ein Konto.
 
     Genau eines von ``role``/``user``. Nutzerwerte gehen vor Rollenwerten.
-    Leer = unbegrenzt. Pauschalkonten haben kein Budget.
+    Leer = unbegrenzt. Pauschalkonten haben kein Budget. Laufzeitkonten haben
+    ein Kontingent in Minuten (``monthly_minutes``).
     """
 
     account = models.ForeignKey(
@@ -425,6 +440,13 @@ class AccountBudget(models.Model):
         null=True,
         blank=True,
         help_text="Nur Token-Konten: Eingabe + Ausgabe je Kalendermonat. Leer = unbegrenzt.",
+    )
+    monthly_minutes = models.PositiveIntegerField(
+        "Monatskontingent (Minuten)",
+        null=True,
+        blank=True,
+        help_text="Nur Laufzeitkonten: Container-Minuten des Runners je Kalendermonat. "
+        "Leer = unbegrenzt.",
     )
 
     class Meta:
@@ -464,3 +486,8 @@ class AccountBudget(models.Model):
             raise ValidationError({"monthly_tokens": "Monetäre Konten: Budget in EUR angeben."})
         if account.kind == BillingAccount.Kind.TOKENS and self.monthly_budget is not None:
             raise ValidationError({"monthly_budget": "Token-Konten: Kontingent in Tokens angeben."})
+        is_runtime = account.kind == BillingAccount.Kind.RUNTIME
+        if is_runtime and (self.monthly_budget is not None or self.monthly_tokens is not None):
+            raise ValidationError("Laufzeitkonten: Kontingent in Minuten angeben.")
+        if not is_runtime and self.monthly_minutes is not None:
+            raise ValidationError({"monthly_minutes": "Minuten gibt es nur bei Laufzeitkonten."})

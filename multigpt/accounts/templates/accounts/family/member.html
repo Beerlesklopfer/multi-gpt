@@ -19,7 +19,7 @@
       <dt>Letzte Anmeldung</dt><dd>{% if member.last_login %}{{ member.last_login|date:"d.m.Y H:i" }}{% else %}noch nie{% endif %}</dd>
       <dt>Verbrauch {{ month_start|date:"F Y" }}</dt><dd>{% include "accounts/family/_budget.html" with u=usage %}</dd>
       {% for a in account_states %}
-        <dt>Budget {{ a.name }}</dt><dd><span class="family-budget family-budget-{{ a.level }}"><span class="family-budget-text">{% if a.unit == "tokens" %}{{ a.spent|tokens }} von {{ a.limit|tokens }} Tokens{% else %}{{ a.spent|eur }} von {{ a.limit|eur }}{% endif %}{% if a.level == "exhausted" %} · ausgeschöpft{% elif a.level == "warning" %} · über 80 %{% endif %}</span></span></dd>
+        <dt>Budget {{ a.name }}</dt><dd><span class="family-budget family-budget-{{ a.level }}"><span class="family-budget-text">{% if a.unit == "tokens" %}{{ a.spent|tokens }} von {{ a.limit|tokens }} Tokens{% elif a.unit == "min" %}{{ a.spent|tokens }} von {{ a.limit|minutes }}{% else %}{{ a.spent|eur }} von {{ a.limit|eur }}{% endif %}{% if a.level == "exhausted" %} · ausgeschöpft{% elif a.level == "warning" %} · über 80 %{% endif %}</span></span></dd>
       {% endfor %}
     </dl>
 

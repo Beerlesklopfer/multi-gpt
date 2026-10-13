@@ -11,6 +11,8 @@ unverändert übernommen. Die `.map`-Dateien liegen bei, weil
 | DOMPurify | 3.4.16 | Apache-2.0 oder MPL-2.0 (`dompurify/LICENSE`, `dompurify/LICENSE-MPL`) | https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz |
 | highlight.js (Common-Bundle, Themes GitHub hell/dunkel) | 11.12.0 | BSD-3-Clause (`highlight/LICENSE`) | https://registry.npmjs.org/@highlightjs/cdn-assets/-/cdn-assets-11.12.0.tgz |
 | KaTeX (mit mhchem für `\ce{}`) | 0.19.0 | MIT (`katex/LICENSE`) | https://registry.npmjs.org/katex/-/katex-0.19.0.tgz |
+| xterm.js (`@xterm/xterm`, Terminal des Runners, M14) | 6.0.0 | MIT (`xterm/LICENSE`) | https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz |
+| xterm.js Fit-Addon (`@xterm/addon-fit`) | 0.11.0 | MIT (`xterm/LICENSE-addon-fit`) | https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz |
 
 Pfade im Tarball: `package/lib/marked.umd.js(.map)`, `package/dist/purify.min.js(.map)`,
 `package/highlight.min.js`, `package/styles/github.min.css`, `package/styles/github-dark.min.css`.
@@ -25,6 +27,11 @@ entfernt (nur woff2 liegt bei, alle Zielbrowser können woff2; sonst scheitert
 sed -E 's/,url\(fonts\/[A-Za-z0-9_-]+\.woff\) format\("woff"\),url\(fonts\/[A-Za-z0-9_-]+\.ttf\) format\("truetype"\)//g' \
   package/dist/katex.min.css > katex/katex.min.css
 ```
+
+xterm.js: `package/lib/xterm.js(.map)` und `package/css/xterm.css` aus `@xterm/xterm`,
+`package/lib/addon-fit.js(.map)` aus `@xterm/addon-fit` (UMD, globale Namen `Terminal`
+und `FitAddon`). `runner_terminal.js` lädt sie erst, wenn ein Terminal geöffnet wird
+(rund 490 KB).
 
 Größe KaTeX gesamt rund 630 KB (JS 270 KB, mhchem 34 KB, CSS 23 KB, 20 Fonts 300 KB);
 Fonts lädt der Browser nur bei Bedarf.
@@ -67,6 +74,13 @@ a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0  ./katex/fonts/
 8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c  ./marked/LICENSE
 21568877a938d2c4e7d74e27f18e60da96bb73a68809610ca39216e1efebae62  ./marked/marked.umd.js
 066a5274a87aecfb532f12e7ae63491296cc1405de15f787a316f44370e99f40  ./marked/marked.umd.js.map
+b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd  ./xterm/LICENSE
+e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f  ./xterm/LICENSE-addon-fit
+ba3ea256ce0620a0992a197d6c9baea64823fc93d8da07a9e366ca9943c18527  ./xterm/addon-fit.js
+5ecd1deb6b38d78edbf95c62aeaccc16aaea9092ca7fa9eb78e6b535d8593a67  ./xterm/addon-fit.js.map
+854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6  ./xterm/xterm.css
+14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972  ./xterm/xterm.js
+6c613487b7ef7d826c8855da40b17ce5e2cb0c94069bc18a64f6e7e849a6e9d1  ./xterm/xterm.js.map
 ```
 
 ## Aktualisieren

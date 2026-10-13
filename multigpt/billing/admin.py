@@ -45,11 +45,11 @@ def _warn_missing_rates(request):
 class AccountBudgetInline(admin.TabularInline):
     model = AccountBudget
     extra = 0
-    fields = ["role", "user", "monthly_budget", "monthly_tokens"]
+    fields = ["role", "user", "monthly_budget", "monthly_tokens", "monthly_minutes"]
     verbose_name = "Budget je Rolle bzw. Nutzer"
     verbose_name_plural = (
         "Budgets je Rolle bzw. Nutzer (Nutzer vor Rolle; monetär in EUR, Token-Konten in "
-        "Tokens; Pauschalkonten ohne Budget)"
+        "Tokens, Laufzeitkonto in Minuten; Pauschalkonten ohne Budget)"
     )
 
 

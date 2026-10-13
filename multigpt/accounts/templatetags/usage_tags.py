@@ -20,6 +20,12 @@ def eur(value) -> str:
 
 
 @register.filter
+def minutes(value) -> str:
+    """Container-Minuten: „1.234 Minuten“."""
+    return usage.format_minutes(value)
+
+
+@register.filter
 def tokens(value) -> str:
     """Ganzzahl mit Tausenderpunkten: 12345 -> „12.345“."""
     try:
@@ -43,6 +49,16 @@ def budget_banner(context):
     if state is None or state.level == usage.LEVEL_OK:
         return {"budget_level": usage.LEVEL_OK}
     suffix = f" ({state.name})" if state.account is not None else ""
+    if state.unit == "min":
+        return {
+            "budget_level": state.level,
+            "budget_text": state.warning_text(),
+            "budget_short": (
+                "Runner-Laufzeit ausgeschöpft"
+                if state.level == usage.LEVEL_EXHAUSTED
+                else f"Runner-Laufzeit zu {state.percent} % verbraucht"
+            ),
+        }
     return {
         "budget_level": state.level,
         "budget_text": state.warning_text(),
