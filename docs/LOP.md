@@ -1,6 +1,6 @@
 # Liste offener Punkte (LOP)
 
-Stand: 2026-10-12 abends, 0.3.5 veröffentlicht (GitHub-Release und apt-Quelle). Modellverwaltung (A21–A23) entschieden: 24 GB Grafikspeicher, ein Monitor (Reserve 2 GB); Indexierungsmodelle nur für den Lauf laden, danach entladen.
+Stand: 2026-10-13, 0.3.6 veröffentlicht und auf der Produktion. **Nächstes Release: 0.4.0 (Nutzer, 2026-10-13), erst nach ausgiebigem Test** – mit M14 (Runner) und den Änderungen seit 0.3.6 (Schnittstelle „LM Studio“, Statistik je Antwort, Austausch-Frage im Grafikspeicher, Denktiefe aus LM Studio und Vorgabe je Modell, Speicherschätzung Gemma 4/Qwen3.8, Kontext passend zum Budget, Quellen in `read_chat`). Bis dahin auf der Produktion: „gemessener Speicherbedarf“ für Gemma 4 (20,2 GB) und Qwen3.8 (21,4 GB), qwen3-coder Kontext 16 384, Qwen3.8 im Chat Denktiefe „Niedrig“.
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
 Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja, A19 so lassen; umgesetzt für 0.3.6: A4 (`ask`-Chats im Projekt „API“), A10 (EUR-Konten auf USD umstellen, Admin-Aktion/Befehl), A11 (EZB-Kurs automatisch, Standard an), A15 (Mitteilungen an den Besitzer), A16 (scipy); A14 entschieden (ASGI-Dienst), Umsetzungsplan in Implementierung.md M14; A6 ja (Produktion hat die /mcp-Blöcke bereits), A13 Empfehlungen 7a–7l übernommen, A20 so lassen. Offen bleiben in A nur zurückgestellte Punkte (A12, A17, A24).
 
