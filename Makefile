@@ -19,7 +19,7 @@ GH      ?= $(or $(shell command -v gh 2>/dev/null),$(HOME)/go/bin/gh)
 REMOTE  ?= origin
 
 .DEFAULT_GOAL := help
-.PHONY: help install migrate user dev run run-runner static sync-models worker reindex test test-runner test-packaging runner-images lint fmt deb release website website-serve deploy db-create clean
+.PHONY: help install migrate user dev run run-runner static sync-models worker reindex test test-runner test-packaging runner-images runner runner-dist test-rust lint fmt deb release website website-serve deploy db-create clean
 
 help: ## Diese Hilfe anzeigen
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -108,6 +108,31 @@ RUNNER_IMAGE_PREFIX ?= localhost/multigpt-runner
 runner-images: ## Arbeits- und Agent-Image des Runners lokal bauen (podman)
 	podman build -f containers/work/Containerfile -t $(RUNNER_IMAGE_PREFIX)-work:$(RUNNER_IMAGE_TAG) .
 	podman build -f containers/agent/Containerfile -t $(RUNNER_IMAGE_PREFIX):$(RUNNER_IMAGE_TAG) .
+
+# Runner-Agent als Rust-Crate (M14, runner-rs/). cargo aus dem PATH, sonst
+# rustup unter ~/.cargo/bin. Release-Binaries baut die CI (package.yml).
+CARGO   ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
+RUNNER_RS := runner-rs
+CARGO_ENV := PATH="$(dir $(CARGO)):$$PATH"
+
+runner: ## Runner-Agent (Rust) für diesen Rechner bauen -> runner-rs/target/release/multigpt-runner
+	cd $(RUNNER_RS) && $(CARGO_ENV) $(CARGO) build --release --locked
+	@ls -l $(RUNNER_RS)/target/release/multigpt-runner
+
+test-rust: ## Runner-Agent (Rust) prüfen: fmt --check, clippy -D warnings, test
+	cd $(RUNNER_RS) && $(CARGO_ENV) $(CARGO) fmt --all --check
+	cd $(RUNNER_RS) && $(CARGO_ENV) $(CARGO) clippy --locked --workspace --all-targets -- -D warnings
+	cd $(RUNNER_RS) && $(CARGO_ENV) $(CARGO) clippy --locked --workspace --all-targets --all-features -- -D warnings
+	cd $(RUNNER_RS) && $(CARGO_ENV) $(CARGO) test --locked --workspace --all-features
+
+# Wie der Job runner-dist der CI, aber mit Wegwerf-Schlüssel und Version dev:
+# statische Binaries amd64/arm64 (musl), signierter Katalog und SHA256SUMS in
+# dist/runner/. Braucht cargo-zigbuild und zig im PATH (cargo install --locked
+# cargo-zigbuild; pip install ziglang) und die Ziele
+# rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl.
+runner-dist: ## Runner-Binaries amd64/arm64 + Signaturen wie in der CI (Wegwerf-Schlüssel) -> dist/runner/
+	@$(CARGO_ENV) command -v cargo-zigbuild >/dev/null || { echo "runner-dist: cargo-zigbuild fehlt (cargo install --locked cargo-zigbuild)." >&2; exit 1; }
+	$(CARGO_ENV) CARGO=$(CARGO) scripts/runner-release.sh dev dist/runner
 
 release: ## Neue Version vorbereiten: changelog, pyproject, Commit und Tag (VERSION=x.y.z)
 	@$(PYTHON) scripts/release.py "$(VERSION)"

@@ -41,14 +41,19 @@ override_dh_auto_test:
 # Binär-Wheels (z. B. psycopg-binary) bringen eigene, mit patchelf
 # angepasste Bibliotheken mit. Strippen kann diese beschädigen, und für die
 # gebündelten Bibliotheken gibt es keine shlibs-Information.
+# Die Runner-Binaries (M14, /usr/share/multi-gpt/runner/) sind fertig gebaut,
+# statisch (musl) und zum Teil für arm64: unverändert lassen, sonst passen
+# SHA256SUMS und Signatur nicht mehr.
+RUNNER_DIST := /usr/share/multi-gpt/runner/
+
 override_dh_strip:
-	dh_strip --exclude=/site-packages/
+	dh_strip --exclude=/site-packages/ --exclude=$(RUNNER_DIST)
 
 override_dh_dwz:
-	dh_dwz --exclude=/site-packages/
+	dh_dwz --exclude=/site-packages/ --exclude=$(RUNNER_DIST)
 
 override_dh_shlibdeps:
-	dh_shlibdeps --exclude=/site-packages/
+	dh_shlibdeps --exclude=/site-packages/ --exclude=$(RUNNER_DIST)
 
 # Drei Units: Weboberfläche (debian/multi-gpt.service), Worker für die
 # Indexierung (debian/multi-gpt.multi-gpt-worker.service, M7) und Runner-Dienst
@@ -66,10 +71,27 @@ override_dh_installsystemd:
 # images.yml) debian/runner-images.env an; Django liest daraus die Standardwerte
 # von RUNNER_AGENT_IMAGE und RUNNER_WORK_IMAGE (/etc/multi-gpt/.env geht vor).
 # Lokal (make deb, Docker) fehlt die Datei, dann gelten die Tags aus settings.py.
+#
+# Runner-Binaries (M14): Beim Tag legt die CI (package.yml, Job runner-dist,
+# scripts/runner-release.sh) debian/runner-dist/ an – multigpt-runner-linux-
+# {amd64,arm64}, catalog.json(.sig), SHA256SUMS(.sig), release_keys.json. Sie
+# landen in RUNNER_DIST_DIR (/usr/share/multi-gpt/runner/), aus dem
+# /runner/download/<arch> liefert; nur zum Herunterladen, deshalb 0644.
+# Lokal (make deb) fehlt der Ordner; `make runner-dist` legt ihn mit
+# Wegwerf-Schlüssel an (dist/runner/, von Hand nach debian/runner-dist/ kopieren).
 execute_after_dh_install:
 	if [ -f debian/runner-images.env ]; then \
 	    install -D -m 0644 debian/runner-images.env \
 	        debian/multi-gpt/usr/share/multi-gpt/runner-images.env; \
+	fi
+	if [ -d debian/runner-dist ]; then \
+	    (cd debian/runner-dist && sha256sum --check --strict --quiet SHA256SUMS) && \
+	    install -d -m 0755 debian/multi-gpt$(RUNNER_DIST) && \
+	    install -m 0644 debian/runner-dist/multigpt-runner-linux-* \
+	        debian/runner-dist/catalog.json debian/runner-dist/catalog.json.sig \
+	        debian/runner-dist/SHA256SUMS debian/runner-dist/SHA256SUMS.sig \
+	        debian/runner-dist/release_keys.json \
+	        debian/multi-gpt$(RUNNER_DIST); \
 	fi
 
 # dh_auto_clean ist durch die Sequenz entfernt; Reste des Wheel-Builds

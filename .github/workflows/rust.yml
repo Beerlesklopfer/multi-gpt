@@ -1,0 +1,127 @@
+# Prüft den Runner-Agent (Rust-Crate multigpt-runner, Workspace runner-rs/, M14):
+#   check  – aktuelles stabiles Rust (rustup) auf ubuntu-24.04: cargo fmt --check,
+#            clippy -D warnings (ohne und mit allen Features), cargo test
+#   msrv   – Mindestversion (rust-version aus runner-rs/Cargo.toml, rustup aus
+#            Debian) im Container debian:trixie: cargo test – die Mindestversion
+#            bleibt baubar, auch für Entwickler mit `cargo install`
+# Läuft bei Änderungen an runner-rs/ (push auf main, Pull-Requests) und wird von
+# package.yml beim Tag vor dem Bau der Release-Binaries aufgerufen.
+# Die Podman-Tests (echte Container) laufen hier nicht – siehe `make test-runner`.
+name: Rust
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "runner-rs/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "runner-rs/**"
+      - ".github/workflows/rust.yml"
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag, z. B. v0.4.0"
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: runner-rs
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
+
+      - name: Rust (stable)
+        run: |
+          rustup toolchain install stable --profile minimal -c clippy,rustfmt
+          rustup default stable
+          rustc -V; cargo -V
+
+      - name: Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            runner-rs/target
+          key: rust-check-${{ runner.os }}-${{ hashFiles('runner-rs/Cargo.lock', 'runner-rs/**/Cargo.toml') }}
+          restore-keys: rust-check-${{ runner.os }}-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy -D warnings
+        run: |
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        run: cargo test --locked --workspace --all-features
+
+  msrv:
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    env:
+      CARGO_HOME: /cargo-home
+      RUSTUP_HOME: /rustup-home
+    steps:
+      - name: Debian-Pakete
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            ca-certificates git build-essential rustup
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
+
+      - name: Rust in der Mindestversion
+        # Aufrufe über "rustup run": unabhängig davon, wo das Debian-Paket
+        # rustup die Proxys cargo/rustc ablegt.
+        run: |
+          msrv=$(sed -n 's/^rust-version *= *"\([0-9.]*\)".*/\1/p' Cargo.toml | head -n1)
+          [ -n "$msrv" ] || { echo "::error::rust-version fehlt in runner-rs/Cargo.toml"; exit 1; }
+          rustup toolchain install "$msrv" --profile minimal
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup run "$msrv" rustc -V
+
+      - name: Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cargo-home/registry/index
+            /cargo-home/registry/cache
+            /cargo-home/git/db
+            runner-rs/target
+          key: rust-msrv-trixie-${{ hashFiles('runner-rs/Cargo.lock', 'runner-rs/**/Cargo.toml') }}
+          restore-keys: rust-msrv-trixie-
+
+      - name: cargo test (Mindestversion)
+        run: rustup run "$MSRV" cargo test --locked --workspace --all-features

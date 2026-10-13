@@ -1,8 +1,17 @@
-# Baut zu jedem Versions-Tag (v*) zuerst die Runner-Images (images.yml, ghcr.io),
-# dann das Debian-Paket auf Debian 13 mit deren Digests, hängt beides an ein
-# GitHub-Release und veröffentlicht danach Website samt apt-Repository
-# (website.yml). Von Hand: Actions → Paket → "Run workflow" mit dem Tag, z. B. für
-# ein Tag, das vor diesem Workflow entstand.
+# Baut zu jedem Versions-Tag (v*):
+#   rust        – Prüfung des Runner-Agents (rust.yml: fmt, clippy, test)
+#   runner-dist – Runner-Binaries amd64/arm64 (statisch, musl) mit Schlüssel je
+#                 Release-Lauf: Katalog und Prüfsummen signiert, privater Teil
+#                 verworfen (scripts/runner-release.sh)
+#   images      – Runner-Images auf ghcr.io (images.yml); NICHT Voraussetzung des
+#                 Pakets: fällt ghcr.io aus, entsteht das Paket ohne Digests
+#                 (Warnung), images.yml lässt sich später von Hand nachholen
+#   build       – Debian-Paket auf Debian 13 (mit Runner-Binaries und, falls
+#                 vorhanden, den Image-Digests)
+# hängt alles an ein GitHub-Release und veröffentlicht danach Website samt
+# apt-Repository (website.yml). Von Hand: Actions → Paket → "Run workflow" mit dem
+# Tag, z. B. für ein Tag, das vor diesem Workflow entstand (erzeugt einen neuen
+# Release-Schlüssel und ersetzt die Runner-Dateien am Release).
 name: Paket
 
 on:
@@ -38,8 +47,108 @@ jobs:
       contents: write
       packages: write
 
+  rust:
+    # fmt, clippy -D warnings, test (stabil und Mindestversion in debian:trixie).
+    uses: ./.github/workflows/rust.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+
+  runner-dist:
+    # Runner-Binaries und Signaturen (M14). Ein einziger Job: Der private
+    # Release-Schlüssel entsteht im RAM dieses Laufs, signiert Katalog und
+    # Prüfsummen und wird am Ende des Skripts überschrieben und gelöscht – kein
+    # Artefakt, kein Secret, nie im Log. Weitergegeben wird nur der öffentliche Teil.
+    needs: rust
+    runs-on: ubuntu-24.04
+    env:
+      # cargo-zigbuild + Zig (Linker und C-Compiler für ring) bauen beide
+      # musl-Ziele ohne Cross-Container (cross bräuchte Images von ghcr.io).
+      ZIGBUILD_VERSION: "0.23.4"
+      ZIG_PYPI: "ziglang==0.17.0 --hash=sha256:97079827064a7492cce5541ceb438ae8003ce1e54e399676da2d62fb7a5dc08b"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Werkzeuge
+        run: |
+          rustup toolchain install stable --profile minimal \
+            -t x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+          rustup default stable
+          python3 -m venv "${RUNNER_TEMP}/zig"
+          echo "${ZIG_PYPI}" > "${RUNNER_TEMP}/zig-req.txt"
+          "${RUNNER_TEMP}/zig/bin/pip" install -q --require-hashes -r "${RUNNER_TEMP}/zig-req.txt"
+          echo "${RUNNER_TEMP}/zig/bin" >> "$GITHUB_PATH"
+          cargo install --locked cargo-zigbuild --version "${ZIGBUILD_VERSION}"
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q qemu-user-static >/dev/null
+
+      - name: Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: rust-dist-${{ hashFiles('runner-rs/Cargo.lock') }}
+          restore-keys: rust-dist-
+
+      - name: Release-Schlüssel der vorigen Releases
+        # release_keys.json des neuesten früheren Releases: Der Server kennt die
+        # Schlüssel der letzten drei Releases (Runner überstehen ein Server-Update).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/prev"
+          for tag in $(gh release list --exclude-drafts --exclude-pre-releases --limit 10 \
+                         --json tagName --jq '.[].tagName'); do
+            [ "$tag" = "$TAG" ] && continue
+            if gh release download "$tag" --pattern release_keys.json \
+                 --dir "${RUNNER_TEMP}/prev" --clobber 2>/dev/null; then
+              echo "Vorige Schlüssel aus ${tag}"; cat "${RUNNER_TEMP}/prev/release_keys.json"; break
+            fi
+          done
+
+      - name: Bauen und signieren
+        # Ohne GH_TOKEN. Das Skript holt die Abhängigkeiten, bevor der Schlüssel
+        # entsteht; der Bau selbst läuft ohne Netz (unshare -rn): Build-Skripte
+        # von Crates erreichen niemanden, solange der Schlüssel existiert.
+        run: |
+          echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns >/dev/null || true
+          prev=()
+          [ -f "${RUNNER_TEMP}/prev/release_keys.json" ] && prev=("${RUNNER_TEMP}/prev/release_keys.json")
+          RUNNER_BUILD_NONET=1 scripts/runner-release.sh "${TAG#v}" dist/runner "${prev[@]}"
+
+      - name: Rauchtest
+        run: |
+          file dist/runner/multigpt-runner-linux-*
+          for arch in amd64 arm64; do
+            f="dist/runner/multigpt-runner-linux-${arch}"
+            file "$f" | grep -q 'statically linked' || { echo "::error::$f nicht statisch"; exit 1; }
+            install -m 0755 "$f" "${RUNNER_TEMP}/runner-${arch}"
+            if [ "$arch" = arm64 ]; then
+              qemu-aarch64-static "${RUNNER_TEMP}/runner-${arch}" --version
+            else
+              "${RUNNER_TEMP}/runner-${arch}" --version
+            fi
+          done
+          { echo '```'; cat dist/runner/SHA256SUMS dist/runner/release_keys.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Artefakt runner-dist
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runner-dist
+          path: dist/runner/
+          if-no-files-found: error
+
   build:
-    needs: images
+    # Wartet auf images, scheitert aber nicht daran (ghcr.io nicht erreichbar):
+    # Ohne Digests gelten die Tags aus settings.py bzw. /etc/multi-gpt/.env.
+    needs: [images, runner-dist]
+    if: ${{ !cancelled() && needs.runner-dist.result == 'success' }}
     runs-on: ubuntu-24.04
     container: debian:trixie
     steps:
@@ -63,18 +172,35 @@ jobs:
             echo "::error::Tag ${TAG} passt nicht zu debian/changelog (${version})"; exit 1; }
 
       - name: Digests der Runner-Images
+        if: needs.images.result == 'success'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: image-digests
           path: image-digests
 
+      - name: Runner-Binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runner-dist
+          # -> /usr/share/multi-gpt/runner/ (debian/rules, RUNNER_DIST_DIR)
+          path: debian/runner-dist
+
       - name: Paket bauen
         run: |
           # -> /usr/share/multi-gpt/runner-images.env (debian/rules)
-          cp image-digests/runner-images.env debian/runner-images.env
+          if [ -f image-digests/runner-images.env ]; then
+            cp image-digests/runner-images.env debian/runner-images.env
+          else
+            echo "::warning::Runner-Images fehlen (images.yml fehlgeschlagen?) – Paket ohne Digests; images.yml von Hand nachholen."
+          fi
+          (cd debian/runner-dist && sha256sum --check --strict SHA256SUMS)
           dpkg-buildpackage -us -uc -b
           mkdir dist && mv ../multi-gpt_*.deb dist/
           dpkg-deb --info dist/*.deb | sed -n '1,25p'
+          # Die Binaries kommen unverändert ins Paket (kein strip, Prüfsummen gelten).
+          mkdir -p /tmp/deb && dpkg-deb -x dist/*.deb /tmp/deb
+          (cd /tmp/deb/usr/share/multi-gpt/runner && sha256sum --check --strict SHA256SUMS \
+             && test -f release_keys.json && test -f SHA256SUMS.sig && test -f catalog.json.sig)
 
       - name: Artefakt hochladen
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -123,7 +249,8 @@ jobs:
         run: su tester -c "unshare -rn bash tests/packaging/functional.sh"
 
   release:
-    needs: [build, packaging-tests]
+    needs: [images, build, packaging-tests]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.packaging-tests.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -139,10 +266,16 @@ jobs:
           name: deb
           path: dist
       - name: Digests der Runner-Images holen
+        if: needs.images.result == 'success'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: image-digests
           path: image-digests
+      - name: Runner-Binaries holen
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runner-dist
+          path: runner-dist
       - name: GitHub-Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,15 +290,26 @@ jobs:
             printf '\n## Installation\n\nInstall or update via apt: https://%s.github.io/%s/installation/\n' \
               "${GITHUB_REPOSITORY_OWNER,,}" "${GITHUB_REPOSITORY#*/}"
           } > notes.md
-          cp image-digests/images.txt dist/runner-images.txt
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.deb dist/runner-images.txt --clobber
+          # Runner (M14): Binaries, Katalog, SHA256SUMS samt Signaturen und die
+          # öffentlichen Release-Schlüssel (release_keys.json: Quelle für den
+          # nächsten Release-Lauf).
+          (cd runner-dist && sha256sum --check --strict SHA256SUMS)
+          assets=(dist/*.deb runner-dist/*)
+          if [ -f image-digests/images.txt ]; then
+            cp image-digests/images.txt dist/runner-images.txt
+            assets+=(dist/runner-images.txt)
           else
-            gh release create "$TAG" dist/*.deb dist/runner-images.txt \
+            echo "::warning::runner-images.txt fehlt – images.yml von Hand mit dem Tag starten."
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
               --title "MultiGPT ${version}" --notes-file notes.md --verify-tag
           fi
 
   pages:
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     # Website samt apt-Quelle neu bauen – über main, denn die Umgebung github-pages
     # erlaubt nur Deployments von main (ein Aufruf vom Tag aus wird abgewiesen).
     needs: release

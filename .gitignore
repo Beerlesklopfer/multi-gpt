@@ -63,6 +63,10 @@ debian/*.debhelper
 debian/debhelper-build-stamp
 # Digests der Runner-Images, erzeugt von der CI (package.yml)
 debian/runner-images.env
+# Runner-Binaries samt Signaturen, erzeugt von der CI bzw. make runner-dist (M14)
+debian/runner-dist/
+# Build-Ordner des Rust-Agents
+runner-rs/target/
 
 # Temporäre Wurzeln der Paket-Tests
 tests/packaging/root.*

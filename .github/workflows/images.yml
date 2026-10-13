@@ -8,7 +8,12 @@
 # im Artefakt image-digests (images.txt für das Release, runner-images.env für
 # das Debian-Paket: /usr/share/multi-gpt/runner-images.env).
 #
-# Aufgerufen von package.yml beim Tag, vor dem Bau des Debian-Pakets. Von Hand:
+# Aufgerufen von package.yml beim Tag, parallel zum Bau des Debian-Pakets (seit
+# dem Rust-Agent keine Voraussetzung mehr: Scheitert dieser Workflow, z. B. weil
+# ghcr.io nicht erreichbar ist, entsteht das Paket ohne Digests). Das Arbeits-
+# Image bleibt nötig (Sitzungscontainer auch für den nativen Agent); das
+# Agent-Image braucht nur noch der Python-Agent unter Quadlet und entfällt mit ihm.
+# Von Hand:
 # Actions → Runner-Images → "Run workflow" mit dem Tag (hängt images.txt an ein
 # vorhandenes Release).
 # Einmalig nach dem ersten Lauf: Die Pakete auf ghcr.io sind zunächst privat;
