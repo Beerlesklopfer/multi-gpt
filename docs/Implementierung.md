@@ -537,6 +537,19 @@ Werkzeuge im Stil von Claude Code: `read` (mit Zeilenbereich), `write`, `edit` (
 1. **8t – Rückfrage vor Änderungen?** Bisher waren Schreiben und Shell bestätigungspflichtig. Für eine Arbeitsweise wie Claude Code bremst das sehr. Empfehlung: Modi wie in Claude Code je Sitzung – „fragen“ (jede Änderung bestätigen), „Änderungen automatisch“ (Dateien ohne Rückfrage, Befehle mit Rückfrage) und „alles automatisch“. Vorgabe „alles automatisch“, weil der Container eingesperrt ist (tmpfs, kein Netz, nur das eigene Bundle); „alles automatisch“ mit Netz nur für Verwalter.
 2. **8u – Wie viele Runden?** Heute endet eine Antwort nach `MAX_ROUNDS` Werkzeugrunden. Empfehlung: für Runner-Sitzungen eigene Grenze, 100 Runden je Antwort; danach fragt der Chat, ob weitergearbeitet werden soll. Gezählt werden außerdem Laufzeit (Kontingent) und Tokens (Budget).
 
+**Werkzeuge `ssh` und `telnet` (Nutzer, 2026-10-13):** Der Runner bekommt zwei Werkzeuge, um Geräte im Netz zu steuern. Entschieden:
+
+- **Ort:** nur im Runner (Container auf dem Browser-Rechner), nicht auf dem Server.
+- **Ziele:** nur Hosts, die der Verwalter freigibt. Neues Modell `RunnerHost`: Name, Adresse, Port, Protokoll (`ssh`/`telnet`), Benutzer, Zugang (SSH-Schlüssel oder Passwort, verschlüsselt wie API-Keys), freigegeben für Rollen bzw. Personen. Das Modell wählt nur aus dieser Liste nach Namen und sieht nie Adresse, Schlüssel oder Passwort.
+- **Rückfrage:** vor jedem Befehl bzw. jeder Telnet-Eingabe, unabhängig vom Modus aus 8t. Nur für Verwalter und Erwachsene.
+- **Ablauf:** Der Server gibt dem Runner den Zugang nur für den bestätigten Aufruf mit. Die Sitzung läuft im PTY und ist wie in 8p im Browser-Terminal sichtbar. Im Chat bleibt sie offen, bis sie endet oder der Leerlauf greift. Ausgaben sind begrenzt und gelten als nicht vertrauenswürdiges Material. Jeder Befehl steht im Audit-Log, ohne Ausgabe.
+- **Telnet** überträgt alles im Klartext. Der Admin zeigt das als Warnung, gedacht nur für alte Geräte im Heimnetz.
+
+**Offene Fragen dazu (mit Empfehlung):**
+
+1. **8v – Host-Schlüssel bei SSH:** Empfehlung: beim Anlegen des Hosts einmal abrufen, dem Verwalter zur Bestätigung zeigen und festhalten. Weicht er später ab, wird abgebrochen.
+2. **8w – Netz des Containers:** Empfehlung: Mit `ssh`/`telnet` erreicht der Container nur die freigegebenen Hosts. Der Agent setzt dafür eine Positivliste (Adresse und Port), sonst bleibt das Netz aus. Damit ist „Netz an“ (8l) für diese Werkzeuge nicht nötig.
+
 **Festlegungen:**
 
 - **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.

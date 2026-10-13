@@ -73,4 +73,4 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
 | M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Fragen 7a–7l entschieden (Empfehlungen), Umsetzung offen |
-| M14 Runner | Umsetzungsplan steht (M14-01 … M14-15, ASGI-Dienst). 2026-10-13 entschieden: Runner ist das Coding-Werkzeug, Arbeitsstand als git-Bundle in der DB, Container nur mit tmpfs (8b entfällt); 8p–8s entschieden (statischer HTTP-Server für HTML, PTY für Python ins Browser-Terminal); Arbeitsweise wie Claude Code im Container. Wartet auf Entscheidungen 8c–8o, 8t, 8u (Implementierung.md §6 und M14) |
+| M14 Runner | Umsetzungsplan steht (M14-01 … M14-15, ASGI-Dienst). 2026-10-13 entschieden: Runner ist das Coding-Werkzeug, Arbeitsstand als git-Bundle in der DB, Container nur mit tmpfs (8b entfällt); 8p–8s entschieden (statischer HTTP-Server für HTML, PTY für Python ins Browser-Terminal); Arbeitsweise wie Claude Code im Container; Werkzeuge ssh/telnet im Runner (nur freigegebene Hosts, immer Rückfrage). Wartet auf Entscheidungen 8c–8o, 8t–8w (Implementierung.md §6 und M14) |
