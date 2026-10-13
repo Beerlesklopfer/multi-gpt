@@ -96,6 +96,11 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 _test_template = env("DB_TEST_TEMPLATE", default="")
 if _test_template:
     DATABASES["default"]["TEST"] = {"TEMPLATE": _test_template}
+# Eigene Test-DB je Prozess (mehrere Agenten bzw. Läufe gleichzeitig), z. B.
+# DB_TEST_NAME=test_multigpt_core; ohne Angabe Djangos Standard test_<name>.
+_test_name = env("DB_TEST_NAME", default="")
+if _test_name:
+    DATABASES["default"].setdefault("TEST", {})["NAME"] = _test_name
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
