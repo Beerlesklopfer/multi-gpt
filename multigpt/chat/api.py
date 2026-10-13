@@ -154,6 +154,8 @@ def _serialize_model(m: AIModel) -> dict:
         "supports_vision": m.supports_vision,
         # Stufen der Denktiefe (reasoning.py), null = kein einstellbares Reasoning.
         "reasoning_levels": reasoning.levels_for(m),
+        # Vorgabe des Modells (AIModel.default_reasoning_effort), "" = keine.
+        "reasoning_default": m.default_reasoning_effort,
         # MCP-Freigabe des Verwalters: None = alle Server der Rolle, sonst die
         # erlaubten IDs (leer bei „kein“). Durchgesetzt wird auf dem Server.
         "mcp_access": m.mcp_access,

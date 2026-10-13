@@ -398,6 +398,7 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "supports_tools": False,
         "supports_vision": False,
         "reasoning_levels": None,  # kein einstellbares Reasoning (Llama)
+        "reasoning_default": "",
         "mcp_access": "none",
         "mcp_server_ids": [],
         "online": True,

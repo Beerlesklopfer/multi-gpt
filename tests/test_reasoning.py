@@ -526,6 +526,11 @@ def test_api_models_reasoning_levels(client, anna):
     assert data[first.pk]["reasoning_levels"] == ["off", "low", "medium", "high", "xhigh"]
     assert data[plain.pk]["reasoning_levels"] is None
     assert data[claude.pk]["reasoning_levels"] == ["low", "medium", "high", "xhigh", "max"]
+    assert data[first.pk]["reasoning_default"] == ""
+    first.default_reasoning_effort = "low"
+    first.save()
+    data = {m["id"]: m for m in client.get(reverse("chat:api_models")).json()}
+    assert data[first.pk]["reasoning_default"] == "low"  # Hinweis im Chat (chat.js)
 
 
 def test_compare_maps_level_per_model(client, anna):
