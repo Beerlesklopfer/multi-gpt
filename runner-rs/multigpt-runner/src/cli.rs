@@ -177,8 +177,14 @@ pub struct PairArgs {
     pub start: bool,
 }
 
-/// Argumente von `pair` prüfen.
+/// Argumente von `pair` prüfen; `ws://` nur mit `MGPT_INSECURE_DEV=1` (Entwicklung).
 pub fn parse_pair_args(args: &[String]) -> Result<PairArgs, ConfigError> {
+    let insecure_dev = std::env::var("MGPT_INSECURE_DEV").as_deref() == Ok("1");
+    parse_pair_args_with(args, insecure_dev)
+}
+
+/// Wie [`parse_pair_args`], mit ausdrücklicher Erlaubnis für `ws://` (Tests).
+pub fn parse_pair_args_with(args: &[String], insecure_dev: bool) -> Result<PairArgs, ConfigError> {
     let mut url = None;
     let mut ca = None;
     let mut images = Vec::new();
@@ -204,7 +210,7 @@ pub fn parse_pair_args(args: &[String]) -> Result<PairArgs, ConfigError> {
         }
     }
     let url = url.ok_or_else(|| ConfigError("pair: --url fehlt".into()))?;
-    let url = config::normalize_url(&url, false)?;
+    let url = config::normalize_url(&url, insecure_dev)?;
     let ca_sha256 = config::normalize_fingerprint(ca.as_deref())?;
     if images.is_empty() {
         return Err(ConfigError(
@@ -450,6 +456,13 @@ mod tests {
         assert!(parse_pair_args(&args(&["--images", &image()])).is_err());
         assert!(parse_pair_args(&args(&["--url", "https://h", "--images", "x:1"])).is_err());
         assert!(parse_pair_args(&args(&["--bogus"])).is_err());
+        // ws:// nur mit MGPT_INSECURE_DEV=1 (Entwicklung ohne TLS).
+        let dev = args(&["--url", "ws://h:8001/runner/ws", "--images", &image()]);
+        assert!(parse_pair_args_with(&dev, false).is_err());
+        assert_eq!(
+            parse_pair_args_with(&dev, true).unwrap().url,
+            "ws://h:8001/runner/ws"
+        );
     }
 
     #[test]

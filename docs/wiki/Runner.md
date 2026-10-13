@@ -14,6 +14,62 @@ Server.
   deinem Rechner bleibt kein Port offen. Jeder Zugriff läuft über MultiGPT: Rechte, Kontingent,
   Rückfragen und Audit-Log prüft immer der Server.
 
+## Wie startet der Container?
+
+**Gar nicht von Hand.** Den Arbeitscontainer startet das Programm `multigpt-runner`, das als
+Dienst deines Nutzers läuft:
+
+1. Einmalig: Token erzeugen (Abschnitt 1), Programm installieren und koppeln (Abschnitt 2). Ab
+   dann läuft `multigpt-runner` als systemd-User-Dienst und hält die Verbindung zu MultiGPT.
+2. Im Chat einen **Arbeitsstand** wählen (Abschnitt 3).
+3. Der **erste Werkzeugaufruf** des Modells startet die Sitzung: Der Runner zieht das
+   Arbeits-Image (`ghcr.io/beerlesklopfer/multigpt-runner-work`, nur mit dem Digest, den der Server
+   vorgibt), startet den Container nach der festen Vorlage (kein Netz, nur tmpfs, keine Rechte),
+   lädt den Arbeitsstand hinein und führt die Werkzeuge darin aus.
+4. Nach 15 Minuten ohne Werkzeugaufruf (oder bei „Stopp“ im Chat) entfernt der Runner den
+   Container wieder. Der Arbeitsstand ist dann schon auf dem Server.
+
+Ob der Runner verbunden ist, zeigt die Seite **Runner** („verbunden“, Version, laufende
+Sitzungen). Läuft nichts, hilft `systemctl --user status multigpt-runner` und
+`journalctl --user -u multigpt-runner -f`.
+
+### Arbeits-Image von Hand ausprobieren
+
+Zum Anschauen – mit denselben Einschränkungen, die der Runner setzt:
+
+```bash
+podman pull ghcr.io/beerlesklopfer/multigpt-runner-work:main
+podman run --rm -it --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --pids-limit 256 \
+  --tmpfs /workspace:rw,size=256m,mode=0700,U --tmpfs /tmp:rw,size=64m \
+  ghcr.io/beerlesklopfer/multigpt-runner-work:main bash
+```
+
+Das ist nur zum Ausprobieren; MultiGPT benutzt so gestartete Container nicht. `:main` ist der
+Stand von `main`, `:latest` bzw. `:<version>` der letzte Release.
+
+### Zum Testen in der Entwicklung (ohne TLS)
+
+Für einen Entwicklungsserver ohne HTTPS:
+
+1. Runner-Dienst des Servers starten: `.venv/bin/python manage.py runner_gateway`
+   (lauscht auf `MULTI_GPT_RUNNER_BIND`, Vorgabe `127.0.0.1:8001`; für einen anderen Rechner im
+   Heimnetz z. B. `--bind 0.0.0.0:8001`).
+2. In der `.env` des Servers das Arbeits-Image **mit Digest** eintragen, z. B.
+   `RUNNER_WORK_IMAGE=ghcr.io/beerlesklopfer/multigpt-runner-work:main-<commit>@sha256:…`
+   (steht in der Zusammenfassung des CI-Laufs „Runner-Images“), und den Server neu starten.
+3. Auf der Seite **Runner** einen Token erzeugen.
+4. Auf dem Rechner mit Podman koppeln, mit `ws://` statt `wss://`:
+   ```bash
+   export MGPT_INSECURE_DEV=1
+   printf '%s\n%s\n' "<token>" "<öffentlicher Schlüssel>" | \
+     multigpt-runner pair --url ws://<server>:8001/runner/ws --images "<Image mit Digest>"
+   ```
+   Für die Unit `Environment=MGPT_INSECURE_DEV=1` ergänzen (`systemctl --user edit multigpt-runner`).
+
+`MGPT_INSECURE_DEV` nie auf der Produktion: Ohne TLS gehen Token und Werkzeugaufrufe im Klartext
+über das Netz.
+
 ## Voraussetzungen
 
 - Recht **„Runner nutzen“** in deiner Rolle (Startwerte: Verwalter und Erwachsene ja,
