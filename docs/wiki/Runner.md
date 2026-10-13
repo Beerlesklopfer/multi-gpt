@@ -5,8 +5,9 @@ Der **Runner** gibt den Modellen eine echte Arbeitsumgebung: Dateien lesen, anle
 eingesperrt in einem Container auf **deinem** Rechner (PC oder Laptop im Heimnetz), nicht auf dem
 Server.
 
-- Der Container hat **kein Netz** und nur einen flüchtigen Arbeitsbereich (`/workspace` im
-  Arbeitsspeicher). Endet die Sitzung, bleibt auf dem Rechner nichts zurück.
+- Der Container hat **kein Netz** (Ausnahme: Modus „Paketquellen“, s. u.) und nur einen
+  flüchtigen Arbeitsbereich (`/workspace` im Arbeitsspeicher). Endet die Sitzung, bleibt auf dem
+  Rechner nichts zurück.
 - Was das Modell erarbeitet, liegt als **Arbeitsstand** (git-Bundle mit der ganzen Historie) auf
   dem Server und wird mit der Datenbank gesichert. Jeder Werkzeugaufruf, der Dateien ändert, ist
   ein eigener Commit – jeder Stand ist zurückholbar.
@@ -241,6 +242,101 @@ Schlüssel als Podman-Secrets). Neue Installationen bitte mit dem Programm oben.
 
 Nach 100 Werkzeugrunden fragt der Chat, ob weitergearbeitet werden soll.
 
+## Pakete nachladen (Modus „Paketquellen“)
+
+Ohne Netz kann das Modell nur mit dem arbeiten, was im Arbeits-Image steckt (bash, git, Python,
+Node). Mit dem Rollenrecht **„Paketquellen“** darf es zusätzlich Pakete nachladen – vor allem mit
+apt, außerdem mit pip, npm, cargo und von GitHub –, erreicht dabei aber **nur fest freigegebene
+Paketquellen**, nie das Heimnetz oder beliebige Seiten.
+
+**Wer darf?** Recht „Paketquellen“ in der Rolle (Startwerte: Verwalter und Erwachsene ja,
+Jugendliche und Gäste nein; Admin unter *Konten und Gruppen › Rollen*). Ist auch **„Runner mit
+Netz“** an, geht das freie Netz vor (dann gibt es kein `apt_install`). Ohne beide Rechte bleibt
+das Netz aus. Über API-Keys gilt der Modus nur mit demselben Rollenrecht. Der Rückfrage-Modus
+„alles automatisch“ bleibt erlaubt.
+
+- Im Chat steht im Bereich **Runner** der Schalter **„Paketquellen“** (nur mit dem Rollenrecht
+  sichtbar, Vorgabe an). Umschalten geht nur, solange keine Sitzung läuft; er gilt ab der
+  nächsten Sitzung.
+- In einer Sitzung mit Paketquellen gibt es **kein `setup_host` und kein `telnet`**. Für die
+  Einrichtung eines Zielsystems bzw. telnet den Schalter ausschalten.
+- Der Modus braucht ein aktuelles `multigpt-runner` (Werkzeug `apt_install` im signierten
+  Dienstkatalog). Ältere Runner bekommen ihn nie angeboten; die Sitzung startet dann ohne Netz.
+
+### apt: nur über das Werkzeug `apt_install`
+
+Das Modell ruft `apt_install` mit einer Liste von Debian-Paketen auf, z. B. `["jq", "ripgrep"]`.
+Der Runner führt dann im Container **als root** nur `apt-get update` (bei Bedarf) und
+`apt-get install -y --no-install-recommends <pakete>` aus:
+
+- Paketnamen werden streng geprüft (Kleinbuchstaben, Ziffern, `+ . -`, höchstens 20 je Aufruf);
+  Optionen, Pfade oder Shell-Zeichen werden abgewiesen.
+- Die Shell des Modells bleibt **Nutzer 1000**: `apt-get`/`dpkg` selbst aufzurufen scheitert an
+  fehlenden Rechten, `sudo` gibt es nicht – und auch ein nachinstalliertes `sudo` wirkt nicht
+  (`no-new-privileges`, keine setuid-Programme).
+- `apt_install` zählt wie `bash` als Befehl (Rückfrage je nach Modus) und steht im Audit-Log.
+
+**Über Sitzungen hinweg:** Die installierten apt-Pakete stehen in **`.mgpt/apt-packages`** im
+Arbeitsstand. Startet später eine neue Sitzung mit diesem Arbeitsstand, installiert der Runner sie
+automatisch nach. Wer ein Paket nicht mehr braucht, entfernt die Zeile aus der Datei.
+
+### pip, npm, cargo, GitHub
+
+Diese Werkzeuge arbeiten als Nutzer 1000 und installieren **in den Arbeitsstand** unter
+`/workspace` – ohne root:
+
+| Werkzeug | Beispiel | landet in |
+|---|---|---|
+| pip | `python3 -m venv .venv && .venv/bin/pip install requests` | `.venv/` |
+| npm | `npm install left-pad`, `npx http-server` | `node_modules/` |
+| cargo | `cargo build` (nach `apt_install(["cargo"])`) | `target/` |
+| git | `git clone https://github.com/…` | Ordner im Arbeitsstand |
+
+`.venv`, `node_modules` und `target` trägt der Runner automatisch in **`.gitignore`** ein: Sie
+gehören nicht ins Bundle (das bleibt klein) und werden in einer neuen Sitzung neu installiert –
+am besten über `requirements.txt` bzw. `package.json` im Arbeitsstand.
+
+### Der Proxy und was gesperrt ist
+
+Der Arbeitscontainer hat auch in diesem Modus **keinen direkten Weg nach außen** und kein DNS.
+Er hängt nur an seinem internen Sitzungsnetz; dort steht ein **Proxy** (der Relay-Container der
+Sitzung), den pip, npm, cargo, git und apt über `HTTP_PROXY`/`HTTPS_PROXY` benutzen. Der Proxy
+lässt nur diese Hosts durch (Einstellung `RUNNER_PACKAGE_HOSTS` des Servers, signiert an den
+Runner übergeben):
+
+`deb.debian.org`, `security.debian.org`, `pypi.org`, `files.pythonhosted.org`,
+`registry.npmjs.org`, `github.com`, `codeload.github.com`, `objects.githubusercontent.com`,
+`index.crates.io`, `static.crates.io`
+
+Abgewiesen werden:
+
+- alle anderen Hosts (z. B. `example.com`) und Unterdomänen, die nur so aussehen;
+- **IP-Literale** (`http://1.1.1.1/`, IPv6, Dezimalschreibweise) – der Proxy nimmt nur Namen;
+- **Heimnetz und Rechner selbst** (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`, Loopback,
+  Link-Local) – auch, wenn ein freigegebener Name dorthin aufgelöst würde;
+- andere Ports (nur `GET` über Port 80 und `CONNECT` zu Port 443);
+- jeder Versuch am Proxy vorbei (direkte Verbindung, eigenes DNS) – es gibt keine Route.
+
+Fällt der Proxy aus, ist das Netz zu (fail closed).
+
+**Grenze der Container-Schicht:** Weil das Wurzeldateisystem in diesem Modus beschreibbar ist,
+misst der Runner die Größe der Schicht bei jedem Heartbeat. Die Grenze legt die Rolle fest
+(„Runner: Container-Schicht (MB)“, Vorgabe 4096 MB); wird sie überschritten, endet die Sitzung.
+Die Schicht ist flüchtig und mit dem Container weg – der Arbeitsstand bleibt.
+
+### Eigener HTML-Server
+
+Für die **Vorschau** gibt es weiter `serve` (mgpt-serve). Ein selbst installierter Server geht
+genauso, solange er auf **Port 8080** im Container lauscht, z. B.:
+
+```bash
+python3 -m http.server 8080 --directory site
+npx http-server site -p 8080
+```
+
+Veröffentlicht wird nur Port 8080, und zwar wie bisher nur über MultiGPT mit dem Token der
+Sitzung (Knopf **Vorschau**). Andere Ports sind von außen nicht erreichbar.
+
 ## Seite „Runner“: Live-Status und Audit
 
 Die Seite zeigt (alle 5 s aktualisiert) deine Runner, die laufenden und letzten Sitzungen und die
@@ -281,6 +377,14 @@ Container-Minuten zählen auf das Abrechnungskonto **„Runner-Laufzeit“** (si
 
 - Arbeitscontainer: nur das freigegebene Image (mit Digest), rootless, ohne Capabilities, ohne
   Host-Verzeichnisse, mit Grenzen für CPU, RAM, Prozesse und Ausgabe; Netz aus (ohne DNS).
+- Modus „Paketquellen“ (nur mit Rollenrecht): Die feste Vorlage wird **nur** für den
+  Arbeitscontainer und nur so weit gelockert, wie `apt_install` es braucht – beschreibbare,
+  flüchtige Container-Schicht und genau die Capabilities `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
+  `FSETID`, `SETUID`, `SETGID` (rootless nur im eigenen User-Namespace, also ohne Rechte auf dem
+  Rechner). `no-new-privileges`, Nutzer 1000 für die Shell, keine Host-Namespaces, keine fremden
+  Netze und keine Mounts bleiben. Netz nur über den Proxy mit Positivliste, kein Heimnetz. Runner
+  und Testvektoren lehnen jede andere Kombination ab (z. B. beschreibbare Schicht ohne diesen
+  Modus, weitere Capabilities, `privileged`, ein zweites Netz).
 - Keine Geheimnisse des Rechners im Container (kein Home-Verzeichnis, keine SSH-Schlüssel,
   bereinigte Umgebung).
 - Vorschau: nur über MultiGPT mit zufälligem Sitzungs-Token im Pfad, in einem Rahmen mit
