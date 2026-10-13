@@ -12,9 +12,12 @@ Je Prozess gibt es einen ``Hub`` mit den Verbindungen dieses Prozesses
    bzw. 4400); falsche Protokollversion 4426. Token ungültig, abgelaufen oder
    widerrufen → 4401, Konto ohne Recht → 4403 (Fehlversuche ins Audit, für die
    Drosselung je IP).
-3. Runner online setzen, Ist-Zustand abgleichen, ``welcome``. Eine ältere
-   Verbindung desselben Runners (auch in einem anderen Prozess, über
-   ``mgpt_runner_ctl``) wird mit 4409 geschlossen.
+3. Installationsschlüssel laden (fehlt er: 1011), Dienstkatalog prüfen
+   (``trust``), Runner online setzen, Ist-Zustand abgleichen, ``welcome`` mit
+   den freigegebenen Diensten. Ab hier geht jeder Rahmen an den Agent im
+   Umschlag ``signed`` hinaus (Signatur über die ``nonce`` aus dem ``hello``).
+   Eine ältere Verbindung desselben Runners (auch in einem anderen Prozess,
+   über ``mgpt_runner_ctl``) wird mit 4409 geschlossen.
 4. ``LISTEN mgpt_runner_<id>``; Rahmen aus der Warteschlange gehen an den Agent.
    Antworten des Agents gehen an den Prozess, der den Rahmen geschickt hat
    (``delivery.route_key``).
@@ -47,7 +50,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from multigpt.version import app_version
 
-from . import control, protocol, store
+from . import control, protocol, store, trust
 from .delivery import OFFLINE_MESSAGE, ROUTE_KINDS, ROUTE_MESSAGE, route_key, runner_channel
 from .listener import Listener
 
@@ -126,6 +129,10 @@ class Connection:
         self.token_id: int | None = None
         self.owner_id: int | None = None
         self.connected_at = None
+        # Aus dem hello: Zufallszahl des Agents und Installationsschlüssel – jeder
+        # Rahmen an den Agent geht signiert hinaus (Umschlag ``signed``).
+        self.nonce: str | None = None
+        self.key: trust.ServerKey | None = None
         self.closed = False
         self.close_code: int | None = None
         # Zuordnung (Art, ID) → Antwortkanal des Prozesses, der zuletzt schickte.
@@ -140,9 +147,9 @@ class Connection:
     # --- Senden und Schließen -------------------------------------------------
 
     async def send(self, frame: dict) -> None:
-        kind = frame["type"]
-        fields = {key: value for key, value in frame.items() if key != "type"}
-        text = protocol.encode(kind, protocol.SERVER, **fields)
+        if self.key is None or self.nonce is None:
+            raise RuntimeError("Vor dem hello wird nichts gesendet (keine Signatur möglich).")
+        text = trust.sign_frame(self.key, frame, self.nonce)
         async with self._send_lock:
             if self.closed:
                 raise Closed()
@@ -619,6 +626,12 @@ class Hub:
         if auth.code is not None:
             await conn.close(auth.code)
             return
+        key = await asyncio.to_thread(trust.server_key_or_none)
+        if key is None:
+            logger.error(trust.MSG_NO_KEY.format(path=trust.server_key_path()))
+            await conn.close(protocol.CLOSE_SERVER_ERROR)
+            return
+        conn.key, conn.nonce = key, hello["nonce"]
         conn.token_id, conn.owner_id = auth.token_id, auth.owner_id
         connected = await db(store.connect, auth.token_id, hello, conn.ip)
         conn.runner_id, conn.connected_at = connected.runner_id, connected.connected_at
@@ -633,6 +646,8 @@ class Hub:
                 "images": _images(),
                 "max_frame_bytes": protocol.MAX_FRAME_BYTES,
                 "chunk_bytes": protocol.CHUNK_BYTES,
+                "services": connected.services,
+                "catalog": connected.catalog_state,
             }
         )
         logger.info("Runner %s verbunden", conn.runner_id)

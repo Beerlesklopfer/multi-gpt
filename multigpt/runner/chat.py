@@ -11,15 +11,18 @@ lief; eine fremde bzw. abweichende Sitzung meldet „belegt“.
 
 **Werkzeuge und Rückfrage (8t):** Katalog und Einstufung in ``runner.tools``;
 der Modus kommt aus ``ChatWorkspace.mode`` (leer: Vorgabe nach Netz).
-``ssh``/``telnet`` fragen immer, nur mit Rollenrecht „Fernzugriff“ und nie über
-API-Keys; den Zugang setzt :func:`execute` erst für den bestätigten Aufruf ein
-(nie in ``ToolCall.arguments``, nie im Log). ``todo`` läuft auf dem Server.
+``setup_host``/``telnet`` fragen immer, nur mit Rollenrecht „Fernzugriff“ und
+nie über API-Keys; den Zugang (bei ``setup_host`` zusätzlich einen frischen
+Kopplungs-Token für das Zielsystem) setzt :func:`execute` erst für den
+bestätigten Aufruf ein (nie in ``ToolCall.arguments``, nie im Log). ``todo``
+läuft auf dem Server. Angeboten wird nur, was der verbundene Runner in einem
+gültig signierten Dienstkatalog gemeldet hat (``Runner.services``, trust.py).
 
 **Runden (8u):** Runner-Antworten haben eigene :data:`MAX_ROUNDS` (100); danach
 fragt der Chat, ob weitergearbeitet werden soll (Schleife in ``services``).
 
 **API-Keys (8o):** Über einen M15-Key mit ``runner.use`` (``ask`` mit
-``workspace``) nur Arbeitsstände des Kontos, nur ohne Netz, ohne ssh/telnet,
+``workspace``) nur Arbeitsstände des Kontos, nur ohne Netz, ohne setup_host/telnet,
 Modus „alles automatisch“ (eine Rückfrage kann über den Key niemand bestätigen).
 
 Alles hier läuft im Request- bzw. Worker-Thread (ORM); der MCP-Aufruf selbst
@@ -57,6 +60,7 @@ COMMAND_SECONDS = 600
 OUTPUT_BYTES = 64 * 1024
 IDLE_MINUTES = 15
 SCRATCH_MB = 1024  # Vorgabe für /scratch, falls die Rolle nichts sagt
+SETUP_SECONDS = 300.0  # setup_host: Programm übertragen, koppeln, Dienst starten
 EXTRA_SECONDS = 15  # Zuschlag auf das Zeitlimit von bash (Rückkanal, Abschluss)
 
 OPTION_API_KEY = "runner_api_key"  # Turn.options: ID des Keys (Nutzung über M15)
@@ -73,7 +77,14 @@ MSG_START_FAILED = "Die Sitzung im Runner konnte nicht gestartet werden."
 MSG_NOT_RUNNING = "Die Sitzung im Runner läuft nicht mehr. Bitte erneut versuchen."
 MSG_HOST = "Unbekannter oder nicht freigegebener Host „{name}“."
 MSG_HOST_PROTOCOL = "Der Host „{name}“ ist nicht für {tool} eingerichtet."
-MSG_REMOTE_DENIED = "ssh und telnet sind hier nicht erlaubt."
+MSG_REMOTE_DENIED = "Einrichtung und telnet sind hier nicht erlaubt."
+MSG_NOT_GRANTED = (
+    "Der Dienst „{name}“ ist für diesen Runner nicht freigegeben (Dienstkatalog nicht "
+    "gültig signiert oder Dienst nicht eingestuft)."
+)
+MSG_NO_PUBLIC_URL = (
+    "Die Adresse von MultiGPT für das Zielsystem ist unbekannt (Einstellung RUNNER_PUBLIC_URL)."
+)
 MSG_NO_IMAGE = "Für den Runner ist kein Arbeits-Image mit Digest eingerichtet."
 MSG_ROUND_LIMIT = (
     "Höchstzahl von {rounds} Werkzeugrunden erreicht – weiterarbeiten? Bestätigen setzt "
@@ -101,16 +112,25 @@ class RunnerContext:
     network: bool
     api_key_id: int | None = None
     hosts: dict[str, list[str]] = field(default_factory=dict)
+    # Dienste des verbundenen Runners (None: kein Runner online, ohne Filter) und
+    # freigegebene neue Dienste aus dem signierten Katalog (Name → RunnerTool).
+    services: frozenset[str] | None = None
+    extra: dict = field(default_factory=dict)
 
     @property
     def via_api_key(self) -> bool:
         return self.api_key_id is not None
 
     def specs(self):
-        return tools.specs(remote=bool(self.hosts), hosts=self.hosts)
+        return tools.specs(
+            remote=bool(self.hosts), hosts=self.hosts, services=self.services, extra=self.extra
+        )
 
     def needs_confirmation(self, tool: str) -> bool:
-        return tools.needs_confirmation(tool, self.mode)
+        return tools.needs_confirmation(tool, self.mode, self.extra)
+
+    def tool(self, name: str):
+        return tools.get(name) or self.extra.get(name)
 
 
 def runner_server(user) -> McpServer | None:
@@ -160,6 +180,13 @@ def context_for(user, conversation, server_ids, *, api_key_id=None) -> RunnerCon
     else:
         mode = tools.effective_mode(selection.mode, network=network, is_admin=_is_admin(user))
         hosts = _remote_hosts(user)
+    runner = _online_runner(user)
+    services = frozenset(runner.services or ()) if runner is not None else None
+    extra = {}
+    if services:
+        from . import trust
+
+        extra = trust.extra_tools(services)
     return RunnerContext(
         user=user,
         conversation=conversation,
@@ -170,6 +197,8 @@ def context_for(user, conversation, server_ids, *, api_key_id=None) -> RunnerCon
         network=network,
         api_key_id=api_key_id,
         hosts=hosts,
+        services=services,
+        extra=extra,
     )
 
 
@@ -364,7 +393,7 @@ def _session_frame(session: RunnerSession, workspace: RunnerWorkspace, ctx) -> d
         frame["workspace_uuid"] = str(workspace.uuid)
     allow = _allowlist(ctx) if not session.network else []
     if allow:
-        # 8w: ssh/telnet erreichen nur die freigegebenen Hosts (Positivliste setzt der Agent).
+        # 8w: setup_host/telnet erreichen nur freigegebene Hosts (Positivliste setzt der Agent).
         frame["network"] = "allowlist"
         frame["allow"] = allow
     if workspace.size and workspace.sha256:
@@ -520,8 +549,12 @@ def _remote_arguments(ctx: RunnerContext, name: str, args: dict) -> dict:
     host = get_host(ctx.user, args["host"])
     if host is None:
         raise tools.ArgumentError(MSG_HOST.format(name=args["host"]))
-    if host.protocol != name:
+    if host.protocol != tools.HOST_PROTOCOL.get(name):
         raise tools.ArgumentError(MSG_HOST_PROTOCOL.format(name=host.name, tool=name))
+    if name == tools.SETUP and host.auth_method != host.AuthMethod.KEY:
+        raise tools.ArgumentError(
+            f"Der Host „{host.name}“ hat keinen SSH-Schlüssel – Einrichtung nur per Schlüssel."
+        )
     access = connection_for(host)
     out = {k: v for k, v in args.items() if k != "host"}
     out["host"] = {
@@ -536,10 +569,46 @@ def _remote_arguments(ctx: RunnerContext, name: str, args: dict) -> dict:
     return out
 
 
+def _pairing(ctx: RunnerContext, host_name: str):
+    """Kopplung für ``setup_host``: frischer Token (nur für diesen Aufruf gezeigt),
+    Adresse, Fingerprint und öffentlicher Installationsschlüssel des Servers,
+    Programme mit Prüfsumme. Liefert (Daten, Token-Objekt)."""
+    from . import quadlet, tokens, trust
+
+    base = trust.public_url()
+    if not base:
+        raise tools.ArgumentError(MSG_NO_PUBLIC_URL)
+    key = trust.public_key_text()
+    if not key:
+        raise tools.ArgumentError("Der Installationsschlüssel des Servers fehlt.")
+    info = trust.dist_info()
+    if not info.binaries:
+        raise tools.ArgumentError("Auf dem Server liegen keine Runner-Programme zum Herunterladen.")
+    try:
+        created = tokens.create_token(ctx.user, f"Einrichtung {host_name}"[: tokens.MAX_NAME])
+    except ValueError as exc:
+        raise tools.ArgumentError(str(exc)) from None
+    data = {
+        "url": base,
+        "token": created.secret,
+        "ca_sha256": quadlet.ca_fingerprint(),
+        "server_key": key,
+        # Arbeits-Image mit Digest für ``pair --images`` (wie auf der Kopplungsseite).
+        "images": [settings.RUNNER_WORK_IMAGE],
+        "download": {
+            arch: {"url": f"{base}/runner/download/{arch}", "sha256": item["sha256"]}
+            for arch, item in info.binaries.items()
+        },
+    }
+    return data, created.token
+
+
 def _timeout(server: McpServer, name: str, args: dict) -> float:
     base = float(server.timeout_seconds or 30)
     if name == "bash":
         return float(args.get("timeout_s") or tools.BASH_TIMEOUT_DEFAULT) + EXTRA_SECONDS
+    if name == tools.SETUP:
+        return max(base, SETUP_SECONDS)
     return base
 
 
@@ -561,23 +630,37 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
 
     started = time.monotonic()
     name = tool_call.tool
-    tool = tools.get(name)
+    tool = ctx.tool(name)
     session = None
     exit_code = None
     audit_args: dict = {}
+    pairing_token = None
     try:
         if tool is None:
             raise tools.ArgumentError(tooling.MSG_UNKNOWN)
-        if tool.kind == tools.REMOTE and (ctx.via_api_key or not ctx.hosts):
+        remote = tool.kind in (tools.REMOTE, tools.SETUP_KIND)
+        if remote and (ctx.via_api_key or not can(ctx.user, Action.USE_RUNNER_HOSTS)):
             raise tools.ArgumentError(MSG_REMOTE_DENIED)
-        args = tools.clean_arguments(name, tool_call.arguments or {})
+        if tool.name in tools.REMOTE_TOOLS and not ctx.hosts:
+            raise tools.ArgumentError(MSG_REMOTE_DENIED)
+        if tools.get(name) is not None:
+            args = tools.clean_arguments(name, tool_call.arguments or {})
+        else:
+            args = tools.clean_extra_arguments(tool_call.arguments or {})
         audit_args = dict(args)
         if tool.server_side:
             outcome = _run_todo(ctx, args)
         else:
-            if tool.kind == tools.REMOTE:
-                args = _remote_arguments(ctx, name, args)
+            if ctx.services is not None and name not in ctx.services:
+                raise tools.ArgumentError(MSG_NOT_GRANTED.format(name=name))
             session = ensure_session(ctx)
+            granted = set((session.runner.services if session.runner else None) or ())
+            if name not in granted:
+                raise tools.ArgumentError(MSG_NOT_GRANTED.format(name=name))
+            if tool.name in tools.REMOTE_TOOLS:
+                args = _remote_arguments(ctx, name, args)
+            if name == tools.SETUP:
+                args["pairing"], pairing_token = _pairing(ctx, args["host"]["name"])
             config = ServerConfig.for_runner(
                 server,
                 runner_id=session.runner_id,
@@ -609,11 +692,16 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
     except Exception as exc:
         logger.error("Runner-Aufruf %s fehlgeschlagen: %s", tool_call.pk, type(exc).__name__)
         outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_FAILED, True)
+    if pairing_token is not None and outcome.is_error:
+        # Einrichtung gescheitert: den Token für das Zielsystem gleich widerrufen.
+        from . import tokens
+
+        tokens.revoke(pairing_token)
     elapsed = tooling.record(tool_call, outcome, started)
     if tool is not None and not (tool.server_side):
         try:
             audit.record(
-                "remote" if tool.kind == tools.REMOTE else "tool",
+                "remote" if tool.kind in (tools.REMOTE, tools.SETUP_KIND) else "tool",
                 owner=ctx.user,
                 session=session,
                 runner=session.runner if session is not None else None,

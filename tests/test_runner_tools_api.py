@@ -22,7 +22,7 @@ from multigpt.runner.models import (
     RunnerWorkspace,
 )
 from tests.node_support import call, make_key, make_user, structured, text
-from tests.runner_fakes import FakeLink
+from tests.runner_fakes import ALL_SERVICES, FakeLink
 from tests.test_tool_loop import ScriptedAdapter, answer, tool_round
 from tests.test_tool_loop import call as tool_call_event
 
@@ -84,7 +84,12 @@ def setup(anna):
     server = ensure_mcp_server(anna)
     token = RunnerToken.objects.create(owner=anna, name="PC", prefix="abc", token_hash="0" * 64)
     Runner.objects.create(
-        token=token, name="pc", status=Runner.Status.ONLINE, last_seen=timezone.now()
+        token=token,
+        name="pc",
+        status=Runner.Status.ONLINE,
+        last_seen=timezone.now(),
+        catalog_state="valid",
+        services=ALL_SERVICES,
     )
     RunnerWorkspace.objects.create(owner=anna, name="spiel")
     host = RunnerHost.objects.create(

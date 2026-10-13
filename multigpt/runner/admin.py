@@ -6,6 +6,8 @@ keine Argumente von Werkzeugaufrufen. Tokens lassen sich nur widerrufen;
 Tokens, Runner, Arbeitsstände und Sitzungen legt nicht der Admin an.
 Hosts für ssh/telnet pflegt nur der Verwalter, der Zugang (Schlüssel bzw.
 Passwort) wird verschlüsselt gespeichert und nie wieder angezeigt.
+Neue Dienste aus gültig signierten Dienstkatalogen (``RunnerService``) werden
+hier eingestuft und freigegeben – vorher bietet der Server sie nicht an.
 """
 
 from __future__ import annotations
@@ -13,12 +15,21 @@ from __future__ import annotations
 from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
+from django.utils.html import format_html
 
 from multigpt.chat.admin import SecretFieldFormMixin
 from multigpt.core.fields import mask_secret
 
 from . import tokens
-from .models import Runner, RunnerAudit, RunnerHost, RunnerSession, RunnerToken, RunnerWorkspace
+from .models import (
+    Runner,
+    RunnerAudit,
+    RunnerHost,
+    RunnerService,
+    RunnerSession,
+    RunnerToken,
+    RunnerWorkspace,
+)
 
 
 class _ReadOnlyAdmin(admin.ModelAdmin):
@@ -85,9 +96,10 @@ class RunnerAdmin(_ReadOnlyAdmin):
         "engine_version",
         "rootless",
         "agent_version",
+        "catalog_state",
         "last_seen",
     )
-    list_filter = ("status", "engine", "rootless")
+    list_filter = ("status", "engine", "rootless", "catalog_state")
     list_select_related = ("token__owner",)
     readonly_fields = (
         "name",
@@ -102,6 +114,9 @@ class RunnerAdmin(_ReadOnlyAdmin):
         "connected_at",
         "last_seen",
         "created",
+        "catalog_state",
+        "catalog_release",
+        "services",
     )
     fields = readonly_fields
 
@@ -316,3 +331,69 @@ class RunnerHostAdmin(admin.ModelAdmin):
         if form.cleaned_data.get("confirm_host_key") and obj.host_key:
             obj.host_key_confirmed_at = timezone.now()
         super().save_model(request, obj, form, change)
+
+
+class RunnerServiceForm(forms.ModelForm):
+    class Meta:
+        model = RunnerService
+        fields = ("status", "kind")
+
+    def clean(self):
+        data = super().clean()
+        if data.get("status") == RunnerService.Status.APPROVED and not data.get("kind"):
+            self.add_error("kind", "Zum Freigeben bitte einstufen.")
+        return data
+
+
+@admin.register(RunnerService)
+class RunnerServiceAdmin(admin.ModelAdmin):
+    """Neue Dienste wie neue Werkzeuge eines importierten MCP-Servers: erst nach
+    Einstufung durch einen Verwalter angeboten. Beschreibung und Parameter stammen
+    aus dem signierten Katalog und sind hier nicht änderbar."""
+
+    form = RunnerServiceForm
+    list_display = ("name", "status", "kind", "proposed_kind", "release", "last_seen")
+    list_filter = ("status", "kind")
+    search_fields = ("name", "description")
+    readonly_fields = (
+        "name",
+        "proposed_kind",
+        "description_block",
+        "schema_block",
+        "release",
+        "first_seen",
+        "last_seen",
+        "reviewed_by",
+        "reviewed_at",
+    )
+    fields = ("name", "status", "kind", *readonly_fields[1:])
+    actions = ["block_services"]
+
+    def has_add_permission(self, request):
+        return False  # entstehen nur aus Katalogen der Runner
+
+    @admin.display(description="Beschreibung (aus dem Katalog)")
+    def description_block(self, obj):
+        return format_html('<pre style="white-space: pre-wrap">{}</pre>', obj.description)
+
+    @admin.display(description="Parameter (aus dem Katalog)")
+    def schema_block(self, obj):
+        import json
+
+        text = json.dumps(obj.input_schema, ensure_ascii=False, indent=2)
+        return format_html('<pre style="white-space: pre-wrap">{}</pre>', text)
+
+    def save_model(self, request, obj, form, change):
+        if {"status", "kind"} & set(form.changed_data):
+            obj.reviewed_by = request.user
+            obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Ausgewählte Dienste sperren")
+    def block_services(self, request, queryset):
+        count = queryset.update(
+            status=RunnerService.Status.BLOCKED,
+            reviewed_by=request.user,
+            reviewed_at=timezone.now(),
+        )
+        messages.success(request, f"{count} Dienst(e) gesperrt. Gilt ab der nächsten Verbindung.")

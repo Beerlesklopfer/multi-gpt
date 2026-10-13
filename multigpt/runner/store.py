@@ -23,7 +23,7 @@ from psycopg import sql
 
 from multigpt.accounts.permissions import Action, can
 
-from . import audit, limits, protocol, tokens
+from . import audit, limits, protocol, tokens, trust
 from .delivery import runner_channel
 from .models import Runner, RunnerAudit, RunnerMessage, RunnerSession, RunnerToken, RunnerWorkspace
 
@@ -125,6 +125,8 @@ class Connected:
     runner_id: int
     connected_at: object
     frames: list[dict] = field(default_factory=list)  # sofort an den Agent
+    services: list[str] = field(default_factory=list)  # welcome.services
+    catalog_state: str = "missing"
 
 
 def connect(token_id: int, hello: dict, ip: str | None) -> Connected:
@@ -132,6 +134,9 @@ def connect(token_id: int, hello: dict, ip: str | None) -> Connected:
     fresh()
     now = timezone.now()
     engine = hello["engine"]
+    # Dienstkatalog (Release-Signatur) prüfen; nur gültige Kataloge geben Dienste frei.
+    check = trust.check_catalog(hello)
+    services = trust.grant(check, now)
     with transaction.atomic():
         runner, _created = Runner.objects.select_for_update().get_or_create(token_id=token_id)
         runner.name = hello["hostname"][:200]
@@ -143,8 +148,21 @@ def connect(token_id: int, hello: dict, ip: str | None) -> Connected:
         runner.status = Runner.Status.ONLINE
         runner.connected_at = now
         runner.last_seen = now
+        runner.catalog_state = check.state
+        runner.catalog_release = check.release[:50]
+        runner.services = services
         runner.save()
     frames = reconcile(runner, hello.get("sessions") or [], now)
+    if not check.trusted:
+        _audit(
+            RunnerAudit.Kind.TRUST,
+            owner=runner.token.owner,
+            runner=runner,
+            ip=ip or None,
+            message=f"keine Werkzeuge: {check.message}",
+        )
+    elif check.state == "dev":
+        logger.warning("Runner %s: unsignierter Katalog angenommen (Entwicklung).", runner.pk)
     _audit(
         RunnerAudit.Kind.CONNECT,
         owner=runner.token.owner,
@@ -154,7 +172,7 @@ def connect(token_id: int, hello: dict, ip: str | None) -> Connected:
             f"verbunden (Agent {runner.agent_version}, {runner.engine} {runner.engine_version})"
         ),
     )
-    return Connected(runner.pk, now, frames)
+    return Connected(runner.pk, now, frames, services, check.state)
 
 
 def _session_uuid(value: str) -> uuid.UUID | None:
@@ -387,13 +405,14 @@ def _limits_mismatch(requested: dict, actual: dict | None) -> list[str]:
     """Abweichungen der Ist- von den Soll-Grenzen (``limits.mismatches``).
 
     Im Protokoll ist ``network`` ein Modus (``none``/``allowlist``/``default``),
-    in den Soll-Grenzen ein Wahrheitswert (Netz an/aus).
+    in den Soll-Grenzen ein Wahrheitswert (Netz an/aus). Die Positivliste
+    (``allowlist``, nur freigegebene Hosts über das Relay, 8w) ist kein freies Netz.
     """
     if not actual or not requested:
         return []
     actual = dict(actual)
     if isinstance(actual.get("network"), str):
-        actual["network"] = actual["network"] != "none"
+        actual["network"] = actual["network"] == "default"
     return limits.mismatches(requested, actual)
 
 

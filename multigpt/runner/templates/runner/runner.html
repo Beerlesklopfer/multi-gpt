@@ -8,7 +8,7 @@
     <p class="breadcrumb"><a href="{% url 'settings' %}">Einstellungen</a> › Runner</p>
     <h1 id="runner-title">Runner</h1>
     <p class="page-intro">
-      Der Runner ist ein Container auf deinem Rechner (Podman rootless). Darin arbeiten Modelle
+      Der Runner ist ein kleines Programm auf deinem Rechner, das Container (Podman rootless) startet. Darin arbeiten Modelle
       wie in einer Entwicklungsumgebung: Dateien lesen und ändern, Befehle ausführen, testen.
       Der Container hat kein Netz und nur einen flüchtigen Arbeitsbereich; deine
       <a href="{% url 'runner:workspaces' %}">Arbeitsstände</a> liegen als git-Bundle auf dem Server.
@@ -26,27 +26,89 @@
                   aria-label="Token kopieren" title="Token kopieren">{% include "runner/_copy_icon.html" %}</button>
           <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
         </div>
+        {% if not server_key %}
+          <p class="hint" role="alert"><strong>Der Installationsschlüssel des Servers fehlt.</strong> Ohne ihn nimmt kein Runner Befehle an. Verwalter: <code>sudo mgpt-ctl runner keygen</code>, danach den Runner-Dienst neu starten.</p>
+        {% endif %}
         <h3>Einrichten auf deinem Rechner (Linux, Podman rootless)</h3>
-        <ol class="runner-steps">
-          {% for text, command in commands %}
-            <li>{{ text }}:
-              <div class="connect-block">
-                <pre id="runner-cmd-{{ forloop.counter }}"><code>{{ command }}</code></pre>
-                <button type="button" class="icon-button connect-copy" data-connect-copy="runner-cmd-{{ forloop.counter }}"
-                        aria-label="Befehl kopieren" title="Befehl kopieren">{% include "runner/_copy_icon.html" %}</button>
-                <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
-              </div>
-            </li>
-          {% endfor %}
-        </ol>
-        <p>Inhalt von <code>~/.config/containers/systemd/{{ quadlet_name }}</code>:</p>
-        <div class="connect-block">
-          <pre id="runner-quadlet"><code>{{ quadlet }}</code></pre>
-          <button type="button" class="icon-button connect-copy" data-connect-copy="runner-quadlet"
-                  aria-label="Quadlet-Datei kopieren" title="Quadlet-Datei kopieren">{% include "runner/_copy_icon.html" %}</button>
-          <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
-        </div>
-        <p class="hint">Der Token steht nicht in der Datei, sondern im Podman-Secret <code>{{ secret_name }}</code>.</p>
+        <p>Der Runner ist ein Programm für Linux (amd64 oder arm64), das als systemd-Dienst deines Nutzers läuft und die Arbeitscontainer über deinen Podman-Socket startet.</p>
+        {% if downloads %}
+          <div class="table-scroll">
+            <table class="usage-table" aria-label="Runner-Programme">
+              <thead><tr><th scope="col">Architektur</th><th scope="col">Herunterladen</th><th scope="col">SHA-256</th></tr></thead>
+              <tbody>
+                {% for item in downloads %}
+                  <tr>
+                    <th scope="row">{{ item.arch }}</th>
+                    <td><a href="{% url 'runner:download' item.arch %}" download>{{ item.name }}</a> ({{ item.size|filesizeformat }})</td>
+                    <td><code>{{ item.sha256 }}</code></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <p class="hint">{% if dist.signed %}Die Prüfsummen sind mit dem Schlüssel des Releases {{ dist.release }} signiert (<a href="{% url 'runner:download' 'SHA256SUMS' %}">SHA256SUMS</a>, <a href="{% url 'runner:download' 'SHA256SUMS.sig' %}">Signatur</a>).{% else %}Achtung: Für diese Prüfsummen gibt es keine gültige Release-Signatur.{% endif %}</p>
+          <ol class="runner-steps">
+            {% for text, command in native_commands %}
+              <li>{{ text }}:
+                <div class="connect-block">
+                  <pre id="runner-native-{{ forloop.counter }}"><code>{{ command }}</code></pre>
+                  <button type="button" class="icon-button connect-copy" data-connect-copy="runner-native-{{ forloop.counter }}"
+                          aria-label="Befehl kopieren" title="Befehl kopieren">{% include "runner/_copy_icon.html" %}</button>
+                  <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+          <p>Eingabe für <code>multigpt-runner pair</code> (Zeile 1 Token, Zeile 2 öffentlicher Schlüssel dieses Servers):</p>
+          <div class="connect-block">
+            <pre id="runner-pair-input"><code>{{ pair_input }}</code></pre>
+            <button type="button" class="icon-button connect-copy" data-connect-copy="runner-pair-input"
+                    aria-label="Eingabe kopieren" title="Eingabe kopieren">{% include "runner/_copy_icon.html" %}</button>
+            <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+          </div>
+          <p class="hint"><code>pair</code> legt Token (nur für dich lesbar) und Schlüssel des Servers (schreibgeschützt) in <code>~/.config/multigpt-runner/</code> ab, schreibt <code>~/.config/systemd/user/{{ unit_name }}</code> und startet den Dienst. Der Runner nimmt nur Befehle an, die dieser Server signiert hat.</p>
+          <details>
+            <summary>Inhalt von <code>~/.config/systemd/user/{{ unit_name }}</code></summary>
+            <div class="connect-block">
+              <pre id="runner-unit"><code>{{ unit }}</code></pre>
+              <button type="button" class="icon-button connect-copy" data-connect-copy="runner-unit"
+                      aria-label="Unit-Datei kopieren" title="Unit-Datei kopieren">{% include "runner/_copy_icon.html" %}</button>
+              <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+            </div>
+          </details>
+        {% else %}
+          <p class="hint">Auf diesem Server liegen keine Runner-Programme zum Herunterladen (das Paket bringt sie mit). Für Entwickler: <code>cargo install --path runner-rs/multigpt-runner</code>, dann <code>multigpt-runner pair</code> wie im Wiki beschrieben.</p>
+        {% endif %}
+        <details>
+          <summary>Ausweg: Runner als Container (Quadlet, Python-Agent)</summary>
+          <ol class="runner-steps">
+            {% for text, command in commands %}
+              <li>{{ text }}:
+                <div class="connect-block">
+                  <pre id="runner-cmd-{{ forloop.counter }}"><code>{{ command }}</code></pre>
+                  <button type="button" class="icon-button connect-copy" data-connect-copy="runner-cmd-{{ forloop.counter }}"
+                          aria-label="Befehl kopieren" title="Befehl kopieren">{% include "runner/_copy_icon.html" %}</button>
+                  <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+          <p>Schlüssel des Servers (für das zweite Secret):</p>
+          <div class="connect-block">
+            <pre id="runner-server-key"><code>{{ server_key }}</code></pre>
+            <button type="button" class="icon-button connect-copy" data-connect-copy="runner-server-key"
+                    aria-label="Schlüssel kopieren" title="Schlüssel kopieren">{% include "runner/_copy_icon.html" %}</button>
+            <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+          </div>
+          <p>Inhalt von <code>~/.config/containers/systemd/{{ quadlet_name }}</code>:</p>
+          <div class="connect-block">
+            <pre id="runner-quadlet"><code>{{ quadlet }}</code></pre>
+            <button type="button" class="icon-button connect-copy" data-connect-copy="runner-quadlet"
+                    aria-label="Quadlet-Datei kopieren" title="Quadlet-Datei kopieren">{% include "runner/_copy_icon.html" %}</button>
+            <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+          </div>
+          <p class="hint">Der Token steht nicht in der Datei, sondern im Podman-Secret <code>{{ secret_name }}</code>.</p>
+        </details>
       </section>
     {% endif %}
 
@@ -65,6 +127,9 @@
     </section>
 
     <h2 class="section-title" id="runner-tokens-title">Deine Runner</h2>
+    {% if outdated %}
+      <p class="hint" role="status">Mindestens ein Runner bekommt keine Werkzeuge: Sein Dienstkatalog ist nicht gültig signiert oder zu alt. Bitte das Programm aktualisieren (neu herunterladen wie beim Koppeln).</p>
+    {% endif %}
     {% if tokens %}
       <div class="table-scroll">
         <table class="usage-table" aria-labelledby="runner-tokens-title">
@@ -80,7 +145,7 @@
               <tr>
                 <th scope="row">{{ token.name }}</th>
                 <td><code>{{ token.display_prefix }}</code></td>
-                <td>{% if token.runner %}{{ token.runner.name|default:"–" }}{% if token.runner.engine_version %} ({{ token.runner.get_engine_display }} {{ token.runner.engine_version }}{% if token.runner.rootless %}, rootless{% endif %}){% endif %}{% else %}noch nicht gekoppelt{% endif %}</td>
+                <td>{% if token.runner %}{{ token.runner.name|default:"–" }}{% if token.runner.engine_version %} ({{ token.runner.get_engine_display }} {{ token.runner.engine_version }}{% if token.runner.rootless %}, rootless{% endif %}){% endif %}{% if token.runner.agent_version %}<br><span class="hint">Programm {{ token.runner.agent_version }}, Katalog: {{ token.runner.get_catalog_state_display }}{% if token.runner.catalog_release %} ({{ token.runner.catalog_release }}){% endif %}</span>{% endif %}{% else %}noch nicht gekoppelt{% endif %}</td>
                 <td{% if token.runner %} data-runner-connection="{{ token.runner.pk }}"{% endif %}>{% if token.runner %}{{ token.runner.get_status_display }}{% if token.runner.last_seen %}, zuletzt {{ token.runner.last_seen|date:"d.m.Y H:i" }}{% endif %}{% else %}–{% endif %}</td>
                 <td>{% if token.expires_at %}{{ token.expires_at|date:"d.m.Y H:i" }}{% else %}kein Ablauf{% endif %}</td>
                 <td>{% if token.last_used_at %}{{ token.last_used_at|date:"d.m.Y H:i" }}{% if token.last_used_ip %} von {{ token.last_used_ip }}{% endif %}{% else %}nie{% endif %}</td>

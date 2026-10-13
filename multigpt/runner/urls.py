@@ -11,6 +11,8 @@ urlpatterns = [
     path("", views.runner_page, name="index"),
     path("token/<int:pk>/widerrufen/", views.token_revoke, name="token_revoke"),
     path("token/<int:pk>/loeschen/", views.token_delete, name="token_delete"),
+    # Runner-Programm (natives Programm) und Prüfsummen: Anmeldung oder Kopplungs-Token
+    path("download/<str:arch>", views.download, name="download"),
     path("arbeitsstaende/", views.workspaces_page, name="workspaces"),
     path("arbeitsstaende/<int:pk>/", views.workspace_detail, name="workspace"),
     path("arbeitsstaende/<int:pk>/bundle/", views.workspace_download, name="workspace_download"),

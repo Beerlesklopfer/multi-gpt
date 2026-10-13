@@ -6,6 +6,7 @@ Sitzungsstart (keine echten Container).
 """
 
 import pytest
+from django.conf import settings
 from django.utils import timezone
 
 from multigpt.chat import tooling
@@ -13,7 +14,7 @@ from multigpt.chat.mcp import bridge
 from multigpt.chat.models import AIModel, Conversation, Message, Provider, ToolCall
 from multigpt.chat.providers import registry
 from multigpt.runner import chat as runner_chat
-from multigpt.runner import mcp_transport
+from multigpt.runner import mcp_transport, tokens, trust
 from multigpt.runner import tools as runner_tools
 from multigpt.runner.mcp_server import ensure_mcp_server
 from multigpt.runner.models import (
@@ -25,7 +26,7 @@ from multigpt.runner.models import (
     RunnerToken,
     RunnerWorkspace,
 )
-from tests.runner_fakes import FakeLink
+from tests.runner_fakes import ALL_SERVICES, FakeLink
 from tests.test_tool_loop import (
     ScriptedAdapter,
     answer,
@@ -103,7 +104,12 @@ def server(adult):
 def runner(adult):
     token = RunnerToken.objects.create(owner=adult, name="PC", prefix="abc", token_hash="0" * 64)
     return Runner.objects.create(
-        token=token, name="pc", status=Runner.Status.ONLINE, last_seen=timezone.now()
+        token=token,
+        name="pc",
+        status=Runner.Status.ONLINE,
+        last_seen=timezone.now(),
+        catalog_state="valid",
+        services=ALL_SERVICES,
     )
 
 
@@ -304,7 +310,7 @@ def test_session_is_reused(client, conversation, server, scripted, link):
     assert RunnerSession.objects.count() == 1
 
 
-# --- ssh/telnet ------------------------------------------------------------------------
+# --- setup_host/telnet ------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -325,43 +331,112 @@ def host(adult):
     return host
 
 
-def test_ssh_always_asks_and_hides_access(client, conversation, server, host, scripted, link):
+@pytest.fixture
+def dist(settings, tmp_path):
+    """Runner-Programme im Download-Verzeichnis und Adresse des Servers."""
+    import hashlib
+
+    base = tmp_path / "dist"
+    base.mkdir()
+    data = b"\x7fELF-test"
+    (base / "multigpt-runner-linux-amd64").write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    (base / "SHA256SUMS").write_text(f"{digest}  multigpt-runner-linux-amd64\n")
+    settings.RUNNER_DIST_DIR = str(base)
+    settings.RUNNER_PUBLIC_URL = "https://mgpt.example"
+    return digest
+
+
+def test_setup_host_always_asks_and_hides_access(
+    client, conversation, server, host, scripted, link, dist
+):
     calls = scripted(
-        [
-            tool_round(call(tname(server, "ssh"), {"host": "nas", "command": "uptime"}, "c1")),
-            answer(),
-        ]
+        [tool_round(call(tname(server, "setup_host"), {"host": "nas"}, "c1")), answer()]
     )
     events = events_of(send(client, conversation, mcp_servers=[server.pk]))
-    spec = next(t for t in calls[0]["tools"] if t.name == tname(server, "ssh"))
+    offered = [t.name for t in calls[0]["tools"]]
+    assert tname(server, "ssh") not in offered  # ssh im Alltag gibt es nicht mehr
+    spec = next(t for t in calls[0]["tools"] if t.name == tname(server, "setup_host"))
     assert spec.parameters["properties"]["host"]["enum"] == ["nas"]
     assert "192.0.2.10" not in str(calls[0]["tools"])
     assert "confirmation_required" in names(events)  # auch im Modus „alles automatisch“
     waiting = ToolCall.objects.get()
+    before = RunnerToken.objects.count()
     events_of(confirm(client, conversation, {str(waiting.pk): "approve"}))
     sent = link.workspace.remote[0]
     assert sent["host"]["address"] == "192.0.2.10"
     assert sent["host"]["secret"] == "GEHEIM-SCHLUESSEL"
+    pairing = sent["pairing"]
+    assert pairing["url"] == "https://mgpt.example"
+    assert pairing["download"] == {
+        "amd64": {"url": "https://mgpt.example/runner/download/amd64", "sha256": dist}
+    }
+    assert pairing["server_key"] == trust.public_key_text()
+    assert pairing["images"] == [settings.RUNNER_WORK_IMAGE]  # für pair --images
+    # Frischer Kopplungs-Token für das Zielsystem, gültig nach Erfolg
+    assert RunnerToken.objects.count() == before + 1
+    new = RunnerToken.objects.order_by("-pk").first()
+    assert new.name == "Einrichtung nas" and new.is_usable()
+    assert tokens.authenticate(pairing["token"]) == new
     waiting.refresh_from_db()
-    assert waiting.arguments == {"host": "nas", "command": "uptime"}
-    assert "GEHEIM" not in str(waiting.result) and "192.0.2.10" not in str(waiting.result)
+    assert waiting.arguments == {"host": "nas"}
+    for secret in ("GEHEIM", "192.0.2.10", pairing["token"]):
+        assert secret not in str(waiting.result)
     audit = RunnerAudit.objects.get(kind="remote")
-    assert "GEHEIM" not in audit.arguments and "192.0.2.10" not in audit.arguments
+    assert "GEHEIM" not in audit.arguments and pairing["token"] not in audit.arguments
     # 8w: Container erreicht nur den freigegebenen Host
     assert link.started[0]["network"] == "allowlist"
     assert link.started[0]["allow"] == [{"host": "192.0.2.10", "port": 22}]
 
 
-def test_ssh_unknown_host(client, conversation, server, host, scripted, link):
-    scripted(
-        [tool_round(call(tname(server, "ssh"), {"host": "router", "command": "x"}, "c1")), answer()]
-    )
+def test_setup_host_failure_revokes_pairing_token(
+    client, conversation, server, host, scripted, link, dist
+):
+    link.workspace.fail_setup = True
+    scripted([tool_round(call(tname(server, "setup_host"), {"host": "nas"}, "c1")), answer()])
+    events_of(send(client, conversation, mcp_servers=[server.pk]))
+    waiting = ToolCall.objects.get()
+    events_of(confirm(client, conversation, {str(waiting.pk): "approve"}))
+    waiting.refresh_from_db()
+    assert waiting.status == ToolCall.Status.ERROR
+    new = RunnerToken.objects.get(name="Einrichtung nas")
+    assert new.revoked_at is not None
+
+
+def test_setup_host_unknown_host(client, conversation, server, host, scripted, link, dist):
+    scripted([tool_round(call(tname(server, "setup_host"), {"host": "router"}, "c1")), answer()])
     events_of(send(client, conversation, mcp_servers=[server.pk]))
     waiting = ToolCall.objects.get()
     events_of(confirm(client, conversation, {str(waiting.pk): "approve"}))
     waiting.refresh_from_db()
     assert "router" in waiting.result_text and waiting.status == ToolCall.Status.ERROR
     assert not link.workspace.remote
+    assert not RunnerToken.objects.filter(name__startswith="Einrichtung").exists()
+
+
+def test_services_of_the_runner_limit_the_offer(
+    client, conversation, server, runner, scripted, link
+):
+    """Nur Dienste aus dem gültig signierten Katalog des Runners; todo bleibt."""
+    Runner.objects.filter(pk=runner.pk).update(services=["read"], catalog_state="valid")
+    calls = scripted([answer()])
+    events_of(send(client, conversation, mcp_servers=[server.pk]))
+    offered = {t.name for t in calls[0]["tools"]}
+    assert tname(server, "read") in offered and tname(server, "todo") in offered
+    assert tname(server, "write") not in offered and tname(server, "bash") not in offered
+
+
+def test_unsigned_runner_gets_no_tools_and_calls_are_refused(
+    client, conversation, server, runner, scripted, link
+):
+    Runner.objects.filter(pk=runner.pk).update(services=[], catalog_state="unsigned")
+    calls = scripted(
+        [tool_round(call(tname(server, "bash"), {"command": "echo x"}, "c1")), answer()]
+    )
+    events_of(send(client, conversation, mcp_servers=[server.pk]))
+    offered = {t.name for t in calls[0]["tools"]}
+    assert offered <= {tname(server, "todo")}
+    assert not [c for c in link.workspace.calls if c[0] == "bash"]
 
 
 def test_needs_confirmation_matrix():
@@ -375,7 +450,7 @@ def test_needs_confirmation_matrix():
     assert not runner_tools.needs_confirmation("write", edits)
     assert runner_tools.needs_confirmation("bash", edits)
     assert not runner_tools.needs_confirmation("bash", auto)
-    assert runner_tools.needs_confirmation("ssh", auto)
+    assert runner_tools.needs_confirmation("setup_host", auto)
     assert runner_tools.needs_confirmation("telnet", auto)
     assert runner_tools.needs_confirmation("unbekannt", auto)
     assert runner_tools.effective_mode("", network=False, is_admin=False) == auto

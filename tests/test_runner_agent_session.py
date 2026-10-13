@@ -28,6 +28,8 @@ class Harness:
         self.config = config or make_config()
         self.engine = engine or FakeEngine(self.config, root=str(tmp_path / "engine"))
         self.manager = SessionManager(self.engine, self.config, self.send, clock=clock)
+        # Wie nach einem welcome mit gültig signiertem Katalog: alle Dienste frei.
+        self.manager.services = frozenset(tools.TOOL_NAMES)
         self.manager.server_images = sorted(self.config.images)
         self.frames: list[dict] = []
         self.bundles: dict[str, bytes] = {}  # Arbeitsstand-Bundles „auf dem Server“

@@ -19,7 +19,11 @@ from mcp.server.mcpserver import MCPServer
 from mcp.shared.message import SessionMessage
 from mcp_types import BlobResourceContents, EmbeddedResource, jsonrpc_message_adapter
 
+from multigpt.runner import tools as runner_tools
 from multigpt.runner.mcp_transport import RunnerOffline
+
+# Alle Dienste eines gültig signierten Katalogs (Runner.services im Test)
+ALL_SERVICES = [t.name for t in runner_tools.CATALOG.values() if not t.server_side]
 
 
 class FakeWorkspace:
@@ -29,7 +33,8 @@ class FakeWorkspace:
         self.files: dict[str, str] = {}
         self.blobs: dict[str, bytes] = {}  # Binärdateien (z. B. in /scratch)
         self.calls: list[tuple[str, dict]] = []
-        self.remote: list[dict] = []  # ssh/telnet-Aufrufe mit Zugang (nur im Test lesen)
+        self.remote: list[dict] = []  # setup_host/telnet-Aufrufe mit Zugang (nur im Test lesen)
+        self.fail_setup = False
 
 
 def _norm(path: str) -> str:
@@ -117,10 +122,12 @@ def build_server(ws: FakeWorkspace) -> MCPServer:
         ]
 
     @server.tool()
-    def ssh(command: str, host: dict) -> str:
-        ws.calls.append(("ssh", {"command": command, "host": host.get("name")}))
-        ws.remote.append({"tool": "ssh", "command": command, "host": dict(host)})
-        return f"{host.get('name')}: ok"
+    def setup_host(host: dict, pairing: dict) -> str:
+        ws.calls.append(("setup_host", {"host": host.get("name")}))
+        ws.remote.append({"tool": "setup_host", "host": dict(host), "pairing": dict(pairing)})
+        if ws.fail_setup:
+            raise ValueError("Einrichtung gescheitert")
+        return f"{host.get('name')}: eingerichtet"
 
     @server.tool()
     def telnet(input: str, host: dict) -> str:  # noqa: A002 - Name aus dem Schema

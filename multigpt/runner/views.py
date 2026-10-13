@@ -15,16 +15,16 @@ from datetime import timedelta
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from multigpt.accounts.permissions import Action, can
 
-from . import audit, control, quadlet, tokens, workspaces
+from . import audit, control, quadlet, tokens, trust, workspaces
 from .mcp_server import ensure_mcp_server
-from .models import RunnerAudit, RunnerToken, RunnerWorkspace
+from .models import Runner, RunnerAudit, RunnerToken, RunnerWorkspace
 
 EXPIRY_CHOICES = [
     ("30", "30 Tage"),
@@ -90,9 +90,28 @@ def _runner_context(request, form, created=None):
         "commands": quadlet.setup_commands(),
         "quadlet_name": quadlet.FILE_NAME,
         "secret_name": quadlet.SECRET_NAME,
+        "unit_name": quadlet.UNIT_NAME,
+        "server_key": trust.public_key_text(),
+        "outdated": Runner.objects.filter(token__owner=user, token__revoked_at__isnull=True)
+        .exclude(catalog_state__in=("valid", "dev"))
+        .exists(),
     }
     if created is not None:
-        context["quadlet"] = quadlet.render(quadlet.server_url(request))
+        url = quadlet.server_url(request)
+        info = trust.dist_info()
+        context.update(
+            {
+                "quadlet": quadlet.render(url),
+                "unit": quadlet.render_unit(url),
+                "dist": info,
+                "downloads": [
+                    {"arch": arch, **item} for arch, item in sorted(info.binaries.items())
+                ],
+                "native_commands": quadlet.native_commands(url, info.binaries),
+                # Eingabe für "multigpt-runner pair": Token und Schlüssel des Servers
+                "pair_input": f"{created.secret}\n{trust.public_key_text()}",
+            }
+        )
     return context
 
 
@@ -265,3 +284,53 @@ def workspace_delete(request, pk: int):
         messages.success(request, f"Arbeitsstand „{workspace.name}“ gelöscht.")
         return redirect("runner:workspaces")
     return render(request, "runner/workspace_delete.html", {"workspace": workspace})
+
+
+# --- Runner-Programme (natives Programm, Rust-Agent) --------------------------------------
+
+
+def _download_allowed(request) -> bool:
+    """Angemeldet mit Recht „Runner nutzen“ oder ``Authorization: Bearer <Kopplungs-Token>``
+    (Zielsysteme beim Einrichten, ``curl``)."""
+    if request.user.is_authenticated:
+        return can(request.user, Action.USE_RUNNER)
+    header = request.headers.get("Authorization", "")
+    scheme, _, value = header.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return False
+    token = tokens.authenticate(value.strip())
+    return token is not None and can(token.owner, Action.USE_RUNNER)
+
+
+@require_GET
+def download(request, arch: str):
+    """Runner-Programm (``amd64``/``arm64``) bzw. ``SHA256SUMS`` und ``SHA256SUMS.sig``
+    aus ``RUNNER_DIST_DIR`` (vom Paket befüllt, signiert mit dem Release-Schlüssel)."""
+    if not _download_allowed(request):
+        if request.user.is_authenticated:
+            return HttpResponse("Deine Rolle erlaubt keinen Runner.", status=403)
+        response = HttpResponse("Anmeldung bzw. Kopplungs-Token nötig.", status=401)
+        response["WWW-Authenticate"] = 'Bearer realm="multigpt-runner"'
+        return response
+    base = trust.dist_dir()
+    if arch in (trust.SUMS_NAME, f"{trust.SUMS_NAME}.sig"):
+        path = base / arch
+        if not path.is_file():
+            raise Http404("Keine Prüfsummen vorhanden.")
+        response = FileResponse(path.open("rb"), content_type="text/plain; charset=utf-8")
+        response["X-Content-Type-Options"] = "nosniff"
+        return _no_store(response)
+    norm = trust.normalize_arch(arch)
+    info = trust.dist_info()
+    item = info.binaries.get(norm or "")
+    if item is None:
+        raise Http404("Für diese Architektur gibt es kein Runner-Programm.")
+    response = FileResponse(
+        trust.binary_path(norm).open("rb"),
+        as_attachment=True,
+        filename=item["name"],
+        content_type="application/octet-stream",
+    )
+    response["X-Checksum-SHA256"] = item["sha256"]
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)

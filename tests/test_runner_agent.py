@@ -29,8 +29,27 @@ IMAGE = "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:" + "a" * 64
 OTHER_IMAGE = "docker.io/library/alpine@sha256:" + "b" * 64
 
 
+def _trust_files() -> dict:
+    """Schlüsseldatei des Servers und signierter Katalog des Testlaufs (conftest)."""
+    try:
+        from django.conf import settings
+
+        base = Path(settings.RUNNER_SERVER_KEY).parent
+    except Exception:  # ohne Django (Vektor-Erzeugung als Skript)
+        return {}
+    if not (base / "server.pub").exists():
+        return {}
+    return {
+        "server_key_file": str(base / "server.pub"),
+        "catalog_file": str(base / "catalog.json"),
+        "catalog_sig_file": str(base / "catalog.json.sig"),
+        "catalog_key": (base / "catalog.key_id").read_text().strip(),
+    }
+
+
 def make_config(**kwargs) -> agent_config.Config:
     base = {"url": "wss://mgpt.example/runner/ws", "images": frozenset({IMAGE})}
+    base.update(_trust_files())
     base.update(kwargs)
     return agent_config.Config(**base)
 

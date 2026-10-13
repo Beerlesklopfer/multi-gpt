@@ -46,6 +46,24 @@ multi_gpt_ensure_env_keys() {
 }
 SNAKEOIL_KEY=/etc/ssl/private/ssl-cert-snakeoil.key
 
+# Installationsschlüssel des Runners (M14, Ed25519): Der Server signiert damit
+# jeden Befehl an seine Runner; der private Teil liegt nur hier (0600, Nutzer
+# multi-gpt, Verzeichnis 0700). Nur erzeugen, wenn er fehlt – ein neuer Schlüssel
+# hieße: alle Runner neu koppeln. Fehler sind kein Abbruch (Hinweis genügt).
+RUNNER_KEY_DIR=/var/lib/multi-gpt/runner
+multi_gpt_runner_key() {
+    [ -d "$RUNNER_KEY_DIR" ] || install -d -m 0700 -o multi-gpt -g multi-gpt "$RUNNER_KEY_DIR"
+    if [ -e "$RUNNER_KEY_DIR/server.key" ]; then
+        return 0
+    fi
+    if "$MGPT_CTL" runner keygen; then
+        :
+    else
+        echo "multi-gpt: WARNUNG: Installationsschlüssel des Runners nicht erzeugt."
+        echo "  Nachholen mit: sudo mgpt-ctl runner keygen && sudo systemctl restart multi-gpt-runner"
+    fi
+}
+
 multi_gpt_setup_hint() {
     cat <<'EOF'
   Konfiguration: /etc/multi-gpt/.env (danach: systemctl restart multi-gpt)
@@ -687,6 +705,8 @@ PY
     chmod 0640 "$ENV_FILE"
 
     multi_gpt_setup_nginx
+
+    multi_gpt_runner_key
 
     multi_gpt_migrate "$@"
 fi

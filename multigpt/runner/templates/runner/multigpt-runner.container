@@ -19,6 +19,8 @@ Label=multigpt.agent=1
 # Podman-Socket des Nutzers (systemctl --user enable --now podman.socket).
 Volume=%t/podman/podman.sock:/run/podman.sock
 Secret={{ secret_name }},type=mount,target=/run/secrets/token
+# Öffentlicher Installationsschlüssel des Servers (Prüfung der signierten Befehle).
+Secret={{ key_secret_name }},type=mount,target=/run/secrets/server_key
 Environment=MGPT_URL={{ mgpt_url }}
 {% if ca_sha256 %}# Selbstsigniertes Zertifikat des Servers: SHA-256-Fingerprint festgehalten.
 Environment=MGPT_CA_SHA256={{ ca_sha256 }}

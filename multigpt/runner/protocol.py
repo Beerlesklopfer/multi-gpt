@@ -16,8 +16,10 @@ fehlen oder ``null`` sein; ``parse`` ergänzt fehlende optionale Felder mit
 **Ablauf:**
 
 1. Der Agent verbindet sich (ohne ``Origin``-Header) und sendet innerhalb von
-   ``HELLO_TIMEOUT`` Sekunden ``hello`` mit Token. Der Server antwortet mit
-   ``welcome`` oder schließt mit einem Close-Code (``CLOSE_*``).
+   ``HELLO_TIMEOUT`` Sekunden ``hello`` mit Token, einer Zufallszahl ``nonce``
+   und – falls vorhanden – dem signierten Dienstkatalog. Der Server antwortet
+   mit ``welcome`` (freigegebene Dienste) oder schließt mit einem Close-Code
+   (``CLOSE_*``).
 2. Der Agent sendet alle ``heartbeat_seconds`` einen ``heartbeat`` mit dem
    Zustand seiner Sitzungen.
 3. ``session_start`` (Server) → der Agent holt bei Bedarf das Bundle
@@ -31,6 +33,31 @@ fehlen oder ``null`` sein; ``parse`` ergänzt fehlende optionale Felder mit
    und Token), ``preview_request``/``preview_response`` über den Rückkanal.
 6. ``session_stop`` (Server) beendet eine Sitzung; ``close`` kündigt das Ende
    der Verbindung mit Grund an.
+
+**Signaturen (Protokoll 2, Manipulationsschutz):** Authentifiziert wird der
+Agent nur über den Token. Die Ed25519-Schlüssel schützen vor Manipulation:
+
+* **Befehle des Servers:** *Jeder* Rahmen des Servers an den Agent (ab
+  ``welcome``) kommt im Umschlag ``signed`` – ``payload`` ist der JSON-Text
+  des inneren Rahmens als Base64 (exakte Bytes, kein kanonisches JSON),
+  ``sig`` die Ed25519-Signatur mit dem **Installationsschlüssel** des Servers
+  über ``FRAME_CONTEXT + nonce + "\n" + payload-Bytes`` (``signed_message``),
+  ``key`` dessen Kennung (``key_id``). Die ``nonce`` aus dem eigenen ``hello``
+  bindet jede Signatur an diese Verbindung. Der Agent prüft *vor* dem Parsen
+  des inneren Rahmens (``open_signed``) und nimmt vom Server nichts anderes an;
+  bei falschem Schlüssel oder falscher Signatur trennt er mit
+  ``CLOSE_SIGNATURE`` und verbindet sich nicht neu. Den öffentlichen Teil
+  bekommt der Agent beim Koppeln als Datei (eine Zeile Base64, 32 Byte roh).
+* **Dienstkatalog:** ``hello.catalog`` ist der Text von ``catalog.json``
+  (exakte Bytes als UTF-8), ``catalog_sig`` die Ed25519-Signatur eines
+  **Release-Schlüssels** über genau diese Bytes, ``catalog_key`` dessen
+  Kennung. Der Server prüft gegen die öffentlichen Schlüssel der letzten
+  Releases und meldet in ``welcome.services`` die freigegebenen Dienste
+  (``welcome.catalog``: Ergebnis der Prüfung). Der Agent bietet und führt nur
+  diese Dienste aus.
+
+Kryptographie liegt nicht in dieser Datei (nur Standardbibliothek): Signieren
+und Prüfen bekommen ``wrap_signed``/``open_signed`` als Funktion übergeben.
 
 Bundle-Übertragung (beide Richtungen; ``file_chunk`` für ``publish`` ebenso, nur
 Agent → Server): Stücke ``bundle_chunk`` mit fortlaufender
@@ -52,12 +79,18 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 # --- Größen und Zeiten -------------------------------------------------------
 
 # Ein Rahmen (JSON-Text, UTF-8). Liegt unter ws_max_size (8 MB) von uvicorn.
 MAX_FRAME_BYTES = 4 * 1024 * 1024
+# Innerer Rahmen im Umschlag ``signed``: Base64 macht 4/3 daraus, der Umschlag
+# muss unter MAX_FRAME_BYTES bleiben.
+MAX_PAYLOAD_BYTES = 3 * 1024 * 1024 - 1024
+# Dienstkatalog im hello (Text von catalog.json).
+MAX_CATALOG_BYTES = 256 * 1024
+MAX_SERVICES = 100
 # Rohdaten je Bundle-Stück (Base64 macht daraus ~1,34 MB).
 CHUNK_BYTES = 1024 * 1024
 # Obergrenze eines Bundles im Protokoll; die tatsächliche Grenze setzt der Server
@@ -67,6 +100,8 @@ MAX_BUNDLE_BYTES = 1024 * 1024 * 1024
 PTY_BYTES = 64 * 1024
 PREVIEW_BYTES = 1024 * 1024
 MAX_TEXT = 2000  # Meldungen, Fehlertexte
+SIGNATURE_BYTES = 64  # Ed25519
+PUBLIC_KEY_BYTES = 32
 MAX_ID = 64
 
 HELLO_TIMEOUT = 10  # Sekunden bis zum ersten Rahmen ``hello``
@@ -90,6 +125,7 @@ CLOSE_REPLACED = 4409  # neue Verbindung desselben Tokens hat diese ersetzt
 CLOSE_TOO_BIG = 4413  # Rahmen über MAX_FRAME_BYTES
 CLOSE_VERSION = 4426  # Protokollversion nicht unterstützt
 CLOSE_RATE_LIMIT = 4429  # zu viele Rahmen bzw. Anmeldeversuche
+CLOSE_SIGNATURE = 4498  # nur Agent: Rahmen des Servers nicht (richtig) signiert
 
 CLOSE_REASONS = {
     CLOSE_PROTOCOL: "Protokollfehler",
@@ -101,10 +137,13 @@ CLOSE_REASONS = {
     CLOSE_TOO_BIG: "Rahmen zu groß",
     CLOSE_VERSION: "Protokollversion nicht unterstützt",
     CLOSE_RATE_LIMIT: "Zu viele Anfragen",
+    CLOSE_SIGNATURE: "Signatur des Servers ungültig",
 }
 
 # Nach diesen Codes verbindet sich der Agent nicht neu (Mensch muss handeln).
-NO_RECONNECT = frozenset({CLOSE_TOKEN, CLOSE_FORBIDDEN, CLOSE_REPLACED, CLOSE_VERSION})
+NO_RECONNECT = frozenset(
+    {CLOSE_TOKEN, CLOSE_FORBIDDEN, CLOSE_REPLACED, CLOSE_VERSION, CLOSE_SIGNATURE}
+)
 # Nach diesen Codes neu verbinden mit Backoff; alle übrigen ebenfalls, aber mit
 # der längsten Wartezeit.
 RECONNECT = frozenset(
@@ -142,6 +181,17 @@ ERROR_CODES = (
     "internal",
 )
 HTTP_METHODS = ("GET", "HEAD")
+# Ergebnis der Prüfung des Dienstkatalogs (welcome.catalog)
+CATALOG_STATES = (
+    "valid",  # gültig signiert mit einem bekannten Release-Schlüssel
+    "unsigned",  # ohne Signatur
+    "invalid",  # Signatur falsch bzw. Katalog verändert oder unlesbar
+    "unknown_key",  # Release-Schlüssel unbekannt (zu alt bzw. fremd)
+    "missing",  # kein Katalog gemeldet
+    "dev",  # unsigniert, nur Entwicklung (RUNNER_ACCEPT_UNSIGNED mit DEBUG)
+)
+# Art eines Dienstes im Katalog (Einstufung, siehe multigpt/runner/tools.py)
+SERVICE_KINDS = ("read", "edit", "command", "publish", "remote", "setup")
 
 
 class ProtocolError(ValueError):
@@ -164,6 +214,9 @@ IMAGE_RE = re.compile(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
 HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+NONCE_RE = re.compile(r"^[0-9a-f]{64}$")
+KEY_ID_RE = re.compile(r"^[0-9a-f]{16}$")
+SERVICE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 MIME_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$")
 
 Check = Callable[[Any, str], Any]
@@ -179,7 +232,7 @@ def _str(max_len: int = MAX_TEXT, pattern: re.Pattern | None = None) -> Check:
             raise _fail(name, "Text erwartet")
         if len(value) > max_len:
             raise _fail(name, f"länger als {max_len} Zeichen")
-        if pattern is not None and not pattern.match(value):
+        if pattern is not None and not pattern.fullmatch(value):
             raise _fail(name, "ungültiges Format")
         return value
 
@@ -268,7 +321,7 @@ def _headers(value, name):
     if len(value) > 50:
         raise _fail(name, "mehr als 50 Einträge")
     for key, item in value.items():
-        if not HEADER_NAME_RE.match(key):
+        if not isinstance(key, str) or not HEADER_NAME_RE.fullmatch(key):
             raise _fail(name, "ungültiger Header-Name")
         if not isinstance(item, str) or len(item) > 4096 or "\r" in item or "\n" in item:
             raise _fail(f"{name}.{key}", "ungültiger Wert")
@@ -367,6 +420,10 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             "engine": (ENGINE, True),
             "hostname": (_str(253), True),
             "sessions": (_list(SESSION_INFO, 100), False),
+            "nonce": (_str(64, NONCE_RE), True),  # bindet die Signaturen des Servers
+            "catalog": (_str(MAX_CATALOG_BYTES), False),  # Text von catalog.json
+            "catalog_sig": (_b64(SIGNATURE_BYTES), False),
+            "catalog_key": (_str(16, KEY_ID_RE), False),
         },
     ),
     "welcome": (
@@ -379,6 +436,17 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             "images": (_list(_str(320, IMAGE_RE), 20), True),
             "max_frame_bytes": (_int(1024, MAX_FRAME_BYTES), True),
             "chunk_bytes": (_int(1024, CHUNK_BYTES), True),
+            "services": (_list(_str(64, SERVICE_RE), MAX_SERVICES), True),
+            "catalog": (_enum(CATALOG_STATES), True),
+        },
+    ),
+    # Umschlag für jeden Rahmen des Servers (siehe Signaturen oben)
+    "signed": (
+        frozenset({SERVER}),
+        {
+            "key": (_str(16, KEY_ID_RE), True),
+            "payload": (_b64(MAX_PAYLOAD_BYTES), True),
+            "sig": (_b64(SIGNATURE_BYTES), True),
         },
     ),
     "heartbeat": (
@@ -603,6 +671,19 @@ def _semantic(frame: dict) -> None:
         raise _fail("preview_response.status", "fehlt im ersten Stück")
     elif kind == "preview" and frame["running"] and None in (frame["port"], frame["token"]):
         raise _fail("preview", "port und token nötig, wenn die Vorschau läuft")
+    elif kind == "hello":
+        signed = (frame["catalog_sig"], frame["catalog_key"])
+        if None in signed and signed != (None, None):
+            raise _fail("hello.catalog_sig", "nur zusammen mit catalog_key")
+        if frame["catalog_sig"] is not None and frame["catalog"] is None:
+            raise _fail("hello.catalog_sig", "ohne catalog")
+        if frame["catalog"] is not None and len(frame["catalog"].encode()) > MAX_CATALOG_BYTES:
+            raise _fail("hello.catalog", f"mehr als {MAX_CATALOG_BYTES} Byte")
+    elif kind == "signed" and len(b64decode(frame["sig"])) != SIGNATURE_BYTES:
+        raise _fail("signed.sig", f"genau {SIGNATURE_BYTES} Byte erwartet")
+    if kind == "hello" and frame["catalog_sig"] is not None:
+        if len(b64decode(frame["catalog_sig"])) != SIGNATURE_BYTES:
+            raise _fail("hello.catalog_sig", f"genau {SIGNATURE_BYTES} Byte erwartet")
 
 
 def validate(data: Any, sender: str | None = None) -> dict:
@@ -629,11 +710,47 @@ def parse(text: str | bytes, sender: str | None = None) -> dict:
     size = len(text.encode() if isinstance(text, str) else text)
     if size > MAX_FRAME_BYTES:
         raise ProtocolError("Rahmen zu groß", CLOSE_TOO_BIG)
+    if isinstance(text, bytes | bytearray):
+        try:
+            text = bytes(text).decode("utf-8")
+        except UnicodeDecodeError:
+            raise ProtocolError("kein gültiges UTF-8") from None
     try:
-        data = json.loads(text)
-    except (ValueError, UnicodeDecodeError):
+        data = json.loads(text, object_pairs_hook=_no_duplicates)
+    except ValueError as exc:
+        if isinstance(exc, ProtocolError):
+            raise
         raise ProtocolError("kein gültiges JSON") from None
+    _check_surrogates(data)
     return validate(data, sender)
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict:
+    """JSON-Objekt ohne doppelte Schlüssel (sonst gewänne still der letzte)."""
+    out: dict = {}
+    for key, value in pairs:
+        if key in out:
+            raise ProtocolError(f"Schlüssel {key!r} doppelt")
+        out[key] = value
+    return out
+
+
+def _check_surrogates(value: Any, depth: int = 0) -> None:
+    """Einzelne Surrogate (``\\ud800``) sind kein gültiges UTF-8 – ablehnen."""
+    if depth > 200:
+        raise ProtocolError("JSON zu tief verschachtelt")
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ProtocolError("Text enthält ungültige Zeichen (Surrogat)") from None
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _check_surrogates(key, depth + 1)
+            _check_surrogates(item, depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            _check_surrogates(item, depth + 1)
 
 
 def encode(kind: str, sender: str | None = None, **fields: Any) -> str:
@@ -663,6 +780,61 @@ def split_bundle(data: bytes, chunk_bytes: int = CHUNK_BYTES) -> list[tuple[int,
         return [(0, b"", True)]
     parts = [data[i : i + chunk_bytes] for i in range(0, len(data), chunk_bytes)]
     return [(seq, part, seq == len(parts) - 1) for seq, part in enumerate(parts)]
+
+
+# --- Signaturen (Kryptographie übergibt der Aufrufer) ------------------------------
+
+FRAME_CONTEXT = b"multigpt-runner-frame/2\n"
+
+
+def key_id(public_raw: bytes) -> str:
+    """Kennung eines Ed25519-Schlüssels: die ersten 16 Hex-Zeichen von SHA-256(roh)."""
+    return hashlib.sha256(public_raw).hexdigest()[:16]
+
+
+def signed_message(nonce: str, payload: bytes) -> bytes:
+    """Die signierten Bytes eines Umschlags ``signed``."""
+    if not isinstance(nonce, str) or not NONCE_RE.fullmatch(nonce):
+        raise ProtocolError("nonce ungültig", CLOSE_SIGNATURE)
+    return FRAME_CONTEXT + nonce.encode("ascii") + b"\n" + payload
+
+
+def wrap_signed(text: str, nonce: str, key: str, sign: Callable[[bytes], bytes]) -> str:
+    """Rahmen (JSON-Text, schon geprüft) in den Umschlag ``signed`` packen.
+
+    ``sign(message) -> 64 Byte`` signiert mit dem Installationsschlüssel.
+    """
+    payload = text.encode("utf-8")
+    if len(payload) > MAX_PAYLOAD_BYTES:
+        raise ProtocolError("Rahmen zu groß", CLOSE_TOO_BIG)
+    sig = sign(signed_message(nonce, payload))
+    return encode("signed", SERVER, key=key, payload=b64encode(payload), sig=b64encode(sig))
+
+
+def open_signed(frame: dict, nonce: str, key: str, verify: Callable[[bytes, bytes], bool]) -> dict:
+    """Umschlag prüfen und den inneren Rahmen (geprüft, Absender Server) liefern.
+
+    ``verify(message, sig) -> bool`` prüft mit dem öffentlichen Schlüssel der
+    Installation. Fehler als ``ProtocolError`` mit ``CLOSE_SIGNATURE``.
+    """
+    if frame.get("type") != "signed":
+        raise ProtocolError(f"Rahmen {frame.get('type')} ohne Signatur", CLOSE_SIGNATURE)
+    if frame["key"] != key:
+        raise ProtocolError("Rahmen mit fremdem Schlüssel signiert", CLOSE_SIGNATURE)
+    payload = b64decode(frame["payload"])
+    try:
+        valid = verify(signed_message(nonce, payload), b64decode(frame["sig"]))
+    except Exception:  # noqa: BLE001 - jede Ausnahme der Prüfung heißt ungültig
+        valid = False
+    if not valid:
+        raise ProtocolError("Signatur des Servers ungültig", CLOSE_SIGNATURE)
+    try:
+        inner = parse(payload, SERVER)
+    except ProtocolError as exc:
+        raise ProtocolError(f"Innerer Rahmen: {exc.message}", exc.close_code) from None
+    if inner["type"] == "signed":
+        raise ProtocolError("Umschlag im Umschlag", CLOSE_SIGNATURE)
+    return inner
 
 
 class BundleAssembler:

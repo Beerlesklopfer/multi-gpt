@@ -14,8 +14,15 @@ Werkzeug):
   „fragen“.
 * ``command`` – Befehle (``bash``, ``serve``): Rückfrage in „fragen“ und
   „Änderungen automatisch“.
-* ``remote`` – ``ssh`` und ``telnet``: **immer** Rückfrage, auch in „alles
-  automatisch“; nur Verwalter und Erwachsene, nie über API-Keys.
+* ``remote`` – ``telnet`` und das Einrichtungswerkzeug ``setup_host`` (ein
+  Zielsystem per ssh-Schlüssel als Runner einrichten; ``ssh`` im Alltag gibt
+  es nicht mehr): **immer** Rückfrage, auch in „alles automatisch“; nur mit
+  Rollenrecht „Fernzugriff“, nie über API-Keys.
+
+**Dienstkatalog (trust.py):** Angeboten wird nur, was der verbundene Runner
+in einem gültig signierten Katalog meldet (``Runner.services``). Neue Dienste
+eines solchen Katalogs bietet der Server erst nach Einstufung durch einen
+Verwalter an (``RunnerService``, Art ``setup`` bzw. ``remote`` fragen immer).
 
 **Modi je Chat** (8t): ``ask`` (jede Änderung bestätigen), ``edits``
 (Dateien ohne Rückfrage, Befehle mit), ``auto``. Vorgabe ohne Netz
@@ -33,6 +40,7 @@ READ = "read"
 EDIT = "edit"
 COMMAND = "command"
 REMOTE = "remote"
+SETUP_KIND = "setup"  # neue Dienste der Art „Einrichtung“: immer Rückfrage
 PUBLISH_KIND = "publish"  # Datei als Anhang in den Chat: Rückfrage nur in „fragen“
 
 MODE_ASK = "ask"
@@ -46,7 +54,9 @@ MODES = {
 
 # Grenzen der Argumente (der Agent prüft zusätzlich).
 MAX_PATH = 1000
-MAX_CONTENT = 5 * 1024 * 1024  # write/edit: ein Arbeitsstand hat höchstens 50 MB
+# write/edit: Der Rahmen an den Runner ist signiert und höchstens
+# protocol.MAX_PAYLOAD_BYTES (3 MB) groß – Text samt JSON-Maskierung muss passen.
+MAX_CONTENT = 2 * 1024 * 1024
 MAX_COMMAND = 20_000
 MAX_PATTERN = 2000
 BASH_TIMEOUT_DEFAULT = 120
@@ -57,9 +67,11 @@ TODO_STATUSES = ("pending", "in_progress", "completed")
 
 TODO = "todo"
 PUBLISH = "publish"
-SSH = "ssh"
+SETUP = "setup_host"
 TELNET = "telnet"
-REMOTE_TOOLS = (SSH, TELNET)
+REMOTE_TOOLS = (SETUP, TELNET)
+# Protokoll der freigegebenen Hosts je Werkzeug (RunnerHost.protocol)
+HOST_PROTOCOL = {SETUP: "ssh", TELNET: "telnet"}
 # Werkzeuge, die (möglicherweise) Dateien im Arbeitsstand ändern; danach
 # committet der Agent und lädt ein neues Bundle hoch (8r).
 CHANGING_TOOLS = ("write", "edit", "bash")
@@ -236,16 +248,16 @@ _TOOLS = [
         server_side=True,
     ),
     RunnerTool(
-        SSH,
+        SETUP,
         REMOTE,
-        "Führt einen Befehl per SSH auf einem freigegebenen Gerät aus. „host“ ist der Name "
-        "aus der Liste der freigegebenen Hosts. Jeder Aufruf wird vom Nutzer bestätigt.",
+        "Richtet ein freigegebenes Zielsystem (Linux, amd64 oder arm64) per SSH als Runner "
+        "ein: überträgt das Runner-Programm, koppelt es mit einem neuen Token an dieses "
+        "Konto und startet es als Dienst. Danach arbeitet MultiGPT dort über den Runner, "
+        "nicht mehr über SSH. „host“ ist der Name aus der Liste der freigegebenen Hosts. "
+        "Jeder Aufruf wird vom Nutzer bestätigt.",
         _schema(
-            {
-                "host": {"type": "string", "description": "Name des freigegebenen Hosts."},
-                "command": {"type": "string", "description": "Befehl auf dem Gerät."},
-            },
-            ["host", "command"],
+            {"host": {"type": "string", "description": "Name des freigegebenen Hosts."}},
+            ["host"],
         ),
     ),
     RunnerTool(
@@ -270,14 +282,22 @@ def get(name: str | None) -> RunnerTool | None:
     return CATALOG.get(name or "")
 
 
-def specs(*, remote: bool = False, hosts=()) -> list[ToolSpec]:
-    """Werkzeuge für das Modell; ``ssh``/``telnet`` nur mit ``remote`` und nur,
-    wenn es freigegebene Hosts des jeweiligen Protokolls gibt (``hosts``:
-    Namen je Protokoll, ``{"ssh": [...], "telnet": [...]}``)."""
+def specs(*, remote: bool = False, hosts=(), services=None, extra=None) -> list[ToolSpec]:
+    """Werkzeuge für das Modell; ``setup_host``/``telnet`` nur mit ``remote`` und
+    nur, wenn es freigegebene Hosts des passenden Protokolls gibt (``hosts``:
+    Namen je Protokoll, ``{"ssh": [...], "telnet": [...]}``).
+
+    ``services``: vom Runner gültig gemeldete Dienste (None = ohne Filter, etwa
+    solange kein Runner verbunden ist); Werkzeuge des Servers (``todo``) gelten
+    immer. ``extra``: freigegebene neue Dienste (``trust.extra_tools``).
+    """
     out = []
-    for tool in _TOOLS:
-        if tool.kind == REMOTE:
-            names = list((dict(hosts or {})).get(tool.name) or [])
+    allowed = None if services is None else set(services)
+    for tool in [*_TOOLS, *(dict(extra or {}).values())]:
+        if allowed is not None and not tool.server_side and tool.name not in allowed:
+            continue
+        if tool.name in REMOTE_TOOLS:
+            names = list((dict(hosts or {})).get(HOST_PROTOCOL[tool.name]) or [])
             if not remote or not names:
                 continue
             params = {**tool.parameters, "properties": dict(tool.parameters["properties"])}
@@ -309,10 +329,10 @@ def effective_mode(mode: str | None, *, network: bool, is_admin: bool) -> str:
     return mode
 
 
-def needs_confirmation(name: str, mode: str) -> bool:
+def needs_confirmation(name: str, mode: str, extra=None) -> bool:
     """Rückfrage vor diesem Aufruf? Unbekannte Werkzeuge immer (laufen ohnehin nicht)."""
-    tool = CATALOG.get(name)
-    if tool is None or tool.kind == REMOTE:
+    tool = CATALOG.get(name) or dict(extra or {}).get(name)
+    if tool is None or tool.kind in (REMOTE, SETUP_KIND):
         return True
     if tool.kind == READ:
         return False
@@ -415,15 +435,31 @@ def clean_arguments(name: str, args) -> dict:
         put("name", _text(args, "name", limit=200))
     elif name == TODO:
         out["items"] = clean_todo(args.get("items"))
-    elif name == SSH:
+    elif name == SETUP:
         put("host", _text(args, "host", required=True, limit=100))
-        put("command", _text(args, "command", required=True, limit=MAX_COMMAND))
     elif name == TELNET:
         put("host", _text(args, "host", required=True, limit=100))
         put("input", _text(args, "input", required=True, limit=MAX_COMMAND, allow_empty=True))
     else:
         raise ArgumentError("Unbekanntes Werkzeug.")
     return out
+
+
+MAX_EXTRA_ARGS = 64 * 1024
+
+
+def clean_extra_arguments(args) -> dict:
+    """Argumente eines freigegebenen neuen Dienstes: JSON-Objekt, begrenzt.
+
+    Das Schema prüft der Agent; der Server prüft nur Form und Größe.
+    """
+    import json
+
+    if not isinstance(args, dict):
+        raise ArgumentError(MSG_ARGS.format(detail="Es wird ein JSON-Objekt erwartet."))
+    if len(json.dumps(args, ensure_ascii=False)) > MAX_EXTRA_ARGS:
+        raise ArgumentError(MSG_ARGS.format(detail="Argumente zu groß."))
+    return dict(args)
 
 
 def clean_todo(items) -> list[dict]:

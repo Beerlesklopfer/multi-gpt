@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 import re
 from dataclasses import dataclass, field
@@ -20,6 +22,13 @@ class ConfigError(Exception):
 class Config:
     url: str  # wss://host/runner/ws
     token_file: str = "/run/secrets/token"
+    # Öffentlicher Installationsschlüssel des Servers (Kopplung; eine Zeile Base64).
+    server_key_file: str = "/run/secrets/server_key"
+    # Signierter Dienstkatalog (catalog.json und catalog.json.sig der CI); ohne
+    # Datei schickt der Agent seinen eingebauten Katalog unsigniert.
+    catalog_file: str | None = None
+    catalog_sig_file: str | None = None
+    catalog_key: str | None = None
     ca_sha256: str | None = None  # festgehaltener Fingerprint (snakeoil, Frage 8i)
     podman_socket: str = "/run/podman.sock"
     images: frozenset[str] = field(default_factory=frozenset)  # lokale Positivliste
@@ -47,6 +56,39 @@ class Config:
         if not protocol.TOKEN_RE.match(token):
             raise ConfigError("Token-Datei enthält keinen gültigen Token.")
         return token
+
+    def read_server_key(self) -> bytes:
+        """Öffentlicher Schlüssel der Installation (32 Byte roh)."""
+        try:
+            with open(self.server_key_file, encoding="ascii") as fh:
+                text = fh.read().strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            reason = getattr(exc, "strerror", None) or "nicht lesbar"
+            raise ConfigError(
+                f"Schlüsseldatei des Servers nicht lesbar: {self.server_key_file} ({reason})"
+            ) from None
+        try:
+            raw = base64.b64decode(text, validate=True)
+        except (binascii.Error, ValueError):
+            raw = b""
+        if len(raw) != protocol.PUBLIC_KEY_BYTES:
+            raise ConfigError("Schlüsseldatei des Servers enthält keinen Ed25519-Schlüssel.")
+        return raw
+
+    def read_catalog(self) -> tuple[str, str | None, str | None]:
+        """(Katalogtext, Signatur Base64, key_id) aus den Dateien der CI."""
+        try:
+            with open(self.catalog_file, "rb") as fh:
+                text = fh.read().decode("utf-8")
+            sig = None
+            if self.catalog_sig_file:
+                with open(self.catalog_sig_file, encoding="ascii") as fh:
+                    sig = fh.read().strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ConfigError(f"Dienstkatalog nicht lesbar ({exc.__class__.__name__}).") from None
+        if sig and not (self.catalog_key and protocol.KEY_ID_RE.match(self.catalog_key)):
+            raise ConfigError("MGPT_CATALOG_KEY (key_id, 16 hex) fehlt zur Signatur.")
+        return text, sig, (self.catalog_key if sig else None)
 
 
 def normalize_url(raw: str, insecure_dev: bool = False) -> str:
@@ -97,6 +139,10 @@ def from_env(env: dict[str, str] | None = None) -> Config:
     return Config(
         url=normalize_url(env["MGPT_URL"], insecure),
         token_file=env.get("MGPT_TOKEN_FILE") or "/run/secrets/token",
+        server_key_file=env.get("MGPT_SERVER_KEY_FILE") or "/run/secrets/server_key",
+        catalog_file=env.get("MGPT_CATALOG_FILE") or None,
+        catalog_sig_file=env.get("MGPT_CATALOG_SIG_FILE") or None,
+        catalog_key=env.get("MGPT_CATALOG_KEY") or None,
         ca_sha256=normalize_fingerprint(env.get("MGPT_CA_SHA256")),
         podman_socket=env.get("MGPT_PODMAN_SOCKET") or "/run/podman.sock",
         images=images,

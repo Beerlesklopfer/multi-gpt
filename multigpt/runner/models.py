@@ -90,6 +90,17 @@ class RunnerToken(models.Model):
         return "aktiv"
 
 
+class CatalogState(models.TextChoices):
+    """Ergebnis der Prüfung des Dienstkatalogs (wie ``protocol.CATALOG_STATES``)."""
+
+    VALID = "valid", "gültig signiert"
+    UNSIGNED = "unsigned", "unsigniert"
+    INVALID = "invalid", "Signatur ungültig"
+    UNKNOWN_KEY = "unknown_key", "Release-Schlüssel unbekannt (Runner zu alt?)"
+    MISSING = "missing", "kein Katalog"
+    DEV = "dev", "unsigniert (Entwicklung)"
+
+
 class Runner(models.Model):
     """Ein gekoppelter Runner-Agent; angelegt bzw. aktualisiert beim ``hello``."""
 
@@ -119,6 +130,13 @@ class Runner(models.Model):
     connected_at = models.DateTimeField("verbunden seit", null=True, blank=True)
     last_seen = models.DateTimeField("zuletzt gesehen", null=True, blank=True)
     created = models.DateTimeField("gekoppelt", auto_now_add=True)
+    # Dienstkatalog aus dem letzten hello (trust.py): Ergebnis der Prüfung der
+    # Release-Signatur und die daraus freigegebenen Dienste (welcome.services).
+    catalog_state = models.CharField(
+        "Dienstkatalog", max_length=12, choices=CatalogState.choices, default="missing"
+    )
+    catalog_release = models.CharField("Katalog-Release", max_length=50, blank=True)
+    services = models.JSONField("freigegebene Dienste", default=list, blank=True)
 
     class Meta:
         ordering = ["-last_seen", "-pk"]
@@ -445,6 +463,7 @@ class RunnerAudit(models.Model):
         TOKEN = "token", "Token"
         WORKSPACE = "workspace", "Arbeitsstand"
         LIMITS = "limits", "Grenzen weichen ab"
+        TRUST = "trust", "Dienstkatalog"
         ERROR = "error", "Fehler"
 
     kind = models.CharField("Art", max_length=12, choices=Kind.choices, default=Kind.TOOL)
@@ -578,3 +597,77 @@ class RunnerHost(models.Model):
         return self.protocol == self.Protocol.SSH and not (
             self.host_key and self.host_key_confirmed_at
         )
+
+
+class RunnerService(models.Model):
+    """Dienst eines gültig signierten Katalogs, den der Server nicht kennt (trust.py).
+
+    Neue Dienste erscheinen hier wie neue Werkzeuge eines importierten
+    MCP-Servers und werden erst angeboten, wenn ein Verwalter sie eingestuft und
+    freigegeben hat (Schutz gegen eingeschleuste Werkzeuge oder Beschreibungen).
+    Beschreibung und Schema stammen aus dem signierten Katalog; die Einstufung
+    (Art, damit die Rückfrage) legt der Verwalter fest.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "nicht eingestuft"
+        APPROVED = "approved", "freigegeben"
+        BLOCKED = "blocked", "gesperrt"
+
+    class Kind(models.TextChoices):
+        READ = "read", "lesen (nie Rückfrage)"
+        EDIT = "edit", "Dateien ändern"
+        COMMAND = "command", "Befehl ausführen"
+        PUBLISH = "publish", "Datei in den Chat"
+        REMOTE = "remote", "Fernzugriff (immer Rückfrage)"
+        SETUP = "setup", "Einrichtung (immer Rückfrage)"
+
+    name = models.CharField("Name", max_length=64, unique=True)
+    status = models.CharField(
+        "Status", max_length=10, choices=Status.choices, default=Status.PENDING
+    )
+    kind = models.CharField(
+        "Einstufung",
+        max_length=10,
+        choices=Kind.choices,
+        blank=True,
+        help_text="Bestimmt die Rückfrage. Leer: nicht eingestuft (wird nicht angeboten).",
+    )
+    proposed_kind = models.CharField(
+        "Art laut Katalog", max_length=10, choices=Kind.choices, blank=True, editable=False
+    )
+    description = models.TextField("Beschreibung (aus dem Katalog)", blank=True, editable=False)
+    input_schema = models.JSONField(
+        "Parameter (aus dem Katalog)", default=dict, blank=True, editable=False
+    )
+    release = models.CharField("zuletzt in Release", max_length=50, blank=True, editable=False)
+    first_seen = models.DateTimeField("zuerst gemeldet", default=timezone.now, editable=False)
+    last_seen = models.DateTimeField("zuletzt gemeldet", default=timezone.now, editable=False)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="eingestuft von",
+        editable=False,
+    )
+    reviewed_at = models.DateTimeField("eingestuft am", null=True, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["status", "name"]
+        verbose_name = "Runner-Dienst (neu im Katalog)"
+        verbose_name_plural = "Runner-Dienste (neu im Katalog)"
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(status="approved") | ~models.Q(kind=""),
+                name="runner_service_approved_needs_kind",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def offered(self) -> bool:
+        return self.status == self.Status.APPROVED and bool(self.kind)

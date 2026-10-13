@@ -22,6 +22,7 @@ from multigpt.runner.models import (
     RunnerWorkspace,
 )
 from tests.node_support import make_user
+from tests.runner_fakes import ALL_SERVICES
 
 pytestmark = pytest.mark.django_db
 
@@ -89,6 +90,8 @@ def make_runner(user, *, online=True):
         status=Runner.Status.ONLINE if online else Runner.Status.OFFLINE,
         last_seen=timezone.now(),
         engine_version="5.4",
+        catalog_state="valid",
+        services=ALL_SERVICES,
     )
 
 

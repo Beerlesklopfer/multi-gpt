@@ -12,35 +12,79 @@ import datetime
 import ssl
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.server import serve
 
-from runner_agent import protocol, tls
+from runner_agent import protocol, tls, tools
 from runner_agent.agent import CLOSE_TLS, Agent
 from runner_agent.backoff import Backoff
 from runner_agent.engine import FakeEngine
 from tests.test_runner_agent import IMAGE, make_config
 
 TOKEN = "mgrt_" + "a" * 43
+# Wegwerf-Installationsschlüssel des gefälschten Servers (nur dieser Testlauf).
+SERVER_KEY = Ed25519PrivateKey.generate()
+SERVER_PUB = SERVER_KEY.public_key().public_bytes(
+    serialization.Encoding.Raw, serialization.PublicFormat.Raw
+)
 
 
 def welcome_text(**kw):
     values = dict(
         runner=7,
-        protocol=1,
+        protocol=protocol.PROTOCOL_VERSION,
         server_version="test",
         heartbeat_seconds=30,
         images=[IMAGE],
         max_frame_bytes=protocol.MAX_FRAME_BYTES,
         chunk_bytes=protocol.CHUNK_BYTES,
+        services=sorted(tools.TOOL_NAMES),
+        catalog="valid",
     )
     values.update(kw)
     return protocol.encode("welcome", protocol.SERVER, **values)
+
+
+def sign(text: str, nonce: str, key=SERVER_KEY) -> str:
+    """Rahmen-Text in den Umschlag ``signed`` packen (exakte Bytes, ungeprüft)."""
+    payload = text.encode()
+    sig = key.sign(protocol.signed_message(nonce, payload))
+    key_raw = key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    return protocol.encode(
+        "signed",
+        protocol.SERVER,
+        key=protocol.key_id(key_raw),
+        payload=protocol.b64encode(payload),
+        sig=protocol.b64encode(sig),
+    )
+
+
+class SigningSocket:
+    """Verbindung des Drehbuchs: ``send`` signiert jeden Text wie der echte Server;
+    ``send_raw`` schickt unverändert (für Angriffe)."""
+
+    def __init__(self, ws, server):
+        self._ws = ws
+        self._server = server
+
+    async def send(self, text):
+        await self._ws.send(sign(text, self._server.nonce))
+
+    async def send_raw(self, text):
+        await self._ws.send(text)
+
+    def __getattr__(self, name):
+        return getattr(self._ws, name)
 
 
 class FakeServer:
     """WebSocket-Server, der je Verbindung ``scripts[n]`` ausführt."""
 
     def __init__(self, scripts, ssl_context=None):
+        self.nonce: str | None = None
         self.scripts = list(scripts)
         self.ssl_context = ssl_context
         self.hellos: list[dict] = []
@@ -53,12 +97,13 @@ class FakeServer:
         self.connections += 1
         self.headers.append(ws.request.headers)
         script = self.scripts[min(index, len(self.scripts) - 1)]
-        await script(self, ws)
+        await script(self, SigningSocket(ws, self))
 
     async def hello(self, ws):
         frame = protocol.parse(await asyncio.wait_for(ws.recv(), 5), protocol.AGENT)
         assert frame["type"] == "hello"
         self.hellos.append(frame)
+        self.nonce = frame["nonce"]
         return frame
 
     async def recv(self, ws, kind):
@@ -82,9 +127,13 @@ def agent_for(tmp_path, port, *, scheme="ws", delays=None, **config):
     token_file = tmp_path / "token"
     if not token_file.exists():
         token_file.write_text(TOKEN)
+    key_file = tmp_path / "server.pub"
+    if not key_file.exists():
+        key_file.write_text(protocol.b64encode(SERVER_PUB) + "\n")
     cfg = make_config(
         url=f"{scheme}://127.0.0.1:{port}/runner/ws",
         token_file=str(token_file),
+        server_key_file=str(key_file),
         insecure_dev=scheme == "ws",
         hostname="pc",
         **config,
@@ -384,3 +433,114 @@ def test_frames_before_welcome_are_ignored_and_invalid_frames_answered(tmp_path)
 
     run(scenario())
     assert results["error"]["code"] == "invalid_frame"
+
+
+# --- Signaturen (Protokoll 2) --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("attack", ["unsigned", "foreign_key", "tampered", "other_nonce"])
+def test_unsigned_or_forged_frames_end_the_connection(tmp_path, attack):
+    """Der Agent nimmt nur Rahmen an, die der eigene Server für diese Verbindung
+    signiert hat; sonst trennt er mit 4498 und versucht es nicht erneut."""
+    seen = {}
+
+    async def script(server, ws):
+        await server.hello(ws)
+        await ws.send(welcome_text())
+        stop = protocol.encode("session_stop", protocol.SERVER, session="1", reason="user")
+        if attack == "unsigned":
+            await ws.send_raw(stop)
+        elif attack == "foreign_key":
+            await ws.send_raw(sign(stop, server.nonce, Ed25519PrivateKey.generate()))
+        elif attack == "tampered":
+            frame = protocol.parse(sign(stop, server.nonce))
+            other = protocol.b64encode(stop.replace('"user"', '"admin"').encode())
+            await ws.send_raw(
+                protocol.encode(
+                    "signed", protocol.SERVER, key=frame["key"], payload=other, sig=frame["sig"]
+                )
+            )
+        else:  # Signatur einer anderen Verbindung (Replay)
+            await ws.send_raw(sign(stop, "e" * 64))
+        await ws.wait_closed()
+        seen["code"] = ws.close_code
+
+    async def scenario():
+        async with FakeServer([script]) as srv:
+            agent, _ = agent_for(tmp_path, srv.port)
+            code = await asyncio.wait_for(agent.run(), 10)
+            assert code == protocol.CLOSE_SIGNATURE
+            assert srv.connections == 1  # kein Neuversuch
+
+    run(scenario())
+    assert seen["code"] == protocol.CLOSE_SIGNATURE
+
+
+def test_hello_has_nonce_and_catalog_and_tools_follow_welcome(tmp_path):
+    results = {}
+
+    async def script(server, ws):
+        hello = await server.hello(ws)
+        results["hello"] = hello
+        await ws.send(welcome_text(services=["read"], catalog="valid"))
+        await ws.send(
+            protocol.encode(
+                "session_start",
+                protocol.SERVER,
+                session="11",
+                workspace="5",
+                image=IMAGE,
+                cpus=1,
+                memory_mb=256,
+                pids=128,
+                tmpfs_mb=32,
+                network="none",
+                command_seconds=30,
+                output_bytes=8192,
+                idle_minutes=15,
+            )
+        )
+        await server.recv(ws, "session_state")
+        for rpc_id, method, params in (
+            (1, "initialize", {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "t", "version": "1"}}),
+            (2, "tools/list", {}),
+            (3, "tools/call", {"name": "write", "arguments": {"path": "a", "content": "x"}}),
+        ):  # fmt: skip
+            await ws.send(
+                protocol.encode(
+                    "mcp",
+                    protocol.SERVER,
+                    session="11",
+                    pipe="p1",
+                    message={"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": params},
+                )
+            )
+            results[method] = (await server.recv(ws, "mcp"))["message"]
+        await ws.close(1000)
+
+    async def scenario():
+        async with FakeServer([script]) as srv:
+            agent, _ = agent_for(tmp_path, srv.port)
+            assert await agent.run_once() == 1000
+
+    run(scenario())
+    hello = results["hello"]
+    assert protocol.NONCE_RE.fullmatch(hello["nonce"])
+    catalog = __import__("json").loads(hello["catalog"])
+    # Im Test signiert mit dem Wegwerf-Release-Schlüssel (conftest), sonst unsigniert.
+    assert catalog["format"] == 1 and hello["catalog_sig"] and hello["catalog_key"]
+    assert {s["name"] for s in catalog["services"]} == set(tools.TOOL_NAMES)
+    listed = [t["name"] for t in results["tools/list"]["result"]["tools"]]
+    assert listed == ["read"]
+    assert results["tools/call"]["result"]["isError"] is True
+
+
+def test_missing_server_key_file_stops_the_agent(tmp_path):
+    async def scenario():
+        agent, _ = agent_for(tmp_path, 1)
+        agent.config.server_key_file = str(tmp_path / "fehlt.pub")
+        assert await agent.run() == protocol.CLOSE_TOKEN
+
+    run(scenario())

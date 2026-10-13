@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextlib
+import secrets
 import time
+import weakref
 
 from starlette.testclient import TestClient
 
 from multigpt.accounts.models import Role, User
-from multigpt.runner import delivery, gateway, tokens
+from multigpt.runner import delivery, gateway, tokens, trust
 from multigpt.runner import protocol as P
 
 PATH = gateway.PATH
@@ -59,12 +61,29 @@ def receive_raw(ws, timeout=5.0) -> dict:
         raise AssertionError(f"Kein Rahmen innerhalb {timeout} s") from None
 
 
+# nonce aus dem hello je Verbindung (für die Prüfung der Signaturen)
+_NONCES: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def open_frame(text: str, nonce: str) -> dict:
+    """Umschlag ``signed`` prüfen (Installationsschlüssel des Tests) und öffnen."""
+    key = trust.load_server_key()
+    outer = P.parse(text, P.SERVER)
+    return P.open_signed(
+        outer,
+        nonce,
+        key.key_id,
+        lambda message, sig: trust.verify(key.public_raw, message, sig),
+    )
+
+
 def receive(ws, timeout=5.0) -> dict:
-    """Nächsten Rahmen vom Server (geprüft); ``Disconnected`` beim Schließen."""
+    """Nächsten Rahmen vom Server (Signatur und Schema geprüft); ``Disconnected``
+    beim Schließen."""
     message = receive_raw(ws, timeout)
     if message["type"] == "websocket.close":
         raise Disconnected(message.get("code"))
-    return P.parse(message["text"], P.SERVER)
+    return open_frame(message["text"], _NONCES[ws])
 
 
 def receive_until(ws, kind, timeout=5.0) -> dict:
@@ -86,6 +105,8 @@ def expect_close(ws, timeout=5.0) -> int:
 
 
 def send(ws, kind, **fields) -> None:
+    if kind == "hello" and fields.get("nonce"):
+        _NONCES[ws] = fields["nonce"]
     ws.send_text(P.encode(kind, P.AGENT, **fields))
 
 
@@ -96,6 +117,7 @@ def hello_fields(secret, **extra) -> dict:
         "agent_version": "0.0-test",
         "engine": {"name": "podman", "version": "5.4.2", "rootless": True},
         "hostname": "testrechner",
+        "nonce": secrets.token_hex(32),
     }
     fields.update(extra)
     return fields

@@ -114,6 +114,8 @@ class SessionManager:
         self.send = send
         self.clock = clock
         self.server_images: list[str] | None = None
+        # Vom Server freigegebene Dienste (welcome.services, signiert).
+        self.services: frozenset[str] = frozenset()
         self.chunk_bytes = protocol.CHUNK_BYTES
         self.sessions: dict[str, Session] = {}
         self._downloads: dict[str, tuple[protocol.BundleAssembler, asyncio.Future]] = {}

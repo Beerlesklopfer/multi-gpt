@@ -283,3 +283,26 @@ RUNNER_TLS_CERT = env("RUNNER_TLS_CERT", default="")
 RUNNER_WORKSPACE_MAX_MB = env.int("RUNNER_WORKSPACE_MAX_MB", default=50)
 # Laufzeiten der Kopplungs-Tokens (Tage, Standard 90).
 RUNNER_TOKEN_DAYS = env.int("RUNNER_TOKEN_DAYS", default=90)
+# Manipulationsschutz (M14, Rust-Agent): Installationsschlüssel (Ed25519, privater
+# Teil nur hier, 0600; erzeugt vom postinst bzw. "mgpt-ctl runner keygen"). Der
+# Server signiert damit jeden Rahmen an seine Runner; den öffentlichen Teil
+# bekommt der Agent beim Koppeln. In der Entwicklung (DEBUG) liegt er außerhalb
+# des Quellbaums unter ~/.local/share/multi-gpt-dev/runner/.
+RUNNER_SERVER_KEY = env(
+    "RUNNER_SERVER_KEY",
+    default=(
+        str(Path.home() / ".local/share/multi-gpt-dev/runner/server.key")
+        if DEBUG
+        else "/var/lib/multi-gpt/runner/server.key"
+    ),
+)
+# Runner-Programme der CI (multigpt-runner-linux-<arch>, SHA256SUMS(.sig),
+# catalog.json(.sig)) und die öffentlichen Release-Schlüssel der letzten drei
+# Releases (release_keys.json) für die Prüfung des Dienstkatalogs.
+RUNNER_DIST_DIR = env("RUNNER_DIST_DIR", default="/usr/share/multi-gpt/runner")
+RUNNER_RELEASE_KEYS_FILE = env("RUNNER_RELEASE_KEYS_FILE", default="")
+# Nur Entwicklung (wirkt nur mit DEBUG): unsignierte Dienstkataloge annehmen.
+RUNNER_ACCEPT_UNSIGNED = env.bool("RUNNER_ACCEPT_UNSIGNED", default=False)
+# Adresse von MultiGPT, unter der Zielsysteme den Server erreichen (Werkzeug
+# setup_host); leer: erster https-Eintrag aus CSRF_TRUSTED_ORIGINS.
+RUNNER_PUBLIC_URL = env("RUNNER_PUBLIC_URL", default="")

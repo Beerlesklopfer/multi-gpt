@@ -26,10 +26,10 @@ RUN apt-get update \
 
 # Abhängigkeiten des Agents (wie im venv des Servers geprüft): websockets
 # (Verbindung), httpx (REST-API von Podman über den Unix-Socket), mcp (nur der
-# Low-Level-Server je pipe).
+# Low-Level-Server je pipe), cryptography (Ed25519: Signaturen des Servers prüfen).
 RUN python3 -m venv /opt/mgpt/venv \
     && /opt/mgpt/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
-        "websockets==17.2" "httpx==0.28.1" "mcp==2.3.0" \
+        "websockets==17.2" "httpx==0.28.1" "mcp==2.3.0" "cryptography==50.0.2" \
     && find /opt/mgpt/venv -name __pycache__ -prune -exec rm -rf {} +
 
 COPY runner_agent/ /opt/mgpt/runner_agent/
@@ -37,7 +37,8 @@ RUN find /opt/mgpt/runner_agent -name __pycache__ -prune -exec rm -rf {} + \
     && /opt/mgpt/venv/bin/python -c 'import sys; sys.path.insert(0, "/opt/mgpt"); import runner_agent'
 
 # Konfiguration nur über die Umgebung (Quadlet): MGPT_URL, MGPT_CA_SHA256,
-# MGPT_IMAGES; der Token liegt als Podman-Secret in /run/secrets/token, der
+# MGPT_IMAGES; der Token liegt als Podman-Secret in /run/secrets/token (der
+# öffentliche Schlüssel des Servers in /run/secrets/server_key), der
 # Podman-Socket unter /run/podman.sock. Läuft als root des Nutzer-Namensraums
 # (rootless Podman: der Nutzer des Rechners), damit er den Socket öffnen darf.
 ENV PATH="/opt/mgpt/venv/bin:${PATH}" \

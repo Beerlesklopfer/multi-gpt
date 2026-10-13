@@ -145,7 +145,7 @@ def test_binary_frame_and_wrong_version(client, token):
         ws.send_bytes(b"\x00\x01")
         assert expect_close(ws) == P.CLOSE_PROTOCOL
     with client.websocket_connect(PATH) as ws:
-        send(ws, "hello", **hello_fields(token[1], protocol=2))
+        send(ws, "hello", **hello_fields(token[1], protocol=P.PROTOCOL_VERSION + 1))
         assert expect_close(ws) == P.CLOSE_VERSION
 
 
@@ -340,3 +340,5 @@ def test_store_mismatch_uses_network_mode():
         "cpus",
         "network",
     ]
+    # Positivliste (nur freigegebene Hosts über das Relay) ist kein freies Netz.
+    assert store._limits_mismatch({"network": False}, {"network": "allowlist"}) == []

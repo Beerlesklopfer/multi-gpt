@@ -148,6 +148,43 @@ TOOLS = [
     ),
 ]
 TOOL_NAMES = frozenset(tool.name for tool in TOOLS)
+# Art je Dienst für den Dienstkatalog (Einstufung wie multigpt/runner/tools.py).
+KINDS = {
+    "read": "read",
+    "glob": "read",
+    "grep": "read",
+    "write": "edit",
+    "edit": "edit",
+    "bash": "command",
+    "serve": "command",
+    "publish": "publish",
+    "ssh": "remote",
+    "telnet": "remote",
+}
+
+
+def catalog_text(release: str) -> str:
+    """Unsignierter Dienstkatalog dieses Agents (Format von catalog.json).
+
+    Signiert wird nur der Katalog aus der CI (Rust-Agent); der Python-Agent
+    schickt diesen Text ohne Signatur bzw. eine Datei aus MGPT_CATALOG_FILE.
+    """
+    services = [
+        {
+            "name": tool.name,
+            "kind": KINDS[tool.name],
+            "description": tool.description or "",
+            "input_schema": tool.input_schema,
+        }
+        for tool in TOOLS
+    ]
+    return json.dumps(
+        {"format": 1, "release": release, "services": services},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 CHANGING = frozenset({"write", "edit", "bash"})
 
 
@@ -605,12 +642,19 @@ class TelnetConnection:
 
 
 def build_server(box: Toolbox) -> Server:
+    def granted() -> frozenset[str]:
+        # Nur Dienste, die der Server im (signierten) welcome freigegeben hat.
+        return frozenset(getattr(box.manager, "services", None) or ())
+
     async def list_tools(ctx, params) -> types.ListToolsResult:
-        return types.ListToolsResult(tools=TOOLS)
+        allowed = granted()
+        return types.ListToolsResult(tools=[t for t in TOOLS if t.name in allowed])
 
     async def call_tool(ctx, params: types.CallToolRequestParams) -> types.CallToolResult:
         started = time.monotonic()
         try:
+            if params.name not in granted():
+                raise ToolError(f"Dienst {params.name} ist vom Server nicht freigegeben.")
             text, structured = await box.call(params.name, dict(params.arguments or {}))
             error = False
         except (ToolError, SessionError) as exc:
