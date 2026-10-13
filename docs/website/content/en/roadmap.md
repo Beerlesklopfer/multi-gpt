@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 description: "MultiGPT's milestones and their status."
-lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. As of version 0.3.6, milestones 1 to 8 including 4a and the node (15) are done, images (9) and operations (12) partly. Each milestone lists its work packages with their status. Voice (10), music (11), the scratchpad (13) and the runner (14) are still open."
+lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. As of version 0.3.6, milestones 1 to 8 including 4a and the node (15) are done, images (9), operations (12) and the scratchpad (13, so far the context menu) partly. Work on the runner (14) is in progress for version 0.4.0; it has not been released yet. Each milestone lists its work packages with their status. Voice (10) and music (11) are still open."
 menus:
   main:
     weight: 40
@@ -16,9 +16,10 @@ web search, calculations, PDF sheets, image generation and the runner) depends o
 Convenience (5) and usage/budgets (6) could run in parallel after milestone 3. HTTPS with nginx
 already ships in the package and is therefore ready before the voice features (10).
 
-For the scratchpad (13), the context menu and prompt templates come first. The runner (14)
-builds on MCP, the billing accounts from milestone 6 and nginx with TLS; at first it offers
-tools only, with no coding agent inside the container.
+For the scratchpad (13), the context menu came first (0.3.2); prompt templates are next. The
+runner (14) builds on MCP, the billing accounts from milestone 6, nginx with TLS and the
+node (15): its tools run through the chat's MCP loop, and agents too reach it only through a
+MultiGPT API key, never directly.
 
 ## Later (after version 1)
 

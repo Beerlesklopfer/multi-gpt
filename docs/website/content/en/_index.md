@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
-eyebrow: "Self-hosted · in development · version 0.3"
+eyebrow: "Self-hosted · in development · version 0.3.6"
 headline: "One AI chat for the whole family – on your own server"
 lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to a local LM Studio. Chats, accounts and API keys stay on your own server."
 pillarsTitle: "The idea behind it"
@@ -33,11 +33,16 @@ LM Studio in your home network, with streamed answers, a model choice per messag
 formulas and code highlighting. On top of that there are family accounts with roles, billing
 accounts with budgets, a comparison mode for two or three models, MCP tools with
 confirmation, questions to your own documents with citable sources (fully local via
-LM Studio if you like), web search via a self-hosted SearXNG, encrypted API keys, an admin
-area for administrators and a Debian package that sets up the database, schema and nginx
-itself.
+LM Studio if you like, which MultiGPT can manage itself), web search via a self-hosted SearXNG,
+encrypted API keys, an admin area for administrators and a Debian package that sets up the
+database, schema and nginx itself. Other programs such as n8n or Claude can use MultiGPT as an
+MCP server.
 
-## New in 0.3
+MultiGPT is installed on Debian 13 from a dedicated **apt repository**, so updates arrive with
+the usual `apt upgrade`. How to set it up is described under
+[installation]({{< relref "installation" >}}).
+
+## New in 0.3.0 and 0.3.1
 
 - **Attachments and image input:** drag or paste images and documents into the chat;
   location data is stripped from photos.
@@ -55,11 +60,45 @@ itself.
 Updating from 0.2? The required steps are under
 [installation]({{< relref "installation" >}}).
 
+## New in 0.3.2 to 0.3.6
+
+- **MultiGPT as an MCP server (0.3.2):** n8n, Claude Desktop or your own agents ask models,
+  upload and search documents and follow indexing – with an account's **API key**, which can
+  never do more than the account. Since 0.3.3 results come back directly as text, image or
+  PDF; since 0.3.6 keys can also **read** the account's own and shared **chats**.
+- **Model management for LM Studio (0.3.2):** MultiGPT loads and unloads local models itself,
+  never beyond a memory budget for the graphics card.
+- **Context menu in the chat (0.3.2):** quote selected text with its origin, ask a follow-up,
+  explain, translate. Plus **tools on demand**, so that many MCP tools fit into the context
+  of local models.
+- **apt repository (0.3.4)**, **prompt caching** with Anthropic, an **input history** with
+  arrow up/down and deleting an answer **with what follows**.
+- **Indexing** of several documents at once (0.3.5); runs can be paused and resumed (0.3.6).
+- **Personal menu with profile picture** (0.3.5), **notices** for shared chats and the
+  **version display** (0.3.6).
+- **Costs:** the ECB rate for dollars is fetched automatically, and accounts can be switched
+  to USD; **scipy** in the sandbox for calculations (0.3.6).
+
+## In progress: version 0.4.0
+
+Not yet released – 0.4.0 will only come out after thorough testing.
+
+- **Runner:** a container on your own computer in which a model works like a coding tool –
+  locked in, with a terminal and preview in the browser; the work is versioned on the server.
+  It reaches devices on the home network via `ssh` or `telnet` only if the administrator
+  approves them, and only with a confirmation.
+- **“LM Studio” interface** as a provider type of its own, **tokens per second** in the header
+  of every answer, a **swap prompt** when graphics memory is full, and the **reasoning effort
+  per model**.
+
+More under [features]({{< relref "features" >}}).
+
+## Status
+
 It already runs for real with OpenAI and LM Studio; the other cloud providers have mostly
 been tested with simulations so far. A fresh Debian installation is still pending, and the
-Docker build is untested. There are no release packages yet. Image editing, voice, music,
-backup, the scratchpad and the runner follow – details in the
-[roadmap]({{< relref "roadmap" >}}).
+Docker build is untested. Image editing, voice, music, backup and the scratchpad follow –
+details in the [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence
 

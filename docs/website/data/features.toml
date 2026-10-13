@@ -1,6 +1,7 @@
 # Funktionskacheln der Startseite.
-# status: "done" | "partial" | "planned"; milestone verweist auf data/roadmap.toml.
-# Stand: Version 0.3.1
+# status: "done" | "partial" | "progress" | "planned"; milestone verweist auf data/roadmap.toml.
+# "progress" = in Arbeit, noch nicht veröffentlicht.
+# Stand: Version 0.3.6 (Runner in Arbeit für 0.4.0)
 
 [[items]]
   status = "done"
@@ -19,8 +20,8 @@
     de = "Debian-Paket und systemd"
     en = "Debian package and systemd"
   [items.text]
-    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`. Versionen sind getaggt, aktuell 0.3.1. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
-    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command. Versions are tagged, currently 0.3.1. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
+    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`, aktuell 0.3.6. Seit 0.3.4 über eine signierte apt-Paketquelle für Debian 13, Updates mit `apt upgrade`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
+    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command, currently 0.3.6. Since 0.3.4 from a signed apt repository for Debian 13, with updates via `apt upgrade`. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
 
 [[items]]
   status = "done"
@@ -39,8 +40,8 @@
     de = "Lokale Modelle mit LM Studio"
     en = "Local models with LM Studio"
   [items.text]
-    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die geladenen Modelle werden samt ihren Fähigkeiten automatisch angeboten. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
-    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically, along with their capabilities. Local models cost nothing. In real use in a home network."
+    de = "LM Studio auf einem PC im Heimnetz als Anbieter. Eine Statusanzeige zeigt, ob er gerade läuft; die Modelle werden samt ihren Fähigkeiten automatisch angeboten. Auf Wunsch lädt und entlädt MultiGPT sie selbst, nie über ein Speicherbudget für die Grafikkarte. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
+    en = "LM Studio on a PC in your home network as a provider. A status indicator shows whether it is running; its models are offered automatically, along with their capabilities. If you like, MultiGPT loads and unloads them itself, never beyond a memory budget for the graphics card. Local models cost nothing. In real use in a home network."
 
 [[items]]
   status = "done"
@@ -79,8 +80,8 @@
     de = "Chats teilen"
     en = "Share chats"
   [items.text]
-    de = "Einen Chat mit Konten oder Gruppen teilen, mit Rechten nach RWUD: Lesen, Schreiben, Bearbeiten, Löschen. Ein Widerruf wirkt sofort, Kosten trägt, wer sendet."
-    en = "Share a chat with accounts or groups, with RWUD permissions: read, write, update, delete. Revoking takes effect at once, and whoever sends pays."
+    de = "Einen Chat mit Konten oder Gruppen teilen, mit Rechten nach RWUD: Lesen, Schreiben, Bearbeiten, Löschen. Ein Widerruf wirkt sofort, Kosten trägt, wer sendet. Löscht oder archiviert ein Empfänger etwas, bekommt der Besitzer eine Mitteilung."
+    en = "Share a chat with accounts or groups, with RWUD permissions: read, write, update, delete. Revoking takes effect at once, and whoever sends pays. If a recipient deletes or archives something, the owner gets a notice."
 
 [[items]]
   status = "done"
@@ -109,8 +110,8 @@
     de = "Kontenrahmen und Budgets"
     en = "Billing accounts and budgets"
   [items.text]
-    de = "Jeder Anbieter rechnet über ein Konto ab: in Euro oder Dollar, nur in Tokens (lokal) oder als Pauschale. Preise mit Gültigkeitsdatum, Cache und Reasoning, Wechselkurse. Budgets je Konto, Rolle und Person mit Hinweis ab 80 % und Sperre ab 100 %."
-    en = "Each provider bills through an account: in euros or dollars, in tokens only (local) or as a flat rate. Prices with a validity date, cache and reasoning, exchange rates. Budgets per account, role and person with a warning from 80 % and a block from 100 %."
+    de = "Jeder Anbieter rechnet über ein Konto ab: in Euro oder Dollar, nur in Tokens (lokal) oder als Pauschale. Preise mit Gültigkeitsdatum, Cache und Reasoning, der EZB-Kurs für Dollar kommt automatisch. Budgets je Konto, Rolle und Person mit Hinweis ab 80 % und Sperre ab 100 %."
+    en = "Each provider bills through an account: in euros or dollars, in tokens only (local) or as a flat rate. Prices with a validity date, cache and reasoning; the ECB rate for dollars is fetched automatically. Budgets per account, role and person with a warning from 80 % and a block from 100 %."
 
 [[items]]
   status = "done"
@@ -124,13 +125,33 @@
 
 [[items]]
   status = "done"
+  milestone = "13"
+  [items.title]
+    de = "Kontextmenü im Chat"
+    en = "Context menu in the chat"
+  [items.text]
+    de = "Markierten Text per Rechtsklick oder Leiste als Zitat mit Herkunft ins Eingabefeld übernehmen, auch mehrere nacheinander. Dazu Nachfragen, Erklären, Vereinfachen, Übersetzen, Gegenargumente und Belege suchen. Gesendet wird nichts von selbst."
+    en = "Right-click or use the bar to quote selected text with its origin in the input field, several quotes in a row if you like. Plus follow-up questions, explain, simplify, translate, counter-arguments and finding evidence. Nothing is sent on its own."
+
+[[items]]
+  status = "done"
   milestone = "4a"
   [items.title]
     de = "Werkzeuge über MCP"
     en = "Tools via MCP"
   [items.text]
-    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Server lassen sich aus „mcpServers“-JSON importieren und zeigen ihren Online-Status. Welche Modelle MCP nutzen dürfen, legt der Verwalter je Modell fest; heikle Aufrufe brauchen eine Bestätigung."
-    en = "Models call tools from MCP servers. Servers can be imported from “mcpServers” JSON and show their online status. The administrator decides per model which ones may use MCP; sensitive calls need a confirmation."
+    de = "Modelle rufen Werkzeuge aus MCP-Servern auf. Server lassen sich aus „mcpServers“-JSON importieren und zeigen ihren Online-Status. Welche Modelle MCP nutzen dürfen, legt der Verwalter je Modell fest; heikle Aufrufe brauchen eine Bestätigung. Bei vielen Werkzeugen sucht sich das Modell die passenden selbst, damit der Kontext lokaler Modelle reicht."
+    en = "Models call tools from MCP servers. Servers can be imported from “mcpServers” JSON and show their online status. The administrator decides per model which ones may use MCP; sensitive calls need a confirmation. With many tools the model looks up the ones it needs, so the context of local models is enough."
+
+[[items]]
+  status = "done"
+  milestone = "15"
+  [items.title]
+    de = "MultiGPT als MCP-Server"
+    en = "MultiGPT as an MCP server"
+  [items.text]
+    de = "Andere Programme wie n8n, Claude oder eigene Agenten steuern MultiGPT mit dem API-Key eines Kontos: Modelle fragen, Dokumente hochladen und durchsuchen, Indexierung verfolgen und pausieren, Dateien abholen, eigene Chats lesen. Ein Key kann nie mehr als sein Konto."
+    en = "Other programs such as n8n, Claude or your own agents control MultiGPT with an account's API key: ask models, upload and search documents, follow and pause indexing, fetch files, read your own chats. A key can never do more than its account."
 
 [[items]]
   status = "done"
@@ -139,8 +160,8 @@
     de = "Berechnungen in der Sandbox"
     en = "Calculations in a sandbox"
   [items.text]
-    de = "Modelle rechnen exakt mit Python, numpy, sympy und mpmath und zeichnen Diagramme mit matplotlib. Der Code läuft abgeschottet in bubblewrap: ohne Netz, ohne Server-Dateien, ohne Geheimnisse."
-    en = "Models calculate exactly with Python, numpy, sympy and mpmath and draw charts with matplotlib. The code runs isolated in bubblewrap: no network, no server files, no secrets."
+    de = "Modelle rechnen exakt mit Python, numpy, scipy, sympy und mpmath und zeichnen Diagramme mit matplotlib. Der Code läuft abgeschottet in bubblewrap: ohne Netz, ohne Server-Dateien, ohne Geheimnisse."
+    en = "Models calculate exactly with Python, numpy, scipy, sympy and mpmath and draw charts with matplotlib. The code runs isolated in bubblewrap: no network, no server files, no secrets."
 
 [[items]]
   status = "done"
@@ -149,8 +170,8 @@
     de = "Arbeitsblätter als PDF"
     en = "Worksheets as PDF"
   [items.text]
-    de = "Neu in 0.3.1: druckfertige Blätter – Lineaturen 0 bis 4, Karo, Rechenblätter mit Lösungen, Uhrzeiten, Zahlenstrahl, Sachunterricht, dazu Briefe und Tabellen. Aufgaben und Lösungen rechnet der Server, nicht das Modell."
-    en = "New in 0.3.1: print-ready sheets – handwriting rulings 0 to 4, squared paper, arithmetic sheets with answers, clock faces, number lines, science worksheets, plus letters and tables. The server computes tasks and answers, not the model."
+    de = "Druckfertige Blätter – Lineaturen 0 bis 4, Karo, Rechenblätter mit Lösungen, Uhrzeiten, Zahlenstrahl, Sachunterricht, dazu Briefe und Tabellen. Aufgaben und Lösungen rechnet der Server, nicht das Modell."
+    en = "Print-ready sheets – handwriting rulings 0 to 4, squared paper, arithmetic sheets with answers, clock faces, number lines, science worksheets, plus letters and tables. The server computes tasks and answers, not the model."
 
 [[items]]
   status = "done"
@@ -159,8 +180,8 @@
     de = "Fragen an eigene Dokumente"
     en = "Ask your own documents"
   [items.text]
-    de = "Sammlungen mit PDFs, Word-, Text- und Bilddateien, auch gescannte Seiten per OCR. Suche mit PostgreSQL und pgvector. Embeddings und OCR laufen auf Wunsch komplett lokal über LM Studio, Ordner vom NAS werden periodisch eingelesen."
-    en = "Collections of PDFs, Word, text and image files, scanned pages included via OCR. Search with PostgreSQL and pgvector. Embeddings and OCR can run fully locally via LM Studio, and folders from the NAS are read in periodically."
+    de = "Sammlungen mit PDFs, Word-, Text- und Bilddateien, auch gescannte Seiten per OCR. Suche mit PostgreSQL und pgvector. Embeddings und OCR laufen auf Wunsch komplett lokal über LM Studio, Ordner vom NAS werden periodisch eingelesen. Mehrere Dokumente gleichzeitig, Läufe lassen sich pausieren."
+    en = "Collections of PDFs, Word, text and image files, scanned pages included via OCR. Search with PostgreSQL and pgvector. Embeddings and OCR can run fully locally via LM Studio, and folders from the NAS are read in periodically. Several documents at once, and runs can be paused."
 
 [[items]]
   status = "done"
@@ -233,11 +254,11 @@
     en = "Collect material from chats, documents and the web with its origin, and turn it into a fully referenced document with verified quotes and a bibliography."
 
 [[items]]
-  status = "planned"
+  status = "progress"
   milestone = "14"
   [items.title]
     de = "Runner"
     en = "Runner"
   [items.text]
-    de = "Ein Container auf dem eigenen Rechner als Arbeitsumgebung für Modelle: Shell, Dateien, git und Python. Vom Server per Token verwaltet, Verbindung nur ausgehend, Netz standardmäßig aus, Zeitkontingent je Rolle."
-    en = "A container on your own computer as a workspace for models: shell, files, git and Python. Managed by the server via a token, outgoing connection only, network off by default, a time quota per role."
+    de = "In Arbeit für 0.4.0: ein Container auf dem eigenen Rechner, in dem ein Modell wie ein Coding-Werkzeug arbeitet – eingesperrt und standardmäßig ohne Netz. Terminal und HTML-Vorschau im Browser, Arbeitsstand versioniert auf dem Server, Zeitkontingent je Rolle."
+    en = "In progress for 0.4.0: a container on your own computer in which a model works like a coding tool – locked in and without network by default. Terminal and HTML preview in the browser, work versioned on the server, a time quota per role."

@@ -406,6 +406,13 @@ blockquote p {
   border: 1px dashed var(--muted);
 }
 
+/* In Arbeit: noch nicht veröffentlicht. */
+.badge-progress {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
 .placeholder {
   margin: 2rem 0;
   padding: 2.5rem 1rem;
@@ -464,6 +471,10 @@ blockquote p {
 .milestone-done::before {
   background: var(--done-fg);
   border-color: var(--done-fg);
+}
+
+.milestone-progress::before {
+  border-color: var(--accent);
 }
 
 .milestone-head {
@@ -554,6 +565,10 @@ blockquote p {
 
 .step-partial .step-icon {
   color: var(--partial-fg);
+}
+
+.step-progress .step-icon {
+  color: var(--accent);
 }
 
 .step-planned .step-icon,

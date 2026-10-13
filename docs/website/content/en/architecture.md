@@ -25,13 +25,17 @@ menus:
 - **PostgreSQL with pgvector:** the only database – for accounts, chats and the vectors of
   your own documents. No SQLite.
 - **Worker:** a second process from the same code base that indexes documents in
-  the background. It takes its jobs from a table in PostgreSQL.
+  the background. It takes its jobs from a table in PostgreSQL and starts further processes
+  to handle several documents at once.
 - **Provider adapters:** one common interface with an adapter for
   OpenAI-compatible APIs (OpenAI, OpenRouter, LM Studio), one for Anthropic
   and one for Google Gemini. Implemented with `httpx` directly against the HTTP APIs.
 - **MCP client:** connects to MCP servers via the official Python SDK and
   passes their tools on to the models. The client, the connection test and the tool
   loop in the chat are done.
+- **MCP server (node):** at `/mcp/`, MultiGPT is itself an MCP server for other programs,
+  with API keys per account. It runs in the same gunicorn processes, without an extra
+  service.
 
 ## Network and security
 

@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Selbst gehostetes Multi-KI-Chatsystem für Familie und Haushalt: eigene Daten, viele Anbieter, ein Chat."
-eyebrow: "Selbst gehostet · in Entwicklung · Version 0.3"
+eyebrow: "Selbst gehostet · in Entwicklung · Version 0.3.6"
 headline: "Ein KI-Chat für die ganze Familie – auf dem eigenen Server"
 lead: "MultiGPT ist eine Web-App für das Heimnetz, über die alle im Haushalt mit verschiedenen KI-Modellen chatten – von OpenAI über Anthropic und Google bis zum lokalen LM Studio. Chats, Konten und API-Keys bleiben dabei auf dem eigenen Server."
 pillarsTitle: "Die Idee dahinter"
@@ -34,11 +34,16 @@ und LM Studio im Heimnetz, mit gestreamten Antworten, Modellwahl pro Nachricht, 
 Formeln und Code-Hervorhebung. Dazu kommen Familienkonten mit Rollen, ein Kontenrahmen mit
 Budgets, ein Vergleichsmodus für zwei oder drei Modelle, MCP-Werkzeuge mit Rückfrage,
 Fragen an eigene Dokumente mit zitierfähigen Quellen (auf Wunsch komplett lokal über
-LM Studio), die Websuche über ein selbst gehostetes SearXNG, verschlüsselte API-Keys, eine
-Verwaltung für Verwalter und ein Debian-Paket, das Datenbank, Schema und nginx selbst
-einrichtet.
+LM Studio, das MultiGPT auf Wunsch selbst verwaltet), die Websuche über ein selbst gehostetes
+SearXNG, verschlüsselte API-Keys, eine Verwaltung für Verwalter und ein Debian-Paket, das
+Datenbank, Schema und nginx selbst einrichtet. Andere Programme wie n8n oder Claude können
+MultiGPT als MCP-Server nutzen.
 
-## Neu in 0.3
+Installiert wird MultiGPT auf Debian 13 über eine eigene **apt-Paketquelle**; Updates kommen
+dann wie gewohnt mit `apt upgrade`. Wie das geht, steht unter
+[Installation]({{< relref "installation" >}}).
+
+## Neu in 0.3.0 und 0.3.1
 
 - **Anhänge und Bild-Eingabe:** Bilder und Dokumente in den Chat ziehen oder einfügen;
   Ortsdaten aus Fotos werden entfernt.
@@ -56,11 +61,46 @@ einrichtet.
 Wer von 0.2 aktualisiert, findet die nötigen Schritte unter
 [Installation]({{< relref "installation" >}}).
 
+## Neu in 0.3.2 bis 0.3.6
+
+- **MultiGPT als MCP-Server (0.3.2):** n8n, Claude Desktop oder eigene Agenten fragen Modelle,
+  laden und durchsuchen Dokumente und verfolgen die Indexierung – mit dem **API-Key** eines
+  Kontos, der nie mehr darf als das Konto. Seit 0.3.3 kommen Ergebnisse direkt als Text, Bild
+  oder PDF zurück, seit 0.3.6 können Keys auch eigene und geteilte **Chats lesen**.
+- **Modellverwaltung für LM Studio (0.3.2):** MultiGPT lädt und entlädt lokale Modelle
+  selbst, nie über ein Speicherbudget für die Grafikkarte.
+- **Kontextmenü im Chat (0.3.2):** markierten Text als Zitat mit Herkunft übernehmen,
+  nachfragen, erklären, übersetzen. Dazu **Werkzeuge nach Bedarf**, damit auch viele
+  MCP-Werkzeuge in den Kontext lokaler Modelle passen.
+- **apt-Paketquelle (0.3.4)**, **Prompt-Caching** bei Anthropic, **Eingabeverlauf** mit Pfeil
+  hoch/runter und eine Antwort **samt Verlauf löschen**.
+- **Indexierung** mit mehreren Dokumenten gleichzeitig (0.3.5), Läufe pausieren und
+  fortsetzen (0.3.6).
+- **Persönliches Menü mit Profilbild** (0.3.5), **Mitteilungen** bei geteilten Chats und
+  die **Versionsanzeige** (0.3.6).
+- **Kosten:** Der EZB-Kurs für Dollar kommt automatisch, Konten lassen sich auf USD umstellen;
+  **scipy** in der Sandbox für Berechnungen (0.3.6).
+
+## In Arbeit: Version 0.4.0
+
+Noch nicht veröffentlicht – 0.4.0 erscheint erst nach ausgiebigem Test.
+
+- **Runner:** ein Container auf dem eigenen Rechner, in dem ein Modell wie ein
+  Coding-Werkzeug arbeitet – eingesperrt, mit Terminal und Vorschau im Browser; der
+  Arbeitsstand liegt versioniert auf dem Server. Geräte im Heimnetz erreicht er per `ssh`
+  oder `telnet` nur, wenn der Verwalter sie freigibt, und nur mit Rückfrage.
+- **Schnittstelle „LM Studio“** als eigene Anbieterart, **Token pro Sekunde** im Kopf jeder
+  Antwort, eine **Austausch-Frage**, wenn der Grafikspeicher voll ist, und die **Denktiefe je
+  Modell**.
+
+Mehr dazu unter [Funktionen]({{< relref "features" >}}).
+
+## Stand
+
 Mit OpenAI und LM Studio läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher
 überwiegend simuliert getestet; eine frische Debian-Installation steht noch aus, der
-Docker-Build ist ungetestet. Fertige Release-Pakete gibt es noch nicht. Bildbearbeitung,
-Sprache, Musik, Backup, das Scratchpad und der Runner folgen – Details in der
-[Roadmap]({{< relref "roadmap" >}}).
+Docker-Build ist ungetestet. Bildbearbeitung, Sprache, Musik, Backup und das Scratchpad
+folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
 

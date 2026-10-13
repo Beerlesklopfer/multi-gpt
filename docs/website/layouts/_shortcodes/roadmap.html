@@ -1,6 +1,6 @@
 {{- /* Meilensteinliste aus data/roadmap.toml, je Meilenstein mit seinen Arbeitspaketen (steps). */ -}}
 {{- $lang := site.Language.Lang }}
-{{- $icons := dict "done" "✓" "partial" "◐" "planned" "○" }}
+{{- $icons := dict "done" "✓" "partial" "◐" "progress" "◔" "planned" "○" }}
 <p class="step-legend muted">{{ T "steps_legend" }}</p>
 <ol class="roadmap">
   {{- range hugo.Data.roadmap.milestones }}
@@ -16,7 +16,7 @@
     {{- $steps := .steps | default slice }}
     {{- if $steps }}
     {{- $done := len (where $steps "status" "done") }}
-    <details class="steps"{{ if eq .status "partial" }} open{{ end }}>
+    <details class="steps"{{ if in (slice "partial" "progress") .status }} open{{ end }}>
       <summary>{{ T "steps_title" }}: {{ T "steps_count" (dict "Done" $done "Total" (len $steps)) }}</summary>
       <ul class="step-list">
         {{- range $steps }}
