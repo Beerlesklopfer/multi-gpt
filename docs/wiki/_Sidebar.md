@@ -13,6 +13,7 @@
 - [n8n](n8n)
 - [Bilder erzeugen](Bilder)
 - [Berechnungen](Berechnungen)
+- [Runner (Arbeitsumgebung)](Runner)
 - [Blätter und Dokumente (PDF)](Dokumente-erzeugen)
 - [Kosten und Budgets](Kosten-und-Budgets)
 - [mgpt-ctl (Verwaltungsbefehle)](mgpt-ctl)

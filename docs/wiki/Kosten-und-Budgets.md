@@ -16,6 +16,7 @@ ein. MultiGPT bringt keine Preise mit, weil die Anbieter sie oft ändern.
 | Art `monetär` | Preise je 1 Mio. Tokens in EUR oder USD; Budget in EUR |
 | Art `nur Tokens` | Keine Kosten, nur Token-Zählung (z. B. LM Studio); optional ein Token-Kontingent je Monat |
 | Art `Pauschale/Abo` | Kosten 0 je Anfrage, Anfragen und Tokens werden gezählt; kein Budget |
+| Art `Laufzeit (Container-Minuten)` | Genau ein Konto „Runner-Laufzeit“ ohne Anbieter: Container-Minuten des [Runners](Runner), Kontingent in Minuten je Monat |
 | Modellpreis | Preisversion eines Modells ab einem Datum („gültig ab“) |
 | Wechselkurs | 1 USD in EUR ab einem Tag |
 | Buchung | Verbrauch einer Antwort, eines Anhangs oder eine Gebühr, mit Tokens, Betrag und Kurs |
@@ -140,6 +141,9 @@ gepflegte Kurse desselben Tages bleiben. Ausschalten (Server ohne Internet):
   Monetäre Konten in EUR, Token-Konten als Token-Kontingent (Eingabe + Ausgabe je Monat).
   Ein Eintrag für ein Mitglied geht vor dem seiner Rolle. Leer = unbegrenzt.
 - **Pauschalkonten** haben kein Budget.
+- **Laufzeitkonto** („Runner-Laufzeit“): Kontingent in **Minuten** je Monat, Startwert für
+  Erwachsene 600 Minuten, leer = unbegrenzt. Bei 100 % stoppen alle Runner-Sitzungen des Kontos
+  und neue starten nicht; Modelle sperrt es nicht. Details: [Runner](Runner#laufzeit-kontingent).
 
 Ab 80 % erscheint ein Hinweis (Kopfzeile, beim Senden, „Mein Verbrauch“). Bei 100 % sind **nur
 die Modelle dieses Kontos** gesperrt und in der Modellauswahl ausgegraut, mit dem Grund im
