@@ -1,0 +1,11 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "YW Jj",
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "Leerzeichen",
+ "sender": "server"
+}

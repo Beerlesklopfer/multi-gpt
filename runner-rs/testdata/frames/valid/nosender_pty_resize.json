@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "cols": 120,
+  "pty": "t1",
+  "rows": 40,
+  "session": "s1",
+  "type": "pty_resize"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

@@ -1,0 +1,249 @@
+{
+  "format": 1,
+  "release": "dev",
+  "services": [
+    {
+      "name": "read",
+      "kind": "read",
+      "description": "Liest eine Textdatei aus dem Arbeitsstand (/workspace) mit Zeilennummern. Große Dateien abschnittsweise lesen: „offset“ (erste Zeile, ab 1) und „limit“ (Zeilen).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Pfad relativ zu /workspace (oder absolut darin)."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Erste Zeile (ab 1)."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Anzahl Zeilen."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "write",
+      "kind": "edit",
+      "description": "Legt eine Datei im Arbeitsstand an oder überschreibt sie vollständig. Für kleine Änderungen an bestehenden Dateien „edit“ verwenden.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Pfad relativ zu /workspace (oder absolut darin)."
+          },
+          "content": {
+            "type": "string",
+            "description": "Neuer Inhalt."
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit",
+      "kind": "edit",
+      "description": "Ersetzt in einer Datei eine Textstelle: „old_string“ muss genau einmal vorkommen (sonst mehr Kontext angeben oder „replace_all“ setzen).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Pfad relativ zu /workspace (oder absolut darin)."
+          },
+          "old_string": {
+            "type": "string",
+            "description": "Bisheriger Text (wörtlich)."
+          },
+          "new_string": {
+            "type": "string",
+            "description": "Neuer Text."
+          },
+          "replace_all": {
+            "type": "boolean",
+            "description": "Alle Vorkommen ersetzen (Standard: nein)."
+          }
+        },
+        "required": [
+          "path",
+          "old_string",
+          "new_string"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "glob",
+      "kind": "read",
+      "description": "Findet Dateien nach Muster, z. B. „**/*.py“ (neueste zuerst).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Glob-Muster."
+          },
+          "path": {
+            "type": "string",
+            "description": "Startverzeichnis (Standard: /workspace)."
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "grep",
+      "kind": "read",
+      "description": "Durchsucht Dateien im Arbeitsstand mit einem regulären Ausdruck (Volltext).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regulärer Ausdruck."
+          },
+          "path": {
+            "type": "string",
+            "description": "Datei oder Verzeichnis."
+          },
+          "glob": {
+            "type": "string",
+            "description": "Nur Dateien nach Muster, z. B. *.js."
+          },
+          "ignore_case": {
+            "type": "boolean",
+            "description": "Groß/klein ignorieren."
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "bash",
+      "kind": "command",
+      "description": "Führt einen Shell-Befehl im Container aus (Arbeitsverzeichnis /workspace, Pseudo-Terminal, Zeitlimit, Ausgabe gekürzt). Netz ist normalerweise aus.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Befehl für bash."
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600,
+            "description": "Zeitlimit in Sekunden (Standard 120)."
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "serve",
+      "kind": "command",
+      "description": "Startet die Vorschau: ein statischer HTTP-Server liefert ein Verzeichnis des Arbeitsstands aus (HTML, JS, CSS, Bilder; keine serverseitige Ausführung). Liefert die Vorschau-Adresse für den Nutzer.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Verzeichnis (Standard: /workspace)."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "publish",
+      "kind": "publish",
+      "description": "Legt eine Datei aus /scratch (Ablage der Sitzung) oder /workspace als Anhang in den Chat, damit der Nutzer sie herunterladen bzw. ansehen kann (Bilder, PDF, Archive, Text). Nur für Ergebnisse, die der Nutzer haben soll; Größe begrenzt.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Datei unter /scratch oder /workspace."
+          },
+          "name": {
+            "type": "string",
+            "description": "Anzeigename im Chat (Standard: Dateiname)."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "telnet",
+      "kind": "remote",
+      "description": "Sendet eine Eingabe per Telnet an ein freigegebenes (altes) Gerät. Telnet überträgt im Klartext. Jeder Aufruf wird vom Nutzer bestätigt.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Name des freigegebenen Hosts."
+          },
+          "input": {
+            "type": "string",
+            "description": "Eingabe (Zeile bzw. Befehl)."
+          }
+        },
+        "required": [
+          "host",
+          "input"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "setup_host",
+      "kind": "setup",
+      "description": "Richtet ein freigegebenes Zielsystem als weiteren Runner ein: überträgt per SSH-Schlüssel das Runner-Programm von MultiGPT, prüft die Prüfsumme und koppelt es mit diesem Konto. „host“ ist der Name aus der Liste der freigegebenen Hosts. Jeder Aufruf wird vom Nutzer bestätigt.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Name des freigegebenen Hosts."
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

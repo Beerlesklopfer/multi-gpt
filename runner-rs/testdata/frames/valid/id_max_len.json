@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "reason": "user",
+  "session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "type": "session_stop"
+ },
+ "note": "64 Zeichen",
+ "sender": "server"
+}

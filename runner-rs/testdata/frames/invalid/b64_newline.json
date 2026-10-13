@@ -1,0 +1,11 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "YWJj\n",
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "Zeilenumbruch",
+ "sender": "server"
+}

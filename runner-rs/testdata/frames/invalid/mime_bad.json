@@ -1,0 +1,17 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "UE5H",
+  "last": true,
+  "mime": "image",
+  "name": "bild.png",
+  "seq": 0,
+  "session": "s1",
+  "sha256": "796120837694d3f3f29259cfeb25091698c2a0aa87873658d840b4993ee889b3",
+  "size": 3,
+  "transfer": "pub-1",
+  "type": "file_chunk"
+ },
+ "note": "MIME-Format",
+ "sender": "agent"
+}

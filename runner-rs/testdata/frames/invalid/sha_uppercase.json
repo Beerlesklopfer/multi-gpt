@@ -1,0 +1,12 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "head": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+  "ok": true,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_ack"
+ },
+ "note": "nur klein hex",
+ "sender": "server"
+}

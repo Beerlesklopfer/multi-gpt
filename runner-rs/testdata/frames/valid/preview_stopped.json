@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "running": false,
+  "session": "s1",
+  "type": "preview"
+ },
+ "note": "Vorschau aus ohne port/token",
+ "sender": "agent"
+}

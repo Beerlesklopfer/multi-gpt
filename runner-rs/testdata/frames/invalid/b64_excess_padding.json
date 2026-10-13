@@ -1,0 +1,11 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "YWJj====",
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "zu viel Padding",
+ "sender": "server"
+}

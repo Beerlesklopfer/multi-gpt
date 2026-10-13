@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "head": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "ok": true,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_ack"
+ },
+ "note": "SHA-256-Commit",
+ "sender": "server"
+}

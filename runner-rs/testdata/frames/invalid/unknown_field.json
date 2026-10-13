@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "extra": 1,
+  "sessions": [
+   {
+    "session": "s1",
+    "state": "running"
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "note": "unbekanntes Feld",
+ "sender": "agent"
+}

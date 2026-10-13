@@ -1,0 +1,9 @@
+{
+ "close_code": 4498,
+ "expect": "reject",
+ "key_id": "56475aa75463474c",
+ "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+ "note": "auch close nur signiert",
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "text": "{\"type\":\"close\",\"reason\":\"revoked\",\"message\":\"Token widerrufen – bitte neu koppeln\"}"
+}

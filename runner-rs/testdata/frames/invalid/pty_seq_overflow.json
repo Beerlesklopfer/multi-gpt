@@ -1,0 +1,12 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "G1swbSQg",
+  "pty": "t1",
+  "seq": 9007199254740993,
+  "session": "s1",
+  "type": "pty_data"
+ },
+ "note": "über 2^53",
+ "sender": "agent"
+}

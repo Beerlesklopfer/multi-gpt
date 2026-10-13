@@ -1,0 +1,14 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "sessions": [
+   {
+    "session": "s1",
+    "state": "running"
+   }
+  ],
+  "type": "Heartbeat"
+ },
+ "note": "Groß/klein",
+ "sender": null
+}

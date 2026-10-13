@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "ok": true,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_ack"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

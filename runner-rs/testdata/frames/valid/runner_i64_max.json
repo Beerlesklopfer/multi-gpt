@@ -1,0 +1,22 @@
+{
+ "frame": {
+  "catalog": "valid",
+  "chunk_bytes": 1048576,
+  "heartbeat_seconds": 30,
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:0.5@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_frame_bytes": 4194304,
+  "protocol": 2,
+  "runner": 9223372036854775807,
+  "server_version": "0.5",
+  "services": [
+   "read",
+   "write",
+   "setup_host"
+  ],
+  "type": "welcome"
+ },
+ "note": "größte Runner-ID",
+ "sender": "server"
+}

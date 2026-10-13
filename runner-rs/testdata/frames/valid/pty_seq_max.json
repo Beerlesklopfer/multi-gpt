@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "data": "G1swbSQg",
+  "pty": "t1",
+  "seq": 9007199254740992,
+  "session": "s1",
+  "type": "pty_data"
+ },
+ "note": "seq bis 2^53",
+ "sender": "agent"
+}

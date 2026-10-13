@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "reason": "idle",
+  "session": "s1",
+  "type": "session_stop"
+ },
+ "note": "Beispiel je Typ",
+ "sender": "server"
+}

@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "headers": {
+   "Accept": "a\r\nSet-Cookie: x"
+  },
+  "method": "GET",
+  "path": "/index.html",
+  "request": "r1",
+  "session": "s1",
+  "type": "preview_request"
+ },
+ "note": "Header-Injection",
+ "sender": "server"
+}

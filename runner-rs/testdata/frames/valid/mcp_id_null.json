@@ -1,0 +1,17 @@
+{
+ "frame": {
+  "message": {
+   "error": {
+    "code": -32700,
+    "message": "x"
+   },
+   "id": null,
+   "jsonrpc": "2.0"
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "id null bleibt in der MCP-Nachricht erhalten",
+ "sender": "agent"
+}

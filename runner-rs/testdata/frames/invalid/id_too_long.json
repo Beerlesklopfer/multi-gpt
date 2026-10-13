@@ -1,0 +1,10 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "reason": "user",
+  "session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "type": "session_stop"
+ },
+ "note": "65",
+ "sender": "server"
+}

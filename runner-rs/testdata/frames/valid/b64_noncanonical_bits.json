@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "data": "YR==",
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "Python dekodiert nicht-kanonische Restbits (YR== = 'a')",
+ "sender": "server"
+}

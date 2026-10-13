@@ -1,0 +1,9 @@
+{
+ "close_code": 4498,
+ "expect": "reject",
+ "key_id": "56475aa75463474c",
+ "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+ "note": "Rahmen ohne Umschlag",
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "text": "{\"type\":\"welcome\",\"runner\":7,\"protocol\":2,\"server_version\":\"0.4\",\"heartbeat_seconds\":30,\"images\":[\"ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],\"max_frame_bytes\":4194304,\"chunk_bytes\":1048576,\"services\":[\"read\",\"write\",\"bash\"],\"catalog\":\"valid\"}"
+}

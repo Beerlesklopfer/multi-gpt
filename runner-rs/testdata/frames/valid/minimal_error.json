@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "code": "unknown_session",
+  "message": "Sitzung unbekannt",
+  "type": "error"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

@@ -1,0 +1,27 @@
+{
+ "frame": {
+  "agent_version": "0.5.0",
+  "catalog": "{\"format\":1,\"release\":\"0.5.0\",\"services\":[]}",
+  "catalog_key": "0123456789abcdef",
+  "catalog_sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "engine": {
+   "name": "podman",
+   "rootless": true,
+   "version": "5.4.2"
+  },
+  "hostname": "äääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+  "nonce": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "protocol": 2,
+  "sessions": [
+   {
+    "session": "s1",
+    "state": "running",
+    "workspace": "3"
+   }
+  ],
+  "token": "mgrt_abcd1234_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "type": "hello"
+ },
+ "note": "Länge in Zeichen, nicht Byte (506 Byte UTF-8)",
+ "sender": "agent"
+}

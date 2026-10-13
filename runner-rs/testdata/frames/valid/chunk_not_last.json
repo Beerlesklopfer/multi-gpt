@@ -1,0 +1,14 @@
+{
+ "frame": {
+  "data": "YWJj",
+  "head": "cccccccccccccccccccccccccccccccccccccccc",
+  "last": false,
+  "message": "Datei geändert",
+  "seq": 0,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_chunk"
+ },
+ "note": "Zwischenstück ohne size/sha256",
+ "sender": "agent"
+}

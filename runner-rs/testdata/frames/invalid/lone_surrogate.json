@@ -1,0 +1,6 @@
+{
+ "close_code": 4400,
+ "note": "einzelnes Surrogat",
+ "sender": "agent",
+ "text": "{\"type\": \"hello\", \"token\": \"mgrt_abcd1234_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"protocol\": 2, \"agent_version\": \"0.5.0\", \"engine\": {\"name\": \"podman\", \"version\": \"5.4.2\", \"rootless\": true}, \"hostname\": \"\\ud800\", \"sessions\": [{\"session\": \"s1\", \"workspace\": \"3\", \"state\": \"running\"}], \"nonce\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"catalog\": \"{\\\"format\\\":1,\\\"release\\\":\\\"0.5.0\\\",\\\"services\\\":[]}\", \"catalog_sig\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\", \"catalog_key\": \"0123456789abcdef\"}"
+}

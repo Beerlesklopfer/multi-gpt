@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "key": "0123456789abcdef",
+  "payload": "eyJ0eXBlIjoic2Vzc2lvbl9zdG9wIiwic2Vzc2lvbiI6InMxIiwicmVhc29uIjoidXNlciJ9",
+  "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "type": "signed"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

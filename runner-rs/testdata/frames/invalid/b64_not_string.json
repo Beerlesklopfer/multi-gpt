@@ -1,0 +1,14 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": [
+   1,
+   2
+  ],
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "kein Text",
+ "sender": "server"
+}

@@ -1,0 +1,24 @@
+{
+ "canonical": {
+  "sessions": [
+   {
+    "session": "s1",
+    "state": "running"
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "frame": {
+  "sessions": [
+   {
+    "preview_port": null,
+    "session": "s1",
+    "state": "running",
+    "workspace": null
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "note": "verschachtelt optional null",
+ "sender": "agent"
+}

@@ -1,0 +1,9 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "cmd": "id",
+  "type": "shell"
+ },
+ "note": "unbekannter Typ",
+ "sender": null
+}

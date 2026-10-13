@@ -1,0 +1,17 @@
+{
+ "frame": {
+  "message": {
+   "jsonrpc": "2.0",
+   "method": "x",
+   "params": {
+    "pad": ""
+   }
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "Rahmen genau MAX_FRAME_BYTES",
+ "pad_total_bytes": 4194304,
+ "sender": "server"
+}

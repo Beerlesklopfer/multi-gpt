@@ -1,0 +1,11 @@
+# Cargo-Workspace des Runner-Agents von MultiGPT (M14, Rust-Agent).
+[workspace]
+resolver = "3"
+members = ["multigpt-runner"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "AGPL-3.0-or-later"
+authors = ["Joerg Bernau <joerg@bernau.family>"]
+repository = "https://github.com/Beerlesklopfer/multi-gpt"

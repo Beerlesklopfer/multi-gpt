@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "message": "Token widerrufen",
+  "reason": "revoked",
+  "type": "close"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

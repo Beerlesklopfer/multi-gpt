@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "head": "cccccccccccccccccccccccccccccccccccccccc",
+  "ok": true,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_ack"
+ },
+ "note": "Beispiel je Typ",
+ "sender": "server"
+}

@@ -1,0 +1,12 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "head": "cccccccccccccccccccccccccccccccccccccccc",
+  "ok": 1,
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_ack"
+ },
+ "note": "1 ist kein bool",
+ "sender": "server"
+}

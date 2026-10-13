@@ -1,0 +1,32 @@
+{
+ "frame": {
+  "allow": [
+   {
+    "host": "nas.local",
+    "port": 22
+   }
+  ],
+  "bundle": {
+   "head": "cccccccccccccccccccccccccccccccccccccccc",
+   "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "size": 1234
+  },
+  "command_seconds": 120,
+  "cpus": 64,
+  "idle_minutes": 15,
+  "image": "ghcr.io/beerlesklopfer/multigpt-runner-work:0.5@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "memory_mb": 2048,
+  "network": "allowlist",
+  "output_bytes": 65536,
+  "pids": 256,
+  "scratch_mb": 1024,
+  "scratch_mode": "local",
+  "session": "0b9a5d1e-3c1f-4f7a-9a37-6c2a0e1d2f30",
+  "tmpfs_mb": 512,
+  "type": "session_start",
+  "workspace": "3",
+  "workspace_uuid": "6f1c2a8e-5b7d-4c3e-9f10-2a3b4c5d6e7f"
+ },
+ "note": "Obergrenze",
+ "sender": "server"
+}

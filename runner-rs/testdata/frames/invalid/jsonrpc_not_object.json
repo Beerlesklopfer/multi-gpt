@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "message": [
+   {
+    "jsonrpc": "2.0"
+   }
+  ],
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "Batch nicht erlaubt",
+ "sender": "server"
+}

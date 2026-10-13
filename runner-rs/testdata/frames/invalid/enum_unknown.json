@@ -1,0 +1,10 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "reason": "bored",
+  "session": "s1",
+  "type": "session_stop"
+ },
+ "note": "Aufzählung",
+ "sender": "server"
+}

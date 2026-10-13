@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_exit"
+ },
+ "note": "ohne Code",
+ "sender": "agent"
+}

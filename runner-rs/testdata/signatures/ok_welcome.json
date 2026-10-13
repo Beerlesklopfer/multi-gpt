@@ -1,0 +1,26 @@
+{
+ "expect": "ok",
+ "inner": {
+  "catalog": "valid",
+  "chunk_bytes": 1048576,
+  "heartbeat_seconds": 30,
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_frame_bytes": 4194304,
+  "protocol": 2,
+  "runner": 7,
+  "server_version": "0.4",
+  "services": [
+   "read",
+   "write",
+   "bash"
+  ],
+  "type": "welcome"
+ },
+ "key_id": "56475aa75463474c",
+ "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+ "note": "gültig signiert",
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "text": "{\"type\":\"signed\",\"key\":\"56475aa75463474c\",\"payload\":\"eyJ0eXBlIjoid2VsY29tZSIsInJ1bm5lciI6NywicHJvdG9jb2wiOjIsInNlcnZlcl92ZXJzaW9uIjoiMC40IiwiaGVhcnRiZWF0X3NlY29uZHMiOjMwLCJpbWFnZXMiOlsiZ2hjci5pby9iZWVybGVza2xvcGZlci9tdWx0aWdwdC1ydW5uZXItd29yazoxQHNoYTI1NjphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIl0sIm1heF9mcmFtZV9ieXRlcyI6NDE5NDMwNCwiY2h1bmtfYnl0ZXMiOjEwNDg1NzYsInNlcnZpY2VzIjpbInJlYWQiLCJ3cml0ZSIsImJhc2giXSwiY2F0YWxvZyI6InZhbGlkIn0=\",\"sig\":\"858Nob7NJMUwI2N0wlQHVQoS98K/BDEP5DgLB+t1OY5xqMlWH/0fvK8+H6czGo0uShxXCFnQFwjnpvP2k2uuAA==\"}"
+}

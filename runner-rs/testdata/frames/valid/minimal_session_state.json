@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "session": "s1",
+  "state": "running",
+  "type": "session_state"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

@@ -1,0 +1,17 @@
+{
+ "frame": {
+  "message": {
+   "error": {
+    "code": -32601,
+    "message": "x"
+   },
+   "id": "a",
+   "jsonrpc": "2.0"
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "MCP-Fehler mit String-ID",
+ "sender": "agent"
+}

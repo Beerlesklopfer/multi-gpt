@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "data": "G1swbSQg",
+  "pty": "t1",
+  "seq": 0,
+  "session": "s1",
+  "type": "pty_data"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

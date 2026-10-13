@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "code": "unknown_session",
+  "message": "Sitzung unbekannt",
+  "session": "s1",
+  "type": "error"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

@@ -1,0 +1,9 @@
+{
+ "close_code": 4498,
+ "expect": "reject",
+ "key_id": "56475aa75463474c",
+ "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+ "note": "andere Verbindung",
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "text": "{\"type\":\"signed\",\"key\":\"56475aa75463474c\",\"payload\":\"eyJ0eXBlIjoid2VsY29tZSIsInJ1bm5lciI6NywicHJvdG9jb2wiOjIsInNlcnZlcl92ZXJzaW9uIjoiMC40IiwiaGVhcnRiZWF0X3NlY29uZHMiOjMwLCJpbWFnZXMiOlsiZ2hjci5pby9iZWVybGVza2xvcGZlci9tdWx0aWdwdC1ydW5uZXItd29yazoxQHNoYTI1NjphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIl0sIm1heF9mcmFtZV9ieXRlcyI6NDE5NDMwNCwiY2h1bmtfYnl0ZXMiOjEwNDg1NzYsInNlcnZpY2VzIjpbInJlYWQiLCJ3cml0ZSIsImJhc2giXSwiY2F0YWxvZyI6InZhbGlkIn0=\",\"sig\":\"yftoyzSNW/S8Qluw3Y/uX2cV/YgNAhSwwCjZj2vazhGgTOfLj7hymbE4cau2MiEK88n1+ioBdf70q1nczwq9Cg==\"}"
+}

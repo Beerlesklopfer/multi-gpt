@@ -1,0 +1,11 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "sessions": {
+   "session": "s1"
+  },
+  "type": "heartbeat"
+ },
+ "note": "Liste erwartet",
+ "sender": "agent"
+}

@@ -1,0 +1,16 @@
+{
+ "frame": {
+  "data": "PHA+SGFsbG88L3A+",
+  "headers": {
+   "Content-Type": "text/html"
+  },
+  "last": true,
+  "request": "r1",
+  "seq": 0,
+  "session": "s1",
+  "status": 200,
+  "type": "preview_response"
+ },
+ "note": "Beispiel je Typ",
+ "sender": "agent"
+}

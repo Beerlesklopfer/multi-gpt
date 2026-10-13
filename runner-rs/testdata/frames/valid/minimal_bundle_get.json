@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "session": "s1",
+  "transfer": "t1",
+  "type": "bundle_get"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

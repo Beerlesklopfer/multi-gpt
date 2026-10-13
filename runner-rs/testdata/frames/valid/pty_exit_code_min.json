@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "code": -255,
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_exit"
+ },
+ "note": "negativer Exit-Code",
+ "sender": "agent"
+}

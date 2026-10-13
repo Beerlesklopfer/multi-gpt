@@ -1,0 +1,37 @@
+{
+ "canonical": {
+  "agent_version": "0.5.0",
+  "catalog": "{\"format\":1,\"release\":\"0.5.0\",\"services\":[]}",
+  "catalog_key": "0123456789abcdef",
+  "catalog_sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "engine": {
+   "name": "podman",
+   "rootless": true,
+   "version": "5.4.2"
+  },
+  "hostname": "laptop",
+  "nonce": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "protocol": 2,
+  "token": "mgrt_abcd1234_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "type": "hello"
+ },
+ "frame": {
+  "agent_version": "0.5.0",
+  "catalog": "{\"format\":1,\"release\":\"0.5.0\",\"services\":[]}",
+  "catalog_key": "0123456789abcdef",
+  "catalog_sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "engine": {
+   "name": "podman",
+   "rootless": true,
+   "version": "5.4.2"
+  },
+  "hostname": "laptop",
+  "nonce": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "protocol": 2,
+  "sessions": null,
+  "token": "mgrt_abcd1234_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "type": "hello"
+ },
+ "note": "optionales Feld als null",
+ "sender": "agent"
+}

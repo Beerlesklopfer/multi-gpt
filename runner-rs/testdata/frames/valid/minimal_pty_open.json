@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "cols": 80,
+  "pty": "t1",
+  "rows": 24,
+  "session": "s1",
+  "type": "pty_open"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

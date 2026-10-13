@@ -1,0 +1,13 @@
+{
+ "frame": {
+  "message": {
+   "jsonrpc": "2.0",
+   "method": "notifications/initialized"
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "Benachrichtigung ohne id",
+ "sender": "server"
+}

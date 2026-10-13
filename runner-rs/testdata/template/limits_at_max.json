@@ -1,0 +1,22 @@
+{
+ "check": "limits",
+ "config": {
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_cpus": 2.0,
+  "max_memory_mb": 1024,
+  "max_pids": 4096,
+  "max_tmpfs_mb": 8192,
+  "scratch_host_dir": null
+ },
+ "expect": "ok",
+ "limits": {
+  "cpus": 2,
+  "memory_mb": 1024,
+  "network": "none",
+  "pids": 256,
+  "tmpfs_mb": 128
+ },
+ "note": "genau die Obergrenze"
+}

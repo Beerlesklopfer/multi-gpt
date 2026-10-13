@@ -1,0 +1,10 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "message": "Token widerrufen",
+  "reason": "revoked",
+  "type": "close"
+ },
+ "note": "close nur vom Server",
+ "sender": "agent"
+}

@@ -1,0 +1,57 @@
+[package]
+name = "multigpt-runner"
+version = "0.1.0"
+description = "Runner-Agent von MultiGPT: Arbeitscontainer auf dem Rechner, gesteuert über eine ausgehende WebSocket-Verbindung"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "multigpt_runner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "multigpt-runner"
+path = "src/main.rs"
+
+[features]
+default = []
+# Test-Engine mit lokalen Prozessen (nur für Tests, nie in Release-Binaries).
+fake-engine = []
+# Tests mit echtem Podman (Socket des Nutzers, Arbeits-Image localhost/mgpt-test-work:dev
+# bzw. MGPT_TEST_WORK_IMAGE); legen nur eigene Objekte mit Label multigpt.test.run an.
+podman-tests = []
+
+[dependencies]
+async-trait = "0.1.92"
+base64 = "0.23.1"
+bytes = "1.12.1"
+ed25519-dalek = "3.0.0"
+futures = "0.3"
+futures-util = "0.3.34"
+hex = "0.4.3"
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio", "client-legacy"] }
+libc = "0.2.190"
+rand = "0.10.3"
+regex = "1.13.1"
+rmcp = { version = "3.5.1", default-features = false, features = ["server"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8.5"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.0"
+subtle = "2.6.1"
+tokio = { version = "1.53.2", features = ["full"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake", "stream", "rustls-tls-native-roots"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+rcgen = { version = "0.14.10", default-features = false, features = ["ring", "crypto", "pem"] }
+tempfile = "3.27.0"

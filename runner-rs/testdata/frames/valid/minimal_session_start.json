@@ -1,0 +1,18 @@
+{
+ "frame": {
+  "command_seconds": 120,
+  "cpus": 2,
+  "idle_minutes": 15,
+  "image": "ghcr.io/beerlesklopfer/multigpt-runner-work:0.5@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "memory_mb": 2048,
+  "network": "allowlist",
+  "output_bytes": 65536,
+  "pids": 256,
+  "session": "0b9a5d1e-3c1f-4f7a-9a37-6c2a0e1d2f30",
+  "tmpfs_mb": 512,
+  "type": "session_start",
+  "workspace": "3"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

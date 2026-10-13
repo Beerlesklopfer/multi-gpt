@@ -1,0 +1,9 @@
+{
+ "close_code": 4498,
+ "expect": "reject",
+ "key_id": "56475aa75463474c",
+ "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+ "note": "Umschlag im Umschlag",
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "text": "{\"type\":\"signed\",\"key\":\"56475aa75463474c\",\"payload\":\"eyJ0eXBlIjoic2lnbmVkIiwia2V5IjoiNTY0NzVhYTc1NDYzNDc0YyIsInBheWxvYWQiOiJleUowZVhCbElqb2lkMlZzWTI5dFpTSXNJbkoxYm01bGNpSTZOeXdpY0hKdmRHOWpiMndpT2pJc0luTmxjblpsY2w5MlpYSnphVzl1SWpvaU1DNDBJaXdpYUdWaGNuUmlaV0YwWDNObFkyOXVaSE1pT2pNd0xDSnBiV0ZuWlhNaU9sc2laMmhqY2k1cGJ5OWlaV1Z5YkdWemEyeHZjR1psY2k5dGRXeDBhV2R3ZEMxeWRXNXVaWEl0ZDI5eWF6b3hRSE5vWVRJMU5qcGhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhZV0ZoWVdGaFlXRmhJbDBzSW0xaGVGOW1jbUZ0WlY5aWVYUmxjeUk2TkRFNU5ETXdOQ3dpWTJoMWJtdGZZbmwwWlhNaU9qRXdORGcxTnpZc0luTmxjblpwWTJWeklqcGJJbkpsWVdRaUxDSjNjbWwwWlNJc0ltSmhjMmdpWFN3aVkyRjBZV3h2WnlJNkluWmhiR2xrSW4wPSIsInNpZyI6Ijg1OE5vYjdOSk1Vd0kyTjB3bFFIVlFvUzk4Sy9CREVQNURnTEIrdDFPWTV4cU1sV0gvMGZ2SzgrSDZjekdvMHVTaHhYQ0ZuUUZ3am5wdlAyazJ1dUFBPT0ifQ==\",\"sig\":\"ocuh2ck9AlHj67gH65NjdrBr06jXmtbW+BM0ru17rB5IwL5PCDLL7LVkKlaRN4+wsq/PbjqrnQOsrbTmsIu4DQ==\"}"
+}

@@ -1,0 +1,25 @@
+{
+ "body": {
+  "dns_enabled": false,
+  "driver": "bridge",
+  "internal": false,
+  "labels": {
+   "multigpt.network": "default",
+   "multigpt.runner": "1"
+  },
+  "name": "mgpt-net-73475cb40a568e8d"
+ },
+ "check": "network",
+ "config": {
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_cpus": 8.0,
+  "max_memory_mb": 16384,
+  "max_pids": 4096,
+  "max_tmpfs_mb": 8192,
+  "scratch_host_dir": null
+ },
+ "expect": "ok",
+ "note": "Netz an"
+}

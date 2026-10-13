@@ -1,0 +1,16 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "data": "PHA+SGFsbG88L3A+",
+  "headers": {
+   "Content-Type": "text/html"
+  },
+  "last": true,
+  "request": "r1",
+  "seq": 0,
+  "session": "s1",
+  "type": "preview_response"
+ },
+ "note": "status im ersten Stück",
+ "sender": "agent"
+}

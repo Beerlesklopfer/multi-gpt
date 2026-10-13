@@ -1,0 +1,42 @@
+# MultiGPT-Runner als systemd-User-Dienst (natives Programm, Linux amd64/arm64).
+# Ablage: ~/.config/systemd/user/multigpt-runner.service
+# Inhaltlich gleich der Vorlage der Kopplungsseite
+# (multigpt/runner/templates/runner/multigpt-runner.service).
+#
+# "multigpt-runner pair --url <URL> --images <image@sha256:…> [--ca-sha256 <hex>]"
+# (stdin: Zeile 1 Token, Zeile 2 Server-Schlüssel) legt Token und Schlüssel in
+# ~/.config/multigpt-runner/ an (token 0600, server.pub schreibgeschützt), setzt
+# die Platzhalter @…@ ein und startet den Dienst. Von Hand danach:
+#   systemctl --user daemon-reload && systemctl --user enable --now podman.socket multigpt-runner
+# Ohne Anmeldung weiterlaufen lassen: loginctl enable-linger <nutzer>
+
+[Unit]
+Description=MultiGPT-Runner
+Wants=network-online.target podman.socket
+After=network-online.target podman.socket
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/multigpt-runner
+Environment=MGPT_URL=@MGPT_URL@
+#@MGPT_CA_SHA256@
+Environment=MGPT_TOKEN_FILE=%h/.config/multigpt-runner/token
+Environment=MGPT_SERVER_KEY_FILE=%h/.config/multigpt-runner/server.pub
+Environment=MGPT_PODMAN_SOCKET=%t/podman/podman.sock
+# Positivliste: nur diese Arbeits-Images (mit Digest) werden gestartet.
+Environment="MGPT_IMAGES=@MGPT_IMAGES@"
+# Lokales Scratchpad (Arbeitsstand mit Ablage „lokal“): je Arbeitsstand ein
+# Ordner <UUID> darin, im Container als /scratch (noexec, nosuid, nodev).
+Environment=MGPT_SCRATCH_DIR=%h/MultiGPT/Scratch
+Environment=MGPT_SCRATCH_HOST_DIR=%h/MultiGPT/Scratch
+ExecStartPre=/usr/bin/mkdir -p %h/MultiGPT/Scratch
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=10
+# 2: Einstellungen fehlen bzw. falsch; 3: Token ungültig oder widerrufen, Recht
+# fehlt, ersetzt, Version passt nicht oder Signatur des Servers ungültig
+# (Close 4401/4403/4409/4426/4498) – dann nicht neu starten, sondern neu koppeln.
+RestartPreventExitStatus=2 3
+
+[Install]
+WantedBy=default.target

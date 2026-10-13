@@ -1,0 +1,17 @@
+{
+ "check": "image",
+ "config": {
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_cpus": 8.0,
+  "max_memory_mb": 16384,
+  "max_pids": 4096,
+  "max_tmpfs_mb": 8192,
+  "scratch_host_dir": null
+ },
+ "expect": "ok",
+ "image": "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+ "note": "ohne Serverliste (Prüfung der Vorlage)",
+ "server_images": null
+}

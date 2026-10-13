@@ -1,0 +1,9 @@
+{
+ "frame": {
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_close"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

@@ -1,0 +1,14 @@
+{
+ "frame": {
+  "headers": {
+   "Accept": "text/html"
+  },
+  "method": "GET",
+  "path": "/index.html",
+  "request": "r1",
+  "session": "s1",
+  "type": "preview_request"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

@@ -1,0 +1,6 @@
+{
+ "close_code": 4400,
+ "note": "doppelte Schlüssel ablehnen (Parser-Differenz)",
+ "sender": "server",
+ "text": "{\"type\":\"session_stop\",\"session\":\"s1\",\"reason\":\"bored\",\"reason\":\"user\"}"
+}

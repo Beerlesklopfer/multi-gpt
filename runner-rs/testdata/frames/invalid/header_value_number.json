@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "headers": {
+   "A": 1
+  },
+  "method": "GET",
+  "path": "/index.html",
+  "request": "r1",
+  "session": "s1",
+  "type": "preview_request"
+ },
+ "note": "Wert kein Text",
+ "sender": "server"
+}

@@ -1,0 +1,11 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "code": -256,
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_exit"
+ },
+ "note": "Grenze",
+ "sender": "agent"
+}

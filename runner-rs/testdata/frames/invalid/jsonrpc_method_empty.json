@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "message": {
+   "id": 1,
+   "jsonrpc": "2.0",
+   "method": ""
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "method leer",
+ "sender": "server"
+}

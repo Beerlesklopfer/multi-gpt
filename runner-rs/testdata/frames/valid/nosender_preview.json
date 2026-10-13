@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "port": 18081,
+  "running": true,
+  "session": "s1",
+  "token": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "type": "preview"
+ },
+ "note": "ohne Richtungsprüfung",
+ "sender": null
+}

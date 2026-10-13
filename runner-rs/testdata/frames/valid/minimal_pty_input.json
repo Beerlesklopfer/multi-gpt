@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "data": "bHMN",
+  "pty": "t1",
+  "session": "s1",
+  "type": "pty_input"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

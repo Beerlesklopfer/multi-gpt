@@ -1,0 +1,13 @@
+{
+ "frame": {
+  "sessions": [
+   {
+    "session": "s1",
+    "state": "running"
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

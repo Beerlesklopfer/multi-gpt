@@ -1,0 +1,6 @@
+{
+ "close_code": 4400,
+ "note": "NaN ist kein JSON",
+ "sender": "server",
+ "text": "{\"type\": \"session_start\", \"session\": \"0b9a5d1e-3c1f-4f7a-9a37-6c2a0e1d2f30\", \"workspace\": \"3\", \"image\": \"ghcr.io/beerlesklopfer/multigpt-runner-work:0.5@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"cpus\": NaN, \"memory_mb\": 2048, \"pids\": 256, \"tmpfs_mb\": 512, \"network\": \"allowlist\", \"allow\": [{\"host\": \"nas.local\", \"port\": 22}], \"command_seconds\": 120, \"output_bytes\": 65536, \"idle_minutes\": 15, \"bundle\": {\"size\": 1234, \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"head\": \"cccccccccccccccccccccccccccccccccccccccc\"}, \"scratch_mode\": \"local\", \"scratch_mb\": 1024, \"workspace_uuid\": \"6f1c2a8e-5b7d-4c3e-9f10-2a3b4c5d6e7f\"}"
+}

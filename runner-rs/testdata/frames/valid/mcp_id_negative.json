@@ -1,0 +1,14 @@
+{
+ "frame": {
+  "message": {
+   "id": -5,
+   "jsonrpc": "2.0",
+   "method": "ping"
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "negative Ganzzahl-ID",
+ "sender": "server"
+}

@@ -1,0 +1,14 @@
+{
+ "frame": {
+  "message": {
+   "id": 1,
+   "jsonrpc": "2.0",
+   "method": "tools/list"
+  },
+  "pipe": "p1",
+  "session": "s1",
+  "type": "mcp"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}
