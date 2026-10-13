@@ -18,84 +18,143 @@ Server.
 
 - Recht **„Runner nutzen“** in deiner Rolle (Startwerte: Verwalter und Erwachsene ja,
   Jugendliche und Gäste nein; ändert ein Verwalter im Admin unter *Konten und Gruppen › Rollen*).
+- **Linux auf amd64 oder arm64** (PC, Laptop, Raspberry Pi mit 64-Bit-System) mit **systemd**.
 - **Podman** (rootless). Docker geht technisch auch, ist aber root-gleich und nicht empfohlen.
 - MultiGPT ist über **HTTPS** erreichbar (siehe [nginx und TLS](nginx-und-TLS)). Bei einem
   selbstsignierten Zertifikat hält der Runner dessen Fingerprint fest; die Kopplungsseite trägt
   ihn automatisch ein.
 
+Der Runner ist ein **eigenständiges Programm** (`multigpt-runner`, in Rust geschrieben, eine
+Datei ohne Abhängigkeiten). Es läuft als systemd-Dienst **deines Nutzers**, nicht als root, und
+startet die Arbeitscontainer über deinen Podman-Socket – immer nach derselben festen Vorlage.
+
 ## 1. Token erzeugen
 
 1. Im Kontomenü (oben rechts) **Runner** öffnen.
 2. Name eingeben (z. B. „Laptop“), Gültigkeit wählen, **Token erzeugen**.
-3. Der Token (`mgrt_…`) ist **nur jetzt** sichtbar. Darunter stehen die Befehle und die fertige
-   Quadlet-Datei – beides mit Kopierknopf.
+3. Der Token (`mgrt_…`) ist **nur jetzt** sichtbar. Darunter stehen die Befehle zum Einrichten,
+   die **Eingabe für `pair`** (Zeile 1 Token, Zeile 2 öffentlicher Schlüssel des Servers) und die
+   fertige Unit-Datei – alles mit Kopierknopf.
 
 Ein Token gehört zu genau einem Rechner. Er lässt sich jederzeit **widerrufen**; ein verbundener
 Runner wird dann sofort getrennt. MultiGPT speichert nur einen Hash des Tokens.
 
-## 2a. Linux (Podman rootless mit Quadlet)
+## 2. Programm installieren und koppeln (Linux)
+
+### Programm von MultiGPT herunterladen (empfohlen)
+
+MultiGPT liefert das Programm selbst aus – das Zielsystem braucht weder Internet noch Rust.
+Auf der Seite **Runner** stehen die Programme für **amd64** und **arm64** mit Prüfsumme; die
+Prüfsummen sind mit dem Schlüssel des jeweiligen Releases signiert (`SHA256SUMS`,
+`SHA256SUMS.sig`). Herunterladen geht nur angemeldet bzw. mit einem Kopplungs-Token.
 
 ```sh
 systemctl --user enable --now podman.socket   # Podman-Socket des Nutzers
-loginctl enable-linger $USER                   # läuft auch ohne Anmeldung
-podman secret create mgpt_runner_token -       # Token einfügen, dann Strg+D
-mkdir -p ~/.config/containers/systemd
-# Quadlet-Datei von der Seite „Runner“ als
-#   ~/.config/containers/systemd/multigpt-runner.container speichern, dann:
-systemctl --user daemon-reload
-systemctl --user start multigpt-runner
+loginctl enable-linger $USER                   # Dienst läuft auch ohne Anmeldung
+cd ~/Downloads && ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+sha256sum --ignore-missing -c <<'SUMS'         # Prüfsummen von der Seite „Runner“
+<sha256>  multigpt-runner-linux-amd64
+<sha256>  multigpt-runner-linux-arm64
+SUMS
+install -D -m 0755 multigpt-runner-linux-$ARCH ~/.local/bin/multigpt-runner
+~/.local/bin/multigpt-runner --version
 ```
+
+### Alternative für Entwickler: `cargo install`
+
+Mit Rust (ab 1.88) direkt aus dem Quellbaum von MultiGPT:
+
+```sh
+cargo install --locked --path runner-rs/multigpt-runner   # legt ~/.cargo/bin/multigpt-runner an
+install -D -m 0755 ~/.cargo/bin/multigpt-runner ~/.local/bin/multigpt-runner
+```
+
+Ein selbst gebautes Programm trägt keinen signierten Dienstkatalog. Der Server bietet seine
+Werkzeuge deshalb nur an, wenn der Katalog eines Releases signiert mitgegeben wird
+(`MGPT_CATALOG_FILE`, `MGPT_CATALOG_SIG_FILE`, `MGPT_CATALOG_KEY`) oder in einer
+Entwicklungsinstallation (`DEBUG` mit `RUNNER_ACCEPT_UNSIGNED`). Für den Alltag das Programm
+von MultiGPT nehmen.
+
+### Koppeln und als Dienst starten
+
+Den Befehl von der Seite **Runner** ausführen, danach die **Eingabe für `pair`** einfügen und
+mit Strg+D abschließen:
+
+```sh
+~/.local/bin/multigpt-runner pair --url https://mgpt.example \
+    --images ghcr.io/…/multigpt-runner-work@sha256:… [--ca-sha256 <Fingerprint>]
+```
+
+`pair` legt in `~/.config/multigpt-runner/` den Token (`token`, nur für dich lesbar) und den
+öffentlichen Schlüssel des Servers (`server.pub`, schreibgeschützt) ab, schreibt die User-Unit
+`~/.config/systemd/user/multigpt-runner.service` und startet den Dienst. Der Token steht nie in
+einem Befehl (Shell-Verlauf), in der Unit-Datei oder im Container.
 
 Prüfen: `systemctl --user status multigpt-runner` bzw. `journalctl --user -u multigpt-runner`.
 Auf der Seite **Runner** steht der Rechner nach wenigen Sekunden als *verbunden*.
 
-Der Token liegt als **Podman-Secret** vor, nie in der Quadlet-Datei oder in einer
-Umgebungsvariable (die `podman inspect` zeigen würde). Neuer Token: Secret ersetzen
-(`podman secret rm mgpt_runner_token`, dann neu anlegen) und den Dienst neu starten.
+Die Unit-Datei (Auszug; der vollständige Inhalt steht auf der Seite **Runner**, von Hand
+anlegen geht auch):
 
-**Wichtig:** Nach „Token ungültig/widerrufen“ oder „Recht fehlt“ beendet sich der Agent mit
-Code 78 und startet **nicht** von selbst neu – erst nach einem neuen Token.
+```ini
+[Service]
+ExecStart=%h/.local/bin/multigpt-runner
+Environment=MGPT_URL=https://mgpt.example
+Environment=MGPT_TOKEN_FILE=%h/.config/multigpt-runner/token
+Environment=MGPT_SERVER_KEY_FILE=%h/.config/multigpt-runner/server.pub
+Environment=MGPT_PODMAN_SOCKET=%t/podman/podman.sock
+Environment=MGPT_IMAGES=ghcr.io/…/multigpt-runner-work@sha256:…
+Restart=on-failure
+RestartPreventExitStatus=2 3
+```
 
-## 2b. Windows und macOS (Podman machine)
+**Exit-Codes:** `2` = Einstellungen fehlen oder sind falsch (z. B. Token- oder Schlüsseldatei
+fehlt, Image ohne Digest). `3` = der Server hat abgelehnt (Token ungültig oder widerrufen, Recht
+fehlt, Verbindung ersetzt, Protokollversion passt nicht) **oder** ein Rahmen trug keine gültige
+Signatur dieses Servers. In beiden Fällen startet systemd den Dienst **nicht** neu – erst neu
+koppeln (`pair` mit neuem Token). Bei Netzproblemen versucht es der Runner selbst wieder
+(1 s, 2 s, 4 s … bis 60 s).
 
-Auf Windows und macOS laufen Container in einer kleinen Linux-VM, der **Podman machine**.
-Der Runner läuft dort wie unter Linux:
+**Neuer Token:** auf der Seite **Runner** erzeugen und `pair` erneut ausführen (ersetzt Token
+und Schlüssel); den alten Token widerrufen.
 
-1. [Podman Desktop](https://podman-desktop.io) oder die Podman-CLI installieren und eine
-   Maschine anlegen und starten (Standard: **rootless**):
+### Raspberry Pi und andere arm64-Geräte
 
-   ```sh
-   podman machine init
-   podman machine start
-   ```
+- Ein **64-Bit-System** ist nötig (Raspberry Pi OS 64 bit bzw. Debian arm64, Pi 3/4/5). Prüfen:
+  `uname -m` muss `aarch64` melden; auf 32-Bit-Systemen läuft das Programm nicht.
+- Podman aus den Paketquellen: `sudo apt install podman` (Debian 12/13, Raspberry Pi OS).
+- Das Programm `multigpt-runner-linux-arm64` von der Seite **Runner** nehmen; der Rest ist wie
+  oben.
+- Grenzen für RAM und Prozesse setzt Podman über cgroups v2. Meldet die Sitzung „Grenzen weichen
+  ab“, fehlt dem Kernel der Speicher-Controller: in `/boot/firmware/cmdline.txt`
+  `cgroup_enable=memory` ergänzen und neu starten.
+- Der erste Start lädt das Arbeits-Image (je nach Leitung einige Minuten).
 
-2. Token als Secret anlegen – das geht direkt vom Rechner aus, die CLI spricht mit der VM:
+Ein Gerät, auf dem gearbeitet werden soll (z. B. ein Pi in der Werkstatt), wird so ein **eigener
+Runner** deines Kontos – mit eigener Kopplung, eigenen Rechten und eigenem Audit. Befehle laufen
+auch dort nur im Container nach der festen Vorlage.
 
-   ```sh
-   podman secret create mgpt_runner_token -     # Token einfügen, dann Strg+D (Windows: Strg+Z, Enter)
-   ```
+### Zielsystem aus dem Chat einrichten (`setup_host`)
 
-3. In die VM wechseln und dort die Quadlet-Datei ablegen:
+Statt von Hand kann ein Modell ein freigegebenes Gerät einrichten: Werkzeug **`setup_host`**
+(fragt **immer** nach). Voraussetzungen: Recht „Runner-Hosts nutzen“ und ein vom Verwalter
+freigegebener Host mit **SSH-Schlüssel** (Admin *Runner › Hosts*). Der Runner verbindet sich
+aus einem kurzlebigen Hilfscontainer per ssh, bestimmt die Architektur, lädt das Programm von
+MultiGPT (Prüfsumme wird verglichen), installiert es nach `~/.local/bin` und koppelt mit einem
+frischen Token nur für diesen Aufruf. Schlägt die Einrichtung fehl, widerruft der Server diesen
+Token sofort. Zugang und Token sieht das Modell nie.
 
-   ```sh
-   podman machine ssh
-   # in der VM:
-   systemctl --user enable --now podman.socket
-   mkdir -p ~/.config/containers/systemd
-   vi ~/.config/containers/systemd/multigpt-runner.container   # Inhalt von der Seite „Runner“
-   systemctl --user daemon-reload
-   systemctl --user start multigpt-runner
-   exit
-   ```
+### Windows und macOS
 
-4. Die VM muss laufen, damit der Runner verbunden ist. In Podman Desktop lässt sich „Maschine beim
-   Start starten“ einschalten; ohne Podman Desktop `podman machine start` nach der Anmeldung.
+Das Programm gibt es nur für Linux. Unter Windows geht der Linux-Weg in WSL2 mit systemd, unter
+macOS in einer Linux-VM (z. B. Podman machine, `podman machine ssh`). Der Server muss von dort
+erreichbar sein (gleiche Adresse wie im Browser).
 
-Hinweise:
+### Ausweg: Runner als Container (Quadlet)
 
-- Der Server muss aus der VM erreichbar sein (gleiche Adresse wie im Browser). Bei einer
-  Adresse aus dem Heimnetz klappt das in der Regel ohne Weiteres.
-- Mit WSL2 unter Windows geht auch der Linux-Weg (2a) in einer WSL-Distribution mit systemd.
+Solange es den bisherigen Python-Agenten noch gibt, zeigt die Seite **Runner** unter „Ausweg“
+zusätzlich eine Quadlet-Datei (Agent als Container mit eingebundenem Podman-Socket, Token und
+Schlüssel als Podman-Secrets). Neue Installationen bitte mit dem Programm oben.
 
 ## 3. Im Chat arbeiten
 
@@ -109,7 +168,7 @@ Hinweise:
    | Änderungen automatisch | ohne Rückfrage | mit Rückfrage |
    | alles automatisch (Vorgabe ohne Netz) | ohne Rückfrage | ohne Rückfrage |
 
-   `ssh` und `telnet` fragen **immer** nach, egal welcher Modus.
+   `setup_host` und `telnet` fragen **immer** nach, egal welcher Modus.
 
    Daneben die Auswahl **Scratch** (Ablage für Zwischenergebnisse unter `/scratch`): *im
    Container* (flüchtig, Vorgabe) oder *auf diesem Rechner* (Ordner `~/MultiGPT/Scratch/<id>/`).
@@ -153,6 +212,17 @@ Container-Minuten zählen auf das Abrechnungskonto **„Runner-Laufzeit“** (si
 
 ## Sicherheit in Kürze
 
+- Drei Schichten: **Wer** – der Token weist deinen Rechner aus (auf dem Server nur als Hash,
+  widerrufbar). **Was** – der Runner bietet nur Dienste aus einem **signierten Dienstkatalog**
+  an (Signatur des Releases; verändert oder unsigniert → keine Werkzeuge, Eintrag im Audit).
+  **Wo** – Befehle laufen nur im Container nach fester Vorlage.
+- Jeder Rahmen des Servers ist mit dem **Schlüssel dieser Installation** signiert und an die
+  Verbindung gebunden; der Runner nimmt nichts anderes an (sonst Ende mit Exit-Code 3). Token,
+  Programm und Schlüssel liegen außerhalb der Sandbox – das Modell kann sie weder lesen noch
+  ändern.
+- Zugänge für `telnet` und `setup_host` kommen nur vom Server, je bestätigtem Aufruf, und liegen
+  nur in einem kurzlebigen Hilfscontainer – nie im Arbeitscontainer.
+
 - Arbeitscontainer: nur das freigegebene Image (mit Digest), rootless, ohne Capabilities, ohne
   Host-Verzeichnisse, mit Grenzen für CPU, RAM, Prozesse und Ausgabe; Netz aus (ohne DNS).
 - Keine Geheimnisse des Rechners im Container (kein Home-Verzeichnis, keine SSH-Schlüssel,
@@ -169,7 +239,10 @@ Das vollständige Bedrohungsmodell steht in `docs/Implementierung.md`, Abschnitt
 | Meldung | Ursache und Abhilfe |
 |---|---|
 | „Kein Runner verbunden“ | Agent läuft nicht oder erreicht den Server nicht: `systemctl --user status multigpt-runner`, Adresse und Zertifikat prüfen. |
-| Agent beendet sich mit Code 78 | Token ungültig, abgelaufen oder widerrufen bzw. Rolle ohne Recht: neuen Token erzeugen, Secret ersetzen, Dienst starten. |
+| Dienst endet mit Code 2 | Einstellungen fehlen oder sind falsch (`journalctl --user -u multigpt-runner` nennt die Ursache, z. B. Token- oder Schlüsseldatei fehlt): `pair` erneut ausführen. |
+| Dienst endet mit Code 3 | Token ungültig, abgelaufen oder widerrufen, Rolle ohne Recht oder Signatur des Servers ungültig (z. B. Server neu installiert): neuen Token erzeugen, `pair` erneut ausführen. |
+| Runner verbunden, aber keine Werkzeuge | Dienstkatalog unsigniert, verändert oder von einem zu alten Release (die Seite **Runner** zeigt den Zustand): Programm von MultiGPT neu herunterladen. |
+| „Fingerprint passt nicht“ im Log | Das Zertifikat des Servers hat sich geändert: Fingerprint auf der Seite **Runner** prüfen und `pair` mit neuem `--ca-sha256` ausführen. |
 | „Laufzeit-Kontingent ausgeschöpft“ | Monatskontingent verbraucht; ein Verwalter kann es im Admin unter *Kosten und Abrechnung › Abrechnungskonten › Runner-Laufzeit* erhöhen. |
 | „Der Arbeitsstand wird gerade in einer anderen Sitzung benutzt“ | Nur eine Sitzung je Arbeitsstand: die andere Sitzung beenden (oder warten, bis der Leerlauf sie stoppt). |
 | Terminal: „Zu viele offene Terminals“ | Je Server-Prozess sind höchstens vier Terminals offen; ein anderes schließen. |
