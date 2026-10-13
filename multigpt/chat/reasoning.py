@@ -2,9 +2,14 @@
 
 Wirksame Stufe für einen Chat (``effective``): Wahl im Chat
 (``Conversation.reasoning_effort``) -> Vorgabe des Projekts
-(``Project.reasoning_effort``, nur Projekte des Chat-Besitzers) ->
-``ChatSettings.default_reasoning_effort`` (Verwalter). Leer überall = Standard
-des Anbieters (nichts senden). Rangfolge und Rechte wie bei der Kreativität
+(``Project.reasoning_effort``, nur Projekte des Chat-Besitzers) -> Vorgabe des
+Modells (``AIModel.default_reasoning_effort``, nur mit ``ai_model``) ->
+``ChatSettings.default_reasoning_effort`` (Verwalter).
+
+LM Studio (Schnittstelle „LM Studio“): Welche Stufen ein Modell kann, meldet LM
+Studio selbst (``ModelRuntime.reasoning_options`` aus ``GET /api/v1/models``,
+``capabilities.lmstudio_levels``); ohne Meldung gelten die Regeln nach Modell-ID.
+Leer überall = Standard des Anbieters (nichts senden). Rangfolge und Rechte wie bei der Kreativität
 (creativity.py).
 
 An das Modell geht die Stufe über ``params_for`` in der Form des Anbieters
@@ -21,7 +26,8 @@ import logging
 
 from . import capabilities
 from .creativity import owner_project
-from .models import AIModel, ChatSettings, Conversation, ReasoningEffort
+from .models import AIModel, ChatSettings, Conversation, Provider, ReasoningEffort
+from .models_lmstudio import ModelRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -67,20 +73,42 @@ def inherited(conversation: Conversation | None, project=None) -> tuple[str, str
     return default_effort(), "settings"
 
 
-def effective(conversation: Conversation) -> str:
+def effective(conversation: Conversation, ai_model: AIModel | None = None) -> str:
     """Wirksame Stufe des Chats (siehe Moduldoku); ``""`` = Anbieterstandard."""
     if conversation.reasoning_effort:
         return conversation.reasoning_effort
-    return inherited(conversation)[0]
+    value, source = inherited(conversation)
+    if source != "project" and ai_model is not None and ai_model.default_reasoning_effort:
+        return ai_model.default_reasoning_effort
+    return value
 
 
 def _kind(ai_model: AIModel) -> str:
     return ai_model.provider.kind if ai_model.provider_id else ""
 
 
+def _lmstudio_levels(ai_model: AIModel) -> tuple[str, ...] | None:
+    """Von LM Studio gemeldete Stufen; ``None`` = nicht LM Studio bzw. nichts gemeldet."""
+    if _kind(ai_model) != Provider.Kind.LMSTUDIO or not ai_model.pk:
+        return None
+    options = (
+        ModelRuntime.objects.filter(ai_model=ai_model)
+        .values_list("reasoning_options", flat=True)
+        .first()
+    )
+    return capabilities.lmstudio_levels(options) if options else None
+
+
+def _levels(ai_model: AIModel):
+    found = _lmstudio_levels(ai_model)
+    if found is not None:
+        return found
+    return capabilities.reasoning_support(ai_model.model_id, _kind(ai_model))
+
+
 def levels_for(ai_model: AIModel) -> list[str] | None:
     """Unterstützte Stufen des Modells (für ``/api/models``), ``None`` = keine."""
-    levels = capabilities.reasoning_support(ai_model.model_id, _kind(ai_model))
+    levels = _levels(ai_model)
     return list(levels) if levels else None
 
 
@@ -88,8 +116,7 @@ def level_for(ai_model: AIModel, value: str) -> str | None:
     """Stufe, die für dieses Modell tatsächlich mitgeht, oder ``None``."""
     if not value or (ai_model.provider_id, ai_model.model_id) in _rejected:
         return None
-    levels = capabilities.reasoning_support(ai_model.model_id, _kind(ai_model))
-    return capabilities.reasoning_level(value, levels)
+    return capabilities.reasoning_level(value, _levels(ai_model))
 
 
 def params_for(ai_model: AIModel, value: str) -> dict:
@@ -97,6 +124,9 @@ def params_for(ai_model: AIModel, value: str) -> dict:
     level = level_for(ai_model, value)
     if level is None:
         return {}
+    lms = _lmstudio_levels(ai_model)
+    if lms is not None:
+        return capabilities.lmstudio_params(level, lms)
     return capabilities.reasoning_params(ai_model.model_id, _kind(ai_model), level)
 
 

@@ -244,6 +244,27 @@ def test_kv_formula_for_known_architectures():
     assert vram.kv_bytes(arch, 32768) == expected
 
 
+def test_kv_formula_gemma4_and_qwen38():
+    # Gemma 4 26B-A4B: 5 volle Schichten (2 × 2 × 512 × 2 Byte), 25 mit Fenster 1024.
+    gemma = vram.arch_for("gemma4", "26B-A4B", "llm", "google/gemma-4-26b-a4b")
+    window = 1024 * 4 + vram.SWA_EXTRA_TOKENS
+    assert vram.kv_bytes(gemma, 32768, 4) == 5 * 4096 * 32768 + 25 * (2 * 8 * 256 * 2) * window
+    # Qwen3.8 27B: 16 volle Schichten (2 × 4 × 256 × 2 Byte), dazu fester Zustand je Sequenz.
+    qwen = vram.arch_for("qwen35", "27B", "llm", "qwen/qwen3.8-27b")
+    assert vram.kv_bytes(qwen, 32768, 1) == 16 * 4096 * 32768 + qwen.state_bytes
+    assert vram.kv_bytes(qwen, 32768) == 16 * 4096 * 32768 + 4 * qwen.state_bytes
+
+
+def test_default_context_shrinks_to_fit_budget(lms, provider):
+    """Befund 2026-10-13: qwen3-coder mit Standard 32 768 -> 22,4 GB > 22 GB nutzbar."""
+    qwen = make(provider, QWEN)  # ohne eigenes Kontextfenster
+    model_manager.ensure_loaded(qwen, interactive=True)
+    assert lms.calls[-1][:3] == ("load", QWEN, 16384)
+    fixed = make(provider, QWEN + "-fest", load_context_length=32768)
+    entry = lmstudio.parse_models({"models": [CATALOG[QWEN]]})[0]
+    assert model_manager.fit_context(fixed, entry, 32768, int(22 * vram.GB)) == 32768
+
+
 def test_estimate_total_and_measured_value_wins():
     est = vram.estimate(
         size_bytes=CATALOG[GPT]["size_bytes"], context=32768, architecture="gpt-oss", params="20B"

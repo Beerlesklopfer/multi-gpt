@@ -1496,7 +1496,7 @@ class _Loop:
             # Kreativität und Denktiefe des Chats (creativity.py, reasoning.py); im
             # Vergleich für alle Spalten gleich, die Denktiefe je Modell abgebildet.
             temperature = creativity.effective(turn.conversation)
-            effort = reasoning.effective(turn.conversation)
+            effort = reasoning.effective(turn.conversation, turn.ai_model)
 
             while not error:
                 sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)

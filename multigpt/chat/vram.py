@@ -52,6 +52,7 @@ OVERHEAD_LLM = int(0.5 * GB)
 OVERHEAD_VISION = int(0.3 * GB)
 OVERHEAD_EMBEDDING = int(0.25 * GB)
 SWA_EXTRA_TOKENS = 2048
+DEFAULT_PARALLEL = 4  # LM Studio ohne Angabe
 
 # Auswahl „Kontextfenster“ im Admin; angeboten bis zur maximalen Länge des Modells.
 CONTEXT_STAGES = (2048, 4096, 8192, 16384, 32768, 65536, 131072)
@@ -61,7 +62,12 @@ DEFAULT_OCR_CONTEXT = 8192
 
 @dataclass(frozen=True)
 class Arch:
-    """Schichten, KV-Köpfe, Kopfdimension; ``swa_layers`` mit ``window`` Tokens."""
+    """Schichten, KV-Köpfe, Kopfdimension; ``swa_layers`` mit ``window`` Tokens.
+
+    ``full_kv_heads``/``full_head_dim``: abweichende Werte der Schichten mit voller
+    Attention (Gemma 4); ``linear_layers``: Schichten mit linearer Attention ohne
+    wachsenden Cache, stattdessen ``state_bytes`` je Sequenz (Qwen3.5/3.8).
+    """
 
     layers: int
     kv_heads: int
@@ -69,6 +75,10 @@ class Arch:
     swa_layers: int = 0
     window: int = 0
     label: str = ""
+    full_kv_heads: int = 0
+    full_head_dim: int = 0
+    linear_layers: int = 0
+    state_bytes: int = 0
 
 
 # (Architektur laut LM Studio, Parameter klein geschrieben) -> Daten aus config.json.
@@ -86,6 +96,29 @@ KNOWN: dict[tuple[str, str], Arch] = {
     ("qwen3", "32b"): Arch(64, 8, 128, label="Qwen3 32B"),
     ("qwen3vl", "8b"): Arch(36, 8, 128, label="Qwen3-VL 8B"),
     ("llama", "8b"): Arch(32, 8, 128, label="Llama 3 8B"),
+    # google/gemma-4-26B-A4B: 30 Schichten, 25 mit Fenster 1024 (8 KV-Köpfe × 256),
+    # 5 volle mit 2 KV-Köpfen × 512 (num_global_key_value_heads, global_head_dim).
+    ("gemma4", "26b-a4b"): Arch(
+        30,
+        8,
+        256,
+        swa_layers=25,
+        window=1024,
+        full_kv_heads=2,
+        full_head_dim=512,
+        label="Gemma 4 26B-A4B",
+    ),
+    # Qwen/Qwen3.8-27B (Architektur qwen35): 64 Schichten, nur jede vierte mit voller
+    # Attention (4 KV-Köpfe × 256); 48 lineare (Gated DeltaNet) mit festem Zustand je
+    # Sequenz: 48 Value-Köpfe × 128 × 128 × 4 Byte (float32) ≈ 3,1 MB je Schicht.
+    ("qwen35", "27b"): Arch(
+        64,
+        4,
+        256,
+        linear_layers=48,
+        state_bytes=48 * (48 * 128 * 128 * 4 + 256 * 1024),
+        label="Qwen3.8 27B",
+    ),
 }
 # Embedding-Modelle (LM Studio meldet keine Architektur): Muster in der Modell-ID.
 KNOWN_EMBEDDING = [
@@ -164,11 +197,20 @@ def arch_for(
 
 def kv_bytes(arch: Arch, context: int, parallel: int | None = None) -> int:
     per_token_layer = 2 * arch.kv_heads * arch.head_dim * BYTES_PER_VALUE
-    full = arch.layers - arch.swa_layers
-    total = full * per_token_layer * context
+    per_token_full = (
+        2
+        * (arch.full_kv_heads or arch.kv_heads)
+        * (arch.full_head_dim or arch.head_dim)
+        * BYTES_PER_VALUE
+    )
+    full = arch.layers - arch.swa_layers - arch.linear_layers
+    total = full * per_token_full * context
     if arch.swa_layers:
         window = min(context, arch.window * max(1, parallel or 1) + SWA_EXTRA_TOKENS)
         total += arch.swa_layers * per_token_layer * window
+    if arch.state_bytes:
+        # Fester Zustand je Sequenz; ohne Angabe die Parallelität von LM Studio (4).
+        total += arch.state_bytes * max(1, parallel or DEFAULT_PARALLEL)
     return total
 
 

@@ -41,6 +41,12 @@ class ModelRuntime(models.Model):
     params = models.CharField("Parameter", max_length=50, blank=True)
     model_type = models.CharField("Art (LM Studio)", max_length=20, blank=True)
     vision = models.BooleanField("Bild-Eingabe", default=False)
+    reasoning_options = models.JSONField(
+        "Denkstufen (LM Studio)", default=list, blank=True, help_text="z. B. off, low, xhigh"
+    )
+    reasoning_default = models.CharField(
+        "Denkstufe ohne Angabe (LM Studio)", max_length=20, blank=True
+    )
     catalog_seen = models.DateTimeField("zuletzt gemeldet", null=True, blank=True)
 
     class Meta:

@@ -78,6 +78,7 @@ LEASE_RENEW = 60.0  # Sekunden: lange Chat-Antworten verlängern ihre Belegung
 VERIFIED_FOR = 15.0  # Sekunden: „ist geladen“ je Prozess so lange glauben
 BACKOFF_BASE = timedelta(minutes=1)
 BACKOFF_MAX = timedelta(minutes=30)
+MIN_FIT_CONTEXT = 8192  # kleiner wählt ``fit_context`` nicht von selbst
 
 MSG_NO_AUTOLOAD = (
     "„{name}“ ist in LM Studio nicht geladen und darf nicht automatisch geladen werden."
@@ -253,6 +254,8 @@ def remember_catalog(provider: Provider, catalog: list[lmstudio.CatalogModel]) -
             "params": entry.params[:50],
             "model_type": entry.type[:20],
             "vision": entry.vision,
+            "reasoning_options": list(entry.reasoning_options),
+            "reasoning_default": entry.reasoning_default,
         }
         rt = runtime(ai_model)
         changed = [k for k, v in values.items() if getattr(rt, k) != v]
@@ -275,6 +278,25 @@ def profile_context(ai_model: AIModel, max_context: int | None) -> int | None:
     if value and max_context:
         value = min(value, max_context)
     return value
+
+
+def fit_context(ai_model: AIModel, entry, context: int | None, usable: int) -> int | None:
+    """Ohne eigenes Kontextfenster (Standard 32 768): die größte Stufe, die ins Budget
+    passt, statt „mehr als das Budget“ zu melden. Ein eingestelltes Fenster bleibt."""
+    if ai_model.load_context_length or not context:
+        return context
+    stages = [s for s in vram.CONTEXT_STAGES if s <= context and s >= MIN_FIT_CONTEXT]
+    for stage in sorted(stages, reverse=True):
+        if estimate_model(ai_model, entry, stage, ai_model.load_parallel).total <= usable:
+            if stage < context:
+                logger.info(
+                    "LM Studio: Modell %s mit %d statt %d Tokens Kontext (Budget)",
+                    ai_model.pk,
+                    stage,
+                    context,
+                )
+            return stage
+    return context
 
 
 def estimate_model(
@@ -597,8 +619,9 @@ def ensure_loaded(
                 _mark_verified(ai_model)
                 return False
             context = profile_context(ai_model, entry.max_context_length if entry else None)
-            est = estimate_model(ai_model, entry, context, ai_model.load_parallel)
             snap = snapshot(provider, catalog)
+            context = fit_context(ai_model, entry, context, snap.usable)
+            est = estimate_model(ai_model, entry, context, ai_model.load_parallel)
             for slot in plan(snap, ai_model, est.total, interactive, swap=swap):
                 why = "Austausch" if swap and slot.pinned else "Platz"
                 _do_unload(provider, slot, f"{why} für Modell {ai_model.pk}")

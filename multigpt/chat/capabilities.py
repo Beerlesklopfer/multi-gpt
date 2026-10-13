@@ -375,6 +375,31 @@ def reasoning_support(model_id: str, provider: str = "") -> tuple[str, ...] | No
     return rule.levels if rule is not None else None
 
 
+def lmstudio_levels(options) -> tuple[str, ...] | None:
+    """Stufen von MultiGPT aus LM Studios ``capabilities.reasoning.allowed_options``.
+
+    Über ``/v1`` nimmt LM Studio nur ``reasoning_effort`` mit none, minimal, low,
+    medium, high und xhigh an (am Gerät geprüft 2026-10-13, „off“/„on“ -> HTTP 400);
+    ``none`` schaltet das Denken ab, jede andere Stufe ein. Kennt ein Modell nur
+    off/on (Gemma 4), steht „mittel“ für „an“.
+    """
+    opts = {o for o in options or () if isinstance(o, str)}
+    graded = tuple(lv for lv in (LOW, MEDIUM, HIGH, XHIGH) if lv in opts)
+    if not graded and "on" in opts:
+        graded = (MEDIUM,)
+    if not graded:
+        return None
+    return ((OFF,) if OFF in opts else ()) + graded
+
+
+def lmstudio_params(level: str | None, levels) -> dict:
+    """``reasoning_effort`` für LM Studio (``/v1``), „Aus“ als ``none``."""
+    level = reasoning_level(level, levels)
+    if level is None:
+        return {}
+    return {"reasoning_effort": "none" if level == OFF else level}
+
+
 def reasoning_level(level: str | None, supported) -> str | None:
     """Gewählte Stufe auf die unterstützten abbilden (siehe oben); ``None``,
     wenn nichts gewählt ist oder das Modell keine Stufen kennt."""

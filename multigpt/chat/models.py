@@ -211,6 +211,17 @@ class Provider(models.Model):
             )
 
 
+class ReasoningEffort(models.TextChoices):
+    """Denktiefe (chat/reasoning.py, Abbildung je Modell in capabilities.py)."""
+
+    OFF = "off", "Aus/minimal"
+    LOW = "low", "Niedrig"
+    MEDIUM = "medium", "Mittel"
+    HIGH = "high", "Hoch"
+    XHIGH = "xhigh", "Sehr hoch"
+    MAX = "max", "Maximal"
+
+
 class AIModel(models.Model):
     class Capability(models.TextChoices):
         CHAT = "chat", "Chat"
@@ -310,6 +321,16 @@ class AIModel(models.Model):
         blank=True,
         help_text="Damit lädt MultiGPT das Modell in LM Studio. Leer = Vorschlag nach Art: "
         "Chat 32 768, OCR 8 192, Embedding Modellstandard.",
+    )
+    default_reasoning_effort = models.CharField(
+        "Denktiefe-Vorgabe",
+        max_length=10,
+        blank=True,
+        default="",
+        choices=ReasoningEffort.choices,
+        help_text="Gilt für Chats ohne eigene Wahl und ohne Projektvorgabe, vor der "
+        "Standard-Denktiefe der Chat-Einstellungen. Z. B. „niedrig“ für Modelle, die ohne "
+        "Angabe sehr lange denken (Qwen3.8: „xhigh“). Leer = Standard-Denktiefe.",
     )
     load_parallel = models.PositiveSmallIntegerField(
         "Parallele Anfragen beim Laden",
@@ -492,17 +513,6 @@ DEFAULT_BASE_INSTRUCTIONS = (
     "aus Quellmaterial oder Werkzeugergebnissen stammen. Wenn du etwas nicht überprüfen "
     "kannst, sag das ausdrücklich und biete an, mit der Websuche nachzusehen."
 )
-
-
-class ReasoningEffort(models.TextChoices):
-    """Denktiefe (chat/reasoning.py, Abbildung je Modell in capabilities.py)."""
-
-    OFF = "off", "Aus/minimal"
-    LOW = "low", "Niedrig"
-    MEDIUM = "medium", "Mittel"
-    HIGH = "high", "Hoch"
-    XHIGH = "xhigh", "Sehr hoch"
-    MAX = "max", "Maximal"
 
 
 class ChatSettings(models.Model):
