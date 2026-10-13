@@ -553,6 +553,25 @@ Werkzeuge im Stil von Claude Code: `read` (mit Zeilenbereich), `write`, `edit` (
 2. **8w – Netz des Containers:** Empfehlung: Mit `ssh`/`telnet` erreicht der Container nur die freigegebenen Hosts. Der Agent setzt dafür eine Positivliste (Adresse und Port), sonst bleibt das Netz aus. Damit ist „Netz an“ (8l) für diese Werkzeuge nicht nötig.
 3. **8x – Welche Ports exportiert der Container, und wohin?** Empfehlung: genau einer, der HTTP-Server der Vorschau (8p) auf Port 8080 im Container, gebunden nur an `127.0.0.1` des Browser-Rechners auf einen festen Port je Sitzung aus einem kleinen Bereich (z. B. 18080–18089); das Terminal (PTY) läuft über den Rückkanal, ohne Port.
 
+**Alle offenen Fragen entschieden (Nutzer, 2026-10-13, nach Gutachten von gpt-5.5 und Gemma 4 in MultiGPT, Chats 26 und 27 der Entwicklung):** Die Empfehlungen zu 8c–8n, 8v und 8w gelten. Abweichend bzw. ergänzt:
+
+- **8x Ports:** Es gibt genau einen Port, den Vorschau-Server (8080 im Container). Er ist nur an `127.0.0.1` des Browser-Rechners gebunden, über einen festen Port je Sitzung aus 18080–18089. Das Terminal läuft über den Rückkanal. Weil jede Webseite im Browser `localhost` abrufen kann, braucht die Vorschau ein zufälliges Sitzungs-Token im Pfad, keine Verzeichnislisten und eine strenge CSP.
+- **8c Image:** Debian slim mit Python, git, Node, dem Mini-HTTP-Server sowie ssh- und telnet-Client. Die Clients sind klein und ohne Freigabe nicht nutzbar (8w).
+- **8f Kontingent:** Leer heißt unbegrenzt, wie bei den übrigen Budgets. Startwert für Erwachsene 600 Minuten im Monat.
+- **8g Agent:** als Container (Quadlet) mit dem Podman-Socket. Weil der Socket so mächtig ist wie der Podman des Nutzers, prüft der Agent jeden Befehl gegen eine feste Vorlage: nur das erlaubte Image (mit Digest), keine Mounts außer dem tmpfs, keine Privilegien, keine Host-Namespaces. Alles andere lehnt er ab.
+- **8t Rückfrage:** Modi wie in Claude Code. Vorgabe ohne Netz „alles automatisch“, mit Netz fragen Befehle nach. `ssh` und `telnet` fragen immer.
+- **8u Runden:** höchstens 100 je Antwort, danach Rückfrage. Dazu harte Grenzen für Laufzeit, Ausgabe, Prozesse und Ressourcen.
+- **8o API-Keys (geändert):** M15 ist der Zugang des Agententeams (Claude-Code-Agenten mit Sprach-Bus, n8n). Agenten dürfen den Runner über ihren API-Key nutzen, mit eigenem Recht `runner.use` am Key, nur auf Arbeitsständen des Kontos und nur ohne Netz. `ssh` und `telnet` sind über Keys ausgeschlossen, weil dort ein Mensch bestätigen muss.
+
+**Zusätzliche Pflichten aus dem Gutachten:**
+
+1. **Ressourcen:** CPU, RAM, Prozesse (pids), Dateigröße, tmpfs-Größe und Ausgabe werden per cgroups bzw. ulimit begrenzt, Werte je Rolle.
+2. **Arbeitsstand:** eine Sperre je Arbeitsstand (nur eine Sitzung), atomares Hochladen, Prüfsumme und `git bundle verify`/`git fsck` beim Empfang. Der letzte gute Stand bleibt, bis der neue geprüft ist.
+3. **Keine Geheimnisse des Rechners im Container:** kein Home-Verzeichnis, keine SSH-Schlüssel des Rechners, bereinigte Umgebung. Zugänge für `ssh`/`telnet` kommen nur vom Server, je bestätigtem Aufruf.
+4. **Netzsperre außerhalb des Containers:** Positivliste und Sperre (einschließlich DNS) setzt der Agent auf Netzebene von Podman, nicht das Werkzeug. Fällt der Filter aus, bleibt das Netz zu (fail closed).
+5. **Ratenbegrenzung** je Runner-Token auf dem Server.
+6. **Später:** Nur die Änderungen hochladen (inkrementelle Bundles) statt jedes Mal den ganzen Stand.
+
 **Festlegungen:**
 
 - **Container:** bevorzugt Podman rootless, Docker als Alternative. Der Runner-Agent startet je Sitzung einen wegwerfbaren Arbeitscontainer aus einem festen Image. Er ist ein eigenes kleines Programm bzw. Image, nicht Teil des Debian-Pakets des Servers.
