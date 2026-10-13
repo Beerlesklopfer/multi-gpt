@@ -241,7 +241,9 @@ def select(
     hidden_servers: dict[str, int] = {}
     hidden_builtins: list[str] = []
     for name, binding in candidates.items():
-        if binding.server_id is not None:
+        if binding.core:
+            direct = True  # z. B. Runner-Werkzeuge (M14): gehören immer zum Kern
+        elif binding.server_id is not None:
             direct = binding.server_id in small
         else:
             direct = binding.builtin in core

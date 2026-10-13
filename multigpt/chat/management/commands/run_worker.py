@@ -48,6 +48,8 @@ from multigpt.chat.rag import jobs
 from multigpt.node import audit as api_audit
 from multigpt.node import sse as api_sse
 from multigpt.rag import crawl
+from multigpt.runner import audit as runner_audit
+from multigpt.runner import delivery as runner_delivery
 
 logger = logging.getLogger("multigpt.worker")
 
@@ -213,6 +215,10 @@ class Command(BaseCommand):
                         mcp_status.check_due()
                         # Audit-Log der API-Aufrufe (M15): alte Einträge löschen.
                         api_audit.cleanup()
+                        # Audit-Log des Runners (M14-12): ebenso nach API_AUDIT_DAYS.
+                        runner_audit.cleanup()
+                        # Runner-Zustellung (M14-05): verwaiste Nachrichten (> 10 min).
+                        runner_delivery.cleanup()
                         # Legacy-SSE (M15): Sitzungen ohne lebenden Stream löschen.
                         api_sse.cleanup()
                         # Modellverwaltung (LM Studio): nach Leerlauf entladen.

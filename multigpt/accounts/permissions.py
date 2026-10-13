@@ -54,6 +54,8 @@ class Action(enum.StrEnum):
     COMPUTE = "compute"
     CREATE_DOCUMENTS = "create_documents"
     USE_API = "use_api"
+    USE_RUNNER = "use_runner"
+    USE_RUNNER_HOSTS = "use_runner_hosts"
     USE_MCP_SERVER = "use_mcp_server"
     READ = "read"
     WRITE = "write"
@@ -74,6 +76,8 @@ _ROLE_FLAGS = {
     Action.COMPUTE: "can_compute",
     Action.CREATE_DOCUMENTS: "can_create_documents",
     Action.USE_API: "can_use_api",
+    Action.USE_RUNNER: "can_use_runner",
+    Action.USE_RUNNER_HOSTS: "can_use_runner_hosts",
 }
 
 _ADMIN_ACTIONS = {Action.MANAGE_FAMILY, Action.VIEW_USAGE_ALL, Action.ADMIN}
@@ -142,6 +146,11 @@ def _can_use_mcp_server(user, role, server) -> bool:
         return role.allowed_mcp_servers.filter(active=True).exists()
     if not getattr(server, "active", False):
         return False
+    if getattr(server, "transport", "") == "runner":
+        # Runner (M14): nur der Besitzer mit Rollenrecht, auch Superuser keinen fremden.
+        return server.owner_id == user.pk and (
+            user.is_superuser or bool(role and role.can_use_runner)
+        )
     return (
         user.is_superuser
         or role.all_mcp_servers

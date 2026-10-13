@@ -1,0 +1,57 @@
+{% autoescape off %}# MultiGPT-Runner (Agent) als Quadlet für Podman rootless.
+# Ablage: ~/.config/containers/systemd/multigpt-runner.container
+# Danach: systemctl --user daemon-reload && systemctl --user start multigpt-runner
+#
+# Der Agent verbindet sich nur ausgehend mit {{ mgpt_url }} (wss, /runner/ws)
+# und startet Arbeitscontainer nur aus dem Image unten (mit Digest), ohne
+# Mounts außer tmpfs und ohne Privilegien. Der Token liegt als Podman-Secret
+# vor ({{ secret_name }}), nie in dieser Datei oder in der Umgebung.
+
+[Unit]
+Description=MultiGPT-Runner (Agent)
+Wants=network-online.target podman.socket
+After=network-online.target podman.socket
+
+[Container]
+ContainerName=multigpt-runner
+Image={{ agent_image }}
+Label=multigpt.agent=1
+# Podman-Socket des Nutzers (systemctl --user enable --now podman.socket).
+Volume=%t/podman/podman.sock:/run/podman.sock
+Secret={{ secret_name }},type=mount,target=/run/secrets/token
+Environment=MGPT_URL={{ mgpt_url }}
+{% if ca_sha256 %}# Selbstsigniertes Zertifikat des Servers: SHA-256-Fingerprint festgehalten.
+Environment=MGPT_CA_SHA256={{ ca_sha256 }}
+{% endif %}# Positivliste: nur dieses Arbeits-Image (mit Digest) wird gestartet.
+Environment=MGPT_IMAGES={{ work_image }}
+# Lokales Scratchpad (Arbeitsstand mit Ablage „lokal“): Der Agent legt darin je
+# Arbeitsstand einen Ordner <UUID> an und bindet nur diesen als /scratch ein
+# (noexec, nosuid, nodev). MGPT_SCRATCH_HOST_DIR ist derselbe Ordner aus Sicht
+# von Podman auf dem Rechner.
+Volume=%h/MultiGPT/Scratch:/scratch-root
+Environment=MGPT_SCRATCH_DIR=/scratch-root
+Environment=MGPT_SCRATCH_HOST_DIR=%h/MultiGPT/Scratch
+# Härtung: Der Agent braucht nur den Socket und das Netz nach draußen.
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+DropCapability=ALL
+# SELinux (Fedora u. a.): Zugriff auf den eingebundenen Socket erlauben.
+SecurityLabelDisable=true
+PodmanArgs=--pids-limit=128 --memory=256m
+
+[Service]
+# Der Ordner des Scratchpads muss vor dem Einbinden existieren.
+ExecStartPre=/usr/bin/mkdir -p %h/MultiGPT/Scratch
+Restart=always
+RestartSec=10
+# 2: Einstellungen fehlen bzw. falsch; 3: Token ungültig oder widerrufen, Recht
+# fehlt, ersetzt oder Version passt nicht (Close 4401/4403/4409/4426) – dann
+# nicht neu starten, sondern Einstellungen prüfen bzw. neu koppeln.
+RestartPreventExitStatus=2 3
+# Erster Start lädt das Image.
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target
+{% endautoescape %}

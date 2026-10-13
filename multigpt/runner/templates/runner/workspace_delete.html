@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{# Löschen eines Arbeitsstands mit Bestätigung (ohne JavaScript). #}
+{% block title %}Arbeitsstand löschen – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="workspace-delete-title">
+    <p class="breadcrumb"><a href="{% url 'runner:workspaces' %}">Arbeitsstände</a> › {{ workspace.name }}</p>
+    <h1 id="workspace-delete-title">Arbeitsstand „{{ workspace.name }}“ löschen?</h1>
+    <p>Das Bundle ({{ workspace.size|filesizeformat }}) mit der ganzen Geschichte wird endgültig gelöscht.
+       Wer ihn behalten will, lädt ihn vorher herunter.</p>
+    {% if workspace.active_session %}
+      <p class="error">Der Arbeitsstand ist gerade in einer Sitzung in Benutzung. Bitte die Sitzung zuerst beenden.</p>
+    {% endif %}
+    <form method="post" action="{% url 'runner:workspace_delete' workspace.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="button button-danger">Endgültig löschen</button>
+      <a class="button" href="{% url 'runner:workspace' workspace.pk %}">Abbrechen</a>
+    </form>
+  </section>
+{% endblock %}

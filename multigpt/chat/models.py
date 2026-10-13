@@ -424,9 +424,20 @@ class McpServer(models.Model):
     class Transport(models.TextChoices):
         STDIO = "stdio", "stdio (lokaler Prozess)"
         HTTP = "http", "HTTP (Streamable HTTP)"
+        # M14: gekoppelter Runner des Kontos, MCP über den Rückkanal (runner/mcp_transport.py).
+        RUNNER = "runner", "Runner (Arbeitscontainer)"
 
     name = models.CharField("Name", max_length=100, unique=True)
     transport = models.CharField("Transport", max_length=10, choices=Transport.choices)
+    # Nur bei Transport „runner“: das Konto, dem der Runner gehört (nur es nutzt ihn).
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="runner_mcp_servers",
+        verbose_name="Konto (Runner)",
+    )
     command = models.CharField(
         "Befehl", max_length=500, blank=True, help_text="Nur bei stdio: Programm mit Argumenten."
     )
@@ -493,9 +504,17 @@ class McpServer(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=(Q(transport="stdio") & ~Q(command=""))
-                | (Q(transport="http") & ~Q(url="")),
+                | (Q(transport="http") & ~Q(url=""))
+                | Q(transport="runner"),
                 name="chat_mcpserver_command_or_url",
                 violation_error_message="stdio braucht einen Befehl, HTTP eine URL.",
+            ),
+            models.CheckConstraint(
+                condition=Q(transport="runner", owner__isnull=False)
+                | (~Q(transport="runner") & Q(owner__isnull=True)),
+                name="chat_mcpserver_runner_owner",
+                violation_error_message="Ein Runner-Server gehört genau einem Konto, "
+                "andere Server keinem.",
             ),
         ]
 

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% load static runner_ui %}
+{# Runner koppeln (M14-02). Ein neuer Token steht nur in dieser Antwort (no-store). #}
+{% block title %}Runner – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/family.js' %}" defer></script><script src="{% static 'chat/node_connect.js' %}" defer></script><script src="{% static 'chat/runner_status.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="runner-title">
+    <p class="breadcrumb"><a href="{% url 'settings' %}">Einstellungen</a> › Runner</p>
+    <h1 id="runner-title">Runner</h1>
+    <p class="page-intro">
+      Der Runner ist ein Container auf deinem Rechner (Podman rootless). Darin arbeiten Modelle
+      wie in einer Entwicklungsumgebung: Dateien lesen und ändern, Befehle ausführen, testen.
+      Der Container hat kein Netz und nur einen flüchtigen Arbeitsbereich; deine
+      <a href="{% url 'runner:workspaces' %}">Arbeitsstände</a> liegen als git-Bundle auf dem Server.
+      Der Runner verbindet sich nur ausgehend mit MultiGPT – auf deinem Rechner bleibt kein Port offen.
+      Anleitung: <a href="https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner">Wiki „Runner“</a>.
+    </p>
+
+    {% if created %}
+      <section class="module" aria-labelledby="runner-created-title">
+        <h2 class="section-title" id="runner-created-title">Token „{{ created.token.name }}“ erzeugt</h2>
+        <p><strong>Nur jetzt sichtbar – bitte kopieren.</strong> MultiGPT speichert nur einen Hash.</p>
+        <div class="connect-block">
+          <pre id="runner-token"><code>{{ created.secret }}</code></pre>
+          <button type="button" class="icon-button connect-copy" data-connect-copy="runner-token"
+                  aria-label="Token kopieren" title="Token kopieren">{% include "runner/_copy_icon.html" %}</button>
+          <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+        </div>
+        <h3>Einrichten auf deinem Rechner (Linux, Podman rootless)</h3>
+        <ol class="runner-steps">
+          {% for text, command in commands %}
+            <li>{{ text }}:
+              <div class="connect-block">
+                <pre id="runner-cmd-{{ forloop.counter }}"><code>{{ command }}</code></pre>
+                <button type="button" class="icon-button connect-copy" data-connect-copy="runner-cmd-{{ forloop.counter }}"
+                        aria-label="Befehl kopieren" title="Befehl kopieren">{% include "runner/_copy_icon.html" %}</button>
+                <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+        <p>Inhalt von <code>~/.config/containers/systemd/{{ quadlet_name }}</code>:</p>
+        <div class="connect-block">
+          <pre id="runner-quadlet"><code>{{ quadlet }}</code></pre>
+          <button type="button" class="icon-button connect-copy" data-connect-copy="runner-quadlet"
+                  aria-label="Quadlet-Datei kopieren" title="Quadlet-Datei kopieren">{% include "runner/_copy_icon.html" %}</button>
+          <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
+        </div>
+        <p class="hint">Der Token steht nicht in der Datei, sondern im Podman-Secret <code>{{ secret_name }}</code>.</p>
+      </section>
+    {% endif %}
+
+    <section class="module" aria-labelledby="runner-new-title">
+      <h2 class="section-title" id="runner-new-title">Runner koppeln</h2>
+      {% if can_pair %}
+        <form method="post" action="{% url 'runner:index' %}" class="form">
+          {% csrf_token %}
+          {{ form.as_div }}
+          <button type="submit" class="button button-primary">Token erzeugen</button>
+        </form>
+        <p class="hint">Ein Token gehört zu genau einem Rechner. Er ist nur einmal sichtbar, läuft ab und lässt sich jederzeit widerrufen – ein verbundener Runner wird dann sofort getrennt.</p>
+      {% else %}
+        <p>Deine Rolle erlaubt keinen Runner. Ein Verwalter kann das Recht „Runner nutzen“ für die Rolle einschalten.</p>
+      {% endif %}
+    </section>
+
+    <h2 class="section-title" id="runner-tokens-title">Deine Runner</h2>
+    {% if tokens %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="runner-tokens-title">
+          <thead>
+            <tr>
+              <th scope="col">Name</th><th scope="col">Token</th><th scope="col">Rechner</th>
+              <th scope="col">Verbindung</th><th scope="col">gültig bis</th><th scope="col">zuletzt benutzt</th>
+              <th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for token in tokens %}
+              <tr>
+                <th scope="row">{{ token.name }}</th>
+                <td><code>{{ token.display_prefix }}</code></td>
+                <td>{% if token.runner %}{{ token.runner.name|default:"–" }}{% if token.runner.engine_version %} ({{ token.runner.get_engine_display }} {{ token.runner.engine_version }}{% if token.runner.rootless %}, rootless{% endif %}){% endif %}{% else %}noch nicht gekoppelt{% endif %}</td>
+                <td{% if token.runner %} data-runner-connection="{{ token.runner.pk }}"{% endif %}>{% if token.runner %}{{ token.runner.get_status_display }}{% if token.runner.last_seen %}, zuletzt {{ token.runner.last_seen|date:"d.m.Y H:i" }}{% endif %}{% else %}–{% endif %}</td>
+                <td>{% if token.expires_at %}{{ token.expires_at|date:"d.m.Y H:i" }}{% else %}kein Ablauf{% endif %}</td>
+                <td>{% if token.last_used_at %}{{ token.last_used_at|date:"d.m.Y H:i" }}{% if token.last_used_ip %} von {{ token.last_used_ip }}{% endif %}{% else %}nie{% endif %}</td>
+                <td>{{ token.state_label }}</td>
+                <td>
+                  {% if token.state_label == "aktiv" %}
+                    <form method="post" action="{% url 'runner:token_revoke' token.pk %}" data-confirm="Token „{{ token.name }}“ widerrufen? Ein verbundener Runner wird sofort getrennt.">
+                      {% csrf_token %}
+                      <button type="submit" class="button button-small button-danger">Widerrufen</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{% url 'runner:token_delete' token.pk %}" data-confirm="Token „{{ token.name }}“ endgültig löschen?">
+                      {% csrf_token %}
+                      <button type="submit" class="button button-small">Löschen</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Noch kein Runner gekoppelt.</p>
+    {% endif %}
+
+    {% runner_live_status %}
+  </section>
+{% endblock %}

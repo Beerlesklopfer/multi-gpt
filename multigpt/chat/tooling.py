@@ -137,6 +137,8 @@ class Binding:
     tool: str
     spec: ToolSpec
     builtin: str | None = None
+    # Immer direkt anbieten, auch im Modus „Werkzeuge nach Bedarf“ (Runner, M14).
+    core: bool = False
 
 
 # --- Eingebaute Werkzeuge und fester Kontext (M7-06, M8-04) ---------------------------
@@ -240,12 +242,17 @@ def builtin_bindings(user, ai_model) -> dict[str, Binding]:
     }
 
 
-def collect_tools(user, server_ids, ai_model=None, offline=None) -> dict[str, Binding]:
+def collect_tools(user, server_ids, ai_model=None, offline=None, runner=None) -> dict[str, Binding]:
     """Werkzeuge der eingeschalteten, erlaubten Server (Rolle und Freigabe für
     ``ai_model``). Nicht erreichbare Server werden übersprungen (nur ID und
     Fehlerart im Log): zuletzt offline geprüfte ohne Verbindungsversuch
     (``chat/mcp/status.py``), andere nach dem gescheiterten Abruf (dann als
-    offline vermerkt). Ihre Namen landen in ``offline`` (Liste), falls übergeben."""
+    offline vermerkt). Ihre Namen landen in ``offline`` (Liste), falls übergeben.
+
+    Runner-Server (Transport ``runner``, M14): Werkzeuge aus dem Katalog des
+    Servers (``runner.tools``), nur mit ``runner`` (``runner.chat.RunnerContext``
+    dieser Antwort, also mit gewähltem Arbeitsstand) – ohne Verbindungsaufbau;
+    die Sitzung startet erst der erste Aufruf."""
     from .mcp import status as mcp_status
 
     bindings: dict[str, Binding] = {}
@@ -257,6 +264,23 @@ def collect_tools(user, server_ids, ai_model=None, offline=None) -> dict[str, Bi
         if not can(user, Action.USE_MCP_SERVER, server):
             continue
         if model_ids is not None and server.pk not in model_ids:
+            continue
+        if server.transport == McpServer.Transport.RUNNER:
+            if runner is None or runner.server.pk != server.pk:
+                continue
+            specs = runner.specs()
+            for spec in specs:
+                name = tool_name(server, spec.name, bindings)
+                bindings[name] = Binding(
+                    name=name,
+                    server_id=server.pk,
+                    server_name=server.name,
+                    tool=spec.name,
+                    spec=ToolSpec(
+                        name=name, description=spec.description, parameters=spec.parameters
+                    ),
+                    core=True,
+                )
             continue
         if mcp_status.known_offline(server):
             if offline is not None:
@@ -304,8 +328,15 @@ def resolve_server(user, call: dict, enabled_ids, ai_model=None) -> tuple[McpSer
     return server, ""
 
 
-def needs_confirmation(server: McpServer, tool: str) -> bool:
-    """Nur aus der DB (Plan 9): Liste des Verwalters bzw. nicht eingestuft."""
+def needs_confirmation(server: McpServer, tool: str, runner=None) -> bool:
+    """Nur aus der DB (Plan 9): Liste des Verwalters bzw. nicht eingestuft.
+
+    Runner-Server: Einstufung des Katalogs und Modus des Chats (8t,
+    ``runner.tools``); ohne Runner-Kontext immer Rückfrage."""
+    if server.transport == McpServer.Transport.RUNNER:
+        if runner is None or runner.server.pk != server.pk:
+            return True
+        return runner.needs_confirmation(tool)
     return mcp.requires_confirmation(server, tool)
 
 
@@ -320,6 +351,9 @@ class Outcome:
     text: str
     is_error: bool
     attachment_ids: list[int] = field(default_factory=list)
+    # Zusätzliche SSE-Events nach ``tool_result`` als (Name, Daten), z. B. die
+    # Aufgabenliste des Runners (``runner_todo``).
+    events: list[tuple[str, dict]] = field(default_factory=list)
 
 
 def _attachment(message, tool_call: ToolCall, item, kind: str) -> Attachment | None:
@@ -358,10 +392,19 @@ def _clip(text: str, limit: int) -> str:
     return text[:limit] + "\n[… gekürzt]"
 
 
-def execute(server: McpServer, tool_call: ToolCall, message) -> Outcome:
+def execute(server: McpServer, tool_call: ToolCall, message, runner=None) -> Outcome:
     """Führt den Aufruf über MCP aus (Zeitlimit des Servers) und protokolliert
     Ergebnis, Status und Dauer im ``ToolCall``. Rechte und Rückfrage prüft der
-    Aufrufer vorher."""
+    Aufrufer vorher. Runner-Server laufen über ``runner.chat.execute``
+    (Sitzung, Zugang für ssh/telnet, Audit)."""
+    if server.transport == McpServer.Transport.RUNNER:
+        if runner is None or runner.server.pk != server.pk:
+            outcome = Outcome(ToolCall.Status.ERROR, MSG_NOT_ALLOWED, True)
+            record(tool_call, outcome, time.monotonic())
+            return outcome
+        from multigpt.runner import chat as runner_chat
+
+        return runner_chat.execute(runner, server, tool_call, message)
     started = time.monotonic()
     try:
         result = mcp.call_tool(server, tool_call.tool, tool_call.arguments)

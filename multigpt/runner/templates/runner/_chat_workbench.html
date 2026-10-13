@@ -1,0 +1,32 @@
+{% load static %}
+{% if show %}
+  {# Aufgabenliste (todo), Terminal und Vorschau der Runner-Sitzung des Chats (runner_chat.js). Inhalte aus dem Container sind nicht vertrauenswürdig: nur Text, Vorschau im abgeschotteten Rahmen. #}
+  <section class="runner-workbench" id="runner-workbench" aria-label="Runner" hidden
+           data-xterm-js="{% static 'chat/vendor/xterm/xterm.js' %}"
+           data-xterm-fit="{% static 'chat/vendor/xterm/addon-fit.js' %}"
+           data-xterm-css="{% static 'chat/vendor/xterm/xterm.css' %}">
+    <div class="runner-todo" id="runner-todo" hidden>
+      <h2 class="runner-workbench-title" id="runner-todo-title">Aufgaben</h2>
+      <ol class="runner-todo-list" id="runner-todo-list" aria-labelledby="runner-todo-title"></ol>
+    </div>
+    <div class="runner-workbench-actions" id="runner-session-actions" hidden>
+      <span class="runner-session-state" id="runner-session-state"></span>
+      <button type="button" class="button button-small" id="runner-terminal-toggle"
+              aria-expanded="false" aria-controls="runner-terminal">Terminal</button>
+      <button type="button" class="button button-small" id="runner-preview-toggle"
+              aria-expanded="false" aria-controls="runner-preview" hidden>Vorschau</button>
+      <a class="button button-small" id="runner-session-audit" href="#">Audit</a>
+    </div>
+    {% include "runner/_terminal.html" %}
+    <section class="runner-preview" id="runner-preview" aria-label="Vorschau" hidden>
+      <div class="runner-terminal-bar">
+        <a id="runner-preview-link" href="#" target="_blank" rel="noopener noreferrer">In neuem Tab öffnen</a>
+        <button type="button" class="button button-small" id="runner-preview-reload">Neu laden</button>
+        <button type="button" class="button button-small" id="runner-preview-close">Vorschau schließen</button>
+      </div>
+      {# sandbox ohne allow-same-origin: eigener Ursprung, kein Zugriff auf MultiGPT; die strenge CSP setzt zusätzlich der Server. #}
+      <iframe class="runner-preview-frame" id="runner-preview-frame" title="Vorschau der Sitzung"
+              sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy"></iframe>
+    </section>
+  </section>
+{% endif %}

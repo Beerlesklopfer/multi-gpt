@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     "multigpt.billing",
     # Knoten (M15): API-Keys je Konto, MCP-Server unter /mcp/, Audit-Log.
     "multigpt.node",
+    # Runner (M14): Container auf dem Browser-Rechner, Arbeitsstände als git-Bundle.
+    "multigpt.runner",
 ]
 
 MIDDLEWARE = [
@@ -242,3 +244,42 @@ MCP_SSE_PER_PROCESS = env.int("MCP_SSE_PER_PROCESS", default=4)
 MCP_SSE_PER_KEY = env.int("MCP_SSE_PER_KEY", default=2)
 MCP_SSE_MAX_MINUTES = env.int("MCP_SSE_MAX_MINUTES", default=30)
 MCP_SSE_KEEPALIVE_SECONDS = env.int("MCP_SSE_KEEPALIVE_SECONDS", default=15)
+
+# Runner (M14): Container auf dem Browser-Rechner. Images mit Digest
+# (name@sha256:…); das Agent-Image steht in der Quadlet-Datei der Kopplungsseite,
+# das Arbeits-Image ist das einzige, das der Agent starten darf. TLS-Pinning (8i):
+# RUNNER_CA_SHA256 (SHA-256 des Zertifikats, hex) oder RUNNER_TLS_CERT (PEM-Datei,
+# z. B. das snakeoil-Zertifikat) – leer bei einem Zertifikat einer echten CA.
+# Das Paket bringt die Images mit Digest in RUNNER_IMAGES_FILE mit (KEY=VALUE, von
+# der CI erzeugt); Umgebung bzw. .env gehen vor, ohne Datei gilt :latest.
+RUNNER_IMAGES_FILE = Path("/usr/share/multi-gpt/runner-images.env")
+
+
+def _runner_images(path: Path) -> dict[str, str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return {}
+    values = {}
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep and key in ("RUNNER_AGENT_IMAGE", "RUNNER_WORK_IMAGE") and value.strip():
+            values[key] = value.strip().strip("\"'")
+    return values
+
+
+_images = _runner_images(RUNNER_IMAGES_FILE)
+RUNNER_AGENT_IMAGE = env(
+    "RUNNER_AGENT_IMAGE",
+    default=_images.get("RUNNER_AGENT_IMAGE", "ghcr.io/beerlesklopfer/multigpt-runner:latest"),
+)
+RUNNER_WORK_IMAGE = env(
+    "RUNNER_WORK_IMAGE",
+    default=_images.get("RUNNER_WORK_IMAGE", "ghcr.io/beerlesklopfer/multigpt-runner-work:latest"),
+)
+RUNNER_CA_SHA256 = env("RUNNER_CA_SHA256", default="")
+RUNNER_TLS_CERT = env("RUNNER_TLS_CERT", default="")
+# Größe je Arbeitsstand (MB) für Konten ohne Rolle; sonst gilt die Rolle.
+RUNNER_WORKSPACE_MAX_MB = env.int("RUNNER_WORKSPACE_MAX_MB", default=50)
+# Laufzeiten der Kopplungs-Tokens (Tage, Standard 90).
+RUNNER_TOKEN_DAYS = env.int("RUNNER_TOKEN_DAYS", default=90)

@@ -36,6 +36,8 @@ urlpatterns = [
         views_keys.api_key_delete,
         name="api_key_delete",
     ),
+    # Runner (M14): Kopplung und Arbeitsstände; /runner/ws bedient der Runner-Dienst.
+    path("runner/", include("multigpt.runner.urls")),
     # Mit und ohne Schrägstrich: Clients posten an die eingetragene Adresse, eine
     # Weiterleitung (APPEND_SLASH) würde den POST verlieren.
     path("mcp/", node_views.mcp_endpoint, name="mcp"),

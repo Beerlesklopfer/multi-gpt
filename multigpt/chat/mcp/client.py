@@ -54,7 +54,9 @@ CLOSE_TIMEOUT = 8.0
 MAX_LIST_PAGES = 100
 CLIENT_INFO = Implementation(name="multi-gpt", version="0.1.0")
 
-_connections: dict[int, Connection] = {}
+# Schlüssel: ``ServerConfig.key`` = (Server, pipe); pipe ist nur beim Transport
+# ``runner`` gesetzt (eine Verbindung je Runner-Sitzung, M14-06).
+_connections: dict[tuple[int, str], Connection] = {}
 # Letzter HTTP-Fehlerstatus je Server (für die Statusprüfung, chat/mcp/status.py):
 # Das SDK meldet z. B. 401 und 500 nur als allgemeinen JSON-RPC-Fehler.
 http_errors: dict[int, int] = {}
@@ -102,6 +104,10 @@ def _make_client(config: ServerConfig) -> Client:
             command=config.argv[0], args=list(config.argv[1:]), env=dict(config.env)
         )
         transport = stdio_client(params, errlog=_errlog())
+    elif config.transport == "runner":
+        from multigpt.runner.mcp_transport import runner_transport
+
+        transport = runner_transport(config)
     else:
         transport = _http_transport(config)
     return Client(transport, cache=None, client_info=CLIENT_INFO)
@@ -305,14 +311,14 @@ class Connection:
 
 def get_connection(config: ServerConfig) -> Connection:
     """Liefert die Verbindung zu ``config``; bei geänderter Konfiguration eine neue."""
-    conn = _connections.get(config.pk)
+    conn = _connections.get(config.key)
     if conn is not None and conn.config.fingerprint != config.fingerprint:
-        _connections.pop(config.pk, None)
+        _connections.pop(config.key, None)
         _keep(asyncio.get_running_loop().create_task(conn.close()))
         conn = None
     if conn is None:
         conn = Connection(config)
-        _connections[config.pk] = conn
+        _connections[config.key] = conn
     else:
         conn.config = config  # Name/Zeitlimit können sich ohne Neuverbindung ändern
     return conn
@@ -356,7 +362,14 @@ async def call_tool(config: ServerConfig, name: str, arguments: dict, timeout: f
 
 
 async def close_server(pk: int) -> None:
-    conn = _connections.pop(pk, None)
+    """Schließt alle Verbindungen zum Server (bei Runnern alle Sitzungen)."""
+    conns = [_connections.pop(key) for key in list(_connections) if key[0] == pk]
+    await asyncio.gather(*(c.close() for c in conns), return_exceptions=True)
+
+
+async def close_pipe(pk: int, pipe: str) -> None:
+    """Schließt die Verbindung einer Runner-Sitzung (Sitzungsende)."""
+    conn = _connections.pop((pk, pipe), None)
     if conn is not None:
         await conn.close()
 
@@ -378,10 +391,10 @@ async def _reap_idle() -> None:
     while True:
         await asyncio.sleep(REAP_INTERVAL)
         now = time.monotonic()
-        for pk, conn in list(_connections.items()):
+        for key, conn in list(_connections.items()):
             if conn.connected and now - conn.last_used > IDLE_SECONDS and not conn.lock.locked():
                 logger.info("MCP-Server %s: unbenutzte Sitzung geschlossen", conn.config.name)
-                _connections.pop(pk, None)
+                _connections.pop(key, None)
                 _keep(asyncio.get_running_loop().create_task(conn.close()))
 
 
@@ -391,11 +404,15 @@ def _ensure_reaper() -> None:
         _reaper = asyncio.get_running_loop().create_task(_reap_idle(), name="mcp:reaper")
 
 
-def connection_stats() -> dict[int, dict[str, Any]]:
-    """Für Tests und Diagnose (im Loop aufrufen)."""
+def connection_stats() -> dict[Any, dict[str, Any]]:
+    """Für Tests und Diagnose (im Loop aufrufen); Schlüssel: Server-ID bzw. bei
+    Runner-Sitzungen (Server-ID, pipe)."""
     return {
-        pk: {"connected": c.connected, "connect_count": c.connect_count}
-        for pk, c in _connections.items()
+        (pk if not pipe else (pk, pipe)): {
+            "connected": c.connected,
+            "connect_count": c.connect_count,
+        }
+        for (pk, pipe), c in _connections.items()
     }
 
 

@@ -48,6 +48,7 @@ class RoleAdmin(admin.ModelAdmin):
         "can_compute",
         "can_create_documents",
         "can_use_api",
+        "can_use_runner",
         "monthly_budget",
     )
     search_fields = ("name", "key")
@@ -71,8 +72,34 @@ class RoleAdmin(admin.ModelAdmin):
         ),
         ("MCP-Server", {"fields": ("all_mcp_servers", "allowed_mcp_servers")}),
         ("API-Keys und MCP-Zugang (Knoten)", {"fields": ("can_use_api", "api_scopes")}),
+        (
+            "Runner",
+            {
+                "fields": (
+                    "can_use_runner",
+                    "can_use_runner_hosts",
+                    "runner_network",
+                    ("runner_max_cpus", "runner_max_memory_mb"),
+                    ("runner_max_pids", "runner_tmpfs_mb"),
+                    "runner_scratch_mb",
+                    ("runner_max_workspaces", "runner_max_workspace_mb"),
+                ),
+                "description": "Container auf dem Rechner des Mitglieds (M14). Netz an heißt: "
+                "der Container erreicht auch das Heimnetz.",
+            },
+        ),
         ("Budget und System-Prompt", {"fields": ("monthly_budget", "fixed_system_prompt")}),
     )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if change:
+            # Runner (M14): verbundene Runner der Mitglieder prüfen ihr Recht sofort neu.
+            from multigpt.runner import control
+
+            user_ids = obj.users.filter(runner_tokens__isnull=False).values_list("pk", flat=True)
+            for user_id in set(user_ids):
+                control.rights_changed(user_id)
 
     def get_readonly_fields(self, request, obj=None):
         # Die Schlüssel der Startrollen nutzt der Code (Vorgaben, Tests) – nicht änderbar.

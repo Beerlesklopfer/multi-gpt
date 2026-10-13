@@ -23,6 +23,7 @@ INDEX_CONTROL = "index.control"
 FILES_READ = "files.read"
 TOOLS_RUN = "tools.run"
 USAGE_READ = "usage.read"
+RUNNER_USE = "runner.use"
 
 # Reihenfolge = Anzeige (Einstellungen, Admin, CLI-Hilfe).
 SCOPES: dict[str, tuple[str, str]] = {
@@ -58,6 +59,12 @@ SCOPES: dict[str, tuple[str, str]] = {
         "(Rollenrechte und Budgets gelten).",
     ),
     USAGE_READ: ("Verbrauch lesen", "Eigener Verbrauch und Budgetstand."),
+    RUNNER_USE: (
+        "Runner nutzen",
+        "Im Runner des Kontos arbeiten (Dateien, Shell, git, Python), nur auf eigenen "
+        "Arbeitsständen und ohne Netz; ssh und telnet nie (dort bestätigt ein Mensch). "
+        "Braucht das Rollenrecht „Runner nutzen“.",
+    ),
 }
 
 ALL_SCOPES: tuple[str, ...] = tuple(SCOPES)

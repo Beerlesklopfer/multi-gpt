@@ -561,7 +561,7 @@ def test_context_survives_confirmation_pause(
         assert "confirmation_required" in names(events)
         tc = ToolCall.objects.get(server=server)
         with um.patch.object(
-            tooling, "execute", lambda s, t, m: tooling.Outcome("ok", "echo!", False)
+            tooling, "execute", lambda s, t, m, **k: tooling.Outcome("ok", "echo!", False)
         ):
             response = client.post(
                 reverse("chat:api_tool_confirm", args=[conversation.pk]),

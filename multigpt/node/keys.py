@@ -53,7 +53,11 @@ def role_scopes(user) -> frozenset[str]:
     if not can(user, Action.USE_API):
         return frozenset()
     role = user.role
-    return frozenset(api_scopes.clean(role.api_scopes or []))
+    allowed = frozenset(api_scopes.clean(role.api_scopes or []))
+    # runner.use nur mit dem Rollenrecht „Runner nutzen“ (M14, 8o).
+    if api_scopes.RUNNER_USE in allowed and not can(user, Action.USE_RUNNER):
+        allowed -= {api_scopes.RUNNER_USE}
+    return allowed
 
 
 def effective_scopes(key: ApiKey) -> frozenset[str]:

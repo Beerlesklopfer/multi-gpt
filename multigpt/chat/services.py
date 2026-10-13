@@ -77,6 +77,7 @@ from multigpt.accounts import usage
 from multigpt.accounts.permissions import model_permitted
 from multigpt.billing import booking as billing
 from multigpt.billing.pricing import Round, Tally
+from multigpt.runner import chat as runner_chat
 
 from . import attachments as chat_attachments
 from . import (
@@ -768,6 +769,14 @@ def _initial_tool_state(servers: list[int], options: dict | None) -> dict:
     state: dict = {}
     if servers:
         state["servers"] = servers
+    # Runner über einen API-Key (8o): bleibt auch nach einer Rückfrage gültig.
+    runner = {
+        key: (options or {})[key]
+        for key in (runner_chat.OPTION_API_KEY, runner_chat.OPTION_ONLY)
+        if (options or {}).get(key)
+    }
+    if runner:
+        state["runner"] = runner
     collections = (options or {}).get("collections")
     if collections:
         state["collections"] = list(collections)
@@ -1006,6 +1015,12 @@ class _Loop:
         # Zitierstil des Absenders (geteilte Chats: nie der des Besitzers).
         self.sources = source_refs.SourceCollector(self.msg, citations.prefs_for(turn.user))
         self.context = str(self.state.get("context") or "")
+        # Runner (M14): Arbeitsstand des Chats, Modus, eigene Rundengrenze (8u).
+        self.runner: runner_chat.RunnerContext | None = None
+        if turn.resume:
+            # Fortsetzung nach einer Rückfrage: Bedingungen der Key-Antwort behalten
+            # (ohne Netz, ggf. nur Runner-Werkzeuge).
+            turn.options = {**(self.state.get("runner") or {}), **(turn.options or {})}
 
     # --- Hilfen ---
 
@@ -1085,6 +1100,18 @@ class _Loop:
         """
         done = {r["tool_call_id"] for r in rnd.get("results", [])}
         open_calls = [c for c in rnd["calls"] if c["id"] not in done]
+        if open_calls and self._runner_limit_reached() and not rnd.get("limit_asked"):
+            # 8u: nach MAX_ROUNDS Runden fragen, ob weitergearbeitet werden soll.
+            rnd["limit_asked"] = True
+            need = [(call, self._server_of(call)) for call in open_calls]
+            yield from self._pause(need, reason="round_limit")
+            return True
+        if rnd.get("limit_asked") and not rnd.get("limit_answered"):
+            rnd["limit_answered"] = True
+            if any(c.get("decision") == "approve" for c in rnd["calls"]):
+                self.state["round_base"] = int(self.state.get("model_calls", 0))
+            else:
+                self.state["wrap_up"] = True  # abgelehnt: Schlussantwort ohne Werkzeuge
         need = []
         for call in open_calls:
             if call.get("builtin"):
@@ -1099,7 +1126,7 @@ class _Loop:
                 self.turn.user, call, self.servers, self.turn.ai_model
             )
             if server is not None and call.get("decision") is None:
-                if tooling.needs_confirmation(server, call["tool"]):
+                if tooling.needs_confirmation(server, call["tool"], self.runner):
                     need.append((call, server))
         if need:
             yield from self._pause(need)
@@ -1108,7 +1135,28 @@ class _Loop:
             yield from self._execute(rnd, call)
         return False
 
-    def _pause(self, need):
+    def _server_of(self, call: dict):
+        if call.get("builtin") or not call.get("server_id"):
+            return None
+        server, _ = tooling.resolve_server(self.turn.user, call, self.servers, self.turn.ai_model)
+        return server
+
+    def _runner_limit_reached(self) -> bool:
+        """Runner-Antwort: ``runner_chat.MAX_ROUNDS`` Anbieteraufrufe seit Beginn
+        bzw. seit dem letzten „weiterarbeiten“."""
+        if self.runner is None:
+            return False
+        used = int(self.state.get("model_calls", 0)) - int(self.state.get("round_base", 0))
+        return used >= runner_chat.MAX_ROUNDS
+
+    def _last_round(self, calls_so_far: int) -> bool:
+        """Letzter Anbieteraufruf (``tool_choice="none"``)? Runner-Antworten enden
+        erst nach abgelehnter Rückfrage „weiterarbeiten?“ (8u)."""
+        if self.runner is not None:
+            return bool(self.state.get("wrap_up"))
+        return calls_so_far >= MAX_ROUNDS - 1
+
+    def _pause(self, need, reason: str = ""):
         with transaction.atomic():
             tool_calls = []
             for call, server in need:
@@ -1130,9 +1178,15 @@ class _Loop:
         self.msg.status = Message.Status.AWAITING_CONFIRMATION
         self.paused = True
         logger.info("Antwort %s wartet auf Bestätigung (%d Aufrufe)", self.msg.pk, len(need))
+        if reason == "round_limit":
+            yield "status", {"text": runner_chat.round_limit_text(), "level": "warning"}
         for tool_call, server in tool_calls:
             yield "tool_call", tooling.call_event(tool_call, server.name if server else "")
-        yield "confirmation_required", {"tool_call_ids": [tc.pk for tc, _ in tool_calls]}
+        required = {"tool_call_ids": [tc.pk for tc, _ in tool_calls]}
+        if reason:
+            required["reason"] = reason
+            required["text"] = runner_chat.round_limit_text()
+        yield "confirmation_required", required
         yield "usage", {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out}
         yield "done", {"status": Message.Status.AWAITING_CONFIRMATION}
 
@@ -1157,7 +1211,7 @@ class _Loop:
             yield "tool_result", tooling.result_event(tool_call, [])
             return
         if server is not None and decision != "approve":
-            if tooling.needs_confirmation(server, call["tool"]):
+            if tooling.needs_confirmation(server, call["tool"], self.runner):
                 err = tooling.MSG_NOT_CONFIRMED  # nie ohne Bestätigung ausführen
         tool_call = self._tool_call_for(call, server, ToolCall.Status.RUNNING)
         if not err:
@@ -1170,10 +1224,11 @@ class _Loop:
             self._persist()
             yield "tool_result", tooling.result_event(tool_call, [])
             return
-        outcome = tooling.execute(server, tool_call, self.msg)
+        outcome = tooling.execute(server, tool_call, self.msg, runner=self.runner)
         self._add_result(rnd, call, outcome.text, outcome.is_error)
         self._persist()
         yield "tool_result", tooling.result_event(tool_call, outcome.attachment_ids)
+        yield from outcome.events  # z. B. Aufgabenliste des Runners
 
     def _budget_status(self):
         """Hinweis ab 80 % eines Budgets als SSE ``status`` (Stufe warning).
@@ -1433,13 +1488,15 @@ class _Loop:
                 candidates: dict[str, tooling.Binding] = {}
                 if self.servers:
                     offline = []
+                    self.runner = runner_chat.context_for_turn(turn, self.servers)
                     candidates = tooling.collect_tools(
-                        turn.user, self.servers, turn.ai_model, offline=offline
+                        turn.user, self.servers, turn.ai_model, offline=offline, runner=self.runner
                     )
                     if offline:  # Hinweis statt Fehler mitten in der Antwort
                         hint = mcp_status.offline_hint(offline)
                         yield "status", {"text": hint, "level": "warning"}
-                candidates.update(tooling.builtin_bindings(turn.user, turn.ai_model))
+                if not turn.options.get(runner_chat.OPTION_ONLY):
+                    candidates.update(tooling.builtin_bindings(turn.user, turn.ai_model))
                 # Werkzeuge nach Bedarf (M4a-12): ggf. nur Kern plus find_tools.
                 self.selection = tool_select.select(
                     candidates,
@@ -1507,7 +1564,7 @@ class _Loop:
                     status = Message.Status.ERROR
                     break
                 calls_so_far = int(self.state.get("model_calls", 0))
-                last = calls_so_far >= MAX_ROUNDS - 1
+                last = self._last_round(calls_so_far)
                 # Nach einer Ablehnung (unten) ohne den abgelehnten Parameter.
                 optional = {
                     "reasoning": reasoning.params_for(turn.ai_model, effort),

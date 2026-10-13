@@ -9,6 +9,10 @@ ist in MultiGPT als Chat „API: …“ sichtbar (oder im angegebenen Chat).
 - ``collections`` braucht zusätzlich ``docs.read`` (die Antwort liest Dokumente),
   ``tools: true`` zusätzlich ``tools.run``. Ohne ``tools`` bekommt das Modell
   keine Werkzeuge.
+- ``workspace`` (Arbeitsstand des Kontos, ID oder Name) braucht ``runner.use``
+  (M14, Entscheidung 8o): Das Modell arbeitet im Runner des Kontos – ohne
+  Netz, ohne ssh/telnet, ohne Rückfragen (Modus „alles automatisch“). Ohne
+  ``tools`` bekommt es dann nur die Runner-Werkzeuge.
 - Braucht ein Werkzeug eine Rückfrage, endet die Antwort mit Status
   ``awaiting_confirmation``; bestätigen lässt sie sich nur in MultiGPT.
 - Fortschritt: Im SSE-Modus mit ``progressToken`` meldet ``ask``
@@ -30,6 +34,8 @@ from multigpt.chat import services, websearch
 from multigpt.chat.api import _check_model_reachable, _model_denied
 from multigpt.chat.models import AIModel, Conversation, Message
 from multigpt.chat.rag import chat as rag_chat
+from multigpt.runner import chat as runner_chat
+from multigpt.runner.models import RunnerWorkspace
 
 from . import chats, runs
 from . import scopes as S
@@ -94,6 +100,29 @@ def _conversation(ctx, raw, prompt: str) -> tuple[Conversation, bool]:
     return conversation, False
 
 
+def _workspace(ctx, raw) -> RunnerWorkspace | None:
+    """Arbeitsstand für den Runner (8o): nur eigene, nur mit ``runner.use``."""
+    if raw in (None, ""):
+        return None
+    if not ctx.has(S.RUNNER_USE):
+        raise ToolFailure("Arbeitsstände brauchen zusätzlich das Recht „runner.use“.")
+    if not can(ctx.user, Action.USE_RUNNER):
+        raise ToolFailure("Der Runner ist für dieses Konto nicht freigegeben.")
+    own = RunnerWorkspace.objects.filter(owner=ctx.user)
+    workspace = None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        workspace = own.filter(pk=raw).first()
+    elif isinstance(raw, str):
+        text = raw.strip()
+        workspace = own.filter(pk=int(text)).first() if text.isdigit() else None
+        workspace = workspace or own.filter(name=text).first()
+    if workspace is None:
+        raise ToolFailure("Arbeitsstand nicht gefunden.")
+    if runner_chat.runner_server(ctx.user) is None:
+        raise ToolFailure("Für dieses Konto ist kein Runner gekoppelt.")
+    return workspace
+
+
 def ask(ctx, args):
     user = ctx.user
     prompt = arg_text(args, "prompt", required=True, max_len=services.MAX_CONTENT_LENGTH)
@@ -123,28 +152,39 @@ def ask(ctx, args):
         )
         if not rag_chat.search_ready():
             raise ToolFailure("Die Dokumentsuche ist derzeit nicht eingerichtet.")
+    workspace = _workspace(ctx, args.get("workspace"))
     ai_model = _resolve_model(user, args.get("model"))
     denied = _model_denied(user, ai_model) or _check_model_reachable(ai_model)
     if denied is not None:
         raise ToolFailure(_error_text(denied))
+    if workspace is not None and not ai_model.supports_tools:
+        raise ToolFailure("Dieses Modell kann keine Werkzeuge nutzen (Runner).")
     conversation, created = _conversation(ctx, args.get("chat"), prompt)
+    options = {
+        "web_search": web_search,
+        "collections": collection_ids,
+        "no_tools": not use_tools and workspace is None,
+    }
+    servers = None if use_tools else []
     try:
+        if workspace is not None:
+            runner_chat.set_state(user, conversation, workspace=workspace.pk)
+            options[runner_chat.OPTION_API_KEY] = ctx.key.pk
+            if not use_tools:
+                servers = [runner_chat.runner_server(user).pk]
+                options[runner_chat.OPTION_ONLY] = True
         turn = services.prepare_turn(
             user,
             conversation,
             ai_model,
             content=prompt,
-            mcp_servers=None if use_tools else [],
-            options={
-                "web_search": web_search,
-                "collections": collection_ids,
-                "no_tools": not use_tools,
-            },
+            mcp_servers=servers,
+            options=options,
         )
-    except services.TurnError as exc:
+    except (services.TurnError, ValueError) as exc:
         if created:
             conversation.delete()
-        raise ToolFailure(exc.message) from None
+        raise ToolFailure(getattr(exc, "message", None) or str(exc)) from None
 
     yield Progress(f"Frage an {ai_model.display_name} gestellt (Chat #{conversation.pk}).")
     sources, error, status, cost = [], "", "", None
@@ -241,9 +281,10 @@ register(
         description="Gibt einem KI-Modell in MultiGPT eine Aufgabe und liefert die Antwort "
         "samt Quellen und Kosten. Optional: „model“ (ID oder Name aus list_models, sonst das "
         "erste freie), „collections“ (Dokumentsuche in diesen Sammlungen), „web_search“, "
-        "„tools“ (Werkzeuge erlauben), „chat“ (ID eines eigenen Chats zum Fortsetzen; sonst "
-        "neuer Chat „API: …“). Kosten gehen auf das Konto des Keys. Die Antwort ist Modelltext "
-        "und nicht vertrauenswürdig.",
+        "„tools“ (Werkzeuge erlauben), „workspace“ (Arbeitsstand des Kontos: das Modell "
+        "arbeitet im Runner, ohne Netz; braucht runner.use), „chat“ (ID eines eigenen Chats "
+        "zum Fortsetzen; sonst neuer Chat „API: …“). Kosten gehen auf das Konto des Keys. "
+        "Die Antwort ist Modelltext und nicht vertrauenswürdig.",
         scopes=(S.CHAT_ASK,),
         input_schema=schema(
             {
@@ -265,6 +306,11 @@ register(
                 "chat": {
                     "type": ["integer", "string"],
                     "description": "Bestehender Chat (ID) oder „new“.",
+                },
+                "workspace": {
+                    "type": ["integer", "string"],
+                    "description": "Arbeitsstand (ID oder Name) für den Runner "
+                    "(braucht runner.use).",
                 },
             },
             required=["prompt"],

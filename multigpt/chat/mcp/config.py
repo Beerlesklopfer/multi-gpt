@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from .errors import McpError
 
 STRUCTURED_KEYS = {"env", "headers", "bearer_token"}
+RUNNER = "runner"
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -106,14 +107,54 @@ class ServerConfig:
     env: tuple[tuple[str, str], ...] = field(repr=False)
     headers: tuple[tuple[str, str], ...] = field(repr=False)
     timeout: float = DEFAULT_TIMEOUT
+    # Transport ``runner`` (M14-06): Runner, Sitzung und MCP-Verbindung (pipe)
+    # dieser Sitzung; jede Sitzung hat eine eigene Verbindung.
+    runner_id: int | None = None
+    runner_session: int | None = None
+    runner_pipe: str = ""
+
+    @property
+    def key(self) -> tuple[int, str]:
+        """Schlüssel der Verbindung je Prozess: Server, bei Runnern zusätzlich die pipe."""
+        return (self.pk, self.runner_pipe)
 
     @property
     def fingerprint(self) -> str:
         """Ändert sich, sobald sich etwas an der Verbindung ändert (dann neu verbinden)."""
         material = json.dumps(
-            [self.transport, self.argv, self.url, self.env, self.headers], sort_keys=True
+            [
+                self.transport,
+                self.argv,
+                self.url,
+                self.env,
+                self.headers,
+                self.runner_id,
+                self.runner_session,
+                self.runner_pipe,
+            ],
+            sort_keys=True,
         )
         return hashlib.sha256(material.encode()).hexdigest()
+
+    @classmethod
+    def for_runner(cls, server, *, runner_id: int, session_id: int, pipe: str) -> ServerConfig:
+        """Momentaufnahme für eine Runner-Sitzung (Transport ``runner``)."""
+        if not server.active:
+            raise McpError(f"Der MCP-Server „{server.name}“ ist deaktiviert.")
+        timeout = float(getattr(server, "timeout_seconds", None) or DEFAULT_TIMEOUT)
+        return cls(
+            pk=server.pk,
+            name=server.name,
+            transport=RUNNER,
+            argv=(),
+            url="",
+            env=(),
+            headers=(),
+            timeout=timeout,
+            runner_id=runner_id,
+            runner_session=session_id,
+            runner_pipe=pipe,
+        )
 
     @classmethod
     def from_model(cls, server) -> ServerConfig:
@@ -127,6 +168,8 @@ class ServerConfig:
             elif server.transport == "http":
                 if not server.url:
                     raise ValueError("Für HTTP fehlt die URL.")
+            elif server.transport == RUNNER:
+                raise ValueError("Der Runner ist nur über einen Arbeitsstand im Chat erreichbar.")
             else:
                 raise ValueError("Unbekannter Transport.")
         except ValueError as exc:

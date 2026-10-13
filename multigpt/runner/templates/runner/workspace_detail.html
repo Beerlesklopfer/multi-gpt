@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{# Verlauf eines Arbeitsstands (git log aus dem Bundle, serverseitig nur gelesen). #}
+{% block title %}{{ workspace.name }} – Arbeitsstände – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="workspace-title">
+    <p class="breadcrumb"><a href="{% url 'runner:index' %}">Runner</a> › <a href="{% url 'runner:workspaces' %}">Arbeitsstände</a> › {{ workspace.name }}</p>
+    <h1 id="workspace-title">{{ workspace.name }}</h1>
+    <p class="page-intro">
+      {{ workspace.size|filesizeformat }}, geändert {{ workspace.updated|date:"d.m.Y H:i" }}{% if workspace.sha256 %},
+      Prüfsumme <code title="SHA-256">{{ workspace.sha256|slice:":16" }}…</code>{% endif %}.
+      {% if workspace.active_session %}Gerade in einer Sitzung ({{ workspace.active_session.get_status_display }}).{% endif %}
+    </p>
+    <p>
+      <a class="button" href="{% url 'runner:workspace_download' workspace.pk %}">Als Bundle herunterladen</a>
+      <a class="button button-danger" href="{% url 'runner:workspace_delete' workspace.pk %}">Löschen</a>
+    </p>
+    <p class="hint">Wiederherstellen auf dem eigenen Rechner: <code>git clone arbeitsstand-{{ workspace.pk }}.bundle</code></p>
+
+    <h2 class="section-title" id="workspace-edit-title">Einstellungen</h2>
+    <form method="post" action="{% url 'runner:workspace' workspace.pk %}" class="form" aria-labelledby="workspace-edit-title">
+      {% csrf_token %}
+      {{ form.as_div }}
+      <button type="submit" class="button button-primary">Speichern</button>
+    </form>
+    {% if workspace.scratch_mode == "local" %}
+      <p class="hint">Scratchpad lokal: Ordner <code>~/MultiGPT/Scratch/{{ workspace.uuid }}/</code> auf dem Rechner des Runners. Der Ort lässt sich nur ändern, solange keine Sitzung läuft.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="workspace-log-title">Verlauf</h2>
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% elif commits %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="workspace-log-title">
+          <thead><tr><th scope="col">Commit</th><th scope="col">Zeit</th><th scope="col">Autor</th><th scope="col">Nachricht</th></tr></thead>
+          <tbody>
+            {% for commit in commits %}
+              <tr>
+                <td><code title="{{ commit.sha }}">{{ commit.short }}</code></td>
+                <td>{% if commit.date %}{{ commit.date|date:"d.m.Y H:i" }}{% else %}–{% endif %}</td>
+                <td>{{ commit.author }}</td>
+                <td>{{ commit.subject }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Keine Commits.</p>
+    {% endif %}
+  </section>
+{% endblock %}

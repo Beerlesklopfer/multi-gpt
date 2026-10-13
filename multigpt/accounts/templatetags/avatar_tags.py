@@ -16,6 +16,14 @@ def can_use_api_keys(user) -> bool:
     return bool(keys.role_scopes(user))
 
 
+@register.filter
+def can_use_runner(user) -> bool:
+    """Rolle mit Recht „Runner nutzen“ (sonst kein Menüeintrag „Runner“)."""
+    from multigpt.accounts.permissions import Action, can
+
+    return can(user, Action.USE_RUNNER)
+
+
 @register.inclusion_tag("accounts/_avatar.html")
 def avatar(user, size: int = 32):
     url = ""

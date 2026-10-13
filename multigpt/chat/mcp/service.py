@@ -66,6 +66,30 @@ def call_tool(
     )
 
 
+def call_tool_with(
+    config: ServerConfig, name: str, arguments: dict, timeout: float | None = None
+) -> ToolResult:
+    """Wie :func:`call_tool`, aber mit fertiger ``ServerConfig`` (Runner-Sitzung,
+    ``ServerConfig.for_runner``). Rechte und Rückfrage prüft der Aufrufer."""
+    seconds = _timeout(config, timeout)
+    return bridge.run(
+        client.call_tool(config, name, arguments, seconds), seconds + bridge.GRACE_SECONDS
+    )
+
+
+def list_tools_with(config: ServerConfig, timeout: float | None = None) -> list[ToolSpec]:
+    """Werkzeugliste über eine fertige ``ServerConfig`` (Abgleich beim Runner)."""
+    seconds = _timeout(config, timeout)
+    tools = bridge.run(client.list_tools(config, seconds), seconds + bridge.GRACE_SECONDS)
+    return [_to_spec(t) for t in tools]
+
+
+def close_pipe(pk: int, pipe: str, timeout: float = 10.0) -> None:
+    """Schließt die MCP-Verbindung einer Runner-Sitzung in diesem Prozess."""
+    if bridge.is_running():
+        bridge.run(client.close_pipe(pk, pipe), timeout)
+
+
 def requires_confirmation(server, tool_name: str) -> bool:
     """True, wenn das Werkzeug erst nach Bestätigung laufen darf.
 

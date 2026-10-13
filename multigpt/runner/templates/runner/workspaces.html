@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load static %}
+{# Arbeitsstände des Kontos (git-Bundles). Nur eigene; Inhalte sieht auch kein Verwalter. #}
+{% block title %}Arbeitsstände – Runner – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page settings-page" aria-labelledby="workspaces-title">
+    <p class="breadcrumb"><a href="{% url 'runner:index' %}">Runner</a> › Arbeitsstände</p>
+    <h1 id="workspaces-title">Arbeitsstände</h1>
+    <p class="page-intro">
+      Ein Arbeitsstand ist ein git-Repository mit seiner ganzen Geschichte. Er liegt als Bundle auf dem
+      Server; der Runner holt ihn zu Beginn einer Sitzung und speichert nach jeder Änderung einen Commit.
+      Im Chat wählst du, mit welchem Arbeitsstand ein Modell arbeitet. Höchstens
+      {{ limits.max_count }} Arbeitsstände mit je {{ limits.max_mb }} MB.
+    </p>
+
+    {% if can_create %}
+      <section class="module" aria-labelledby="workspace-new-title">
+        <h2 class="section-title" id="workspace-new-title">Neuer Arbeitsstand</h2>
+        <form method="post" action="{% url 'runner:workspaces' %}" class="form">
+          {% csrf_token %}
+          {{ form.as_div }}
+          <button type="submit" class="button button-primary">Anlegen</button>
+        </form>
+      </section>
+    {% elif not can_runner %}
+      <p>Deine Rolle erlaubt keinen Runner; vorhandene Arbeitsstände kannst du weiter herunterladen und löschen.</p>
+    {% else %}
+      {% if form.non_field_errors %}{{ form.non_field_errors }}{% endif %}
+      <p>Die Höchstzahl von {{ limits.max_count }} Arbeitsständen ist erreicht. Lösche einen, um einen neuen anzulegen.</p>
+    {% endif %}
+
+    <h2 class="section-title" id="workspaces-list-title">Deine Arbeitsstände</h2>
+    {% if workspaces %}
+      <div class="table-scroll">
+        <table class="usage-table" aria-labelledby="workspaces-list-title">
+          <thead>
+            <tr><th scope="col">Name</th><th scope="col">Größe</th><th scope="col">Scratchpad</th><th scope="col">letzter Commit</th>
+                <th scope="col">geändert</th><th scope="col">Sitzung</th><th scope="col"><span class="sr-only">Aktion</span></th></tr>
+          </thead>
+          <tbody>
+            {% for ws in workspaces %}
+              <tr>
+                <th scope="row"><a href="{% url 'runner:workspace' ws.pk %}">{{ ws.name }}</a></th>
+                <td>{{ ws.size|filesizeformat }}</td>
+                <td>{% if ws.scratch_mode == "local" %}lokal (<code>~/MultiGPT/Scratch/{{ ws.uuid }}/</code>){% else %}im Container{% endif %}</td>
+                <td><code>{{ ws.head_commit|slice:":10"|default:"–" }}</code></td>
+                <td>{{ ws.updated|date:"d.m.Y H:i" }}</td>
+                <td>{% if ws.active_session %}{{ ws.active_session.get_status_display }}{% else %}–{% endif %}</td>
+                <td>
+                  <a class="button button-small" href="{% url 'runner:workspace_download' ws.pk %}">Herunterladen</a>
+                  <a class="button button-small button-danger" href="{% url 'runner:workspace_delete' ws.pk %}">Löschen</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Noch keine Arbeitsstände.</p>
+    {% endif %}
+  </section>
+{% endblock %}

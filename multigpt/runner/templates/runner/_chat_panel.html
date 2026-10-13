@@ -1,0 +1,28 @@
+{% if show %}
+  {# Runner im Chat (M14, 8j/8t): Arbeitsstand und Rückfrage-Modus je Chat; runner_chat.js lädt den Stand (/runner/api/chat/<id>/) und zeigt den Bereich. #}
+  <fieldset class="chat-input-tools runner-picker" id="runner-picker" hidden
+            data-api-template="{% url 'runner:api_chat' 0 %}"
+            data-session-api-template="{% url 'runner:session_api' '00000000-0000-0000-0000-000000000000' %}"
+            data-runner-server="{{ runner_server_id }}">
+    <legend>Runner</legend>
+    <div class="runner-picker-row">
+      <label for="runner-workspace">Arbeitsstand</label>
+      <select id="runner-workspace" aria-describedby="runner-picker-hint">
+        <option value="">ohne Runner</option>
+        {% for ws in workspaces %}<option value="{{ ws.pk }}">{{ ws.name }}</option>{% endfor %}
+      </select>
+      <label for="runner-mode">Rückfrage</label>
+      <select id="runner-mode" aria-describedby="runner-picker-hint" disabled>
+        <option value="">Vorgabe</option>
+      </select>
+      <span class="runner-scratch" id="runner-scratch-box" hidden>
+        <label for="runner-scratch">Scratch</label>
+        <select id="runner-scratch" aria-describedby="runner-scratch-hint"></select>
+      </span>
+      <a class="runner-picker-manage" href="{% url 'runner:workspaces' %}">Arbeitsstände</a>
+    </div>
+    <p class="hint runner-picker-hint" id="runner-picker-hint">Mit Arbeitsstand arbeitet das Modell im Container auf deinem Rechner (Dateien, Befehle, git). ssh und telnet fragen immer nach.</p>
+    <p class="hint runner-picker-hint" id="runner-scratch-hint" hidden>Scratch ist ein Ablageort für Zwischenergebnisse (/scratch): im Container (flüchtig) oder als Ordner ~/MultiGPT/Scratch auf diesem Rechner. Nach MultiGPT kommt daraus nur, was das Modell ausdrücklich veröffentlicht. Gilt ab der nächsten Sitzung.</p>
+    <p class="runner-picker-state" id="runner-picker-state" role="status" aria-live="polite"></p>
+  </fieldset>
+{% endif %}

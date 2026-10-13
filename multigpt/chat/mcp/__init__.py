@@ -19,9 +19,12 @@ from .results import ToolFile, ToolResult
 # manage.py-Befehle und Prozesse ohne MCP).
 _SERVICE_NAMES = {
     "call_tool",
+    "call_tool_with",
     "check_connection",
+    "close_pipe",
     "close_server",
     "list_tools",
+    "list_tools_with",
     "requires_confirmation",
     "shutdown",
 }

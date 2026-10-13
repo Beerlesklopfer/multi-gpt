@@ -89,6 +89,54 @@ class Role(models.Model):
         help_text="Höchstmenge der Rechte, die ein API-Key dieser Rolle haben kann. "
         "Wirksam ist die Schnittmenge mit den Rechten des Keys und den übrigen Rollenrechten.",
     )
+    # Runner (M14): Container auf dem Browser-Rechner; Grenzen setzt der Server.
+    can_use_runner = models.BooleanField(
+        "Runner nutzen",
+        default=False,
+        help_text="Mitglieder dürfen einen Runner koppeln und Modelle in einem Container "
+        "auf ihrem Rechner arbeiten lassen (Dateien, Shell, git, Python).",
+    )
+    can_use_runner_hosts = models.BooleanField(
+        "Fernzugriff (ssh/telnet)",
+        default=False,
+        help_text="Werkzeuge ssh und telnet zu den freigegebenen Runner-Hosts, immer mit "
+        "Rückfrage. Gedacht nur für Verwalter und Erwachsene.",
+    )
+    runner_network = models.BooleanField(
+        "Runner mit Netz",
+        default=False,
+        help_text="Container mit Netz (erreicht auch das Heimnetz). Aus: kein Netz.",
+    )
+    runner_max_cpus = models.PositiveSmallIntegerField(
+        "Runner: CPUs höchstens", default=1, validators=[MinValueValidator(1)]
+    )
+    runner_max_memory_mb = models.PositiveIntegerField(
+        "Runner: Arbeitsspeicher höchstens (MB)", default=1024, validators=[MinValueValidator(64)]
+    )
+    runner_max_pids = models.PositiveIntegerField(
+        "Runner: Prozesse höchstens", default=256, validators=[MinValueValidator(16)]
+    )
+    runner_tmpfs_mb = models.PositiveIntegerField(
+        "Runner: tmpfs /workspace (MB)",
+        default=512,
+        validators=[MinValueValidator(16)],
+        help_text="Größe des Arbeitsbereichs im Container (inkl. installierter Abhängigkeiten).",
+    )
+    runner_scratch_mb = models.PositiveIntegerField(
+        "Runner: Scratchpad (MB)",
+        default=1024,
+        validators=[MinValueValidator(16)],
+        help_text="Größe der Ablage /scratch (im Container bzw. lokal auf dem Rechner).",
+    )
+    runner_max_workspaces = models.PositiveSmallIntegerField(
+        "Runner: Arbeitsstände je Konto", default=10
+    )
+    runner_max_workspace_mb = models.PositiveIntegerField(
+        "Runner: Größe je Arbeitsstand (MB)",
+        default=50,
+        validators=[MinValueValidator(1)],
+        help_text="Höchstgröße des git-Bundles eines Arbeitsstands.",
+    )
     all_mcp_servers = models.BooleanField(
         "Alle aktiven MCP-Server",
         default=False,

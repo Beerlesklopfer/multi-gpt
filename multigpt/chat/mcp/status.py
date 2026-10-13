@@ -405,7 +405,9 @@ def check_due(*, close_after: bool = True) -> list[CheckOutcome]:
     """Periodische Prüfung (Worker): fällige aktive Server, je Server höchstens
     eine Prüfung gleichzeitig über alle Prozesse."""
     now = timezone.now()
-    servers = [s for s in McpServer.objects.filter(_due(now), active=True) if claim(s, now)]
+    # Runner (Transport runner, M14) haben eigene Statusangaben (Runner.status).
+    due = McpServer.objects.filter(_due(now), active=True).exclude(transport="runner")
+    servers = [s for s in due if claim(s, now)]
     if not servers:
         return []
     return _run_checks(servers, close_after)
@@ -470,9 +472,11 @@ def offline_for(user, limit: int = 5) -> list[dict]:
     kein Netzaufruf); online-Server erscheinen nicht, damit die Leiste ruhig bleibt."""
     if not shows_offline_warning(user):
         return []
-    servers = McpServer.objects.filter(
-        active=True, online=False, last_checked__isnull=False
-    ).exclude(last_error="")
+    servers = (
+        McpServer.objects.filter(active=True, online=False, last_checked__isnull=False)
+        .exclude(last_error="")
+        .exclude(transport="runner")
+    )
     return [
         {
             "id": s.pk,

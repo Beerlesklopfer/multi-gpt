@@ -1,0 +1,36 @@
+{% load usage_tags %}
+{# Live-Status (M14-12): runner_status.js fragt alle 5 s /runner/status/ ab. Ohne JavaScript bleibt der Stand beim Laden. #}
+<section class="runner-live" id="runner-live" aria-labelledby="runner-live-title"
+         data-status-url="{% url 'runner:status' %}">
+  <h2 class="section-title" id="runner-live-title">Live-Status</h2>
+  <p class="hint runner-live-updated" data-runner-updated></p>
+
+  <h3 id="runner-runtime-title">Laufzeit im Monat</h3>
+  <div class="runner-runtime budget-meter budget-meter-{{ runtime.level }}" data-runner-runtime>
+    {% if runtime.limit %}
+      <meter min="0" max="{{ runtime.limit }}" low="{{ runtime_low }}" high="{{ runtime_low }}" optimum="0"
+             value="{% if runtime.spent > runtime.limit %}{{ runtime.limit }}{% else %}{{ runtime.spent }}{% endif %}"
+             aria-labelledby="runner-runtime-title">{{ runtime.percent }} %</meter>
+    {% endif %}
+    <p class="budget-text" data-runner-runtime-text>
+      {% if runtime.limit is None %}{{ runtime.spent|minutes }} verbraucht (unbegrenzt).{% else %}{{ runtime.spent|tokens }} von {{ runtime.limit|minutes }} verbraucht ({{ runtime.percent }} %).{% endif %}
+    </p>
+    <p class="budget-notice budget-notice-{{ runtime.level }}" data-runner-runtime-notice role="status"{% if not runtime.message %} hidden{% endif %}>{{ runtime.message }}</p>
+  </div>
+
+  <h3 id="runner-sessions-title">Sitzungen</h3>
+  <div class="table-scroll">
+    <table class="usage-table runner-sessions" aria-labelledby="runner-sessions-title">
+      <thead>
+        <tr>
+          <th scope="col">Arbeitsstand</th><th scope="col">Status</th><th scope="col">Chat</th>
+          <th scope="col">gestartet</th><th scope="col" class="num">Minuten</th><th scope="col"><span class="sr-only">Audit</span></th>
+        </tr>
+      </thead>
+      <tbody data-runner-sessions>
+        <tr><td colspan="6" class="hint">Wird geladen …</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <noscript><p class="hint">Der Live-Status braucht JavaScript.</p></noscript>
+</section>

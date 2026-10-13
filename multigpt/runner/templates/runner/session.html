@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static usage_tags %}
+{# Eine Runner-Sitzung (M14-12): Metadaten und Audit-Log – gekürzte Argumente, nie Ausgaben. Nur das eigene Konto. #}
+{% block title %}Sitzung {{ session.uuid|stringformat:"s"|slice:":8" }} – Runner – MultiGPT{% endblock %}
+{% block extra_head %}
+  {# xterm.js lädt runner_terminal.js erst beim Öffnen (Pfade in data-xterm-*). #}
+  <script src="{% static 'chat/runner_terminal.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+  <section class="page page-wide runner-session-page" aria-labelledby="session-title">
+    <p class="breadcrumb"><a href="{% url 'runner:index' %}">Runner</a> › Sitzung</p>
+    <h1 id="session-title">Sitzung <code>{{ session.uuid|stringformat:"s"|slice:":8" }}</code></h1>
+    <dl class="runner-facts">
+      <dt>Status</dt><dd><span class="runner-state runner-state-{{ session.status }}">{{ session.get_status_display }}</span></dd>
+      <dt>Arbeitsstand</dt><dd>{% if session.workspace %}<a href="{% url 'runner:workspace' session.workspace.pk %}">{{ session.workspace.name }}</a>{% else %}gelöscht{% endif %}</dd>
+      {% if session.conversation and session.conversation.user_id == request.user.pk %}
+        <dt>Chat</dt><dd><a href="{% url 'chat:conversation' session.conversation.pk %}">{{ session.conversation.title|default:"Chat" }}</a></dd>
+      {% endif %}
+      {% if session.api_key_id %}<dt>Zugang</dt><dd>über API-Key (Agententeam)</dd>{% endif %}
+      <dt>Gestartet</dt><dd>{{ session.started|date:"d.m.Y H:i:s" }}</dd>
+      <dt>Beendet</dt><dd>{% if session.ended %}{{ session.ended|date:"d.m.Y H:i:s" }}{% if session.stop_reason %} ({{ session.stop_reason }}){% endif %}{% else %}–{% endif %}</dd>
+      <dt>Laufzeit</dt><dd>{{ session.minutes|minutes }}</dd>
+      <dt>Netz</dt><dd>{% if session.network %}an{% else %}aus{% endif %}</dd>
+      <dt>Rückfrage</dt><dd>{{ session.get_confirm_mode_display }}</dd>
+    </dl>
+
+    {% if terminal_allowed or preview_url %}
+      <h2 class="section-title">Terminal und Vorschau</h2>
+      <p class="runner-live-actions">
+        {% if terminal_allowed %}
+          <button type="button" class="button" data-runner-terminal-open
+                  data-pty-url="{% url 'runner:pty_stream' session.uuid %}"
+                  data-pty-input-template="{% url 'runner:pty_input' session.uuid 'PTY' %}"
+                  data-pty-resize-template="{% url 'runner:pty_resize' session.uuid 'PTY' %}"
+                  data-xterm-js="{% static 'chat/vendor/xterm/xterm.js' %}"
+                  data-xterm-fit="{% static 'chat/vendor/xterm/addon-fit.js' %}"
+                  data-xterm-css="{% static 'chat/vendor/xterm/xterm.css' %}"
+                  aria-controls="runner-terminal">Terminal öffnen</button>
+        {% endif %}
+        {% if preview_url %}
+          <a class="button" href="{{ preview_url }}" target="_blank" rel="noopener noreferrer">Vorschau in neuem Tab</a>
+        {% endif %}
+      </p>
+      {% include "runner/_terminal.html" %}
+    {% endif %}
+
+    <h2 class="section-title" id="session-audit-title">Audit-Log</h2>
+    <p class="hint">Werkzeugaufrufe mit gekürzten Argumenten (Geheimnisse entfernt), ohne Ausgaben.</p>
+    {% if entries %}
+      <div class="table-scroll">
+        <table class="usage-table runner-audit-table" aria-labelledby="session-audit-title">
+          <thead>
+            <tr>
+              <th scope="col">Zeit</th><th scope="col">Art</th><th scope="col">Werkzeug</th>
+              <th scope="col">Argumente</th><th scope="col" class="num">Exit-Code</th>
+              <th scope="col" class="num">Dauer</th><th scope="col">Meldung</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries %}
+              <tr>
+                <td>{{ entry.created|date:"H:i:s" }}</td>
+                <td>{{ entry.get_kind_display }}</td>
+                <td>{{ entry.tool|default:"–" }}</td>
+                <td><code class="runner-audit-args">{{ entry.arguments|default:"–" }}</code></td>
+                <td class="num">{% if entry.exit_code is not None %}{{ entry.exit_code }}{% else %}–{% endif %}</td>
+                <td class="num">{% if entry.duration_ms is not None %}{{ entry.duration_ms }} ms{% else %}–{% endif %}</td>
+                <td>{{ entry.message }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Noch keine Einträge.</p>
+    {% endif %}
+  </section>
+{% endblock %}
