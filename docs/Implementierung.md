@@ -902,6 +902,19 @@ Browser-Rechner (Heimnetz)                    Server (Paket multi-gpt)
 - **Doku:** Wiki `Runner.md` (Linux mit Quadlet, Windows/macOS mit Podman machine), `Kosten-und-Budgets.md`, Bedrohungsmodell in Abschnitt 5, Website (Roadmap/Features).
 - **Offen:** Container-Logs auf der Seite „Runner“ (das Protokoll hat keinen `log_request` mehr); Live-Ausgabe der Werkzeugläufe (`run-<n>`-PTYs des Agents) im Chat-Terminal; Vorschau-Token stammt vom Agent und ist dem Modell bekannt (Link im Werkzeugergebnis) – gilt nur für die eigene laufende Sitzung.
 
+**Rust-Agent `multigpt-runner` im Team (Nutzer, 2026-10-13):** Crate `multigpt-runner` (Name auf crates.io frei, eng an MultiGPT gebunden), Cargo-Workspace unter `runner-rs/`, `rust-version = "1.85"` (Rust aus Debian 13) sofern die Abhängigkeiten es zulassen. Toolchain der Entwicklung: rustup unter `~/.cargo/bin` (1.99). Bausteine: tokio, tokio-tungstenite mit rustls, `rmcp` (offizielles MCP-SDK, eigener Transport), eigener schlanker libpod-Client über den Unix-Socket (hyper), ed25519-dalek, serde. Der Python-Agent `runner_agent/` ist Referenz und Testorakel, bis der Rust-Agent dieselben Tests besteht. Veröffentlicht wird nichts ohne Nutzer (kein `cargo publish`).
+
+| Agent | Inhalt |
+|---|---|
+| `rs-core` | Crate-Gerüst, Einstellungen, Verbindung (WebSocket/TLS, Fingerprint-Pinning), Backoff und Exit-Codes wie der Python-Agent, Protokolltypen (serde) mit gemeinsamen Testvektoren gegen `multigpt/runner/protocol.py`, Prüfung der Server-Signaturen (Installationsschlüssel) und des signierten Katalogs, systemd-User-Unit |
+| `rs-podman` | libpod-Client, feste Vorlage (Port von `template.py`), Sitzungen, Netz (internes Netz, Relay, Hilfscontainer), Bundle laden/committen/hochladen, PTY, Vorschau-Port, Scratchpad mit Grenze |
+| `rs-mcp` | MCP-Server mit `rmcp` über das Rahmenprotokoll: Werkzeuge read, write, edit, glob, grep, bash, serve, publish, telnet; neues Einrichtungswerkzeug (Zielsystem per ssh-Schlüssel einrichten: Binary übertragen, koppeln) statt ssh im Alltag |
+| `trust` | Server-Seite: Installationsschlüssel (postinst/Einstellung), Signieren der Befehle und des Katalogs, öffentliche Release-Schlüssel (letzte drei) in `multigpt/runner/trust.py`, Prüfung beim `hello`, Protokoll-Erweiterung (Signaturfelder) samt Python-Agent, `ssh`-Werkzeug → Einrichtung, `/runner/download/<arch>`, Kopplungsseite mit Anleitung für das native Programm |
+| `rs-ci` | CI: Build und Tests des Crates, Cross-Compile amd64/arm64, Schlüssel je Release-Lauf (erzeugen, Katalog und Prüfsummen signieren, privaten Teil verwerfen, öffentlichen ins `.deb`), Artefakte am Release, Paketierung der Binaries für den Download; nichts auslösen, keine Tags |
+| `rs-e2e` | Gleichwertigkeit: dieselben Abläufe wie die Python-Tests gegen die ASGI-App und mit echtem Podman (Marker `podman`), Testvektoren, Sicherheitstests (Vorlage, Signaturen, Zugang nie im Arbeitscontainer); Doku (Wiki Runner, Implementierung) |
+
+Regeln wie beim ersten Team (Bus, CLAIM, eigene Test-DB `test_multigpt_<name>`, kein commit/push/publish, kein sudo, Podman nur eigene Testobjekte mit Label je Lauf, LM Studio nicht anfassen, keine Geheimnisse). Rust-Prüfung: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` in `runner-rs/`.
+
 **Offene Fragen zu M14** (Fortsetzung von Plan 13, Frage 8; 8b–8f stehen in Abschnitt 6):
 
 1. **8g – Agent als Container (mit eingebundenem Podman-Socket) oder als Programm auf dem Host (pipx)?** Empfehlung: Container mit Quadlet. Der Agent ist so ein Image mit Version und ohne Python-Installation am Client; pipx nur als Ausweg.
