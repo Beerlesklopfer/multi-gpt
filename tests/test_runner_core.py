@@ -90,6 +90,7 @@ def test_session_limits_from_role_and_api_key():
         "pids": 256,
         "tmpfs_mb": 1024,
         "network": True,
+        "packages": False,  # freies Netz geht vor
         "scratch_mb": 1024,
         "scratch_mode": "container",
     }

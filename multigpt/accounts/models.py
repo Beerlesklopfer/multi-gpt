@@ -107,6 +107,14 @@ class Role(models.Model):
         default=False,
         help_text="Container mit Netz (erreicht auch das Heimnetz). Aus: kein Netz.",
     )
+    runner_packages = models.BooleanField(
+        "Paketquellen",
+        default=False,
+        help_text="Container erreicht über einen Proxy nur fest freigegebene Paketquellen "
+        "(Debian, PyPI, npm, GitHub, crates.io; Einstellung RUNNER_PACKAGE_HOSTS) und darf "
+        "Pakete mit apt_install nachinstallieren. Kein Heimnetz. Gilt nicht bei „Runner mit "
+        "Netz“ (das freie Netz geht vor).",
+    )
     runner_max_cpus = models.PositiveSmallIntegerField(
         "Runner: CPUs höchstens", default=1, validators=[MinValueValidator(1)]
     )
@@ -127,6 +135,13 @@ class Role(models.Model):
         default=1024,
         validators=[MinValueValidator(16)],
         help_text="Größe der Ablage /scratch (im Container bzw. lokal auf dem Rechner).",
+    )
+    runner_rootfs_mb = models.PositiveIntegerField(
+        "Runner: Container-Schicht (MB)",
+        default=4096,
+        validators=[MinValueValidator(64)],
+        help_text="Höchstgröße der beschreibbaren, flüchtigen Container-Schicht im Modus "
+        "„Paketquellen“ (installierte Pakete); darüber wird die Sitzung beendet.",
     )
     runner_max_workspaces = models.PositiveSmallIntegerField(
         "Runner: Arbeitsstände je Konto", default=10

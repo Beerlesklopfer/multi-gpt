@@ -19,6 +19,10 @@
         <label for="runner-scratch">Scratch</label>
         <select id="runner-scratch" aria-describedby="runner-scratch-hint"></select>
       </span>
+      <label class="runner-packages" id="runner-packages-box" hidden
+             title="Container erreicht nur freigegebene Paketquellen (apt, pip, npm, GitHub, cargo) über einen Proxy; Pakete mit apt_install. Aus: ohne, dafür Einrichtung/telnet. Gilt ab der nächsten Sitzung.">
+        <input type="checkbox" id="runner-packages"> Paketquellen
+      </label>
       <a class="runner-picker-manage" href="{% url 'runner:workspaces' %}">Arbeitsstände</a>
     </div>
     <p class="hint runner-picker-hint" id="runner-picker-hint">Mit Arbeitsstand arbeitet das Modell im Container auf deinem Rechner (Dateien, Befehle, git). Einrichtung (setup_host) und telnet fragen immer nach.</p>

@@ -272,6 +272,7 @@ impl FrameHandler for RecHandler {
             workspace: Some("3".into()),
             state: "running".into(),
             preview_port: None,
+            rootfs_used_mb: None,
         }]
     }
 

@@ -73,6 +73,14 @@ pub struct ExecOutput {
     pub timed_out: bool,
 }
 
+/// Ergebnis von `apt_install` (Ausgabe aller Schritte, ungekürzt bis 1 MiB je Schritt).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AptOutput {
+    pub code: Option<i32>,
+    pub timed_out: bool,
+    pub output: String,
+}
+
 /// Wo ein Befehl läuft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target<'a> {
@@ -176,4 +184,15 @@ pub trait ToolHost: Send + Sync + 'static {
 
     /// Dienste, die der Server freigegeben hat (`welcome.services`); `None` = alle.
     fn allowed_services(&self) -> Option<Vec<String>>;
+
+    /// Netzmodus „Paketquellen“ (Proxy, gelockerte Vorlage, `apt_install`)?
+    fn packages(&self) -> bool;
+    /// Beschreibbare Schicht an ihrer Grenze (letzte Messung je Heartbeat)?
+    fn rootfs_full(&self) -> bool;
+    /// apt-Pakete als root installieren (Namen geprüft) und in `.mgpt/apt-packages`
+    /// vermerken; den Commit macht das Werkzeug danach wie bei `bash`.
+    fn apt_install(
+        &self,
+        packages: Vec<String>,
+    ) -> impl Future<Output = ToolResult<AptOutput>> + Send;
 }

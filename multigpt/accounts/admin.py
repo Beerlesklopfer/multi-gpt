@@ -79,13 +79,15 @@ class RoleAdmin(admin.ModelAdmin):
                     "can_use_runner",
                     "can_use_runner_hosts",
                     "runner_network",
+                    ("runner_packages", "runner_rootfs_mb"),
                     ("runner_max_cpus", "runner_max_memory_mb"),
                     ("runner_max_pids", "runner_tmpfs_mb"),
                     "runner_scratch_mb",
                     ("runner_max_workspaces", "runner_max_workspace_mb"),
                 ),
                 "description": "Container auf dem Rechner des Mitglieds (M14). Netz an heißt: "
-                "der Container erreicht auch das Heimnetz.",
+                "der Container erreicht auch das Heimnetz. Paketquellen: nur freigegebene "
+                "Paket-Hosts über einen Proxy, Pakete mit apt_install.",
             },
         ),
         ("Budget und System-Prompt", {"fields": ("monthly_budget", "fixed_system_prompt")}),

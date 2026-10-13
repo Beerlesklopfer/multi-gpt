@@ -18,6 +18,13 @@ bestätigten Aufruf ein (nie in ``ToolCall.arguments``, nie im Log). ``todo``
 läuft auf dem Server. Angeboten wird nur, was der verbundene Runner in einem
 gültig signierten Dienstkatalog gemeldet hat (``Runner.services``, trust.py).
 
+**Paketquellen (Nutzer, 2026-10-13):** Mit dem Rollenrecht „Paketquellen“
+startet die Sitzung im Netzmodus ``packages`` (Proxy mit Positivliste
+``RUNNER_PACKAGE_HOSTS``, beschreibbare Schicht bis ``rootfs_mb``) – aber nur,
+wenn der verbundene Runner ``apt_install`` in seinem signierten Katalog hat.
+Dann gibt es ``apt_install`` (Einstufung wie Befehle) und kein
+``setup_host``/``telnet`` (Proxy und Relay schließen sich vorerst aus).
+
 **Runden (8u):** Runner-Antworten haben eigene :data:`MAX_ROUNDS` (100); danach
 fragt der Chat, ob weitergearbeitet werden soll (Schleife in ``services``).
 
@@ -78,6 +85,14 @@ MSG_NOT_RUNNING = "Die Sitzung im Runner läuft nicht mehr. Bitte erneut versuch
 MSG_HOST = "Unbekannter oder nicht freigegebener Host „{name}“."
 MSG_HOST_PROTOCOL = "Der Host „{name}“ ist nicht für {tool} eingerichtet."
 MSG_REMOTE_DENIED = "Einrichtung und telnet sind hier nicht erlaubt."
+MSG_PACKAGES_RUNNING = (
+    "Paketquellen lassen sich nur ohne laufende Sitzung umschalten – bitte die Sitzung "
+    "zuerst beenden."
+)
+MSG_NO_PACKAGES = (
+    "Paketquellen sind in dieser Sitzung nicht freigegeben (Rollenrecht „Paketquellen“ "
+    "und ein aktueller Runner nötig); apt_install ist nicht verfügbar."
+)
 MSG_NOT_GRANTED = (
     "Der Dienst „{name}“ ist für diesen Runner nicht freigegeben (Dienstkatalog nicht "
     "gültig signiert oder Dienst nicht eingestuft)."
@@ -111,6 +126,7 @@ class RunnerContext:
     mode: str
     network: bool
     api_key_id: int | None = None
+    packages: bool = False  # Netzmodus „packages“ (Paketquellen, apt_install)
     hosts: dict[str, list[str]] = field(default_factory=dict)
     # Dienste des verbundenen Runners (None: kein Runner online, ohne Filter) und
     # freigegebene neue Dienste aus dem signierten Katalog (Name → RunnerTool).
@@ -123,7 +139,11 @@ class RunnerContext:
 
     def specs(self):
         return tools.specs(
-            remote=bool(self.hosts), hosts=self.hosts, services=self.services, extra=self.extra
+            remote=bool(self.hosts) and not self.packages,
+            hosts=self.hosts,
+            services=self.services,
+            extra=self.extra,
+            packages=self.packages,
         )
 
     def needs_confirmation(self, tool: str) -> bool:
@@ -143,6 +163,25 @@ def _role_network(user, via_api_key: bool) -> bool:
     from .limits import session_limits
 
     return bool(session_limits(user, via_api_key=via_api_key)["network"])
+
+
+def _role_packages(user, via_api_key: bool) -> bool:
+    from .limits import session_limits
+
+    return bool(session_limits(user, via_api_key=via_api_key).get("packages"))
+
+
+def packages_possible(user, via_api_key: bool, services) -> bool:
+    """Paketquellen für diese Sitzung: Rollenrecht (ohne freies Netz), freigegebene
+    Hosts und ein Runner, der ``apt_install`` gültig signiert anbietet."""
+    from .limits import package_hosts
+
+    return (
+        services is not None
+        and tools.APT_INSTALL in services
+        and _role_packages(user, via_api_key)
+        and bool(package_hosts())
+    )
 
 
 def _remote_hosts(user) -> dict[str, list[str]]:
@@ -182,6 +221,7 @@ def context_for(user, conversation, server_ids, *, api_key_id=None) -> RunnerCon
         hosts = _remote_hosts(user)
     runner = _online_runner(user)
     services = frozenset(runner.services or ()) if runner is not None else None
+    packages = bool(selection.packages) and packages_possible(user, via_key, services)
     extra = {}
     if services:
         from . import trust
@@ -199,6 +239,7 @@ def context_for(user, conversation, server_ids, *, api_key_id=None) -> RunnerCon
         hosts=hosts,
         services=services,
         extra=extra,
+        packages=packages,
     )
 
 
@@ -225,7 +266,11 @@ def get_state(user, conversation) -> dict:
         .filter(conversation=conversation)
         .first()
     )
-    network = _role_network(user, False) if can(user, Action.USE_RUNNER) else False
+    usable = can(user, Action.USE_RUNNER)
+    network = _role_network(user, False) if usable else False
+    # Paketquellen: Rollenrecht; „runner“ sagt, ob der verbundene Runner es kann.
+    packages = _role_packages(user, False) if usable else False
+    runner = _online_runner(user) if packages else None
     is_admin = _is_admin(user)
     mode = selection.mode if selection else ""
     workspace = selection.workspace if selection else None
@@ -243,8 +288,18 @@ def get_state(user, conversation) -> dict:
         "modes": [{"value": m, "label": tools.MODES[m]} for m in tools.MODES],
         "modes_allowed": allowed,
         "network": network,
+        "packages": packages,
+        "packages_selected": bool(selection.packages) if selection else True,
+        "packages_runner": bool(
+            runner is not None and packages_possible(user, False, frozenset(runner.services or ()))
+        ),
         "session": (
-            {"id": session.pk, "uuid": str(session.uuid), "status": session.status}
+            {
+                "id": session.pk,
+                "uuid": str(session.uuid),
+                "status": session.status,
+                "packages": bool((session.limits_requested or {}).get("packages")),
+            }
             if session is not None and session.owner_id == user.pk
             else None
         ),
@@ -262,11 +317,20 @@ def get_state(user, conversation) -> dict:
 _UNSET = object()
 
 
-def set_state(user, conversation, *, workspace=_UNSET, mode=_UNSET, scratch_mode=_UNSET) -> dict:
+def set_state(
+    user,
+    conversation,
+    *,
+    workspace=_UNSET,
+    mode=_UNSET,
+    scratch_mode=_UNSET,
+    packages=_UNSET,
+) -> dict:
     """Auswahl ändern. ``workspace``: ID oder None; ``mode``: Wert aus
     ``tools.MODES`` oder "" (Vorgabe); ``scratch_mode``: Ort des Scratchpads des
-    gewählten Arbeitsstands (nicht während einer Sitzung). ``ValueError`` mit
-    deutscher Meldung."""
+    gewählten Arbeitsstands (nicht während einer Sitzung); ``packages``:
+    Paketquellen in diesem Chat an/aus (nicht während einer Sitzung). ``ValueError``
+    mit deutscher Meldung."""
     if not can(user, Action.USE_RUNNER):
         raise ValueError("Der Runner ist für dieses Konto nicht freigegeben.")
     if not can(user, Action.WRITE, conversation):
@@ -296,6 +360,15 @@ def set_state(user, conversation, *, workspace=_UNSET, mode=_UNSET, scratch_mode
             raise ValueError("„Alles automatisch“ mit Netz ist nur für Verwalter erlaubt.")
         selection.mode = mode
         fields.append("mode")
+    if packages is not _UNSET:
+        if not isinstance(packages, bool):
+            raise ValueError("Paketquellen: an oder aus erwartet.")
+        if packages != selection.packages:
+            current = selection.session
+            if current is not None and current.is_active:
+                raise ValueError(MSG_PACKAGES_RUNNING)
+            selection.packages = packages
+            fields.append("packages")
     if fields:
         selection.save(update_fields=[*fields, "updated"])
     if scratch_mode is not _UNSET:
@@ -352,6 +425,7 @@ def _usable(session: RunnerSession | None, ctx: RunnerContext) -> bool:
         and session.owner_id == ctx.user.pk
         and session.workspace_id == ctx.workspace.pk
         and session.network == ctx.network
+        and bool((session.limits_requested or {}).get("packages")) == ctx.packages
         and session.api_key_id == ctx.api_key_id
     )
 
@@ -391,7 +465,15 @@ def _session_frame(session: RunnerSession, workspace: RunnerWorkspace, ctx) -> d
         )
     if "workspace_uuid" in known and getattr(workspace, "uuid", None):
         frame["workspace_uuid"] = str(workspace.uuid)
-    allow = _allowlist(ctx) if not session.network else []
+    if limits.get("packages"):
+        # Paketquellen: nur die Hosts der Einstellung über den Proxy im Relay;
+        # Container-Schicht beschreibbar bis rootfs_mb. Kein allow (schließt sich aus).
+        from .limits import package_hosts
+
+        frame["network"] = "packages"
+        frame["package_hosts"] = package_hosts()
+        frame["rootfs_mb"] = int(limits["rootfs_mb"])
+    allow = _allowlist(ctx) if not (session.network or limits.get("packages")) else []
     if allow:
         # 8w: setup_host/telnet erreichen nur freigegebene Hosts (Positivliste setzt der Agent).
         frame["network"] = "allowlist"
@@ -405,7 +487,7 @@ def _session_frame(session: RunnerSession, workspace: RunnerWorkspace, ctx) -> d
 
 
 def _allowlist(ctx: RunnerContext) -> list[dict]:
-    if ctx.via_api_key or not ctx.hosts:
+    if ctx.via_api_key or not ctx.hosts or ctx.packages:
         return []
     from .hosts import hosts_for
 
@@ -441,7 +523,7 @@ def ensure_session(ctx: RunnerContext) -> RunnerSession:
     ``RunnerUnavailable`` mit deutscher Meldung, wenn das nicht geht.
     """
     from . import audit, workspaces
-    from .limits import session_limits
+    from .limits import package_hosts, session_limits, without_packages
 
     workspace = RunnerWorkspace.objects.filter(pk=ctx.workspace.pk, owner=ctx.user).first()
     if workspace is None:
@@ -466,6 +548,10 @@ def ensure_session(ctx: RunnerContext) -> RunnerSession:
     except ImportError:  # Kontingent (M14-11) noch nicht installiert
         pass
     limits = session_limits(ctx.user, via_api_key=ctx.via_api_key, workspace=workspace)
+    if limits.get("packages") and not (
+        ctx.packages and tools.APT_INSTALL in (runner.services or ()) and package_hosts()
+    ):
+        limits = without_packages(limits)  # Runner kann es nicht bzw. keine Hosts
     with transaction.atomic():
         session = RunnerSession.objects.create(
             owner=ctx.user,
@@ -609,6 +695,8 @@ def _timeout(server: McpServer, name: str, args: dict) -> float:
         return float(args.get("timeout_s") or tools.BASH_TIMEOUT_DEFAULT) + EXTRA_SECONDS
     if name == tools.SETUP:
         return max(base, SETUP_SECONDS)
+    if name == tools.APT_INSTALL:
+        return max(base, float(tools.APT_TIMEOUT + EXTRA_SECONDS))
     return base
 
 
@@ -641,8 +729,10 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
         remote = tool.kind in (tools.REMOTE, tools.SETUP_KIND)
         if remote and (ctx.via_api_key or not can(ctx.user, Action.USE_RUNNER_HOSTS)):
             raise tools.ArgumentError(MSG_REMOTE_DENIED)
-        if tool.name in tools.REMOTE_TOOLS and not ctx.hosts:
+        if tool.name in tools.REMOTE_TOOLS and (not ctx.hosts or ctx.packages):
             raise tools.ArgumentError(MSG_REMOTE_DENIED)
+        if name == tools.APT_INSTALL and not ctx.packages:
+            raise tools.ArgumentError(MSG_NO_PACKAGES)
         if tools.get(name) is not None:
             args = tools.clean_arguments(name, tool_call.arguments or {})
         else:

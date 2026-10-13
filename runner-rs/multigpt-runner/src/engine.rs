@@ -77,6 +77,9 @@ pub struct ExecOptions {
     pub timeout: Duration,
     pub max_output: usize,
     pub workdir: String,
+    /// Als root (Nutzer 0) statt 1000 – nur für die festen Befehle aus
+    /// [`template::check_root_argv`] (`apt_install` im Modus `packages`).
+    pub root: bool,
 }
 
 impl Default for ExecOptions {
@@ -86,6 +89,7 @@ impl Default for ExecOptions {
             timeout: Duration::from_secs(60),
             max_output: 64 * 1024,
             workdir: "/workspace".into(),
+            root: false,
         }
     }
 }
@@ -114,6 +118,8 @@ pub trait Engine: Send + Sync {
     async fn start_container(&self, name: &str) -> EngineResult<()>;
     async fn remove_container(&self, name: &str) -> EngineResult<()>;
     async fn inspect_container(&self, name: &str) -> EngineResult<Value>;
+    /// Größe der beschreibbaren Container-Schicht in Byte (`SizeRw`).
+    async fn container_size(&self, name: &str) -> EngineResult<u64>;
     /// Alle Container mit dem Label `multigpt.runner=1`.
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>>;
     async fn exec(

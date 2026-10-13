@@ -12,8 +12,10 @@ Werkzeug):
   Aufgabenliste ``todo`` (bleibt auf dem Server): nie Rückfrage.
 * ``edit`` – Dateien ändern (``write``, ``edit``): Rückfrage nur im Modus
   „fragen“.
-* ``command`` – Befehle (``bash``, ``serve``): Rückfrage in „fragen“ und
-  „Änderungen automatisch“.
+* ``command`` – Befehle (``bash``, ``serve``, ``apt_install``): Rückfrage in
+  „fragen“ und „Änderungen automatisch“. ``apt_install`` gibt es nur in
+  Sitzungen mit Paketquellen (Netzmodus ``packages``); dort fehlen
+  ``setup_host``/``telnet`` (Relay und Proxy schließen sich aus).
 * ``remote`` – ``telnet`` und das Einrichtungswerkzeug ``setup_host`` (ein
   Zielsystem per ssh-Schlüssel als Runner einrichten; ``ssh`` im Alltag gibt
   es nicht mehr): **immer** Rückfrage, auch in „alles automatisch“; nur mit
@@ -32,6 +34,7 @@ Netz nur für Verwalter, sonst gilt ``edits``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from multigpt.chat.providers.base import ToolSpec
@@ -65,8 +68,14 @@ MAX_TODO_ITEMS = 100
 MAX_TODO_TEXT = 500
 TODO_STATUSES = ("pending", "in_progress", "completed")
 
+# apt_install: Paketnamen wie Debian (Policy 5.6.1), höchstens MAX_APT_PACKAGES je Aufruf
+APT_PACKAGE_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{0,62}$")
+MAX_APT_PACKAGES = 20
+APT_TIMEOUT = 600  # Sekunden für apt-get update und install
+
 TODO = "todo"
 PUBLISH = "publish"
+APT_INSTALL = "apt_install"
 SETUP = "setup_host"
 TELNET = "telnet"
 REMOTE_TOOLS = (SETUP, TELNET)
@@ -74,7 +83,7 @@ REMOTE_TOOLS = (SETUP, TELNET)
 HOST_PROTOCOL = {SETUP: "ssh", TELNET: "telnet"}
 # Werkzeuge, die (möglicherweise) Dateien im Arbeitsstand ändern; danach
 # committet der Agent und lädt ein neues Bundle hoch (8r).
-CHANGING_TOOLS = ("write", "edit", "bash")
+CHANGING_TOOLS = ("write", "edit", "bash", APT_INSTALL)  # apt_install: .mgpt/apt-packages
 
 MSG_ARGS = "Ungültige Argumente: {detail}"
 
@@ -203,6 +212,26 @@ _TOOLS = [
         _schema({"path": {"type": "string", "description": "Verzeichnis (Standard: /workspace)."}}),
     ),
     RunnerTool(
+        APT_INSTALL,
+        COMMAND,
+        "Installiert Debian-Pakete im Container mit apt (als root, nur über freigegebene "
+        "Paketquellen). Die Pakete werden in .mgpt/apt-packages vermerkt und beim nächsten "
+        "Sitzungsstart automatisch wieder installiert. pip, npm und cargo laufen dagegen "
+        "über bash und installieren nach /workspace.",
+        _schema(
+            {
+                "packages": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": MAX_APT_PACKAGES,
+                    "items": {"type": "string", "pattern": APT_PACKAGE_RE.pattern},
+                    "description": "Debian-Paketnamen.",
+                }
+            },
+            ["packages"],
+        ),
+    ),
+    RunnerTool(
         PUBLISH,
         PUBLISH_KIND,
         "Legt eine Datei aus /scratch (Ablage der Sitzung) oder /workspace als Anhang in den "
@@ -282,10 +311,13 @@ def get(name: str | None) -> RunnerTool | None:
     return CATALOG.get(name or "")
 
 
-def specs(*, remote: bool = False, hosts=(), services=None, extra=None) -> list[ToolSpec]:
+def specs(
+    *, remote: bool = False, hosts=(), services=None, extra=None, packages: bool = False
+) -> list[ToolSpec]:
     """Werkzeuge für das Modell; ``setup_host``/``telnet`` nur mit ``remote`` und
     nur, wenn es freigegebene Hosts des passenden Protokolls gibt (``hosts``:
-    Namen je Protokoll, ``{"ssh": [...], "telnet": [...]}``).
+    Namen je Protokoll, ``{"ssh": [...], "telnet": [...]}``). ``apt_install`` nur
+    mit ``packages`` (Sitzung mit Paketquellen), dann ohne ``setup_host``/``telnet``.
 
     ``services``: vom Runner gültig gemeldete Dienste (None = ohne Filter, etwa
     solange kein Runner verbunden ist); Werkzeuge des Servers (``todo``) gelten
@@ -296,9 +328,11 @@ def specs(*, remote: bool = False, hosts=(), services=None, extra=None) -> list[
     for tool in [*_TOOLS, *(dict(extra or {}).values())]:
         if allowed is not None and not tool.server_side and tool.name not in allowed:
             continue
+        if tool.name == APT_INSTALL and not packages:
+            continue
         if tool.name in REMOTE_TOOLS:
             names = list((dict(hosts or {})).get(HOST_PROTOCOL[tool.name]) or [])
-            if not remote or not names:
+            if not remote or not names or packages:
                 continue
             params = {**tool.parameters, "properties": dict(tool.parameters["properties"])}
             params["properties"]["host"] = {
@@ -430,6 +464,8 @@ def clean_arguments(name: str, args) -> dict:
         out["timeout_s"] = timeout or BASH_TIMEOUT_DEFAULT
     elif name == "serve":
         put("path", _text(args, "path"))
+    elif name == APT_INSTALL:
+        out["packages"] = clean_packages(args.get("packages"))
     elif name == PUBLISH:
         put("path", _text(args, "path", required=True))
         put("name", _text(args, "name", limit=200))
@@ -460,6 +496,29 @@ def clean_extra_arguments(args) -> dict:
     if len(json.dumps(args, ensure_ascii=False)) > MAX_EXTRA_ARGS:
         raise ArgumentError(MSG_ARGS.format(detail="Argumente zu groß."))
     return dict(args)
+
+
+def clean_packages(packages) -> list[str]:
+    """Paketnamen für ``apt_install``: Liste, 1 bis ``MAX_APT_PACKAGES`` Namen nach
+    ``APT_PACKAGE_RE`` (keine Optionen, Versionen oder Pfade); Doppelte entfallen."""
+    if not isinstance(packages, list) or not 1 <= len(packages) <= MAX_APT_PACKAGES:
+        raise ArgumentError(
+            MSG_ARGS.format(
+                detail=f"„packages“ muss eine Liste mit 1 bis {MAX_APT_PACKAGES} Namen sein."
+            )
+        )
+    out: list[str] = []
+    for name in packages:
+        if not isinstance(name, str) or not APT_PACKAGE_RE.fullmatch(name):
+            raise ArgumentError(
+                MSG_ARGS.format(
+                    detail="Paketname ungültig (erlaubt: Kleinbuchstaben, Ziffern, + . -; "
+                    "am Anfang Buchstabe oder Ziffer; höchstens 63 Zeichen)."
+                )
+            )
+        if name not in out:
+            out.append(name)
+    return out
 
 
 def clean_todo(items) -> list[dict]:

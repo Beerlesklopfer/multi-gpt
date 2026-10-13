@@ -28,6 +28,9 @@ pub struct SessionInfo {
     pub state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_port: Option<u16>,
+    /// Gemessene beschreibbare Schicht (MB), nur im Modus `packages`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rootfs_used_mb: Option<u64>,
 }
 
 /// Freigegebenes Ziel bei `network = allowlist`.
@@ -45,6 +48,9 @@ pub struct Limits {
     pub pids: u64,
     pub tmpfs_mb: u64,
     pub network: String,
+    /// Grenze der beschreibbaren Schicht (MB), nur im Modus `packages`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rootfs_mb: Option<u64>,
 }
 
 /// Bundle des Arbeitsstands (`session_start.bundle`).
@@ -132,6 +138,12 @@ pub struct SessionStart {
     pub scratch_mb: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_uuid: Option<String>,
+    /// Hosts des Proxys (Modus `packages`, vom Server signiert).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_hosts: Option<Vec<String>>,
+    /// Grenze der beschreibbaren Schicht (MB), Pflicht bei `packages`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rootfs_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

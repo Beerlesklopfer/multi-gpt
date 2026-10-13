@@ -43,6 +43,18 @@ NETWORK_RE = re.compile(r"^mgpt-(net|out|rel)-[0-9a-f]{16}$")
 TMPFS_OPTION_RE = re.compile(r"^(size=\d+[kmg]?|mode=[0-7]{3,4}|nosuid|nodev|noexec|U)$")
 RELAY_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}:\d{1,5}$")
 
+# Modus „Paketquellen“ (Netzart ``packages``): gelockerte Vorlage nur für den
+# Arbeitscontainer – beschreibbare, flüchtige Container-Schicht und genau diese
+# Capabilities (rootless nur im eigenen User-Namespace), damit ``apt_install`` als
+# root im Container installieren kann. Netz nur über den Proxy im Relay-Container.
+CAPS_PACKAGES = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETUID", "SETGID"]
+PROXY_PORT = 3128
+PROXY_URL_RE = re.compile(r"^http://\d{1,3}(\.\d{1,3}){3}:3128\Z")
+PROXY_ENV_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+NO_PROXY = "localhost,127.0.0.1,::1"
+PACKAGE_HOST_RE = re.compile(r"^(?=.{1,253}\Z)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\Z")
+MAX_PACKAGE_HOSTS = 50
+
 ALLOWED_KEYS = frozenset(
     {
         "name",
@@ -53,6 +65,7 @@ ALLOWED_KEYS = frozenset(
         "hostname",
         "read_only_filesystem",
         "cap_drop",
+        "cap_add",
         "no_new_privileges",
         "privileged",
         "init",
@@ -78,9 +91,9 @@ ALLOWED_KEYS = frozenset(
     }
 )
 # Diese Werte sind fest; jede Abweichung wird abgelehnt.
+# ``read_only_filesystem`` und ``cap_add`` prüft ``check_body`` je Modus.
 FIXED = {
     "user": USER,
-    "read_only_filesystem": True,
     "cap_drop": ["ALL"],
     "no_new_privileges": True,
     "privileged": False,
@@ -199,6 +212,7 @@ def _base(name: str, image: str, labels: dict, limits: Limits) -> dict:
         "labels": labels,
         "hostname": "workspace",
         **json.loads(json.dumps(FIXED)),
+        "read_only_filesystem": True,
         "resource_limits": {
             "cpu": {"quota": int(round(limits.cpus * CPU_PERIOD)), "period": CPU_PERIOD},
             "memory": {"limit": memory, "swap": memory},
@@ -223,11 +237,13 @@ def work_body(
     preview_port: int | None,
     spec: dict,
     scratch: Scratch | None = None,
+    proxy_url: str | None = None,
 ) -> dict:
     """Arbeitscontainer: nur tmpfs /workspace und /tmp, Netz nur über ``network``.
 
-    ``network`` ist das Podman-Netz der Sitzung (intern ohne Gateway bei „aus“
-    und Positivliste, mit Gateway bei „default“).
+    ``network`` ist das Podman-Netz der Sitzung (intern ohne Gateway bei „aus“,
+    Positivliste und Paketquellen, mit Gateway bei „default“). Bei ``packages``
+    ist ``proxy_url`` (``http://<IPv4 des Proxys>:3128``) Pflicht.
     """
     labels = {
         LABEL_RUNNER: "1",
@@ -252,6 +268,13 @@ def work_body(
             ],
         }
     )
+    if limits.network == "packages":
+        if proxy_url is None or not PROXY_URL_RE.match(proxy_url):
+            raise TemplateError("Modus Paketquellen ohne gültige Proxy-Adresse.")
+        body["read_only_filesystem"] = False
+        body["cap_add"] = list(CAPS_PACKAGES)
+        body["env"].update({key: proxy_url for key in PROXY_ENV_KEYS})
+        body["env"].update({"NO_PROXY": NO_PROXY, "no_proxy": NO_PROXY})
     if scratch is not None:
         body["mounts"].append(scratch.mount())
         if scratch.mode == "local":
@@ -287,6 +310,28 @@ def relay_body(session: str, image: str, targets: list[tuple[str, int]]) -> dict
             "use_image_resolve_conf": False,
             "netns": {"nsmode": "bridge"},
             "Networks": {network_name(session, "rel"): {}, network_name(session, "out"): {}},
+            "mounts": [_tmpfs("/tmp", 16, "1777", False)],
+        }
+    )
+    return body
+
+
+def proxy_body(session: str, image: str, hosts: list[str]) -> dict:
+    """Relay-Container als HTTP(S)-Proxy der Paketquellen: Sitzungsnetz + Ausgang.
+
+    Der Arbeitscontainer erreicht nur ihn (internes Sitzungsnetz); er lässt nur die
+    freigegebenen Hosts durch und löst DNS selbst auf.
+    """
+    labels = {LABEL_RUNNER: "1", LABEL_ROLE: "relay", LABEL_SESSION: session}
+    limits = Limits(cpus=0.5, memory_mb=128, pids=64, tmpfs_mb=16, network="packages")
+    body = _base(container_name(session, "relay"), image, labels, limits)
+    body.update(
+        {
+            "command": ["mgpt-relay", "--proxy", str(PROXY_PORT), *hosts],
+            "work_dir": "/",
+            "use_image_resolve_conf": False,
+            "netns": {"nsmode": "bridge"},
+            "Networks": {network_name(session, "net"): {}, network_name(session, "out"): {}},
             "mounts": [_tmpfs("/tmp", 16, "1777", False)],
         }
     )
@@ -406,7 +451,33 @@ def check_body(body: dict, config) -> str:
         "Name passt nicht zur Sitzung.",
     )
     check_image(body.get("image"), None, config.images)
-    _expect(body.get("env") == ENV, "Umgebung weicht von der Vorlage ab.")
+    packages = role == "work" and labels.get(LABEL_NETWORK) == "packages"
+    if packages:
+        # Gelockerte Vorlage nur im Modus Paketquellen und nur für den Arbeitscontainer.
+        _expect(body.get("read_only_filesystem") is False, "Paketquellen: Schicht beschreibbar.")
+        _expect(body.get("cap_add") == CAPS_PACKAGES, "Capabilities weichen ab.")
+        env = body.get("env")
+        _expect(isinstance(env, dict), "Umgebung weicht von der Vorlage ab.")
+        _expect(
+            set(env) == set(ENV) | set(PROXY_ENV_KEYS) | {"NO_PROXY", "no_proxy"},
+            "Umgebung weicht von der Vorlage ab.",
+        )
+        _expect(all(env[k] == v for k, v in ENV.items()), "Umgebung weicht von der Vorlage ab.")
+        proxy = env["HTTP_PROXY"]
+        _expect(
+            isinstance(proxy, str)
+            and PROXY_URL_RE.match(proxy) is not None
+            and all(env[k] == proxy for k in PROXY_ENV_KEYS),
+            "Proxy-Adresse ungültig.",
+        )
+        _expect(env["NO_PROXY"] == NO_PROXY and env["no_proxy"] == NO_PROXY, "NO_PROXY ungültig.")
+    else:
+        _expect(
+            body.get("read_only_filesystem") is True,
+            "Wurzeldateisystem muss schreibgeschützt sein.",
+        )
+        _expect("cap_add" not in body, "Capabilities nur im Modus Paketquellen.")
+        _expect(body.get("env") == ENV, "Umgebung weicht von der Vorlage ab.")
     resolv = body.get("use_image_resolve_conf")
     _expect(isinstance(resolv, bool), "use_image_resolve_conf fehlt.")
     if role == "work" and labels.get(LABEL_NETWORK) != "default":
@@ -427,7 +498,8 @@ def check_body(body: dict, config) -> str:
         _expect(body.get("command") == ["sleep", "infinity"], "Befehl weicht ab.")
         _expect(len(networks) == 1, "Arbeitscontainer nur an einem Netz.")
         _expect(
-            next(iter(networks)).startswith("mgpt-net-"), "Arbeitscontainer nur am Sitzungsnetz."
+            set(networks) == {network_name(labels[LABEL_SESSION], "net")},
+            "Arbeitscontainer nur am eigenen Sitzungsnetz.",
         )
         _expect(isinstance(ports, list) and len(ports) <= 1, "Höchstens ein Port.")
         for port in ports:
@@ -451,22 +523,26 @@ def check_body(body: dict, config) -> str:
         )
     else:
         command = body.get("command")
-        _expect(
-            isinstance(command, list)
-            and command[:3] == ["mgpt-relay", "--base", str(RELAY_BASE_PORT)]
-            and 4 <= len(command) <= 53
-            and all(isinstance(t, str) and RELAY_TARGET_RE.match(t) for t in command[3:]),
-            "Relay-Befehl weicht ab.",
-        )
+        _expect(isinstance(command, list) and len(command) >= 3, "Relay-Befehl weicht ab.")
+        session = labels[LABEL_SESSION]
+        if command[:3] == ["mgpt-relay", "--proxy", str(PROXY_PORT)]:
+            # Proxy der Paketquellen: nur DNS-Namen (keine IP-Literale, keine Ports).
+            _expect(
+                4 <= len(command) <= 3 + MAX_PACKAGE_HOSTS
+                and all(isinstance(h, str) and PACKAGE_HOST_RE.match(h) for h in command[3:]),
+                "Proxy-Befehl weicht ab.",
+            )
+            wanted = {network_name(session, "net"), network_name(session, "out")}
+        else:
+            _expect(
+                command[:3] == ["mgpt-relay", "--base", str(RELAY_BASE_PORT)]
+                and 4 <= len(command) <= 53
+                and all(isinstance(t, str) and RELAY_TARGET_RE.match(t) for t in command[3:]),
+                "Relay-Befehl weicht ab.",
+            )
+            wanted = {network_name(session, "rel"), network_name(session, "out")}
         _expect(not ports, "Relay ohne Ports.")
-        _expect(
-            set(networks)
-            == {
-                network_name(labels[LABEL_SESSION], "rel"),
-                network_name(labels[LABEL_SESSION], "out"),
-            },
-            "Relay nur an Relay-Netz und Ausgang.",
-        )
+        _expect(set(networks) == wanted, "Relay nur an seinen Netzen.")
     return role
 
 
@@ -540,11 +616,19 @@ def check_inspect(
         problems.append(f"pids {actual.pids} statt {expected.pids}")
     if actual.tmpfs_mb != expected.tmpfs_mb:
         problems.append(f"tmpfs {actual.tmpfs_mb} MB statt {expected.tmpfs_mb} MB")
+    packages = expected.network == "packages"
     if host.get("Privileged"):
         problems.append("privilegiert")
-    if not host.get("ReadonlyRootfs"):
+    if not host.get("ReadonlyRootfs") and not packages:
         problems.append("Wurzeldateisystem beschreibbar")
-    if host.get("CapAdd"):
+    cap_add = host.get("CapAdd") or []
+    if packages:
+        if not isinstance(cap_add, list) or any(
+            not isinstance(c, str) or c.upper().removeprefix("CAP_") not in CAPS_PACKAGES
+            for c in cap_add
+        ):
+            problems.append("Capabilities außerhalb des Modus Paketquellen")
+    elif cap_add:
         problems.append("zusätzliche Capabilities")
     if "no-new-privileges" not in (host.get("SecurityOpt") or []):
         problems.append("no-new-privileges fehlt")

@@ -111,7 +111,12 @@ fn session_info() -> Check {
         opt("workspace", id()),
         req("state", Check::Enum(SESSION_STATES)),
         opt("preview_port", preview_port()),
+        opt("rootfs_used_mb", int(0, *ROOTFS_MB.end() as i128)),
     ])
+}
+
+fn rootfs_mb() -> Check {
+    int(*ROOTFS_MB.start() as i128, *ROOTFS_MB.end() as i128)
 }
 
 fn allow() -> Check {
@@ -128,6 +133,7 @@ fn limits() -> Check {
         req("pids", int(16, 65536)),
         req("tmpfs_mb", int(16, 65536)),
         req("network", Check::Enum(NETWORK_MODES)),
+        opt("rootfs_mb", rootfs_mb()),
     ])
 }
 
@@ -220,6 +226,11 @@ fn build_frames() -> HashMap<&'static str, FrameSpec> {
             opt("scratch_mode", Check::Enum(SCRATCH_MODES)),
             opt("scratch_mb", int(1, 1024 * 1024)),
             opt("workspace_uuid", sp(36, &UUID_RE)),
+            opt(
+                "package_hosts",
+                Check::List(Box::new(sp(253, &PACKAGE_HOST_RE)), MAX_PACKAGE_HOSTS),
+            ),
+            opt("rootfs_mb", rootfs_mb()),
         ],
     );
     add(
@@ -634,6 +645,21 @@ fn semantic(kind: &str, frame: &Map<String, Value>) -> Result<(), ProtocolError>
             let has_allow = matches!(frame.get("allow"), Some(Value::Array(a)) if !a.is_empty());
             if !allowlist && has_allow {
                 return Err(fail("session_start.allow", "nur mit network=allowlist"));
+            }
+            let packages = frame.get("network") == Some(&Value::String("packages".into()));
+            let has_hosts =
+                matches!(frame.get("package_hosts"), Some(Value::Array(h)) if !h.is_empty());
+            if packages != has_hosts {
+                return Err(fail(
+                    "session_start.package_hosts",
+                    "Pflicht und nur mit network=packages",
+                ));
+            }
+            if packages == is_null(frame, "rootfs_mb") {
+                return Err(fail(
+                    "session_start.rootfs_mb",
+                    "Pflicht und nur mit network=packages",
+                ));
             }
         }
         "preview_response" => {

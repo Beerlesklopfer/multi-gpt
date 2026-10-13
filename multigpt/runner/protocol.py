@@ -59,6 +59,19 @@ Agent nur über den Token. Die Ed25519-Schlüssel schützen vor Manipulation:
 Kryptographie liegt nicht in dieser Datei (nur Standardbibliothek): Signieren
 und Prüfen bekommen ``wrap_signed``/``open_signed`` als Funktion übergeben.
 
+**Paketquellen (Netzmodus ``packages``):** Der Arbeitscontainer erreicht nur
+über einen Proxy im Relay-Container die Hosts aus ``session_start.package_hosts``
+(DNS-Namen ohne Port bzw. IP; GET nur Port 80, CONNECT nur 443; alles andere
+einschließlich Heimnetz abgewiesen, DNS nur im Proxy). Nur in diesem Modus ist
+die Container-Schicht beschreibbar (flüchtig, Grenze ``rootfs_mb``) und das
+Werkzeug ``apt_install`` erlaubt. ``package_hosts`` und ``rootfs_mb`` sind genau
+dann Pflicht, wenn ``network = "packages"``, sonst verboten; ``allow`` (Hosts für
+telnet/setup_host über das Relay) gibt es nur bei ``allowlist``. Der Agent meldet die Grenze in
+``session_state.limits.rootfs_mb`` und je ``heartbeat`` die gemessene Größe
+``rootfs_used_mb``; liegt sie darüber, stoppt der Server (``mismatch``). Der
+Server schickt den Modus nur an Runner, deren gültig signierter Katalog den
+Dienst ``apt_install`` enthält.
+
 Bundle-Übertragung (beide Richtungen; ``file_chunk`` für ``publish`` ebenso, nur
 Agent → Server): Stücke ``bundle_chunk`` mit fortlaufender
 ``seq`` ab 0, höchstens ``CHUNK_BYTES`` Rohdaten je Stück. Das letzte Stück hat
@@ -165,7 +178,10 @@ ENGINES = ("podman", "docker", "fake")
 SESSION_STATES = ("starting", "running", "stopping", "stopped", "failed", "unknown")
 STOP_REASONS = ("user", "idle", "quota", "admin", "revoked", "mismatch", "replaced", "error")
 CLOSE_FRAME_REASONS = ("revoked", "rights", "quota", "replaced", "shutdown", "protocol")
-NETWORK_MODES = ("none", "allowlist", "default")
+NETWORK_MODES = ("none", "allowlist", "default", "packages")
+MAX_PACKAGE_HOSTS = 50
+MIN_ROOTFS_MB = 64
+MAX_ROOTFS_MB = 1024 * 1024
 SCRATCH_MODES = ("container", "local")
 ERROR_CODES = (
     "invalid_frame",  # Rahmen verletzt das Schema
@@ -212,6 +228,10 @@ TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 # Image nur mit Digest: name[:tag]@sha256:<64 hex>
 IMAGE_RE = re.compile(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
+# Paket-Host (Netzmodus „packages“): DNS-Name in Kleinbuchstaben, ohne Port, IP oder Joker
+PACKAGE_HOST_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
 HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 NONCE_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -383,6 +403,8 @@ SESSION_INFO = _object(
         "workspace": (_id, False),
         "state": (_enum(SESSION_STATES), True),
         "preview_port": (_int(PREVIEW_PORTS.start, PREVIEW_PORTS.stop - 1), False),
+        # Größe der beschreibbaren Container-Schicht (nur Netzmodus „packages“)
+        "rootfs_used_mb": (_int(0, MAX_ROOTFS_MB), False),
     }
 )
 ALLOW = _object(
@@ -398,6 +420,7 @@ LIMITS = _object(
         "pids": (_int(16, 65536), True),
         "tmpfs_mb": (_int(16, 65536), True),
         "network": (_enum(NETWORK_MODES), True),
+        "rootfs_mb": (_int(MIN_ROOTFS_MB, MAX_ROOTFS_MB), False),  # nur Netzmodus „packages“
     }
 )
 BUNDLE_INFO = _object(
@@ -465,7 +488,13 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             "pids": (_int(16, 65536), True),
             "tmpfs_mb": (_int(16, 65536), True),
             "network": (_enum(NETWORK_MODES), True),
-            "allow": (_list(ALLOW, 50), False),
+            "allow": (_list(ALLOW, 50), False),  # nur mit network=allowlist
+            # Netzmodus „packages“: erreichbare Paket-Hosts und Grenze der Container-Schicht
+            "package_hosts": (
+                _list(_str(253, PACKAGE_HOST_RE), MAX_PACKAGE_HOSTS),
+                False,
+            ),
+            "rootfs_mb": (_int(MIN_ROOTFS_MB, MAX_ROOTFS_MB), False),
             "command_seconds": (_int(1, 86400), True),  # Zeitlimit je Befehl
             "output_bytes": (_int(1024, 16 * 1024 * 1024), True),  # Ausgabe je Befehl
             "idle_minutes": (_int(1, 1440), True),
@@ -665,8 +694,16 @@ def _semantic(frame: dict) -> None:
         for name in _LAST_CHUNK:
             if frame[name] is None:
                 raise _fail(f"{kind}.{name}", "fehlt im letzten Stück")
-    elif kind == "session_start" and frame["network"] != "allowlist" and frame["allow"]:
-        raise _fail("session_start.allow", "nur mit network=allowlist")
+    elif kind == "session_start":
+        packages = frame["network"] == "packages"
+        if frame["network"] != "allowlist" and frame["allow"]:
+            raise _fail("session_start.allow", "nur mit network=allowlist")
+        if packages and not frame["package_hosts"]:
+            raise _fail("session_start.package_hosts", "Pflicht bei network=packages")
+        if packages and frame["rootfs_mb"] is None:
+            raise _fail("session_start.rootfs_mb", "Pflicht bei network=packages")
+        if not packages and (frame["package_hosts"] or frame["rootfs_mb"] is not None):
+            raise _fail("session_start.package_hosts", "nur mit network=packages")
     elif kind == "preview_response" and frame["seq"] == 0 and frame["status"] is None:
         raise _fail("preview_response.status", "fehlt im ersten Stück")
     elif kind == "preview" and frame["running"] and None in (frame["port"], frame["token"]):

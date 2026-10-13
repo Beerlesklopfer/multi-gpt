@@ -10,7 +10,9 @@ Admin (``admin.py``, ohne Inhalte).
   5 s abfragt: Runner, aktive und letzte Sitzungen, Arbeitsstände, Laufzeit.
 - **Audit je Sitzung** (``/runner/sitzung/<uuid>/``): gekürzte Argumente,
   Exit-Code, Dauer, Meldung – nie Ausgaben.
-- **Terminal** (PTY, 8p): ``GET …/pty/`` ist ein SSE-Strom. Er legt die
+- **Terminal** (PTY, 8p): bevorzugt direkt per WebSocket zum Runner-Dienst
+  (``pty_direct.py``, Adresse ``pty_ws_url``); die folgenden Endpunkte sind der
+  Rückfall. ``GET …/pty/`` ist ein SSE-Strom. Er legt die
   Kennung des PTY an, abonniert sie (``delivery.subscribe``) und schickt erst
   dann ``pty_open`` – so geht keine Ausgabe verloren, und die Antworten gehen an
   den Prozess, der den Strom hält. Eingaben, Größe und Schließen kommen als
@@ -41,6 +43,7 @@ import time
 import uuid
 from urllib.parse import unquote
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import (
     Http404,
@@ -184,6 +187,7 @@ def status_payload(user, now=None) -> dict:
                 ),
                 "via_api_key": session.api_key_id is not None,
                 "network": session.network,
+                "packages": session.packages,
                 "started": _iso(session.started),
                 "ended": _iso(session.ended),
                 "minutes": session.minutes,
@@ -238,6 +242,7 @@ def session_page(request, session_uuid):
                 "session": session,
                 "entries": entries,
                 "preview_url": preview_url,
+                "pty_ws_url": pty_ws_url(session),
                 "terminal_allowed": session.status == RunnerSession.Status.RUNNING
                 and can(request.user, Action.USE_RUNNER),
             },
@@ -257,8 +262,10 @@ def session_api(request, session_uuid):
                 "status": session.status,
                 "status_label": session.get_status_display(),
                 "running": session.status == RunnerSession.Status.RUNNING,
+                "packages": session.packages,
                 "preview_url": preview_url_for(session),
                 "pty_url": reverse("runner:pty_stream", args=[session.uuid]),
+                "pty_ws_url": pty_ws_url(session),
                 "audit_url": reverse("runner:session", args=[session.uuid]),
                 "minutes": session.minutes,
             }
@@ -267,6 +274,21 @@ def session_api(request, session_uuid):
 
 
 # --- Terminal (PTY) --------------------------------------------------------------------
+
+
+def pty_ws_url(session: RunnerSession) -> str:
+    """Adresse des direkten Terminal-WebSockets (``pty_direct``) für den Browser.
+
+    Standard: dieselbe Origin, Pfad ``/runner/pty/<uuid>`` (nginx leitet ihn an den
+    Runner-Dienst). ``RUNNER_BROWSER_WS_URL`` setzt die Adresse des Dienstes,
+    z. B. ``http://192.168.24.250:8001`` in der Entwicklung; ``off`` schaltet den
+    direkten Weg ab (nur SSE + POST). Ohne Erreichbarkeit fällt der Browser selbst
+    auf den alten Weg zurück.
+    """
+    base = (getattr(settings, "RUNNER_BROWSER_WS_URL", "") or "").strip().rstrip("/")
+    if base.lower() == "off":
+        return ""
+    return f"{base}/runner/pty/{session.uuid}"
 
 
 _pty_lock = threading.Lock()

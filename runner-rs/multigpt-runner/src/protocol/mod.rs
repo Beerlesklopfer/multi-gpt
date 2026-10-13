@@ -164,7 +164,11 @@ pub const STOP_REASONS: &[&str] = &[
 pub const CLOSE_FRAME_REASONS: &[&str] = &[
     "revoked", "rights", "quota", "replaced", "shutdown", "protocol",
 ];
-pub const NETWORK_MODES: &[&str] = &["none", "allowlist", "default"];
+pub const NETWORK_MODES: &[&str] = &["none", "allowlist", "default", "packages"];
+/// Grenzen der beschreibbaren Container-Schicht im Modus `packages` (MB).
+pub const ROOTFS_MB: std::ops::RangeInclusive<u64> = 64..=1_048_576;
+/// Höchstzahl der Paket-Hosts je Sitzung.
+pub const MAX_PACKAGE_HOSTS: usize = 50;
 pub const SCRATCH_MODES: &[&str] = &["container", "local"];
 pub const ERROR_CODES: &[&str] = &[
     "invalid_frame",
@@ -207,6 +211,10 @@ pub static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| re(r"^[A-Za-z0-9_-]{16,1
 pub static IMAGE_RE: LazyLock<Regex> =
     LazyLock::new(|| re(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$"));
 pub static HOST_RE: LazyLock<Regex> = LazyLock::new(|| re(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$"));
+/// Paket-Host (Modus `packages`): DNS-Name, klein, ohne Port, IP oder Wildcard;
+/// Länge höchstens 253 prüft das Feld (die Python-Fassung nutzt dafür ein Lookahead).
+pub static PACKAGE_HOST_RE: LazyLock<Regex> =
+    LazyLock::new(|| re(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"));
 pub static HEADER_NAME_RE: LazyLock<Regex> = LazyLock::new(|| re(r"^[A-Za-z0-9-]{1,64}$"));
 pub static UUID_RE: LazyLock<Regex> =
     LazyLock::new(|| re(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));

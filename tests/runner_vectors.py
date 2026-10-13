@@ -61,6 +61,32 @@ def _example(kind: str, **changes) -> dict:
 
 _DROP = object()
 
+# Ist-Grenzen ohne Netzart (für session_state.limits)
+_LIMITS = {"cpus": 2, "memory_mb": 2048, "pids": 256, "tmpfs_mb": 512}
+PACKAGE_HOSTS = [
+    "deb.debian.org",
+    "security.debian.org",
+    "pypi.org",
+    "files.pythonhosted.org",
+    "registry.npmjs.org",
+    "github.com",
+    "codeload.github.com",
+    "objects.githubusercontent.com",
+    "index.crates.io",
+    "static.crates.io",
+]
+
+
+def _packages(**changes) -> dict:
+    """``session_start`` im Netzmodus „packages“ (ohne allow)."""
+    base = {
+        "network": "packages",
+        "allow": _DROP,
+        "package_hosts": list(PACKAGE_HOSTS),
+        "rootfs_mb": 4096,
+    }
+    return _example("session_start", **{**base, **changes})
+
 
 def _strip(value, key: str | None = None):
     """``None`` aus normalisierten Rahmen entfernen (nicht in MCP-Nachrichten)."""
@@ -261,6 +287,49 @@ def valid_cases() -> list[tuple[str, str | None, dict, str]]:
             _example("session_start", scratch_mode="container", workspace_uuid=_DROP),
             "Scratchpad im Container",
         ),
+        # Paketquellen (Netzmodus „packages“, pkg-server)
+        ("packages_session_start", srv, _packages(), "Paketquellen: Hosts und Schicht"),
+        (
+            "packages_hosts_50",
+            srv,
+            _packages(package_hosts=[f"h{i}.example.org" for i in range(50)]),
+            "50 Paket-Hosts",
+        ),
+        (
+            "packages_host_forms",
+            srv,
+            _packages(package_hosts=["a.io", "x-1.y-2.example", "1a.example.com"]),
+            "Ziffern und Bindestriche in Labels, TLD aus Buchstaben",
+        ),
+        ("packages_rootfs_min", srv, _packages(rootfs_mb=64), "Untergrenze rootfs_mb"),
+        ("packages_rootfs_max", srv, _packages(rootfs_mb=1048576), "Obergrenze rootfs_mb"),
+        (
+            "packages_null_allow",
+            srv,
+            _packages(allow=None),
+            "allow null bei packages",
+        ),
+        (
+            "limits_packages",
+            s,
+            _example(
+                "session_state",
+                limits={**_LIMITS, "network": "packages", "rootfs_mb": 4096},
+            ),
+            "Ist-Grenzen im Modus packages",
+        ),
+        (
+            "heartbeat_rootfs_used",
+            s,
+            _frame(
+                "heartbeat",
+                sessions=[
+                    {"session": "s1", "state": "running", "rootfs_used_mb": 0},
+                    {"session": "s2", "state": "running", "rootfs_used_mb": 1048576},
+                ],
+            ),
+            "gemessene Schicht (Grenzen)",
+        ),
         (
             "frame_exactly_max",
             srv,
@@ -458,6 +527,147 @@ def invalid_cases() -> list[tuple[str, str | None, dict | str, str]]:
             srv,
             _example("session_start", allow=[{"host": "a_b", "port": 22}]),
             "Host-Format",
+        ),
+        # Paketquellen (Netzmodus „packages“, pkg-server)
+        ("packages_without_hosts", srv, _packages(package_hosts=_DROP), "Pflicht bei packages"),
+        ("packages_empty_hosts", srv, _packages(package_hosts=[]), "nicht leer"),
+        ("packages_without_rootfs", srv, _packages(rootfs_mb=_DROP), "Pflicht bei packages"),
+        (
+            "packages_with_allow",
+            srv,
+            _packages(allow=[{"host": "nas.local", "port": 22}]),
+            "allow nur mit allowlist",
+        ),
+        (
+            "hosts_without_packages",
+            srv,
+            _example("session_start", package_hosts=["deb.debian.org"]),
+            "package_hosts nur mit packages",
+        ),
+        (
+            "rootfs_without_packages",
+            srv,
+            _example("session_start", network="none", allow=_DROP, rootfs_mb=4096),
+            "rootfs_mb nur mit packages",
+        ),
+        ("packages_rootfs_low", srv, _packages(rootfs_mb=63), "Grenze"),
+        ("packages_rootfs_high", srv, _packages(rootfs_mb=1048577), "Grenze"),
+        (
+            "packages_hosts_51",
+            srv,
+            _packages(package_hosts=[f"h{i}.example.org" for i in range(51)]),
+            "höchstens 50",
+        ),
+        (
+            "packages_host_too_long",
+            srv,
+            _packages(package_hosts=[".".join(["a" * 60] * 4) + ".example.org"]),
+            "über 253 Zeichen",
+        ),
+        (
+            "packages_host_ip",
+            srv,
+            _packages(package_hosts=["192.168.1.10"]),
+            "keine IP",
+        ),
+        (
+            "packages_host_port",
+            srv,
+            _packages(package_hosts=["deb.debian.org:80"]),
+            "kein Port",
+        ),
+        (
+            "packages_host_upper",
+            srv,
+            _packages(package_hosts=["Deb.Debian.org"]),
+            "nur Kleinbuchstaben",
+        ),
+        (
+            "packages_host_wildcard",
+            srv,
+            _packages(package_hosts=["*.debian.org"]),
+            "kein Joker",
+        ),
+        (
+            "packages_host_single_label",
+            srv,
+            _packages(package_hosts=["localhost"]),
+            "mindestens zwei Labels",
+        ),
+        (
+            "packages_host_trailing_dot",
+            srv,
+            _packages(package_hosts=["deb.debian.org."]),
+            "kein Punkt am Ende",
+        ),
+        (
+            "packages_host_numeric_tld",
+            srv,
+            _packages(package_hosts=["a.b.123"]),
+            "TLD nur Buchstaben",
+        ),
+        (
+            "packages_host_trailing_newline",
+            srv,
+            _packages(package_hosts=["deb.debian.org\n"]),
+            "kein Zeilenumbruch",
+        ),
+        (
+            "packages_host_leading_hyphen",
+            srv,
+            _packages(package_hosts=["-a.example.org"]),
+            "Label beginnt mit Bindestrich",
+        ),
+        (
+            "packages_host_underscore",
+            srv,
+            _packages(package_hosts=["a_b.example.org"]),
+            "kein Unterstrich",
+        ),
+        (
+            "packages_host_long_label",
+            srv,
+            _packages(
+                package_hosts=[
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.org"
+                ]
+            ),
+            "Label über 63 Zeichen",
+        ),
+        (
+            "packages_host_empty",
+            srv,
+            _packages(package_hosts=[""]),
+            "leer",
+        ),
+        (
+            "limits_rootfs_low",
+            s,
+            _example("session_state", limits={**_LIMITS, "network": "packages", "rootfs_mb": 63}),
+            "Grenze",
+        ),
+        (
+            "limits_network_unknown",
+            s,
+            _example("session_state", limits={**_LIMITS, "network": "proxy"}),
+            "unbekannte Netzart",
+        ),
+        (
+            "heartbeat_rootfs_negative",
+            s,
+            _frame(
+                "heartbeat", sessions=[{"session": "s1", "state": "running", "rootfs_used_mb": -1}]
+            ),
+            "Grenze",
+        ),
+        (
+            "heartbeat_rootfs_high",
+            s,
+            _frame(
+                "heartbeat",
+                sessions=[{"session": "s1", "state": "running", "rootfs_used_mb": 1048577}],
+            ),
+            "Grenze",
         ),
         ("list_not_list", s, _frame("heartbeat", sessions={"session": "s1"}), "Liste erwartet"),
         ("object_not_object", s, _example("hello", engine="podman"), "Objekt erwartet"),

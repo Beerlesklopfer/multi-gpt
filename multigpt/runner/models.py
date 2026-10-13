@@ -352,6 +352,11 @@ class RunnerSession(models.Model):
     def is_active(self) -> bool:
         return self.status in self.ACTIVE_STATES
 
+    @property
+    def packages(self) -> bool:
+        """Netzmodus „Paketquellen“ (Proxy mit Positivliste, apt_install)."""
+        return bool((self.limits_requested or {}).get("packages"))
+
 
 class ChatWorkspace(models.Model):
     """Auswahl im Chat (8j): Arbeitsstand, Rückfrage-Modus, Aufgabenliste, Sitzung.
@@ -382,6 +387,12 @@ class ChatWorkspace(models.Model):
         help_text="Leer: Vorgabe (ohne Netz alles automatisch, mit Netz fragen Befehle).",
     )
     todo = models.JSONField("Aufgabenliste", default=list, blank=True, encoder=UnicodeJSONEncoder)
+    packages = models.BooleanField(
+        "Paketquellen",
+        default=True,
+        help_text="Mit Rollenrecht „Paketquellen“: Sitzung mit Proxy zu den Paketquellen und "
+        "apt_install (Vorgabe an). Aus: ohne Paketquellen, dafür setup_host/telnet.",
+    )
     session = models.ForeignKey(
         RunnerSession,
         on_delete=models.SET_NULL,

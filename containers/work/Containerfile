@@ -2,7 +2,10 @@
 # Sitzung einen wegwerfbaren Arbeitscontainer. Der Agent legt die Optionen
 # selbst fest (tmpfs /workspace und /tmp, ReadonlyRootfs, CapDrop=ALL,
 # no-new-privileges, Grenzen, Netz aus bzw. Positivliste) – das Image bringt nur
-# die Werkzeuge mit und hat kein Volume.
+# die Werkzeuge mit und hat kein Volume. Im Netzmodus „Paketquellen“ ist das
+# Wurzeldateisystem beschreibbar (flüchtige Container-Schicht) und apt läuft über
+# den Proxy (mgpt-relay --proxy) im Relay-Container, nur über das Werkzeug
+# apt_install als root mit fester Befehlszeile.
 #
 # Bauen (aus der Wurzel des Projekts, Kontext "."):
 #   podman build -f containers/work/Containerfile -t multigpt-runner-work:dev .
@@ -43,9 +46,18 @@ RUN apt-get update \
 #   mgpt-fs     Dateiwerkzeuge mit sicherer Pfadauflösung unter /workspace
 #   mgpt-serve  statischer HTTP-Server der Vorschau (8p, keine Templates)
 #   mgpt-relay  TCP-Weiterleitung nur zu freigegebenen Zielen (ssh/telnet, 8w)
+#               bzw. HTTP-Proxy nur zu den Paket-Hosts (Modus Paketquellen)
 COPY --chmod=0755 runner_agent/mgpt_fs.py /usr/local/bin/mgpt-fs
 COPY --chmod=0755 runner_agent/mgpt_serve.py /usr/local/bin/mgpt-serve
 COPY --chmod=0755 runner_agent/mgpt_relay.py /usr/local/bin/mgpt-relay
+
+# apt über den Proxy: kein Pipelining (der Proxy leitet je Verbindung genau eine
+# geprüfte GET-Anfrage weiter), wenige Wiederholungen, keine empfohlenen Pakete.
+RUN printf '%s\n' \
+        'Acquire::http::Pipeline-Depth "0";' \
+        'Acquire::Retries "3";' \
+        'APT::Install-Recommends "false";' \
+        > /etc/apt/apt.conf.d/90mgpt-proxy
 
 # - Nutzer 1000:1000 ohne Passwort und ohne Anmelde-Shell-Datei; HOME liegt im
 #   tmpfs /tmp (das Wurzeldateisystem ist schreibgeschützt).

@@ -31,6 +31,8 @@
     const scratchBox = document.getElementById("runner-scratch-box");
     const scratchSelect = document.getElementById("runner-scratch");
     const scratchHint = document.getElementById("runner-scratch-hint");
+    const packagesBox = document.getElementById("runner-packages-box");
+    const packagesInput = document.getElementById("runner-packages");
     const pickerState = document.getElementById("runner-picker-state");
     const todoBox = document.getElementById("runner-todo");
     const todoList = document.getElementById("runner-todo-list");
@@ -94,6 +96,16 @@
       modeSelect.value = state.mode || "";
       modeSelect.disabled = !state.workspace_id;
       renderScratch();
+      renderPackages();
+    }
+
+    // Paketquellen je Chat (nur mit Rollenrecht; gilt ab der nächsten Sitzung).
+    function renderPackages() {
+      if (!packagesBox) {
+        return;
+      }
+      packagesBox.hidden = !(state.workspace_id && state.packages);
+      packagesInput.checked = state.packages_selected !== false;
     }
 
     // Scratchpad je Arbeitsstand (container | local); nur wenn der Server es anbietet.
@@ -136,7 +148,13 @@
       setSession(data.session);
       say(
         data.workspace_id
-          ? `Arbeitsstand „${data.workspace_name}“, ${data.network ? "mit" : "ohne"} Netz.`
+          ? `Arbeitsstand „${data.workspace_name}“, ${
+              data.network
+                ? "mit Netz"
+                : data.packages_runner
+                  ? "ohne Netz, Paketquellen erlaubt"
+                  : "ohne Netz"
+            }.`
           : "",
       );
     }
@@ -199,6 +217,9 @@
     });
     scratchSelect?.addEventListener("change", () => {
       save({ scratch_mode: scratchSelect.value });
+    });
+    packagesInput?.addEventListener("change", () => {
+      save({ packages: packagesInput.checked });
     });
 
     // --- Aufgabenliste ---
@@ -288,7 +309,9 @@
         return;
       }
       actions.hidden = false;
-      sessionState.textContent = `Sitzung: ${session.status_label || session.status}`;
+      sessionState.textContent =
+        `Sitzung: ${session.status_label || session.status}` +
+        (session.packages ? " · Paketquellen erlaubt" : "");
       auditLink.href = session.audit_url || "#";
       terminalToggle.disabled = !session.running;
       previewToggle.hidden = !session.preview_url;
@@ -339,6 +362,7 @@
         screen: terminalRegion.querySelector("[data-runner-terminal-screen]"),
         stateEl,
         streamUrl: session.pty_url,
+        wsUrl: session.pty_ws_url,
         inputTemplate: `${base}eingabe/`,
         resizeTemplate: `${base}groesse/`,
         focusOut: () => terminalRegion.querySelector("[data-runner-terminal-close]")?.focus(),

@@ -1,0 +1,114 @@
+{
+ "body": {
+  "Networks": {
+   "mgpt-net-73475cb40a568e8d": {},
+   "mgpt-out-73475cb40a568e8d": {}
+  },
+  "cap_drop": [
+   "ALL"
+  ],
+  "cgroupns": {
+   "nsmode": "private"
+  },
+  "command": [
+   "mgpt-relay",
+   "--proxy",
+   "3128",
+   "localhost"
+  ],
+  "env": {
+   "HOME": "/tmp",
+   "LANG": "C.UTF-8",
+   "PATH": "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin",
+   "TERM": "xterm-256color"
+  },
+  "env_host": false,
+  "hostname": "workspace",
+  "httpproxy": false,
+  "image": "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "image_volume_mode": "ignore",
+  "init": true,
+  "ipcns": {
+   "nsmode": "private"
+  },
+  "labels": {
+   "multigpt.role": "relay",
+   "multigpt.runner": "1",
+   "multigpt.session": "42"
+  },
+  "mounts": [
+   {
+    "destination": "/tmp",
+    "options": [
+     "size=16m",
+     "mode=1777",
+     "nosuid",
+     "nodev"
+    ],
+    "source": "tmpfs",
+    "type": "tmpfs"
+   }
+  ],
+  "name": "mgpt-rly-73475cb40a568e8d",
+  "netns": {
+   "nsmode": "bridge"
+  },
+  "no_new_privileges": true,
+  "pidns": {
+   "nsmode": "private"
+  },
+  "privileged": false,
+  "r_limits": [
+   {
+    "hard": 4096,
+    "soft": 4096,
+    "type": "nofile"
+   },
+   {
+    "hard": 16777216,
+    "soft": 16777216,
+    "type": "fsize"
+   },
+   {
+    "hard": 0,
+    "soft": 0,
+    "type": "core"
+   }
+  ],
+  "read_only_filesystem": true,
+  "resource_limits": {
+   "cpu": {
+    "period": 100000,
+    "quota": 50000
+   },
+   "memory": {
+    "limit": 134217728,
+    "swap": 134217728
+   },
+   "pids": {
+    "limit": 64
+   }
+  },
+  "stop_timeout": 5,
+  "use_image_hosts": true,
+  "use_image_resolve_conf": false,
+  "user": "1000:1000",
+  "utsns": {
+   "nsmode": "private"
+  },
+  "work_dir": "/"
+ },
+ "check": "body",
+ "config": {
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_cpus": 8.0,
+  "max_memory_mb": 16384,
+  "max_pids": 4096,
+  "max_tmpfs_mb": 8192,
+  "scratch_host_dir": null
+ },
+ "expect": "reject",
+ "note": "Proxy"
+}

@@ -4216,7 +4216,8 @@ span.message-source-link {
   max-width: 14rem;
 }
 
-.runner-scratch:not([hidden]) {
+.runner-scratch:not([hidden]),
+.runner-packages:not([hidden]) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;

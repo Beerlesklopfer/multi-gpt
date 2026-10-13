@@ -65,6 +65,7 @@ testpaths = ["tests"]
 addopts = "-ra -m 'not podman'"
 markers = [
     "podman: Ende-zu-Ende-Test mit echtem Podman (nur eigene Testobjekte, make test-runner)",
+    "network: braucht Internet zu den Paketquellen (wird ohne Netz übersprungen)",
 ]
 
 [tool.ruff]

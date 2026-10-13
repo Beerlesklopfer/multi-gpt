@@ -38,7 +38,7 @@ use tokio::task::JoinHandle;
 use crate::config::Config;
 use crate::engine::{Engine, EngineError, ExecOptions, Pty};
 use crate::mcp::host::{
-    ExecOutput, Relay, Target, ToolError, ToolHost, ToolLimits, ToolPty, ToolResult,
+    AptOutput, ExecOutput, Relay, Target, ToolError, ToolHost, ToolLimits, ToolPty, ToolResult,
 };
 use crate::outbox::{Outbox, SendError};
 use crate::protocol::{
@@ -53,6 +53,18 @@ pub const FS_TIMEOUT: Duration = Duration::from_secs(120);
 /// Größe der Werkzeug-PTYs (`bash`, `telnet`).
 pub const TOOL_COLS: u16 = 120;
 pub const TOOL_ROWS: u16 = 40;
+/// Zeitlimit je apt-Schritt (update bzw. install) in Sekunden.
+pub const APT_TIMEOUT: Duration = Duration::from_secs(900);
+/// Zeitlimit für das Entfernen der setuid-Bits.
+pub const STRIP_TIMEOUT: Duration = Duration::from_secs(300);
+/// Paketlisten nach so vielen Sekunden neu laden.
+pub const APT_UPDATE_SECONDS: f64 = 3600.0;
+/// Ausgabe eines apt-Schritts, die der Agent liest (der Rest wird verworfen).
+pub const APT_OUTPUT_BYTES: usize = 1024 * 1024;
+/// Liste der apt-Pakete im Arbeitsstand (eine Zeile je Paket).
+pub const APT_PACKAGES_FILE: &str = ".mgpt/apt-packages";
+/// Ordner, die nie ins Bundle gehören (pip/npm/cargo installieren dorthin).
+pub const GITIGNORE_ENTRIES: [&str; 3] = [".venv/", "node_modules/", "target/"];
 
 /// Fehler mit deutscher Meldung und Fehlercode des Protokolls.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +145,10 @@ pub struct SessionMut {
     pub head: Option<String>,
     pub last_activity: f64,
     pub scratch_used: u64,
+    /// Gemessene beschreibbare Schicht in Byte (Modus `packages`, je Heartbeat).
+    pub rootfs_used: Option<u64>,
+    /// Zeitpunkt des letzten erfolgreichen `apt-get update` (Uhr des Managers).
+    pub apt_updated: Option<f64>,
 }
 
 pub struct Session {
@@ -169,6 +185,10 @@ impl Session {
             workspace: Some(self.workspace.clone()),
             state: st.state.clone(),
             preview_port: st.preview_port,
+            rootfs_used_mb: st
+                .limits
+                .packages()
+                .then(|| st.rootfs_used.unwrap_or(0).div_ceil(1 << 20).min(1_048_576)),
         }
     }
 
@@ -192,6 +212,32 @@ impl Session {
 
     pub fn pty_count(&self) -> usize {
         guard(&self.ptys).len()
+    }
+
+    /// Netzmodus „Paketquellen“ (gelockerte Vorlage, Proxy, `apt_install`).
+    pub fn packages(&self) -> bool {
+        self.state().limits.packages()
+    }
+
+    /// Beschreibbare Schicht an bzw. über ihrer Grenze (letzte Messung)? Dann
+    /// lehnen die schreibenden Werkzeuge und `apt_install` ab.
+    pub fn rootfs_full(&self) -> bool {
+        self.rootfs_compare(|used, limit| used >= limit)
+    }
+
+    /// Schicht über der Grenze: Sitzung wird beendet (wie der Server bei `mismatch`).
+    pub fn rootfs_over(&self) -> bool {
+        self.rootfs_compare(|used, limit| used > limit)
+    }
+
+    fn rootfs_compare(&self, test: impl Fn(u64, u64) -> bool) -> bool {
+        let st = self.state();
+        match (st.limits.rootfs_mb, st.rootfs_used) {
+            (Some(limit), Some(used)) if st.limits.packages() => {
+                test(used.div_ceil(1 << 20), limit)
+            }
+            _ => false,
+        }
     }
 }
 
@@ -432,6 +478,8 @@ impl SessionManager {
                     head: None,
                     last_activity: (self.clock)(),
                     scratch_used: 0,
+                    rootfs_used: None,
+                    apt_updated: None,
                 }),
                 ptys: Mutex::default(),
                 pty_tasks: Mutex::default(),
@@ -488,6 +536,9 @@ impl SessionManager {
         match result {
             Ok(session) => {
                 let _ = self.report(&session).await;
+                if session.packages() {
+                    self.prepare_packages(&session).await;
+                }
             }
             Err(e) => {
                 tracing::warn!("Sitzung {sid} nicht gestartet: {}", e.message);
@@ -522,12 +573,14 @@ impl SessionManager {
 
     async fn start_inner(&self, frame: &SessionStart) -> SessionResult<Arc<Session>> {
         let sid = frame.session.clone();
+        let packages = frame.network == "packages";
         let limits = Limits {
             cpus: frame.cpus,
             memory_mb: frame.memory_mb,
             pids: frame.pids,
             tmpfs_mb: frame.tmpfs_mb,
             network: frame.network.clone(),
+            rootfs_mb: if packages { frame.rootfs_mb } else { None },
         };
         let server_images = guard(&self.server_images).clone();
         template::check_image(
@@ -557,6 +610,7 @@ impl SessionManager {
                 "not_allowed",
             ));
         }
+        let package_hosts = self.package_hosts(frame)?;
         let (scratch, scratch_local) = self.scratch(frame)?;
         let spec = json!({
             "image": frame.image,
@@ -567,6 +621,7 @@ impl SessionManager {
             "output_bytes": frame.output_bytes,
             "idle_minutes": frame.idle_minutes,
             "allow": allow.iter().map(|(h, p)| json!([h, p])).collect::<Vec<_>>(),
+            "package_hosts": package_hosts,
         });
         let session = Arc::new(Session {
             id: sid.clone(),
@@ -588,6 +643,8 @@ impl SessionManager {
                 head: None,
                 last_activity: (self.clock)(),
                 scratch_used: 0,
+                rootfs_used: None,
+                apt_updated: None,
             }),
             ptys: Mutex::default(),
             pty_tasks: Mutex::default(),
@@ -599,7 +656,13 @@ impl SessionManager {
             let ip = self.start_relay(&sid, &frame.image, &allow).await?;
             session.state().relay_ip = Some(ip);
         }
-        self.start_container(&session, &frame.image, &spec).await?;
+        let proxy_url = if packages {
+            Some(self.start_proxy(&sid, &frame.image, &package_hosts).await?)
+        } else {
+            None
+        };
+        self.start_container(&session, &frame.image, &spec, proxy_url.as_deref())
+            .await?;
         let info = self.engine.inspect_container(&session.container).await?;
         let port = session.state().preview_port.map(u64::from);
         let source = scratch.source.as_deref().filter(|_| scratch.is_local());
@@ -610,7 +673,10 @@ impl SessionManager {
                 "not_allowed",
             ));
         }
-        session.state().limits = template::actual_limits(&info, &limits.network);
+        session.state().limits = Limits {
+            rootfs_mb: limits.rootfs_mb,
+            ..template::actual_limits(&info, &limits.network)
+        };
         self.load_workspace(&session, frame.bundle.as_ref()).await?;
         session.state().state = "running".into();
         Ok(session)
@@ -646,6 +712,16 @@ impl SessionManager {
                 &labels,
             ))
             .await?;
+        if mode == "packages" {
+            // Ausgang nur für den Proxy; der Arbeitscontainer bleibt am internen Netz.
+            self.engine
+                .create_network(&template::network_body(
+                    &template::network_name(sid, "out"),
+                    false,
+                    &labels,
+                ))
+                .await?;
+        }
         if mode == "allowlist" {
             self.engine
                 .create_network(&template::network_body(
@@ -688,6 +764,55 @@ impl SessionManager {
                 .unwrap_or("relay")
                 .to_string(),
         )
+    }
+
+    /// Proxy für Paketquellen starten; liefert seine Adresse im Sitzungsnetz.
+    async fn start_proxy(&self, sid: &str, image: &str, hosts: &[String]) -> SessionResult<String> {
+        let mut body = template::proxy_body(sid, image, hosts);
+        self.with_labels(&mut body);
+        let name = body["name"].as_str().unwrap_or_default().to_string();
+        self.engine.create_container(&body).await?;
+        self.engine.start_container(&name).await?;
+        let info = self.engine.inspect_container(&name).await?;
+        let ip =
+            info["NetworkSettings"]["Networks"][&template::network_name(sid, "net")]["IPAddress"]
+                .as_str()
+                .unwrap_or("");
+        template::proxy_url(ip)
+            .ok_or_else(|| SessionError::new("Proxy hat keine Adresse im Sitzungsnetz.", "engine"))
+    }
+
+    /// Hosts des Proxys (Modus `packages`): erneut geprüft, sonst leer.
+    fn package_hosts(&self, frame: &SessionStart) -> SessionResult<Vec<String>> {
+        let hosts = frame.package_hosts.clone().unwrap_or_default();
+        if frame.network != "packages" {
+            if !hosts.is_empty() || frame.rootfs_mb.is_some() {
+                return Err(SessionError::new(
+                    "Paket-Hosts nur im Modus Paketquellen.",
+                    "not_allowed",
+                ));
+            }
+            return Ok(Vec::new());
+        }
+        let valid = !hosts.is_empty()
+            && hosts.len() <= template::MAX_PACKAGE_HOSTS
+            && hosts.iter().all(|h| template::is_package_host(h));
+        if !valid {
+            return Err(SessionError::new("Paket-Hosts ungültig.", "not_allowed"));
+        }
+        if frame.rootfs_mb.is_none() {
+            return Err(SessionError::new(
+                "Grenze der Container-Schicht fehlt.",
+                "not_allowed",
+            ));
+        }
+        if frame.allow.as_ref().is_some_and(|a| !a.is_empty()) {
+            return Err(SessionError::new(
+                "Positivliste und Paketquellen schließen sich aus.",
+                "not_allowed",
+            ));
+        }
+        Ok(hosts)
     }
 
     /// Scratchpad der Sitzung: tmpfs oder `~/MultiGPT/Scratch/<uuid>/` des Rechners.
@@ -809,6 +934,7 @@ impl SessionManager {
         session: &Session,
         image: &str,
         spec: &Value,
+        proxy_url: Option<&str>,
     ) -> SessionResult<()> {
         let net = template::network_name(&session.id, "net");
         let limits = session.state().limits.clone();
@@ -823,6 +949,7 @@ impl SessionManager {
                 Some(u64::from(port)),
                 spec,
                 session.scratch.as_ref(),
+                proxy_url,
             );
             self.with_labels(&mut body);
             self.engine.create_container(&body).await?;
@@ -846,16 +973,23 @@ impl SessionManager {
         ))
     }
 
-    pub async fn stop(&self, sid: &str, _reason: &str) {
+    pub async fn stop(&self, sid: &str, reason: &str) {
+        self.stop_with_error(sid, reason, None).await;
+    }
+
+    /// Wie [`Self::stop`], mit Grund für den Nutzer im Rahmen `session_state`.
+    pub async fn stop_with_error(&self, sid: &str, _reason: &str, error: Option<&str>) {
         let session = guard(&self.sessions).remove(sid);
         if let Some(session) = session {
             session.state().state = "stopping".into();
             self.close_session_io(&session).await;
         }
         self.cleanup(sid).await;
-        let _ = self
-            .send("session_state", json!({"session": sid, "state": "stopped"}))
-            .await;
+        let mut fields = json!({"session": sid, "state": "stopped"});
+        if let Some(error) = error {
+            fields["error"] = json!(error);
+        }
+        let _ = self.send("session_state", fields).await;
     }
 
     /// Terminals der Sitzung schließen (MCP-Pipes und Telnet schließt `mcp`).
@@ -946,6 +1080,22 @@ impl SessionManager {
                     session.state().scratch_used = total;
                 }
             }
+            if session.packages() && session.state().state == "running" {
+                self.measure_rootfs(&session).await;
+                if session.rootfs_over() {
+                    tracing::warn!(
+                        "Sitzung {}: Container-Schicht über der Grenze, Sitzung wird beendet.",
+                        session.id
+                    );
+                    self.stop_with_error(
+                        &session.id,
+                        "mismatch",
+                        Some("Container-Schicht über der Grenze (Paketquellen)."),
+                    )
+                    .await;
+                    continue;
+                }
+            }
             let idle = session.spec["idle_minutes"]
                 .as_u64()
                 .filter(|v| *v > 0)
@@ -960,6 +1110,207 @@ impl SessionManager {
                 self.stop(&session.id, "idle").await;
             }
         }
+    }
+
+    // --- Paketquellen (apt, .gitignore, Schicht) -----------------------------------------
+
+    /// Größe der beschreibbaren Schicht messen und merken (Byte).
+    pub async fn measure_rootfs(&self, session: &Session) -> Option<u64> {
+        match self.engine.container_size(&session.container).await {
+            Ok(size) => {
+                session.state().rootfs_used = Some(size);
+                Some(size)
+            }
+            Err(e) => {
+                tracing::warn!("Schicht von {} nicht messbar: {e}", session.id);
+                None
+            }
+        }
+    }
+
+    /// Fester Befehl als root im Arbeitscontainer (nur Modus `packages`).
+    async fn root_exec(
+        &self,
+        session: &Session,
+        argv: Vec<String>,
+        timeout: Duration,
+    ) -> SessionResult<crate::engine::ExecResult> {
+        if !session.packages() {
+            return Err(SessionError::new(
+                "Paketquellen sind in dieser Sitzung nicht freigegeben.",
+                "not_allowed",
+            ));
+        }
+        let argv = template::with_timeout(&argv, timeout.as_secs());
+        template::check_root_argv(&argv)?;
+        Ok(self
+            .engine
+            .exec(
+                &session.container,
+                &argv,
+                ExecOptions {
+                    stdin: None,
+                    // Etwas Luft für `timeout -k 5` im Container.
+                    timeout: timeout + Duration::from_secs(10),
+                    max_output: APT_OUTPUT_BYTES,
+                    workdir: "/".into(),
+                    root: true,
+                },
+            )
+            .await?)
+    }
+
+    /// apt-Pakete installieren: bei Bedarf `apt-get update`, dann `apt-get install`,
+    /// danach setuid-Bits entfernen. Mit `record` stehen die Namen anschließend in
+    /// `.mgpt/apt-packages` (Commit macht der Aufrufer).
+    pub async fn apt_install(
+        &self,
+        session: &Session,
+        packages: &[String],
+        record: bool,
+    ) -> SessionResult<AptReport> {
+        let install = template::apt_install_argv(packages)?;
+        if session.rootfs_full() {
+            return Err(SessionError::new(
+                "Container-Schicht über der Grenze: keine weiteren Pakete möglich.",
+                "limit",
+            ));
+        }
+        let mut report = AptReport::default();
+        let stale = session
+            .state()
+            .apt_updated
+            .is_none_or(|t| (self.clock)() - t > APT_UPDATE_SECONDS);
+        if stale {
+            let res = self
+                .root_exec(session, template::apt_update_argv(), APT_TIMEOUT)
+                .await?;
+            report.add("apt-get update", &res);
+            if res.timed_out || res.code != Some(0) {
+                report.code = if res.timed_out { None } else { res.code };
+                report.timed_out = res.timed_out;
+                return Ok(report);
+            }
+            session.state().apt_updated = Some((self.clock)());
+        }
+        let res = self.root_exec(session, install, APT_TIMEOUT).await?;
+        report.add("apt-get install", &res);
+        report.code = res.code;
+        report.timed_out = res.timed_out;
+        // Auch nach einem Fehler: halb installierte Pakete könnten setuid-Bits setzen.
+        let strip = self
+            .root_exec(session, template::strip_setuid_argv(), STRIP_TIMEOUT)
+            .await?;
+        if strip.timed_out || strip.code != Some(0) {
+            report.add("setuid-Bits entfernen", &strip);
+        }
+        self.measure_rootfs(session).await;
+        if report.ok() && record {
+            self.record_packages(session, packages).await?;
+            self.ensure_gitignore(session).await?;
+        }
+        Ok(report)
+    }
+
+    /// Textdatei im Arbeitsstand lesen; `None`, wenn sie fehlt oder nicht lesbar ist.
+    async fn read_text(&self, session: &Session, path: &str) -> Option<String> {
+        let mut fields = Map::new();
+        fields.insert("path".into(), json!(path));
+        fields.insert("max_bytes".into(), json!(256 * 1024));
+        let (_, data) = self.fs_raw(session, "file_out", b"", fields).await.ok()?;
+        Some(String::from_utf8_lossy(&data).into_owned())
+    }
+
+    async fn write_text(&self, session: &Session, path: &str, content: &str) -> SessionResult<()> {
+        let mut fields = Map::new();
+        fields.insert("path".into(), json!(path));
+        fields.insert("content".into(), json!(content));
+        self.fs(session, "write", b"", fields).await.map(|_| ())
+    }
+
+    /// Gültige Paketnamen aus `.mgpt/apt-packages` (Kommentare und Fremdes ignoriert).
+    pub async fn recorded_packages(&self, session: &Session) -> Vec<String> {
+        let text = self
+            .read_text(session, APT_PACKAGES_FILE)
+            .await
+            .unwrap_or_default();
+        parse_packages(&text)
+    }
+
+    /// Namen in `.mgpt/apt-packages` aufnehmen (sortiert, ohne Doppelte).
+    async fn record_packages(&self, session: &Session, packages: &[String]) -> SessionResult<()> {
+        let mut all: std::collections::BTreeSet<String> =
+            self.recorded_packages(session).await.into_iter().collect();
+        let before = all.len();
+        all.extend(packages.iter().cloned());
+        if all.len() == before && self.read_text(session, APT_PACKAGES_FILE).await.is_some() {
+            return Ok(());
+        }
+        let mut text = String::from(
+            "# apt-Pakete dieses Arbeitsstands (MultiGPT installiert sie beim Sitzungsstart nach)\n",
+        );
+        for name in all.iter().take(template::MAX_APT_PACKAGES_TOTAL) {
+            text.push_str(name);
+            text.push('\n');
+        }
+        self.write_text(session, APT_PACKAGES_FILE, &text).await
+    }
+
+    /// `.venv/`, `node_modules/` und `target/` in `.gitignore` sicherstellen.
+    /// Liefert true, wenn die Datei geändert wurde.
+    pub async fn ensure_gitignore(&self, session: &Session) -> SessionResult<bool> {
+        let text = self
+            .read_text(session, ".gitignore")
+            .await
+            .unwrap_or_default();
+        let missing = missing_ignores(&text);
+        if missing.is_empty() {
+            return Ok(false);
+        }
+        let mut out = text;
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        for entry in missing {
+            out.push_str(entry);
+            out.push('\n');
+        }
+        self.write_text(session, ".gitignore", &out).await?;
+        Ok(true)
+    }
+
+    /// Nach dem Start im Modus `packages`: `.gitignore` sicherstellen und die Pakete
+    /// aus `.mgpt/apt-packages` nachinstallieren. Hält die Sperre der Sitzung, damit
+    /// Werkzeuge erst danach laufen. Fehler beenden die Sitzung nicht.
+    pub async fn prepare_packages(&self, session: &Session) {
+        let lock = session.lock.clone();
+        let _guard = lock.lock().await;
+        if let Err(e) = self.ensure_gitignore(session).await {
+            tracing::warn!("Sitzung {}: .gitignore nicht ergänzt: {e}", session.id);
+        }
+        let packages = self.recorded_packages(session).await;
+        if !packages.is_empty() {
+            tracing::info!(
+                "Sitzung {}: installiere {} apt-Paket(e) aus {APT_PACKAGES_FILE} nach.",
+                session.id,
+                packages.len()
+            );
+            match self.apt_install(session, &packages, false).await {
+                Ok(report) if report.ok() => {}
+                Ok(report) => tracing::warn!(
+                    "Sitzung {}: Nachinstallieren fehlgeschlagen: {}",
+                    session.id,
+                    tail(report.output.trim(), 500)
+                ),
+                Err(e) => tracing::warn!("Sitzung {}: Nachinstallieren: {e}", session.id),
+            }
+        }
+        if let Ok(note) = self.save(session, "Paketquellen: .gitignore").await
+            && !note.is_empty()
+        {
+            tracing::warn!("Sitzung {}: {}", session.id, note.trim());
+        }
+        self.touch(session);
     }
 
     // --- mgpt-fs ---------------------------------------------------------------------------
@@ -1009,6 +1360,7 @@ impl SessionManager {
                     timeout: FS_TIMEOUT,
                     max_output,
                     workdir: "/workspace".into(),
+                    root: false,
                 },
             )
             .await?;
@@ -1464,6 +1816,65 @@ impl SessionManager {
     }
 }
 
+/// Ergebnis von `apt_install` (Ausgabe der Schritte, Exit-Code des letzten).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AptReport {
+    pub code: Option<i64>,
+    pub timed_out: bool,
+    pub output: String,
+}
+
+impl AptReport {
+    pub fn ok(&self) -> bool {
+        !self.timed_out && self.code == Some(0)
+    }
+
+    fn add(&mut self, step: &str, res: &crate::engine::ExecResult) {
+        self.output.push_str(&format!("$ {step}\n"));
+        self.output.push_str(&String::from_utf8_lossy(&res.stdout));
+        let err = String::from_utf8_lossy(&res.stderr);
+        if !err.trim().is_empty() {
+            self.output.push_str(&err);
+        }
+        if !self.output.ends_with('\n') {
+            self.output.push('\n');
+        }
+    }
+}
+
+/// Paketnamen aus `.mgpt/apt-packages`: je Zeile ein Name, `#` leitet Kommentare
+/// ein; ungültige Namen fallen weg (die Datei kann das Modell ändern).
+pub fn parse_packages(text: &str) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    text.lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|name| template::APT_PACKAGE_RE.is_match(name))
+        .filter(|name| seen.insert(name.to_string()))
+        .take(template::MAX_APT_PACKAGES_TOTAL)
+        .map(str::to_string)
+        .collect()
+}
+
+/// Einträge aus [`GITIGNORE_ENTRIES`], die in `.gitignore` noch fehlen.
+pub fn missing_ignores(text: &str) -> Vec<&'static str> {
+    let lines: HashSet<&str> = text.lines().map(str::trim).collect();
+    GITIGNORE_ENTRIES
+        .iter()
+        .copied()
+        .filter(|entry| {
+            let bare = entry.trim_end_matches('/');
+            ![
+                *entry,
+                bare,
+                &format!("/{entry}") as &str,
+                &format!("/{bare}") as &str,
+            ]
+            .iter()
+            .any(|form| lines.contains(form))
+        })
+        .collect()
+}
+
 /// Adresse von MultiGPT aus `MGPT_URL` (`wss://host/runner/ws` → `https://host`).
 pub fn base_url(url: &str) -> String {
     let url = url.trim_end_matches('/');
@@ -1667,6 +2078,7 @@ impl ToolHost for SessionHandle {
                     timeout: Duration::from_secs(timeout_s.max(1)),
                     max_output,
                     workdir: workdir.into(),
+                    root: false,
                 },
             )
             .await
@@ -1735,6 +2147,28 @@ impl ToolHost for SessionHandle {
 
     fn allowed_services(&self) -> Option<Vec<String>> {
         self.manager.services()
+    }
+
+    fn packages(&self) -> bool {
+        self.session.packages()
+    }
+
+    fn rootfs_full(&self) -> bool {
+        self.session.rootfs_full()
+    }
+
+    async fn apt_install(&self, packages: Vec<String>) -> ToolResult<AptOutput> {
+        let report = self
+            .manager
+            .apt_install(&self.session, &packages, true)
+            .await?;
+        Ok(AptOutput {
+            code: report
+                .code
+                .map(|c| c.clamp(i32::MIN as i64, i32::MAX as i64) as i32),
+            timed_out: report.timed_out,
+            output: report.output,
+        })
     }
 }
 

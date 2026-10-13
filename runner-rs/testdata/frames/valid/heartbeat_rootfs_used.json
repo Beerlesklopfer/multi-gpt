@@ -1,0 +1,19 @@
+{
+ "frame": {
+  "sessions": [
+   {
+    "rootfs_used_mb": 0,
+    "session": "s1",
+    "state": "running"
+   },
+   {
+    "rootfs_used_mb": 1048576,
+    "session": "s2",
+    "state": "running"
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "note": "gemessene Schicht (Grenzen)",
+ "sender": "agent"
+}

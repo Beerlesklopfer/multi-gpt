@@ -222,6 +222,14 @@ class SessionManager:
 
     async def _start(self, frame: dict) -> Session:
         sid, workspace = frame["session"], frame["workspace"]
+        if frame["network"] == "packages":
+            # Paketquellen (Proxy, beschreibbare Schicht, apt_install) kann nur der
+            # Rust-Agent; der Python-Agent meldet apt_install nicht im Katalog.
+            raise SessionError(
+                "Paketquellen werden von diesem Agent nicht unterstützt "
+                "(bitte den Runner multigpt-runner verwenden).",
+                "not_allowed",
+            )
         limits = template.Limits(
             cpus=float(frame["cpus"]),
             memory_mb=frame["memory_mb"],

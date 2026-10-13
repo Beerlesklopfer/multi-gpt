@@ -22,8 +22,11 @@ from mcp_types import BlobResourceContents, EmbeddedResource, jsonrpc_message_ad
 from multigpt.runner import tools as runner_tools
 from multigpt.runner.mcp_transport import RunnerOffline
 
-# Alle Dienste eines gültig signierten Katalogs (Runner.services im Test)
-ALL_SERVICES = [t.name for t in runner_tools.CATALOG.values() if not t.server_side]
+# Alle Dienste eines gültig signierten Katalogs (Runner.services im Test), ohne
+# apt_install: ein Runner ohne Paketquellen (wie der Python-Agent). Mit Paketquellen:
+# PACKAGE_SERVICES.
+PACKAGE_SERVICES = [t.name for t in runner_tools.CATALOG.values() if not t.server_side]
+ALL_SERVICES = [name for name in PACKAGE_SERVICES if name != runner_tools.APT_INSTALL]
 
 
 class FakeWorkspace:
@@ -94,6 +97,11 @@ def build_server(ws: FakeWorkspace) -> MCPServer:
         if command.startswith("echo "):
             return command[5:]
         return f"$ {command}\n(exit 0)"
+
+    @server.tool()
+    def apt_install(packages: list[str]) -> str:
+        ws.calls.append(("apt_install", {"packages": packages}))
+        return "Installiert: " + ", ".join(packages)
 
     @server.tool()
     def serve(path: str = ".") -> dict:

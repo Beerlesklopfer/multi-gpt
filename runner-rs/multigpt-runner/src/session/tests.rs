@@ -1064,6 +1064,291 @@ fn du_counts_blocks_without_following_symlinks() {
     assert!((10_000..100_000).contains(&used), "{used}");
 }
 
+// --- Paketquellen (Modus packages) ------------------------------------------------------
+
+fn packages_extra() -> Value {
+    json!({
+        "network": "packages",
+        "package_hosts": ["deb.debian.org", "pypi.org"],
+        "rootfs_mb": 512,
+    })
+}
+
+fn created_by_role(h: &Harness, role: &str) -> Value {
+    h.engine
+        .state()
+        .created
+        .iter()
+        .find(|b| b["labels"][template::LABEL_ROLE] == role)
+        .cloned()
+        .unwrap()
+}
+
+fn workspace_file(h: &Harness, sid: &str, path: &str) -> Option<String> {
+    let dir = h.engine.workspace(&h.work(sid)).ok()?;
+    std::fs::read_to_string(dir.join(path)).ok()
+}
+
+#[tokio::test]
+async fn packages_mode_starts_proxy_and_relaxed_work_container() {
+    let h = Harness::new(config());
+    let state = h.start("s1", "w1", packages_extra()).await;
+    assert_eq!(state["state"], "running", "{state}");
+    assert_eq!(state["limits"]["network"], "packages");
+    assert_eq!(state["limits"]["rootfs_mb"], 512);
+    let proxy = created_by_role(&h, "relay");
+    let work = created_by_role(&h, "work");
+    assert_eq!(
+        proxy["command"],
+        json!([
+            "mgpt-relay",
+            "--proxy",
+            "3128",
+            "deb.debian.org",
+            "pypi.org"
+        ])
+    );
+    assert_eq!(proxy["read_only_filesystem"], json!(true));
+    assert!(proxy.get("cap_add").is_none());
+    let nets: BTreeSet<String> = proxy["Networks"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    let (net, out) = (
+        template::network_name("s1", "net"),
+        template::network_name("s1", "out"),
+    );
+    assert_eq!(nets, BTreeSet::from([net.clone(), out.clone()]));
+    assert_eq!(work["Networks"], json!({ net.clone(): {} }));
+    assert_eq!(work["read_only_filesystem"], json!(false));
+    assert_eq!(work["cap_add"], json!(template::CAPS_PACKAGES));
+    assert_eq!(work["no_new_privileges"], json!(true));
+    assert_eq!(work["labels"][template::LABEL_NETWORK], "packages");
+    let url = work["env"]["HTTPS_PROXY"].as_str().unwrap().to_string();
+    assert!(
+        url.starts_with("http://10.89.") && url.ends_with(":3128"),
+        "{url}"
+    );
+    for key in template::PROXY_ENV_KEYS {
+        assert_eq!(work["env"][key], json!(url));
+    }
+    assert_eq!(work["env"]["NO_PROXY"], template::NO_PROXY);
+    {
+        let st = h.engine.state();
+        assert_eq!(st.networks[&net]["internal"], json!(true));
+        assert_eq!(st.networks[&out]["internal"], json!(false));
+        assert!(
+            !st.networks
+                .contains_key(&template::network_name("s1", "rel"))
+        );
+    }
+    // .gitignore steht nach dem Start im Arbeitsstand und ist gespeichert.
+    let ignore = workspace_file(&h, "s1", ".gitignore").unwrap();
+    for entry in GITIGNORE_ENTRIES {
+        assert!(ignore.lines().any(|l| l == entry), "{ignore}");
+    }
+    assert!(!h.frames("bundle_chunk").is_empty());
+    // Keine Pakete vermerkt: kein apt beim Start.
+    assert!(h.engine.state().root_calls.is_empty());
+    assert_eq!(h.manager.infos()[0].rootfs_used_mb, Some(0));
+    h.manager.stop("s1", "user").await;
+    let st = h.engine.state();
+    assert!(st.containers.is_empty() && st.networks.is_empty());
+}
+
+#[tokio::test]
+async fn packages_fields_are_checked_again_by_the_agent() {
+    let h = Harness::new(config());
+    // Ohne Hosts (am Schema vorbei) bzw. mit ungültigem Host: Start schlägt fehl.
+    for hosts in [None, Some(vec!["10.0.0.1".to_string()]), Some(vec![])] {
+        let mut frame = h.start_frame("s1", "w1", packages_extra());
+        frame.package_hosts = hosts;
+        h.manager.start(&frame).await;
+        h.settle().await;
+        let state = h.last("session_state");
+        assert_eq!(state["state"], "failed", "{state}");
+    }
+    let mut frame = h.start_frame("s1", "w1", packages_extra());
+    frame.rootfs_mb = None;
+    h.manager.start(&frame).await;
+    h.settle().await;
+    assert_eq!(h.last("session_state")["state"], "failed");
+    // Hosts ohne Modus packages ebenso.
+    let mut frame = h.start_frame("s1", "w1", json!({}));
+    frame.package_hosts = Some(vec!["pypi.org".into()]);
+    h.manager.start(&frame).await;
+    h.settle().await;
+    assert_eq!(h.last("session_state")["state"], "failed");
+    assert!(h.engine.state().containers.is_empty());
+}
+
+#[tokio::test]
+async fn apt_install_runs_fixed_root_commands_and_records_packages() {
+    let h = Harness::new(config());
+    h.start("s1", "w1", packages_extra()).await;
+    let handle = h.handle("s1");
+    let out = handle
+        .apt_install(vec!["jq".into(), "ripgrep".into()])
+        .await
+        .unwrap();
+    assert_eq!(out.code, Some(0), "{}", out.output);
+    assert!(out.output.contains("$ apt-get update"), "{}", out.output);
+    let out = handle.apt_install(vec!["jq".into()]).await.unwrap();
+    assert!(!out.output.contains("apt-get update"), "{}", out.output);
+    let calls: Vec<Vec<String>> = h
+        .engine
+        .state()
+        .root_calls
+        .iter()
+        .map(|(_, argv)| argv.clone())
+        .collect();
+    let mut install = template::apt_install_argv(&["jq".into(), "ripgrep".into()]).unwrap();
+    assert_eq!(
+        calls,
+        vec![
+            template::apt_update_argv(),
+            install.clone(),
+            template::strip_setuid_argv(),
+            {
+                install.pop();
+                install
+            },
+            template::strip_setuid_argv(),
+        ]
+    );
+    let recorded = workspace_file(&h, "s1", APT_PACKAGES_FILE).unwrap();
+    assert_eq!(parse_packages(&recorded), vec!["jq", "ripgrep"]);
+    // Paketlisten werden nach einer Stunde neu geladen.
+    *guard(&h.clock) += APT_UPDATE_SECONDS + 1.0;
+    let out = handle.apt_install(vec!["jq".into()]).await.unwrap();
+    assert!(out.output.contains("$ apt-get update"), "{}", out.output);
+}
+
+#[tokio::test]
+async fn apt_install_failure_is_not_recorded() {
+    let h = Harness::new(config());
+    h.start("s1", "w1", packages_extra()).await;
+    h.engine
+        .state()
+        .fake_commands
+        .insert("apt-get".into(), "echo E: kaputt >&2; exit 100".into());
+    let out = h
+        .handle("s1")
+        .apt_install(vec!["gibtsnicht".into()])
+        .await
+        .unwrap();
+    // update schlägt schon fehl: kein install, kein Eintrag.
+    assert_eq!(out.code, Some(100));
+    assert!(out.output.contains("E: kaputt"), "{}", out.output);
+    assert!(workspace_file(&h, "s1", APT_PACKAGES_FILE).is_none());
+}
+
+#[tokio::test]
+async fn apt_install_refused_outside_packages_mode() {
+    let h = Harness::new(config());
+    h.start("s1", "w1", json!({})).await;
+    let err = h
+        .handle("s1")
+        .apt_install(vec!["jq".into()])
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("Paketquellen"), "{err}");
+    assert!(h.engine.state().root_calls.is_empty());
+    // Auch die Engine selbst lässt root im schreibgeschützten Container nicht zu.
+    let res = h
+        .engine
+        .exec(
+            &h.work("s1"),
+            &template::apt_update_argv(),
+            ExecOptions {
+                root: true,
+                ..ExecOptions::default()
+            },
+        )
+        .await;
+    assert!(res.is_err());
+}
+
+#[tokio::test]
+async fn recorded_packages_are_installed_on_next_start() {
+    let h = Harness::new(config());
+    h.start("s1", "w1", packages_extra()).await;
+    h.handle("s1")
+        .apt_install(vec!["jq".into(), "sqlite3".into()])
+        .await
+        .unwrap();
+    assert!(h.handle("s1").save("apt_install").await.is_empty());
+    h.manager.stop("s1", "user").await;
+    h.engine.state().root_calls.clear();
+    let state = h.start("s2", "w1", packages_extra()).await;
+    assert_eq!(state["state"], "running", "{state}");
+    let calls: Vec<Vec<String>> = h
+        .engine
+        .state()
+        .root_calls
+        .iter()
+        .map(|(_, argv)| argv.clone())
+        .collect();
+    assert_eq!(
+        calls,
+        vec![
+            template::apt_update_argv(),
+            template::apt_install_argv(&["jq".into(), "sqlite3".into()]).unwrap(),
+            template::strip_setuid_argv(),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn rootfs_is_measured_and_enforced() {
+    let h = Harness::new(config());
+    h.start("s1", "w1", packages_extra()).await;
+    let work = h.work("s1");
+    h.engine.state().sizes.insert(work.clone(), 300 << 20);
+    h.manager.check_idle().await;
+    assert_eq!(h.manager.infos()[0].rootfs_used_mb, Some(300));
+    assert!(!h.handle("s1").rootfs_full());
+    // An der Grenze: apt gesperrt, Sitzung läuft weiter.
+    h.engine.state().sizes.insert(work.clone(), 512 << 20);
+    h.manager.check_idle().await;
+    assert!(h.handle("s1").rootfs_full());
+    let err = h
+        .handle("s1")
+        .apt_install(vec!["jq".into()])
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("Container-Schicht"), "{err}");
+    // Darüber: Sitzung wird beendet.
+    h.engine.state().sizes.insert(work, (512 << 20) + 1);
+    h.manager.check_idle().await;
+    h.settle().await;
+    assert!(h.manager.infos().is_empty());
+    let state = h.last("session_state");
+    assert_eq!(state["state"], "stopped");
+    assert!(
+        state["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Container-Schicht")
+    );
+}
+
+#[test]
+fn package_list_and_gitignore_helpers() {
+    assert_eq!(
+        parse_packages("# Kommentar\njq\n  ripgrep # Suche\nBad\n-o\njq\n\nlibssl-dev\n"),
+        vec!["jq", "ripgrep", "libssl-dev"]
+    );
+    assert_eq!(missing_ignores(""), GITIGNORE_ENTRIES.to_vec());
+    assert_eq!(
+        missing_ignores("/node_modules\n.venv\n*.pyc\n"),
+        vec!["target/"]
+    );
+    assert!(missing_ignores(".venv/\nnode_modules/\ntarget/\n").is_empty());
+}
+
 // --- Echter Podman (Feature podman-tests) -----------------------------------------------
 
 /// Tests mit echtem Podman: `cargo test --features podman-tests -- session::tests::podman`.
@@ -1533,5 +1818,149 @@ mod podman {
             h.manager.stop(&s4, "user").await;
         })
         .await;
+    }
+
+    /// Netzmodus Paketquellen mit echtem Netz (deb.debian.org): Proxy, apt als root,
+    /// keine setuid-Programme, Messung der Schicht. Ohne Netz: `MGPT_TEST_NO_NETWORK=1`.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn podman_packages_proxy_and_apt() {
+        if std::env::var_os("MGPT_TEST_NO_NETWORK").is_some() {
+            eprintln!("MGPT_TEST_NO_NETWORK gesetzt – Test übersprungen.");
+            return;
+        }
+        let Some(setup) = setup(5, None) else { return };
+        let h = &setup.harness;
+        tokio::time::timeout(Duration::from_secs(900), async {
+            let s5 = sid(5);
+            let state = h
+                .start(
+                    &s5,
+                    "pw5",
+                    json!({"network": "packages", "rootfs_mb": 1024,
+                           "package_hosts": ["deb.debian.org", "security.debian.org", "pypi.org"],
+                           "command_seconds": 300}),
+                )
+                .await;
+            assert_eq!(state["state"], "running", "{state}");
+            assert_eq!(state["limits"]["network"], "packages");
+            assert_eq!(state["limits"]["rootfs_mb"], 1024);
+            // Ist-Werte des echten Containers passen zur gelockerten Vorlage.
+            eprintln!("pkg-test Schritt 1: {:?}", std::time::Instant::now());
+            let name = template::work_name(&s5);
+            let info = h.engine.inspect_container(&name).await.unwrap();
+            let limits = h.manager.get(&s5).unwrap().state().limits.clone();
+            let port = h.manager.get(&s5).unwrap().state().preview_port;
+            assert_eq!(
+                template::check_inspect(&info, &limits, port.map(u64::from), None),
+                Vec::<String>::new()
+            );
+            // Nutzer 1000: Proxy nur zu freigegebenen Hosts, direkt gar nicht.
+            eprintln!("pkg-test Schritt 2: {:?}", std::time::Instant::now());
+            let probe = r#"
+import os, socket, urllib.request, urllib.error
+def get(url):
+    try:
+        return urllib.request.urlopen(url, timeout=30).status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except Exception as e:
+        return type(e).__name__
+print("debian", get("http://deb.debian.org/debian/dists/trixie/Release"))
+print("fremd", get("http://example.com/"))
+print("https-fremd", get("https://example.com/"))
+print("https-pypi", get("https://pypi.org/simple/pip/"))
+s = socket.socket(); s.settimeout(5)
+try:
+    s.connect(("1.1.1.1", 80)); print("direkt offen")
+except OSError as e:
+    print("direkt zu")
+"#;
+            let out = sh(
+                h,
+                &s5,
+                Target::Work,
+                &format!("id -u; python3 -c '{probe}'"),
+            )
+            .await;
+            assert!(out.starts_with("1000\n"), "{out}");
+            assert!(out.contains("debian 200"), "{out}");
+            assert!(out.contains("fremd 403"), "{out}");
+            assert!(out.contains("https-fremd"), "{out}");
+            assert!(!out.contains("https-fremd 200"), "{out}");
+            assert!(out.contains("https-pypi 200"), "{out}");
+            assert!(out.contains("direkt zu"), "{out}");
+            // Podman gibt cap_add auch Nicht-root-Nutzern: Nutzer 1000 muss trotzdem
+            eprintln!("pkg-test Schritt 3: {:?}", std::time::Instant::now());
+            // ohne Capabilities laufen (setpriv in jedem exec), auch im Terminal.
+            eprintln!("pkg-test Schritt 4: {:?}", std::time::Instant::now());
+            let out = sh(
+                h,
+                &s5,
+                Target::Work,
+                "grep -E '^Cap(Eff|Prm|Amb)' /proc/self/status",
+            )
+            .await;
+            assert_eq!(out.matches("0000000000000000").count(), 3, "{out}");
+            // Nutzer 1000 kann das beschreibbare Wurzeldateisystem nicht verändern.
+            eprintln!("pkg-test Schritt 5: {:?}", std::time::Instant::now());
+            let out = sh(
+                h,
+                &s5,
+                Target::Work,
+                "touch /usr/bin/x 2>&1 || echo GESPERRT",
+            )
+            .await;
+            assert!(out.contains("GESPERRT"), "{out}");
+            // apt als root mit fester Befehlszeile.
+            eprintln!("pkg-test Schritt 6: {:?}", std::time::Instant::now());
+            let res = h
+                .handle(&s5)
+                .apt_install(vec!["jq".into(), "sudo".into()])
+                .await
+                .unwrap();
+            assert_eq!(res.code, Some(0), "{}", res.output);
+            let out = sh(
+                h,
+                &s5,
+                Target::Work,
+                "echo '{\"a\": 1}' | jq .a; find / -xdev -type f -perm /6000 2>/dev/null | head; \
+                 sudo -n true 2>/dev/null && echo SUDO-OK || echo SUDO-NEIN",
+            )
+            .await;
+            assert!(out.starts_with("1\n"), "{out}");
+            assert!(out.contains("SUDO-NEIN"), "{out}");
+            assert!(!out.contains("/usr/bin/sudo"), "{out}");
+            let session = h.manager.get(&s5).unwrap();
+            let recorded = h.manager.recorded_packages(&session).await;
+            assert_eq!(recorded, vec!["jq", "sudo"]);
+            // Schicht gemessen (heartbeat), unter der Grenze.
+            eprintln!("pkg-test Schritt 7: {:?}", std::time::Instant::now());
+            h.manager.check_idle().await;
+            let used = h.manager.infos()[0].rootfs_used_mb.unwrap();
+            assert!(used > 0 && used < 1024, "{used}");
+            // Nach dem Neustart werden die Pakete aus .mgpt/apt-packages nachinstalliert.
+            eprintln!("pkg-test Schritt 8: {:?}", std::time::Instant::now());
+            assert!(h.handle(&s5).save("apt_install").await.is_empty());
+            h.manager.stop(&s5, "user").await;
+            let s6 = sid(6);
+            let state = h
+                .start(
+                    &s6,
+                    "pw5",
+                    json!({"network": "packages", "rootfs_mb": 1024,
+                           "package_hosts": ["deb.debian.org", "security.debian.org"]}),
+                )
+                .await;
+            assert_eq!(state["state"], "running", "{state}");
+            // prepare_packages hält die Sperre; danach ist jq da.
+            eprintln!("pkg-test Schritt 9: {:?}", std::time::Instant::now());
+            let _ = h.manager.get(&s6).unwrap().lock.lock().await;
+            let out = sh(h, &s6, Target::Work, "command -v jq; cat .gitignore").await;
+            assert!(out.contains("/usr/bin/jq"), "{out}");
+            assert!(out.contains("node_modules/"), "{out}");
+            h.manager.stop(&s6, "user").await;
+        })
+        .await
+        .expect("Zeitlimit");
     }
 }

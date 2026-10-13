@@ -30,7 +30,9 @@ pub const PTY_COLS: u16 = 120;
 pub const PTY_ROWS: u16 = 40;
 
 /// Werkzeuge, die (möglicherweise) Dateien im Arbeitsstand ändern.
-pub const CHANGING: [&str; 3] = ["write", "edit", "bash"];
+pub const CHANGING: [&str; 4] = ["write", "edit", "bash", "apt_install"];
+/// Höchstzahl der Pakete je `apt_install`.
+pub const APT_MAX_PACKAGES: usize = 20;
 
 static ANSI_RE: LazyLock<regex::bytes::Regex> = LazyLock::new(|| {
     regex::bytes::Regex::new(
@@ -166,6 +168,22 @@ pub fn tool_defs() -> Vec<ToolDef> {
             ),
         },
         ToolDef {
+            name: "apt_install",
+            description: "Debian-Pakete mit apt installieren (nur im Netzmodus Paketquellen; \
+                          die Namen stehen danach in .mgpt/apt-packages und werden beim \
+                          Sitzungsstart nachinstalliert).",
+            input_schema: schema(
+                json!({"packages": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": APT_MAX_PACKAGES,
+                    "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9+.-]{0,62}$"},
+                    "description": "Debian-Paketnamen.",
+                }}),
+                &["packages"],
+            ),
+        },
+        ToolDef {
             name: setup::NAME,
             description: "Zielsystem per SSH-Schlüssel einrichten: Runner-Programm übertragen, \
                           Prüfsumme prüfen und mit MultiGPT koppeln (Zugang vom Server).",
@@ -253,6 +271,16 @@ pub fn summary(name: &str, args: &Map<String, Value>) -> String {
         "write" | "edit" => {
             let path = args.get("path").and_then(Value::as_str).unwrap_or("");
             truncate_chars(&format!("{name} {path}"), 200)
+        }
+        "apt_install" => {
+            let names: Vec<&str> = args
+                .get("packages")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            format!("apt_install: {}", truncate_chars(&names.join(" "), 150))
         }
         "bash" => {
             let command = match args.get("command") {
@@ -368,6 +396,16 @@ impl<H: ToolHost> SessionTools<H> {
                  Dateien in /scratch löschen (bash: rm)."
             )));
         }
+        // Schicht voll (Paketquellen): bash bleibt zum Aufräumen (rm, apt-get clean
+        // geht nur als root und ist daher nicht nötig); wächst sie weiter, beendet der
+        // Agent die Sitzung beim nächsten Heartbeat.
+        if matches!(name, "write" | "edit" | "apt_install") && self.host.rootfs_full() {
+            return Err(ToolError::new(
+                "Container-Schicht an ihrer Grenze (Paketquellen): Schreiben und Installieren \
+                 gesperrt. Bitte Dateien außerhalb von /workspace löschen (bash: rm) oder die \
+                 Sitzung neu starten.",
+            ));
+        }
         let result = self.dispatch(name, args).await;
         self.host.touch();
         let (mut text, structured) = result?;
@@ -389,6 +427,7 @@ impl<H: ToolHost> SessionTools<H> {
             "serve" => self.tool_serve(args).await,
             "publish" => self.tool_publish(args).await,
             "telnet" => self.tool_telnet(args).await,
+            "apt_install" => self.tool_apt_install(args).await,
             setup::NAME => setup::run(self, args).await,
             _ => Err(ToolError::new(format!("Unbekanntes Werkzeug: {name}"))),
         }
@@ -552,6 +591,49 @@ impl<H: ToolHost> SessionTools<H> {
         Ok((
             text,
             Some(json!({"exit_code": code, "truncated": truncated})),
+        ))
+    }
+
+    /// apt-Pakete installieren (nur Modus `packages`; Befehl und Nutzer legt der Agent fest).
+    async fn tool_apt_install(&self, args: &Map<String, Value>) -> ToolResult<Outcome> {
+        let packages = apt_packages(args)?;
+        if !self.host.packages() {
+            return Err(ToolError::new(
+                "Paketquellen sind in dieser Sitzung nicht freigegeben (Netzmodus Paketquellen).",
+            ));
+        }
+        let result = self.host.apt_install(packages.clone()).await?;
+        let limit = self.host.limits().output_bytes;
+        let cleaned = clean_output(result.output.as_bytes());
+        let cleaned = cleaned.trim_end_matches('\n');
+        // apt schreibt viel; das Ende (Fehler, Zusammenfassung) ist am wichtigsten.
+        let truncated = cleaned.len() > limit;
+        let mut text = if truncated {
+            let mut start = cleaned.len() - limit;
+            while !cleaned.is_char_boundary(start) {
+                start += 1;
+            }
+            format!(
+                "[Ausgabe gekürzt, letzte {limit} Byte]\n{}",
+                &cleaned[start..]
+            )
+        } else {
+            cleaned.to_string()
+        };
+        let ok = !result.timed_out && result.code == Some(0);
+        if result.timed_out {
+            text += "\n[Zeitlimit erreicht, apt abgebrochen]";
+        }
+        text += &format!("\n[Exit-Code {}]", exit_text(result.code));
+        if ok {
+            text += &format!(
+                "\nInstalliert: {} (vermerkt in .mgpt/apt-packages).",
+                packages.join(" ")
+            );
+        }
+        Ok((
+            text,
+            Some(json!({"exit_code": result.code, "truncated": truncated, "packages": packages})),
         ))
     }
 
@@ -720,6 +802,35 @@ impl<H: ToolHost> SessionTools<H> {
             conn.close().await;
         }
     }
+}
+
+/// Paketnamen aus den Argumenten: 1–20 Texte nach `^[a-z0-9][a-z0-9+.-]{0,62}$`,
+/// Doppelte fallen weg (Reihenfolge bleibt).
+pub fn apt_packages(args: &Map<String, Value>) -> ToolResult<Vec<String>> {
+    let Some(Value::Array(items)) = args.get("packages") else {
+        return Err(ToolError::new(
+            "Argument „packages“ fehlt oder ist keine Liste.",
+        ));
+    };
+    if items.is_empty() || items.len() > APT_MAX_PACKAGES {
+        return Err(ToolError::new(format!(
+            "Argument „packages“: 1 bis {APT_MAX_PACKAGES} Paketnamen."
+        )));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        let name = item.as_str().unwrap_or("");
+        if !crate::template::APT_PACKAGE_RE.is_match(name) {
+            return Err(ToolError::new(format!(
+                "Ungültiger Paketname: {}",
+                truncate_chars(&item.to_string(), 80)
+            )));
+        }
+        if !out.iter().any(|n| n == name) {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
 }
 
 fn port_value(value: &Value) -> Option<u16> {

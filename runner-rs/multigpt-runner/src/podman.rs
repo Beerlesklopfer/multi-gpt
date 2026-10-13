@@ -33,6 +33,8 @@ use crate::template::{self, Bounds};
 pub const API: &str = "/v5.0.0/libpod";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+/// `inspect` mit Größe der Schicht (Podman zählt die Dateien der Schicht).
+const SIZE_TIMEOUT: Duration = Duration::from_secs(60);
 /// `/info` sammelt Speicherstatistiken und braucht auf belasteten Rechnern länger.
 const INFO_TIMEOUT: Duration = Duration::from_secs(150);
 /// Ziehen eines fehlenden Arbeits-Images (einige hundert MB).
@@ -248,17 +250,39 @@ impl PodmanEngine {
         stdin: bool,
         tty: bool,
         workdir: &str,
+        root: bool,
     ) -> EngineResult<String> {
-        let body = json!({
+        if root {
+            // Als root nur die festen apt-Befehle (Modus `packages`), nie im PTY.
+            template::check_root_argv(argv)?;
+            if tty {
+                return Err(EngineError::new("root nur ohne Terminal."));
+            }
+        }
+        // Podman gibt Capabilities aus `cap_add` auch Nicht-root-Nutzern (ambient).
+        // Nutzer 1000 bekommt deshalb jeden Befehl über `setpriv` ohne ambient- und
+        // vererbbare Capabilities: effektiv keine (no-new-privileges verhindert den
+        // Rückweg über Datei-Capabilities). Nur root (apt) behält die der Vorlage.
+        let cmd: Vec<String> = if root {
+            argv.to_vec()
+        } else {
+            template::drop_caps_argv(argv)
+        };
+        let mut body = json!({
             "AttachStdin": stdin,
             "AttachStdout": true,
             "AttachStderr": true,
-            "Cmd": argv,
+            "Cmd": cmd,
             "Tty": tty,
             "WorkingDir": workdir,
             "User": template::USER,
             "Privileged": false,
         });
+        if root {
+            body["User"] = json!("0:0");
+            body["WorkingDir"] = json!("/");
+            body["Env"] = json!(["DEBIAN_FRONTEND=noninteractive", "HOME=/root"]);
+        }
         let response = self
             .request(
                 Method::POST,
@@ -577,6 +601,24 @@ impl Engine for PodmanEngine {
         .json()
     }
 
+    async fn container_size(&self, name: &str) -> EngineResult<u64> {
+        let info = self
+            .request_within(
+                SIZE_TIMEOUT,
+                Method::GET,
+                &format!("/containers/{}/json", quote(name)),
+                &[("size", "true".into())],
+                None,
+                &[200],
+            )
+            .await?
+            .json()?;
+        if !is_own(&info["Config"]["Labels"]) {
+            return Err(EngineError::new("Fremder Container."));
+        }
+        Ok(info["SizeRw"].as_i64().unwrap_or(0).max(0) as u64)
+    }
+
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>> {
         let filters = json!({"label": [format!("{}=1", template::LABEL_RUNNER)]}).to_string();
         let data = self
@@ -617,7 +659,14 @@ impl Engine for PodmanEngine {
         opts: ExecOptions,
     ) -> EngineResult<ExecResult> {
         let exec_id = self
-            .exec_create(name, argv, opts.stdin.is_some(), false, &opts.workdir)
+            .exec_create(
+                name,
+                argv,
+                opts.stdin.is_some(),
+                false,
+                &opts.workdir,
+                opts.root,
+            )
             .await?;
         let stream = self.hijack(&exec_id, false, 80, 24).await?;
         let mut out = Vec::new();
@@ -671,7 +720,9 @@ impl Engine for PodmanEngine {
     }
 
     async fn exec_detached(&self, name: &str, argv: &[String], workdir: &str) -> EngineResult<()> {
-        let exec_id = self.exec_create(name, argv, false, false, workdir).await?;
+        let exec_id = self
+            .exec_create(name, argv, false, false, workdir, false)
+            .await?;
         self.request(
             Method::POST,
             &format!("/exec/{}/start", quote(&exec_id)),
@@ -691,7 +742,9 @@ impl Engine for PodmanEngine {
         rows: u16,
         workdir: &str,
     ) -> EngineResult<Box<dyn Pty>> {
-        let exec_id = self.exec_create(name, argv, true, true, workdir).await?;
+        let exec_id = self
+            .exec_create(name, argv, true, true, workdir, false)
+            .await?;
         let stream = self.hijack(&exec_id, true, cols, rows).await?;
         Ok(Box::new(PodmanPty {
             engine: PodmanEngine::new(self.bounds.clone(), self.socket_path.clone()),

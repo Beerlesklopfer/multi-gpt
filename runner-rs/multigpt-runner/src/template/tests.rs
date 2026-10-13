@@ -20,6 +20,7 @@ fn limits() -> Limits {
         pids: 256,
         tmpfs_mb: 128,
         network: "none".into(),
+        rootfs_mb: None,
     }
 }
 
@@ -33,6 +34,7 @@ fn work() -> Value {
         &network_name("42", "net"),
         Some(18080),
         &json!({"limits": l.as_value()}),
+        None,
         None,
     )
 }
@@ -436,6 +438,7 @@ fn local_body(cfg: &Bounds) -> Value {
         None,
         &json!({}),
         Some(&scratch),
+        None,
     )
 }
 
@@ -494,6 +497,7 @@ fn container_scratch_is_noexec_tmpfs() {
         None,
         &json!({}),
         Some(&scratch),
+        None,
     );
     assert_eq!(check_body(&body, &bounds()), Ok(Role::Work));
     assert!(body.get("userns").is_none());
@@ -556,7 +560,212 @@ fn default_network_may_use_host_dns() {
         Some(18080),
         &json!({}),
         None,
+        None,
     );
     assert_eq!(body["use_image_resolve_conf"], json!(false));
     assert_eq!(check_body(&body, &bounds()), Ok(Role::Work));
+}
+
+// --- Paketquellen ------------------------------------------------------------------------
+
+type BoxedMutation = Box<dyn Fn(&mut Value)>;
+
+#[test]
+fn root_argv_only_fixed_apt_commands() {
+    let pkgs = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(check_root_argv(&apt_update_argv()).is_ok());
+    assert!(check_root_argv(&strip_setuid_argv()).is_ok());
+    let install = apt_install_argv(&pkgs(&["jq", "g++", "libssl3t64"])).unwrap();
+    assert!(check_root_argv(&install).is_ok());
+    assert_eq!(
+        &install[install.len() - 4..],
+        ["--", "jq", "g++", "libssl3t64"]
+    );
+    for bad in [
+        pkgs(&["bash", "-c", "id"]),
+        pkgs(&["apt-get", "update", "-o", "APT::Update::Pre-Invoke::=id"]),
+        pkgs(&["apt-get", "-q", "update", "x"]),
+        pkgs(&["apt-get", "-q", "-y", "install", "jq"]),
+        pkgs(&["find", "/", "-exec", "sh", "{}", "+"]),
+        vec![],
+    ] {
+        assert!(check_root_argv(&bad).is_err(), "{bad:?}");
+    }
+    let mut tail = apt_install_argv(&pkgs(&["jq"])).unwrap();
+    tail.push("-oDpkg::Pre-Invoke::=id".into());
+    assert!(check_root_argv(&tail).is_err());
+    let mut no_sep = apt_install_argv(&pkgs(&["jq"])).unwrap();
+    no_sep.retain(|a| a != "--");
+    assert!(check_root_argv(&no_sep).is_err());
+    assert!(check_root_argv(&with_timeout(&apt_update_argv(), 180)).is_ok());
+    assert_eq!(with_timeout(&apt_update_argv(), 5000)[3], "900");
+    for prefix in [
+        ["timeout", "-k", "5", "0"],
+        ["timeout", "-k", "5", "901"],
+        ["timeout", "-s", "9", "10"],
+    ] {
+        let mut argv = pkgs(&prefix);
+        argv.extend(apt_update_argv());
+        assert!(check_root_argv(&argv).is_err(), "{argv:?}");
+    }
+    let mut nested = with_timeout(&with_timeout(&apt_update_argv(), 10), 10);
+    assert!(check_root_argv(&nested).is_err());
+    nested.truncate(4);
+    assert!(check_root_argv(&nested).is_err());
+    assert!(apt_install_argv(&[]).is_err());
+    assert!(apt_install_argv(&pkgs(&["-y"])).is_err());
+    assert!(apt_install_argv(&pkgs(&["Jq"])).is_err());
+}
+
+#[test]
+fn proxy_url_and_package_hosts() {
+    assert_eq!(
+        proxy_url("10.89.0.2").as_deref(),
+        Some("http://10.89.0.2:3128")
+    );
+    for bad in [
+        "",
+        "relay",
+        "10.89.0",
+        "300.1.1.1",
+        "fd00::1",
+        "10.0.0.1:80",
+    ] {
+        assert!(proxy_url(bad).is_none(), "{bad}");
+    }
+    for ok in ["deb.debian.org", "files.pythonhosted.org", "a.bc"] {
+        assert!(is_package_host(ok), "{ok}");
+    }
+    let long = format!("{}.org", vec!["a".repeat(63); 4].join("."));
+    for bad in [
+        "localhost",
+        "1.2.3.4",
+        "pypi.org:443",
+        "PyPI.org",
+        "*.debian.org",
+        "deb.debian.org.",
+        "-a.org",
+        long.as_str(),
+    ] {
+        assert!(!is_package_host(bad), "{bad}");
+    }
+}
+
+#[test]
+fn packages_work_body_passes_and_mutations_fail() {
+    let cfg = bounds();
+    let mut l = limits();
+    l.network = "packages".into();
+    l.rootfs_mb = Some(2048);
+    let url = proxy_url("10.89.0.2").unwrap();
+    let body = work_body(
+        "42",
+        "7",
+        IMAGE,
+        &l,
+        &network_name("42", "net"),
+        Some(18080),
+        &json!({}),
+        None,
+        Some(&url),
+    );
+    assert_eq!(check_body(&body, &cfg), Ok(Role::Work));
+    // fsize mindestens die Grenze der Schicht (große .deb-Dateien).
+    assert_eq!(body["r_limits"][1]["hard"], json!(2048u64 << 20));
+    let mutations: Vec<BoxedMutation> = vec![
+        Box::new(|b| b["read_only_filesystem"] = json!(true)),
+        Box::new(|b| b["cap_add"] = json!(["CHOWN"])),
+        Box::new(|b| {
+            b["cap_add"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!("NET_ADMIN"))
+        }),
+        Box::new(|b| {
+            b.as_object_mut().unwrap().remove("cap_add");
+        }),
+        Box::new(|b| b["no_new_privileges"] = json!(false)),
+        Box::new(|b| b["env"]["HTTP_PROXY"] = json!("http://evil.example:3128")),
+        Box::new(|b| b["env"]["https_proxy"] = json!("http://10.89.0.3:3128")),
+        Box::new(|b| b["env"]["LD_PRELOAD"] = json!("/tmp/x.so")),
+        Box::new(|b| b["env"] = env()),
+        Box::new(|b| b["labels"][LABEL_NETWORK] = json!("none")),
+        Box::new(|b| b["Networks"] = json!({ network_name("43", "net"): {} })),
+        Box::new(|b| b["use_image_resolve_conf"] = json!(false)),
+    ];
+    for (i, mutate) in mutations.iter().enumerate() {
+        let mut bad = body.clone();
+        mutate(&mut bad);
+        assert!(check_body(&bad, &cfg).is_err(), "Mutation {i} angenommen");
+    }
+    // Ohne packages bleibt die strenge Vorlage: cap_add verboten.
+    let mut plain = work();
+    plain["cap_add"] = json!([]);
+    assert!(check_body(&plain, &cfg).is_err());
+}
+
+#[test]
+fn proxy_body_passes_and_mutations_fail() {
+    let cfg = bounds();
+    let hosts = vec!["deb.debian.org".to_string(), "pypi.org".to_string()];
+    let body = proxy_body("42", IMAGE, &hosts);
+    assert_eq!(check_body(&body, &cfg), Ok(Role::Relay));
+    let mutations: Vec<BoxedMutation> = vec![
+        Box::new(|b| b["command"][3] = json!("10.0.0.1")),
+        Box::new(|b| b["command"][3] = json!("pypi.org:22")),
+        Box::new(|b| b["command"][2] = json!("8080")),
+        Box::new(|b| b["command"] = json!(["mgpt-relay", "--proxy", "3128"])),
+        Box::new(|b| {
+            b["Networks"] = json!({ network_name("42", "rel"): {}, network_name("42", "out"): {} })
+        }),
+        Box::new(|b| b["Networks"] = json!({ network_name("42", "net"): {} })),
+        Box::new(|b| b["read_only_filesystem"] = json!(false)),
+        Box::new(|b| b["cap_add"] = json!(CAPS_PACKAGES)),
+    ];
+    for (i, mutate) in mutations.iter().enumerate() {
+        let mut bad = body.clone();
+        mutate(&mut bad);
+        assert!(check_body(&bad, &cfg).is_err(), "Mutation {i} angenommen");
+    }
+}
+
+#[test]
+fn inspect_in_packages_mode_allows_only_relaxed_values() {
+    let mut l = limits();
+    l.network = "packages".into();
+    let url = proxy_url("10.89.0.2").unwrap();
+    let body = work_body(
+        "42",
+        "7",
+        IMAGE,
+        &l,
+        &network_name("42", "net"),
+        None,
+        &json!({}),
+        None,
+        Some(&url),
+    );
+    let info = |caps: Value, ro: bool| {
+        json!({
+            "HostConfig": {
+                "CpuQuota": body["resource_limits"]["cpu"]["quota"],
+                "CpuPeriod": CPU_PERIOD,
+                "Memory": 512u64 << 20,
+                "MemorySwap": 512u64 << 20,
+                "PidsLimit": 256,
+                "Tmpfs": {"/workspace": "size=128m,mode=0700,nosuid,nodev"},
+                "ReadonlyRootfs": ro,
+                "CapAdd": caps,
+                "SecurityOpt": ["no-new-privileges"],
+            },
+            "Config": {"User": USER},
+        })
+    };
+    let ok = info(json!(["CAP_CHOWN", "CAP_SETUID", "setgid"]), false);
+    assert_eq!(check_inspect(&ok, &l, None, None), Vec::<String>::new());
+    let bad = info(json!(["CAP_SYS_ADMIN"]), false);
+    assert!(!check_inspect(&bad, &l, None, None).is_empty());
+    // Dieselben Werte ohne packages: beschreibbar und Capabilities sind Abweichungen.
+    l.network = "none".into();
+    assert_eq!(check_inspect(&ok, &l, None, None).len(), 2);
 }

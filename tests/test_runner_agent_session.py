@@ -139,6 +139,7 @@ def test_session_start_reports_actual_limits(harness):
             "pids": 256,
             "tmpfs_mb": 64,
             "network": "none",
+            "rootfs_mb": None,  # nur im Netzmodus „packages“ (parse ergänzt None)
         }
         assert state["preview_port"] == 18080
         net = template.network_name("s1")

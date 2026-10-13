@@ -1,0 +1,18 @@
+{
+ "frame": {
+  "limits": {
+   "cpus": 2,
+   "memory_mb": 2048,
+   "network": "packages",
+   "pids": 256,
+   "rootfs_mb": 4096,
+   "tmpfs_mb": 512
+  },
+  "preview_port": 18080,
+  "session": "s1",
+  "state": "running",
+  "type": "session_state"
+ },
+ "note": "Ist-Grenzen im Modus packages",
+ "sender": "agent"
+}

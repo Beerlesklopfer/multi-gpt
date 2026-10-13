@@ -92,6 +92,7 @@ struct Recorded {
     execs: Vec<(String, Vec<String>)>,
     helpers_opened: Vec<String>,
     helpers_closed: Vec<String>,
+    apt: Vec<Vec<String>>,
 }
 
 struct FakeHost {
@@ -108,6 +109,8 @@ struct FakeHost {
     rec: Mutex<Recorded>,
     open_ptys: Arc<Mutex<Vec<String>>>,
     helper_counter: AtomicUsize,
+    packages: bool,
+    rootfs_full: bool,
 }
 
 impl FakeHost {
@@ -133,6 +136,8 @@ impl FakeHost {
             rec: Mutex::new(Recorded::default()),
             open_ptys: Arc::new(Mutex::new(Vec::new())),
             helper_counter: AtomicUsize::new(0),
+            packages: false,
+            rootfs_full: false,
         }
     }
 
@@ -416,6 +421,34 @@ impl ToolHost for FakeHost {
 
     fn allowed_services(&self) -> Option<Vec<String>> {
         self.allowed.clone()
+    }
+
+    fn packages(&self) -> bool {
+        self.packages
+    }
+
+    fn rootfs_full(&self) -> bool {
+        self.rootfs_full
+    }
+
+    async fn apt_install(&self, packages: Vec<String>) -> ToolResult<AptOutput> {
+        self.rec.lock().unwrap().apt.push(packages.clone());
+        // Wie die Sitzung: Namen im Arbeitsstand vermerken (Commit macht das Werkzeug).
+        let dir = self.root.join("workspace/.mgpt");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("apt-packages"), packages.join("\n") + "\n").unwrap();
+        Ok(AptOutput {
+            code: Some(if packages.iter().any(|p| p == "fehlt") {
+                100
+            } else {
+                0
+            }),
+            timed_out: false,
+            output: format!(
+                "$ apt-get install\n\x1b[1mSetting up\x1b[0m {}\r\n",
+                packages.join(" ")
+            ),
+        })
     }
 }
 
@@ -1260,6 +1293,7 @@ async fn mcp_pipe_lists_and_calls_tools() {
     assert_eq!(
         names,
         [
+            "apt_install",
             "bash",
             "edit",
             "glob",
@@ -1341,4 +1375,93 @@ async fn mcp_tools_list_follows_welcome_services() {
         .collect();
     assert_eq!(names, vec![json!("read"), json!("bash")]);
     router.close_all().await;
+}
+
+// --- Paketquellen (apt_install) ------------------------------------------------------------
+
+#[tokio::test]
+async fn apt_install_only_in_packages_mode() {
+    let (_dir, host) = setup_dir();
+    let tools = SessionTools::new(Arc::new(host));
+    let err = call(&tools, "apt_install", json!({"packages": ["jq"]}))
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("Paketquellen"), "{err}");
+    assert!(tools.host.rec.lock().unwrap().apt.is_empty());
+}
+
+#[tokio::test]
+async fn apt_install_checks_names_and_commits() {
+    let (_dir, mut host) = setup_dir();
+    host.packages = true;
+    init(&host).await;
+    let tools = SessionTools::new(Arc::new(host));
+    for bad in [
+        json!({}),
+        json!({"packages": []}),
+        json!({"packages": "jq"}),
+        json!({"packages": ["-o", "jq"]}),
+        json!({"packages": ["jq; rm -rf /"]}),
+        json!({"packages": ["Jq"]}),
+        json!({"packages": ["jq=1.0"]}),
+        json!({"packages": ["../jq"]}),
+        json!({"packages": [1]}),
+        json!({"packages": (0..21).map(|i| format!("p{i}")).collect::<Vec<_>>()}),
+    ] {
+        let result = call(&tools, "apt_install", bad.clone()).await;
+        assert!(result.is_err(), "{bad} angenommen");
+    }
+    assert!(tools.host.rec.lock().unwrap().apt.is_empty());
+    let (text, structured) = call(
+        &tools,
+        "apt_install",
+        json!({"packages": ["jq", "libssl-dev", "jq", "g++"]}),
+    )
+    .await
+    .unwrap();
+    assert!(text.contains("Setting up jq libssl-dev g++"), "{text}");
+    assert!(!text.contains('\x1b'), "{text}");
+    assert!(text.contains("[Exit-Code 0]"), "{text}");
+    assert!(text.contains(".mgpt/apt-packages"), "{text}");
+    let structured = structured.unwrap();
+    assert_eq!(structured["packages"], json!(["jq", "libssl-dev", "g++"]));
+    let rec = tools.host.rec.lock().unwrap();
+    assert_eq!(rec.apt, vec![vec!["jq", "libssl-dev", "g++"]]);
+    assert_eq!(rec.saves, vec!["apt_install: jq libssl-dev jq g++"]);
+}
+
+#[tokio::test]
+async fn apt_install_failure_is_reported() {
+    let (_dir, mut host) = setup_dir();
+    host.packages = true;
+    let tools = SessionTools::new(Arc::new(host));
+    let (text, _) = call(&tools, "apt_install", json!({"packages": ["fehlt"]}))
+        .await
+        .unwrap();
+    assert!(text.contains("[Exit-Code 100]"), "{text}");
+    assert!(!text.contains("Installiert:"), "{text}");
+}
+
+#[tokio::test]
+async fn full_rootfs_blocks_writes_and_apt_but_not_bash() {
+    let (_dir, mut host) = setup_dir();
+    host.packages = true;
+    host.rootfs_full = true;
+    let tools = SessionTools::new(Arc::new(host));
+    for (name, args) in [
+        ("write", json!({"path": "a", "content": "x"})),
+        (
+            "edit",
+            json!({"path": "a", "old_string": "x", "new_string": "y"}),
+        ),
+        ("apt_install", json!({"packages": ["jq"]})),
+    ] {
+        let err = call(&tools, name, args).await.unwrap_err();
+        assert!(err.message.contains("Container-Schicht"), "{name}: {err}");
+    }
+    let (text, _) = call(&tools, "bash", json!({"command": "echo frei"}))
+        .await
+        .unwrap();
+    assert!(text.starts_with("frei"), "{text}");
+    assert!(tools.host.rec.lock().unwrap().apt.is_empty());
 }

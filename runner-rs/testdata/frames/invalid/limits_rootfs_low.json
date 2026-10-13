@@ -1,0 +1,19 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "limits": {
+   "cpus": 2,
+   "memory_mb": 2048,
+   "network": "packages",
+   "pids": 256,
+   "rootfs_mb": 63,
+   "tmpfs_mb": 512
+  },
+  "preview_port": 18080,
+  "session": "s1",
+  "state": "running",
+  "type": "session_state"
+ },
+ "note": "Grenze",
+ "sender": "agent"
+}

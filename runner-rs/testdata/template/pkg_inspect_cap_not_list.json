@@ -1,0 +1,58 @@
+{
+ "check": "inspect",
+ "config": {
+  "images": [
+   "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "max_cpus": 8.0,
+  "max_memory_mb": 16384,
+  "max_pids": 4096,
+  "max_tmpfs_mb": 8192,
+  "scratch_host_dir": null
+ },
+ "expect": "reject",
+ "expected": {
+  "cpus": 1.5,
+  "memory_mb": 512,
+  "network": "packages",
+  "pids": 256,
+  "tmpfs_mb": 128
+ },
+ "info": {
+  "Config": {
+   "User": "1000:1000"
+  },
+  "HostConfig": {
+   "Binds": [],
+   "CapAdd": "CAP_CHOWN",
+   "CpuPeriod": 100000,
+   "CpuQuota": 150000,
+   "Memory": 536870912,
+   "MemorySwap": 536870912,
+   "NetworkMode": "bridge",
+   "PidMode": "private",
+   "PidsLimit": 256,
+   "PortBindings": {
+    "8080/tcp": [
+     {
+      "HostIp": "127.0.0.1",
+      "HostPort": "18080"
+     }
+    ]
+   },
+   "Privileged": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": [
+    "no-new-privileges"
+   ],
+   "Tmpfs": {
+    "/tmp": "size=256m,mode=1777,nosuid,nodev,rw",
+    "/workspace": "size=128m,mode=0700,nosuid,nodev,rw"
+   }
+  },
+  "Mounts": []
+ },
+ "note": "Abweichung",
+ "preview_port": 18080,
+ "scratch_source": null
+}

@@ -39,7 +39,9 @@ def chat_state(request, pk: int):
     data = _json_body(request)
     if data is None:
         return _error("Ungültige Anfrage.", 400)
-    changes = {key: data[key] for key in ("workspace", "mode", "scratch_mode") if key in data}
+    changes = {
+        key: data[key] for key in ("workspace", "mode", "scratch_mode", "packages") if key in data
+    }
     for key in ("mode", "scratch_mode"):
         if key in changes and not isinstance(changes[key], str | type(None)):
             return _error("Unbekannter Modus.", 400)

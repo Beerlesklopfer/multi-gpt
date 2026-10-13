@@ -20,7 +20,7 @@
       <dt>Gestartet</dt><dd>{{ session.started|date:"d.m.Y H:i:s" }}</dd>
       <dt>Beendet</dt><dd>{% if session.ended %}{{ session.ended|date:"d.m.Y H:i:s" }}{% if session.stop_reason %} ({{ session.stop_reason }}){% endif %}{% else %}–{% endif %}</dd>
       <dt>Laufzeit</dt><dd>{{ session.minutes|minutes }}</dd>
-      <dt>Netz</dt><dd>{% if session.network %}an{% else %}aus{% endif %}</dd>
+      <dt>Netz</dt><dd>{% if session.network %}an{% elif session.packages %}nur Paketquellen (apt, pip, npm, GitHub, cargo){% else %}aus{% endif %}</dd>
       <dt>Rückfrage</dt><dd>{{ session.get_confirm_mode_display }}</dd>
     </dl>
 
@@ -30,6 +30,7 @@
         {% if terminal_allowed %}
           <button type="button" class="button" data-runner-terminal-open
                   data-pty-url="{% url 'runner:pty_stream' session.uuid %}"
+                  data-pty-ws-url="{{ pty_ws_url }}"
                   data-pty-input-template="{% url 'runner:pty_input' session.uuid 'PTY' %}"
                   data-pty-resize-template="{% url 'runner:pty_resize' session.uuid 'PTY' %}"
                   data-xterm-js="{% static 'chat/vendor/xterm/xterm.js' %}"

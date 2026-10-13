@@ -40,7 +40,26 @@ pub const TMP_MB: u64 = 256;
 pub const NOFILE: u64 = 4096;
 /// Vorschau-Ports am Rechner (Entscheidung 8x), nur an 127.0.0.1.
 pub const PREVIEW_PORTS: std::ops::Range<u64> = 18080..18090;
-pub const NETWORK_MODES: [&str; 3] = ["none", "allowlist", "default"];
+pub const NETWORK_MODES: [&str; 4] = ["none", "allowlist", "default", "packages"];
+/// Port des Proxys im Relay-Container (Netzmodus „Paketquellen“).
+pub const PROXY_PORT: u64 = 3128;
+/// Capabilities des Arbeitscontainers nur im Modus `packages` (apt als root im
+/// eigenen User-Namespace); Reihenfolge fest.
+pub const CAPS_PACKAGES: [&str; 6] = [
+    "CHOWN",
+    "DAC_OVERRIDE",
+    "FOWNER",
+    "FSETID",
+    "SETUID",
+    "SETGID",
+];
+/// Ziele ohne Proxy im Modus `packages`.
+pub const NO_PROXY: &str = "localhost,127.0.0.1,::1";
+/// Proxy-Variablen im Arbeitscontainer (alle mit derselben Adresse).
+pub const PROXY_ENV_KEYS: [&str; 4] = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"];
+pub const NO_PROXY_ENV_KEYS: [&str; 2] = ["NO_PROXY", "no_proxy"];
+/// Höchstzahl der Paket-Hosts (wie `protocol::MAX_PACKAGE_HOSTS`).
+pub const MAX_PACKAGE_HOSTS: usize = 50;
 
 /// Feste Umgebung im Container (keine Geheimnisse des Rechners).
 pub const ENV: [(&str, &str); 4] = [
@@ -63,6 +82,11 @@ pub static NETWORK_RE: LazyLock<Regex> =
 static TMPFS_OPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(size=\d+[kmg]?|mode=[0-7]{3,4}|nosuid|nodev|noexec|U)$").unwrap()
 });
+/// Paket-Host: DNS-Name ohne Port und ohne IP (Länge ≤ 253 extra geprüft).
+pub static PACKAGE_HOST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$").unwrap());
+static PROXY_URL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^http://\d{1,3}(\.\d{1,3}){3}:3128$").unwrap());
 static RELAY_TARGET_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}:\d{1,5}$").unwrap());
 pub static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -72,7 +96,7 @@ pub static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
 static IMAGE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$").unwrap());
 
-const ALLOWED_KEYS: [&str; 30] = [
+const ALLOWED_KEYS: [&str; 31] = [
     "name",
     "image",
     "command",
@@ -81,6 +105,7 @@ const ALLOWED_KEYS: [&str; 30] = [
     "hostname",
     "read_only_filesystem",
     "cap_drop",
+    "cap_add",
     "no_new_privileges",
     "privileged",
     "init",
@@ -109,7 +134,6 @@ const ALLOWED_KEYS: [&str; 30] = [
 fn fixed() -> Vec<(&'static str, Value)> {
     vec![
         ("user", json!(USER)),
-        ("read_only_filesystem", json!(true)),
         ("cap_drop", json!(["ALL"])),
         ("no_new_privileges", json!(true)),
         ("privileged", json!(false)),
@@ -132,6 +156,34 @@ pub fn keep_id() -> Value {
 
 pub fn env() -> Value {
     Value::Object(ENV.iter().map(|(k, v)| (k.to_string(), json!(v))).collect())
+}
+
+/// Umgebung im Modus `packages`: feste Umgebung plus Proxy des Relay-Containers.
+pub fn env_packages(proxy_url: &str) -> Value {
+    let mut env = env();
+    let map = env.as_object_mut().unwrap();
+    for key in PROXY_ENV_KEYS {
+        map.insert(key.into(), json!(proxy_url));
+    }
+    for key in NO_PROXY_ENV_KEYS {
+        map.insert(key.into(), json!(NO_PROXY));
+    }
+    env
+}
+
+/// Adresse des Proxys aus seiner IPv4 im Sitzungsnetz.
+pub fn proxy_url(ip: &str) -> Option<String> {
+    let url = format!("http://{ip}:{PROXY_PORT}");
+    is_proxy_url(&url).then_some(url)
+}
+
+fn is_proxy_url(url: &str) -> bool {
+    PROXY_URL_RE.is_match(url) && url[7..url.len() - 5].parse::<std::net::Ipv4Addr>().is_ok()
+}
+
+/// Paket-Host der signierten Liste (exakt, klein, ohne Port/IP).
+pub fn is_package_host(host: &str) -> bool {
+    host.len() <= 253 && PACKAGE_HOST_RE.is_match(host)
 }
 
 /// Befehl verletzt die feste Vorlage (wird nie ausgeführt).
@@ -205,17 +257,27 @@ pub struct Limits {
     pub pids: u64,
     pub tmpfs_mb: u64,
     pub network: String,
+    /// Grenze der beschreibbaren Schicht (MB), nur im Modus `packages`.
+    pub rootfs_mb: Option<u64>,
 }
 
 impl Limits {
     pub fn as_value(&self) -> Value {
-        json!({
+        let mut value = json!({
             "cpus": self.cpus,
             "memory_mb": self.memory_mb,
             "pids": self.pids,
             "tmpfs_mb": self.tmpfs_mb,
             "network": self.network,
-        })
+        });
+        if let Some(mb) = self.rootfs_mb {
+            value["rootfs_mb"] = json!(mb);
+        }
+        value
+    }
+
+    pub fn packages(&self) -> bool {
+        self.network == "packages"
     }
 
     pub fn from_value(value: &Value) -> Option<Self> {
@@ -225,6 +287,10 @@ impl Limits {
             pids: value.get("pids")?.as_u64()?,
             tmpfs_mb: value.get("tmpfs_mb")?.as_u64()?,
             network: value.get("network")?.as_str()?.to_string(),
+            rootfs_mb: match value.get("rootfs_mb") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_u64()?),
+            },
         })
     }
 }
@@ -334,6 +400,12 @@ pub fn check_limits(limits: &Limits, bounds: &Bounds) -> Res {
     expect(
         NETWORK_MODES.contains(&limits.network.as_str()),
         "Unbekannte Netzart.",
+    )?;
+    expect(
+        limits
+            .rootfs_mb
+            .is_none_or(|mb| (64..=1_048_576).contains(&mb)),
+        "Grenze der Container-Schicht außerhalb 64…1048576 MB.",
     )
 }
 
@@ -352,6 +424,9 @@ pub fn tmpfs(destination: &str, size_mb: u64, mode: &str, chown: bool) -> Value 
 
 fn base(name: &str, image: &str, labels: &BTreeMap<String, String>, limits: &Limits) -> Value {
     let memory = limits.memory_mb * 1024 * 1024;
+    // Dateigröße je Prozess: tmpfs-Größe; im Modus `packages` mindestens die Grenze
+    // der Schicht (große .deb-Dateien unter /var/cache/apt).
+    let fsize = limits.tmpfs_mb.max(limits.rootfs_mb.unwrap_or(0)) << 20;
     let mut body = json!({
         "name": name,
         "image": image,
@@ -364,7 +439,7 @@ fn base(name: &str, image: &str, labels: &BTreeMap<String, String>, limits: &Lim
         },
         "r_limits": [
             {"type": "nofile", "soft": NOFILE, "hard": NOFILE},
-            {"type": "fsize", "soft": limits.tmpfs_mb << 20, "hard": limits.tmpfs_mb << 20},
+            {"type": "fsize", "soft": fsize, "hard": fsize},
             {"type": "core", "soft": 0, "hard": 0},
         ],
         "env": env(),
@@ -374,6 +449,7 @@ fn base(name: &str, image: &str, labels: &BTreeMap<String, String>, limits: &Lim
     for (key, value) in fixed() {
         map.insert(key.to_string(), value);
     }
+    map.insert("read_only_filesystem".into(), json!(true));
     body
 }
 
@@ -418,7 +494,13 @@ pub fn spec_label(spec: &Value) -> String {
 }
 
 /// Arbeitscontainer: nur tmpfs `/workspace` und `/tmp` (plus `/scratch`), Netz nur über
-/// `network` (intern ohne Gateway bei „aus“ und Positivliste, mit Gateway bei „default“).
+/// `network` (intern ohne Gateway bei „aus“, Positivliste und Paketquellen, mit Gateway
+/// bei „default“).
+///
+/// Im Modus `packages` (und nur dort) ist die Vorlage gezielt gelockert: Wurzel-
+/// dateisystem beschreibbar (flüchtige Container-Schicht), Capabilities genau
+/// [`CAPS_PACKAGES`] (für `apt_install` als root), Proxy-Umgebung mit `proxy_url`.
+/// `no-new-privileges` und alles Übrige bleiben.
 #[allow(clippy::too_many_arguments)]
 pub fn work_body(
     session: &str,
@@ -429,6 +511,7 @@ pub fn work_body(
     preview_port: Option<u64>,
     spec: &Value,
     scratch: Option<&Scratch>,
+    proxy_url: Option<&str>,
 ) -> Value {
     let spec_text = spec_label(spec);
     let mut labels = labels_of(&[
@@ -453,6 +536,11 @@ pub fn work_body(
     map.insert("work_dir".into(), json!("/workspace"));
     map.insert("netns".into(), json!({"nsmode": "bridge"}));
     map.insert("Networks".into(), json!({ network: {} }));
+    if limits.packages() {
+        map.insert("read_only_filesystem".into(), json!(false));
+        map.insert("cap_add".into(), json!(CAPS_PACKAGES));
+        map.insert("env".into(), env_packages(proxy_url.unwrap_or("")));
+    }
     let mut mounts = vec![
         tmpfs("/workspace", limits.tmpfs_mb, "0700", true),
         tmpfs("/tmp", TMP_MB, "1777", false),
@@ -511,6 +599,40 @@ pub fn relay_body(session: &str, image: &str, targets: &[(String, u64)]) -> Valu
     body
 }
 
+/// Proxy-Container für Paketquellen: Rolle `relay`, am Sitzungsnetz (dort erreicht
+/// ihn der Arbeitscontainer) und am Ausgang. Nur die Hosts der signierten Liste.
+pub fn proxy_body(session: &str, image: &str, hosts: &[String]) -> Value {
+    let labels = labels_of(&[
+        (LABEL_RUNNER, "1"),
+        (LABEL_ROLE, "relay"),
+        (LABEL_SESSION, session),
+    ]);
+    let limits = helper_limits();
+    let mut body = base(
+        &container_name(session, "relay", None),
+        image,
+        &labels,
+        &limits,
+    );
+    let mut command = vec![
+        "mgpt-relay".to_string(),
+        "--proxy".to_string(),
+        PROXY_PORT.to_string(),
+    ];
+    command.extend(hosts.iter().cloned());
+    let map = body.as_object_mut().unwrap();
+    map.insert("command".into(), json!(command));
+    map.insert("work_dir".into(), json!("/"));
+    map.insert("use_image_resolve_conf".into(), json!(false));
+    map.insert("netns".into(), json!({"nsmode": "bridge"}));
+    map.insert(
+        "Networks".into(),
+        json!({ network_name(session, "net"): {}, network_name(session, "out"): {} }),
+    );
+    map.insert("mounts".into(), json!([tmpfs("/tmp", 16, "1777", false)]));
+    body
+}
+
 fn helper_limits() -> Limits {
     Limits {
         cpus: 0.5,
@@ -518,6 +640,7 @@ fn helper_limits() -> Limits {
         pids: 64,
         tmpfs_mb: 16,
         network: "allowlist".into(),
+        rootfs_mb: None,
     }
 }
 
@@ -550,6 +673,114 @@ pub fn tool_body(session: &str, call: &str, image: &str) -> Value {
     );
     map.insert("mounts".into(), json!([tmpfs("/tmp", 16, "0700", true)]));
     body
+}
+
+// --- Befehle als root (nur Modus `packages`) ------------------------------------------
+
+/// Debian-Paketname (wie das Schema von `apt_install`).
+pub static APT_PACKAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9+.-]{0,62}$").unwrap());
+/// Höchstzahl der Pakete je `apt_install`.
+pub const MAX_APT_PACKAGES: usize = 20;
+/// Höchstzahl der Pakete beim Nachinstallieren aus `.mgpt/apt-packages`.
+pub const MAX_APT_PACKAGES_TOTAL: usize = 200;
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+/// `apt-get update` (Paketlisten über den Proxy).
+pub fn apt_update_argv() -> Vec<String> {
+    strings(&["apt-get", "-q", "update"])
+}
+
+const APT_INSTALL_HEAD: [&str; 9] = [
+    "apt-get",
+    "-q",
+    "-y",
+    "--no-install-recommends",
+    "-o",
+    "Dpkg::Options::=--force-confdef",
+    "-o",
+    "Dpkg::Options::=--force-confold",
+    "install",
+];
+
+/// `apt-get install -y --no-install-recommends -- <pakete>` (Namen geprüft).
+pub fn apt_install_argv(packages: &[String]) -> Res<Vec<String>> {
+    expect(
+        !packages.is_empty() && packages.len() <= MAX_APT_PACKAGES_TOTAL,
+        "Paketliste leer oder zu lang.",
+    )?;
+    for name in packages {
+        expect(
+            APT_PACKAGE_RE.is_match(name),
+            format!("Ungültiger Paketname: {name}"),
+        )?;
+    }
+    let mut argv = strings(&APT_INSTALL_HEAD);
+    argv.push("--".into());
+    argv.extend(packages.iter().cloned());
+    Ok(argv)
+}
+
+/// setuid-/setgid-Bits nach der Installation entfernen (keine solchen Programme
+/// für Nutzer 1000; `no-new-privileges` wirkt zusätzlich).
+pub fn strip_setuid_argv() -> Vec<String> {
+    strings(&[
+        "find", "/", "-xdev", "-type", "f", "-perm", "/6000", "-exec", "chmod", "a-s", "{}", "+",
+    ])
+}
+
+/// Befehl für Nutzer 1000 ohne ambient- und vererbbare Capabilities (Podman setzt
+/// `cap_add` sonst auch für Nicht-root-Nutzer als ambient; betrifft den Modus
+/// `packages`, schadet ohne `cap_add` nicht). `setpriv` stammt aus util-linux.
+pub fn drop_caps_argv(argv: &[String]) -> Vec<String> {
+    let mut out = strings(&["setpriv", "--inh-caps=-all", "--ambient-caps=-all", "--"]);
+    out.extend(argv.iter().cloned());
+    out
+}
+
+/// Höchstes Zeitlimit eines root-Befehls (Sekunden).
+pub const ROOT_TIMEOUT_MAX: u64 = 900;
+
+/// Befehl als root mit `timeout` umschließen: endet das Zeitlimit des Agents, endet
+/// auch der Prozess im Container (ein abgebrochener exec liefe sonst weiter).
+pub fn with_timeout(argv: &[String], seconds: u64) -> Vec<String> {
+    let mut out = strings(&["timeout", "-k", "5"]);
+    out.push(seconds.clamp(1, ROOT_TIMEOUT_MAX).to_string());
+    out.extend(argv.iter().cloned());
+    out
+}
+
+/// Nur diese festen Befehle laufen als root (Prüfung in jeder Engine vor `exec`),
+/// wahlweise mit vorangestelltem `timeout -k 5 <1…900>`.
+pub fn check_root_argv(argv: &[String]) -> Res {
+    if argv.len() > 4 && argv[..3] == strings(&["timeout", "-k", "5"]) {
+        let ok = argv[3].len() <= 3
+            && argv[3].bytes().all(|b| b.is_ascii_digit())
+            && argv[3]
+                .parse::<u64>()
+                .is_ok_and(|s| (1..=ROOT_TIMEOUT_MAX).contains(&s));
+        expect(ok, "Befehl als root nicht erlaubt.")?;
+        return check_plain_root_argv(&argv[4..]);
+    }
+    check_plain_root_argv(argv)
+}
+
+fn check_plain_root_argv(argv: &[String]) -> Res {
+    if argv == apt_update_argv().as_slice() || argv == strip_setuid_argv().as_slice() {
+        return Ok(());
+    }
+    let head = APT_INSTALL_HEAD.len();
+    let ok = argv.len() > head + 1
+        && argv[..head]
+            .iter()
+            .zip(APT_INSTALL_HEAD)
+            .all(|(a, b)| a == b)
+        && argv[head] == "--"
+        && apt_install_argv(&argv[head + 1..]).is_ok();
+    expect(ok, "Befehl als root nicht erlaubt.")
 }
 
 // --- Prüfung ---------------------------------------------------------------------
@@ -778,10 +1009,31 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
         None,
         &bounds.images,
     )?;
-    expect(
-        map.get("env") == Some(&env()),
-        "Umgebung weicht von der Vorlage ab.",
-    )?;
+    // Gelockerte Vorlage nur für den Arbeitscontainer im Modus `packages`.
+    if role == Role::Work && label(LABEL_NETWORK) == Some("packages") {
+        expect(
+            map.get("read_only_filesystem") == Some(&json!(false)),
+            "Option read_only_filesystem weicht von der Vorlage ab.",
+        )?;
+        expect(
+            map.get("cap_add") == Some(&json!(CAPS_PACKAGES)),
+            "Capabilities weichen von der Vorlage ab.",
+        )?;
+        check_packages_env(map.get("env"))?;
+    } else {
+        expect(
+            map.get("read_only_filesystem") == Some(&json!(true)),
+            "Option read_only_filesystem weicht von der Vorlage ab.",
+        )?;
+        expect(
+            !map.contains_key("cap_add"),
+            "Capabilities nur im Modus Paketquellen.",
+        )?;
+        expect(
+            map.get("env") == Some(&env()),
+            "Umgebung weicht von der Vorlage ab.",
+        )?;
+    }
     let resolv = map.get("use_image_resolve_conf").and_then(Value::as_bool);
     expect(resolv.is_some(), "use_image_resolve_conf fehlt.")?;
     if role == Role::Work && label(LABEL_NETWORK) != Some("default") {
@@ -828,8 +1080,9 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
             )?;
             expect(networks.len() == 1, "Arbeitscontainer nur an einem Netz.")?;
             expect(
-                networks.keys().next().unwrap().starts_with("mgpt-net-"),
-                "Arbeitscontainer nur am Sitzungsnetz.",
+                networks.keys().next().map(String::as_str)
+                    == Some(network_name(session, "net").as_str()),
+                "Arbeitscontainer nur am eigenen Sitzungsnetz.",
             )?;
             expect(
                 port_list.is_some_and(|p| p.len() <= 1),
@@ -872,30 +1125,47 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
         }
         Role::Relay => {
             let command = map.get("command").and_then(Value::as_array);
-            let ok = command.is_some_and(|c| {
+            let shape = |c: &[Value], flag: &str, port: u64, ok: &dyn Fn(&str) -> bool| {
                 c.len() >= 4
                     && c.len() <= 53
-                    && c[..3]
-                        == [
-                            json!("mgpt-relay"),
-                            json!("--base"),
-                            json!(RELAY_BASE_PORT.to_string()),
-                        ]
-                    && c[3..]
-                        .iter()
-                        .all(|t| t.as_str().is_some_and(|s| RELAY_TARGET_RE.is_match(s)))
+                    && c[..3] == [json!("mgpt-relay"), json!(flag), json!(port.to_string())]
+                    && c[3..].iter().all(|t| t.as_str().is_some_and(ok))
+            };
+            let relay = command.is_some_and(|c| {
+                shape(c, "--base", RELAY_BASE_PORT, &|s| {
+                    RELAY_TARGET_RE.is_match(s)
+                })
             });
-            expect(ok, "Relay-Befehl weicht ab.")?;
+            let proxy = command.is_some_and(|c| shape(c, "--proxy", PROXY_PORT, &is_package_host));
+            expect(relay || proxy, "Relay-Befehl weicht ab.")?;
             expect(port_list.is_some_and(Vec::is_empty), "Relay ohne Ports.")?;
-            let rel = network_name(session, "rel");
+            let inner = network_name(session, if proxy { "net" } else { "rel" });
             let out = network_name(session, "out");
             expect(
-                net_names == BTreeSet::from([rel.as_str(), out.as_str()]),
-                "Relay nur an Relay-Netz und Ausgang.",
+                net_names == BTreeSet::from([inner.as_str(), out.as_str()]),
+                if proxy {
+                    "Proxy nur an Sitzungsnetz und Ausgang."
+                } else {
+                    "Relay nur an Relay-Netz und Ausgang."
+                },
             )?;
         }
     }
     Ok(role)
+}
+
+/// Umgebung des Arbeitscontainers im Modus `packages`: feste Umgebung plus genau
+/// die Proxy-Variablen (alle dieselbe Adresse) und `NO_PROXY`.
+fn check_packages_env(env_value: Option<&Value>) -> Res {
+    let map = env_value.and_then(Value::as_object);
+    expect(map.is_some(), "Umgebung weicht von der Vorlage ab.")?;
+    let map = map.unwrap();
+    let url = map.get("HTTP_PROXY").and_then(Value::as_str).unwrap_or("");
+    expect(is_proxy_url(url), "Proxy-Adresse ungültig.")?;
+    expect(
+        Some(&env_packages(url)) == env_value,
+        "Umgebung weicht von der Vorlage ab.",
+    )
 }
 
 pub fn network_body(name: &str, internal: bool, labels: &BTreeMap<String, String>) -> Value {
@@ -993,6 +1263,7 @@ pub fn actual_limits(info: &Value, network: &str) -> Limits {
         pids: int_of(host.get("PidsLimit")).max(0) as u64,
         tmpfs_mb: tmpfs_mb(tmpfs).unwrap_or(0),
         network: network.to_string(),
+        rootfs_mb: None,
     }
 }
 
@@ -1059,10 +1330,25 @@ pub fn check_inspect(
     if truthy(&host["Privileged"]) {
         problems.push("privilegiert".into());
     }
-    if !truthy(&host["ReadonlyRootfs"]) {
+    let packages = expected.packages();
+    if !packages && !truthy(&host["ReadonlyRootfs"]) {
         problems.push("Wurzeldateisystem beschreibbar".into());
     }
-    if truthy(&host["CapAdd"]) {
+    if packages {
+        // Nur die Capabilities der gelockerten Vorlage (Schreibweise wie inspect).
+        let foreign = match &host["CapAdd"] {
+            Value::Null => false,
+            Value::Array(caps) => caps.iter().any(|cap| {
+                let name = cap.as_str().unwrap_or("").to_ascii_uppercase();
+                let name = name.strip_prefix("CAP_").unwrap_or(&name);
+                !CAPS_PACKAGES.contains(&name)
+            }),
+            _ => true,
+        };
+        if foreign {
+            problems.push("zusätzliche Capabilities".into());
+        }
+    } else if truthy(&host["CapAdd"]) {
         problems.push("zusätzliche Capabilities".into());
     }
     let secopt = host["SecurityOpt"].as_array();

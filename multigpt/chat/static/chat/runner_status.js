@@ -65,6 +65,13 @@
           note.textContent = "API-Key";
           name.append(" ", note);
         }
+        if (s.packages) {
+          const note = document.createElement("span");
+          note.className = "usage-provider";
+          note.textContent = "Paketquellen";
+          note.title = "Paketquellen erlaubt (apt, pip, npm, GitHub, cargo über Proxy)";
+          name.append(" ", note);
+        }
         const state = document.createElement("td");
         const badge = document.createElement("span");
         badge.className = `runner-state runner-state-${s.status}`;

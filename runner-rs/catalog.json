@@ -167,6 +167,30 @@
       }
     },
     {
+      "name": "apt_install",
+      "kind": "command",
+      "description": "Installiert Debian-Pakete mit apt im Container (nur im Netzmodus „Paketquellen“, als root mit fester Befehlszeile: apt-get update bei Bedarf, dann apt-get install -y --no-install-recommends). Die Namen stehen danach in .mgpt/apt-packages und werden beim nächsten Sitzungsstart automatisch nachinstalliert. pip, npm und cargo laufen über bash und installieren nach /workspace (.venv, node_modules, target – stehen in .gitignore).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9+.-]{0,62}$"
+            },
+            "description": "Debian-Paketnamen."
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "serve",
       "kind": "command",
       "description": "Startet die Vorschau: ein statischer HTTP-Server liefert ein Verzeichnis des Arbeitsstands aus (HTML, JS, CSS, Bilder; keine serverseitige Ausführung). Liefert die Vorschau-Adresse für den Nutzer.",

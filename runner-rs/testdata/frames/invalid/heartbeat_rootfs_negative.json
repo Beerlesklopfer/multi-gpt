@@ -1,0 +1,15 @@
+{
+ "close_code": 4400,
+ "frame": {
+  "sessions": [
+   {
+    "rootfs_used_mb": -1,
+    "session": "s1",
+    "state": "running"
+   }
+  ],
+  "type": "heartbeat"
+ },
+ "note": "Grenze",
+ "sender": "agent"
+}

@@ -303,12 +303,44 @@ def heartbeat(runner_id: int, token_id: int, sessions: list[dict]) -> Beat:
         if state != session.status and state in RunnerSession.Status.values:
             session.status = state
             session.save(update_fields=["status"])
+        if _rootfs_exceeded(session, item.get("rootfs_used_mb")):
+            beat.frames.append(
+                {"type": "session_stop", "session": item["session"], "reason": "mismatch"}
+            )
+            continue
         if runtime is not None:
             try:
                 runtime.record_heartbeat(session, running=state == "running", now=now)
             except Exception:
                 logger.exception("Laufzeit der Runner-Sitzung %s nicht gebucht", session.pk)
     return beat
+
+
+def _rootfs_exceeded(session: RunnerSession, used_mb) -> bool:
+    """Gemessene Container-Schicht (Paketquellen) merken; über der Grenze der
+    Rolle: Audit und Stopp vormerken (``True``)."""
+    if used_mb is None:
+        return False
+    actual = dict(session.limits_actual or {})
+    if actual.get("rootfs_used_mb") != used_mb:
+        actual["rootfs_used_mb"] = used_mb
+        session.limits_actual = actual
+        session.save(update_fields=["limits_actual"])
+    limit = (session.limits_requested or {}).get("rootfs_mb")
+    if limit is None or used_mb <= limit or session.status == RunnerSession.Status.STOPPING:
+        return False
+    message = f"Container-Schicht {used_mb} MB über der Grenze {limit} MB"
+    _audit(
+        RunnerAudit.Kind.LIMITS,
+        owner=session.owner,
+        session=session,
+        runner=session.runner,
+        message=message,
+    )
+    session.status = RunnerSession.Status.STOPPING
+    session.stop_reason = message
+    session.save(update_fields=["status", "stop_reason"])
+    return True
 
 
 # --- Nachrichten ---------------------------------------------------------------------
@@ -404,15 +436,22 @@ def still_running(runner_id: int, session_ids: list[str]) -> bool:
 def _limits_mismatch(requested: dict, actual: dict | None) -> list[str]:
     """Abweichungen der Ist- von den Soll-Grenzen (``limits.mismatches``).
 
-    Im Protokoll ist ``network`` ein Modus (``none``/``allowlist``/``default``),
-    in den Soll-Grenzen ein Wahrheitswert (Netz an/aus). Die Positivliste
-    (``allowlist``, nur freigegebene Hosts über das Relay, 8w) ist kein freies Netz.
+    Im Protokoll ist ``network`` ein Modus (``none``/``allowlist``/``default``/
+    ``packages``), in den Soll-Grenzen sind es zwei Wahrheitswerte: ``network``
+    (freies Netz) und ``packages`` (Paketquellen über den Proxy). Die Positivliste
+    (``allowlist``, nur freigegebene Hosts über das Relay, 8w) und die
+    Paketquellen sind kein freies Netz; Paketquellen ohne Soll sind eine
+    Abweichung (beschreibbare Schicht, Proxy).
     """
     if not actual or not requested:
         return []
     actual = dict(actual)
-    if isinstance(actual.get("network"), str):
-        actual["network"] = actual["network"] == "default"
+    mode = actual.get("network")
+    if isinstance(mode, str):
+        actual["network"] = mode == "default"
+        actual["packages"] = mode == "packages"
+    else:
+        actual.setdefault("packages", False)
     return limits.mismatches(requested, actual)
 
 

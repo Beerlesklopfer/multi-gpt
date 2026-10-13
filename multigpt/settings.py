@@ -306,3 +306,27 @@ RUNNER_ACCEPT_UNSIGNED = env.bool("RUNNER_ACCEPT_UNSIGNED", default=False)
 # Adresse von MultiGPT, unter der Zielsysteme den Server erreichen (Werkzeug
 # setup_host); leer: erster https-Eintrag aus CSRF_TRUSTED_ORIGINS.
 RUNNER_PUBLIC_URL = env("RUNNER_PUBLIC_URL", default="")
+# Terminal im Browser: Adresse des Runner-Dienstes für den direkten WebSocket
+# (/runner/pty/<uuid>). Leer: dieselbe Origin (nginx leitet /runner/pty/ weiter).
+# Entwicklung (runserver :8000, Dienst :8001): z. B. http://192.168.24.250:8001 –
+# die Origin der Seite muss dann in CSRF_TRUSTED_ORIGINS stehen. "off": nur der
+# alte Weg (SSE + POST).
+RUNNER_BROWSER_WS_URL = env("RUNNER_BROWSER_WS_URL", default="")
+# Netzmodus „Paketquellen“ (Rollenrecht runner_packages): nur diese Hosts erreicht
+# der Container über den Proxy im Relay (GET Port 80, CONNECT 443), signiert im
+# session_start. Ungültige Einträge (IP, Port, Joker) lässt der Server weg.
+RUNNER_PACKAGE_HOSTS = env.list(
+    "RUNNER_PACKAGE_HOSTS",
+    default=[
+        "deb.debian.org",
+        "security.debian.org",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "registry.npmjs.org",
+        "github.com",
+        "codeload.github.com",
+        "objects.githubusercontent.com",
+        "index.crates.io",
+        "static.crates.io",
+    ],
+)

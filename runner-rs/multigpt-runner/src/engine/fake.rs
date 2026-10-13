@@ -59,6 +59,11 @@ pub struct FakeState {
     /// Programm (z. B. `ssh`) durch ein Shell-Skript ersetzen; argv bleibt in `calls`.
     pub fake_commands: HashMap<String, String>,
     pub calls: Vec<(String, Vec<String>)>,
+    /// Befehle als root (nur geprüfte apt-Befehle); laufen im Test nicht wirklich,
+    /// außer `fake_commands` ersetzt das Programm.
+    pub root_calls: Vec<(String, Vec<String>)>,
+    /// Name → Größe der beschreibbaren Schicht (Byte) für `container_size`.
+    pub sizes: HashMap<String, u64>,
 }
 
 pub struct FakeEngine {
@@ -386,7 +391,7 @@ impl Engine for FakeEngine {
             "Tmpfs": tmpfs,
             "ReadonlyRootfs": body["read_only_filesystem"],
             "Privileged": body["privileged"],
-            "CapAdd": [],
+            "CapAdd": body.get("cap_add").cloned().unwrap_or(json!([])),
             "SecurityOpt": if body["no_new_privileges"] == json!(true) { json!(["no-new-privileges"]) } else { json!([]) },
             "NetworkMode": "bridge",
             "PidMode": "private",
@@ -405,7 +410,14 @@ impl Engine for FakeEngine {
             .as_object()
             .into_iter()
             .flatten()
-            .map(|(k, _)| (k.clone(), json!({})))
+            .map(|(k, _)| {
+                // Feste IPv4 je Netz und Container (wie Podman, ohne echtes Netz).
+                let n = |text: &str| {
+                    u8::from_str_radix(&template::short_id(text)[..2], 16).unwrap_or(0)
+                };
+                let ip = format!("10.89.{}.{}", n(k) % 250, n(name) % 250 + 2);
+                (k.clone(), json!({"IPAddress": ip}))
+            })
             .collect();
         Ok(json!({
             "Name": name,
@@ -418,6 +430,11 @@ impl Engine for FakeEngine {
             },
             "NetworkSettings": {"Networks": networks},
         }))
+    }
+
+    async fn container_size(&self, name: &str) -> EngineResult<u64> {
+        self.get(name)?;
+        Ok(self.state().sizes.get(name).copied().unwrap_or(0))
     }
 
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>> {
@@ -439,6 +456,33 @@ impl Engine for FakeEngine {
         argv: &[String],
         opts: ExecOptions,
     ) -> EngineResult<ExecResult> {
+        if opts.root {
+            template::check_root_argv(argv)?;
+            let fake = self.get(name)?;
+            if fake.body["read_only_filesystem"] != json!(false) {
+                return Err(EngineError::new("Wurzeldateisystem schreibgeschützt."));
+            }
+            // `timeout -k 5 N` des Agents nicht mitschreiben (Tests vergleichen die apt-argv).
+            let plain = if argv.first().map(String::as_str) == Some("timeout") {
+                &argv[4..]
+            } else {
+                argv
+            };
+            let replaced = {
+                let mut state = self.state();
+                state.root_calls.push((name.to_string(), plain.to_vec()));
+                plain
+                    .first()
+                    .and_then(|p| state.fake_commands.get(p).cloned())
+            };
+            if replaced.is_none() {
+                return Ok(ExecResult {
+                    code: Some(0),
+                    stdout: b"(root im Test)\n".to_vec(),
+                    ..ExecResult::default()
+                });
+            }
+        }
         let (argv, env, cwd) = self.local(name, argv, &opts.workdir)?;
         let mut cmd = Self::command(&argv, &env, &cwd)?;
         cmd.stdin(if opts.stdin.is_some() {
