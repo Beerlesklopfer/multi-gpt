@@ -510,6 +510,8 @@ Im Scratchpad sammelt der Nutzer Material aus sehr unterschiedlichen Quellen. Da
 
 Der Runner ist ein Container auf dem Rechner, an dem der Browser läuft (PC oder Laptop im Heimnetz), nicht auf dem Server. Er gibt den Modellen eine Arbeitsumgebung mit Shell, Dateien, git und Python. Der MultiGPT-Webserver verwaltet ihn. Plan 8i beschreibt den Ablauf.
 
+**Grundsatz (Nutzer, 2026-10-13):** M14 ist der nächste Schritt. Das LLM ist im Container eingesperrt und arbeitet nur dort; der Container exportiert nur fest vorgegebene Ports (keine, die Modell oder Nutzer frei wählen). Welche Ports das sind, legt Frage 8x fest.
+
 **Entscheidung des Nutzers vom 2026-10-13 (ersetzt „Sitzung = eigenes Volume“, Sicherung per `volume export` und die Größenprüfung der Volumes):** Der Runner ist das Coding-Werkzeug von MultiGPT. Anlass war Chat 17 der Produktion: Ein Modell hat HTML/JS-Code als PDF abgelegt, weil es kein Werkzeug für Code-Dateien gab. Ein eigenes `write_files` auf dem Server entfällt dafür.
 
 - **Arbeitsstand als git-Bundle in der Datenbank:** Neues Modell `RunnerWorkspace` (Besitzer, Name, Zuordnung zum Chat, `bundle` als BLOB/`BinaryField`, Größe, letzter Commit, geändert). Das Bundle enthält alle Refs (`git bundle create … --all`) und damit die ganze Historie. Damit ist jeder Stand zurückholbar, und die Datensicherung der Datenbank sichert die Arbeitsstände mit.
@@ -549,6 +551,7 @@ Werkzeuge im Stil von Claude Code: `read` (mit Zeilenbereich), `write`, `edit` (
 
 1. **8v – Host-Schlüssel bei SSH:** Empfehlung: beim Anlegen des Hosts einmal abrufen, dem Verwalter zur Bestätigung zeigen und festhalten. Weicht er später ab, wird abgebrochen.
 2. **8w – Netz des Containers:** Empfehlung: Mit `ssh`/`telnet` erreicht der Container nur die freigegebenen Hosts. Der Agent setzt dafür eine Positivliste (Adresse und Port), sonst bleibt das Netz aus. Damit ist „Netz an“ (8l) für diese Werkzeuge nicht nötig.
+3. **8x – Welche Ports exportiert der Container, und wohin?** Empfehlung: genau einer, der HTTP-Server der Vorschau (8p) auf Port 8080 im Container, gebunden nur an `127.0.0.1` des Browser-Rechners auf einen festen Port je Sitzung aus einem kleinen Bereich (z. B. 18080–18089); das Terminal (PTY) läuft über den Rückkanal, ohne Port.
 
 **Festlegungen:**
 
