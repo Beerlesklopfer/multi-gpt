@@ -282,7 +282,11 @@ def test_todo_is_server_side_and_visible(client, conversation, server, scripted,
 
 def test_busy_workspace(client, adult, conversation, workspace, server, scripted, link):
     other = RunnerSession.objects.create(
-        owner=adult, workspace=workspace, status=RunnerSession.Status.RUNNING, network=True
+        owner=adult,
+        workspace=workspace,
+        status=RunnerSession.Status.RUNNING,
+        network=True,
+        limits_requested={"image": runner_chat._work_image()},  # nur das Netz weicht ab
     )
     RunnerWorkspace.objects.filter(pk=workspace.pk).update(active_session=other)
     scripted([tool_round(call(tname(server, "bash"), {"command": "ls"}, "c1")), answer()])
@@ -636,3 +640,19 @@ def test_set_scratch_mode_only_without_session(adult, conversation, workspace):
     RunnerWorkspace.objects.filter(pk=workspace.pk).update(active_session=session)
     with pytest.raises(ValueError):
         runner_chat.set_state(adult, conversation, scratch_mode="container")
+
+
+def test_running_session_is_not_reused_after_image_change(settings):
+    """Befund 2026-10-14: Die laufende Sitzung blieb nach einem Wechsel des Arbeits-Images
+    bestehen; die Werkzeuge liefen weiter im alten Container."""
+    from multigpt.runner import chat as runner_chat
+
+    class Session:
+        limits_requested = {"image": "ghcr.io/x/work@sha256:" + "a" * 64}
+
+    settings.RUNNER_WORK_IMAGE = "ghcr.io/x/work@sha256:" + "a" * 64
+    assert runner_chat._same_image(Session())
+    settings.RUNNER_WORK_IMAGE = "ghcr.io/x/work@sha256:" + "b" * 64
+    assert not runner_chat._same_image(Session())
+    Session.limits_requested = {}  # Sitzung aus der Zeit vor dieser Änderung
+    assert not runner_chat._same_image(Session())

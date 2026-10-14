@@ -77,6 +77,10 @@ EVENT_SESSION = "runner_session"
 
 MSG_NO_WORKSPACE = "Für diesen Chat ist kein Arbeitsstand gewählt."
 MSG_NO_RUNNER = "Kein Runner verbunden. Bitte den Runner auf dem Rechner starten (Seite „Runner“)."
+MSG_IMAGE_CHANGED = (
+    "Die laufende Runner-Sitzung nutzt ein anderes Arbeits-Image als jetzt eingestellt und wird "
+    "beendet. Bitte gleich noch einmal versuchen."
+)
 MSG_BUSY = (
     "Der Arbeitsstand wird gerade in einer anderen Sitzung benutzt. Bitte diese zuerst beenden."
 )
@@ -417,11 +421,21 @@ def pipe_for(session: RunnerSession) -> str:
     return str(uuid.uuid5(_PROCESS_SALT, str(session.uuid)))
 
 
+def _work_image() -> str:
+    return getattr(settings, "RUNNER_WORK_IMAGE", "") or ""
+
+
+def _same_image(session: RunnerSession) -> bool:
+    """Läuft die Sitzung mit dem Arbeits-Image, das der Server jetzt vorgibt?"""
+    return (session.limits_requested or {}).get("image", "") == _work_image()
+
+
 def _usable(session: RunnerSession | None, ctx: RunnerContext) -> bool:
     return (
         session is not None
         and session.is_active
         and session.status != RunnerSession.Status.STOPPING
+        and _same_image(session)
         and session.owner_id == ctx.user.pk
         and session.workspace_id == ctx.workspace.pk
         and session.network == ctx.network
@@ -535,6 +549,17 @@ def ensure_session(ctx: RunnerContext) -> RunnerSession:
         session = _wait_running(current)
         _remember(ctx, session)
         return session
+    if (
+        current is not None
+        and current.is_active
+        and current.status != RunnerSession.Status.STOPPING
+        and not _same_image(current)
+    ):
+        # Eingestelltes Arbeits-Image gewechselt: alte Sitzung beenden, nicht weiterverwenden.
+        from . import control
+
+        control.stop_session(current.uuid, "replaced")
+        raise RunnerUnavailable(MSG_IMAGE_CHANGED)
     if current is not None and current.is_active:
         raise RunnerUnavailable(MSG_BUSY)
     runner = _online_runner(ctx.user)
@@ -548,6 +573,7 @@ def ensure_session(ctx: RunnerContext) -> RunnerSession:
     except ImportError:  # Kontingent (M14-11) noch nicht installiert
         pass
     limits = session_limits(ctx.user, via_api_key=ctx.via_api_key, workspace=workspace)
+    limits = {**limits, "image": _work_image()}  # für die Wiederverwendung (_usable)
     if limits.get("packages") and not (
         ctx.packages and tools.APT_INSTALL in (runner.services or ()) and package_hosts()
     ):
