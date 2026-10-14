@@ -43,7 +43,7 @@
    "nsmode": "private"
   },
   "labels": {
-   "multigpt.preview_port": "18080",
+   "multigpt.preview_port": "10080",
    "multigpt.role": "work",
    "multigpt.runner": "1",
    "multigpt.session": "42",
@@ -86,8 +86,14 @@
   "portmappings": [
    {
     "container_port": 8080,
-    "host_ip": "127.0.0.1",
-    "host_port": 18080,
+    "host_ip": "0.0.0.0",
+    "host_port": 10080,
+    "protocol": "tcp"
+   },
+   {
+    "container_port": 8443,
+    "host_ip": "0.0.0.0",
+    "host_port": 10443,
     "protocol": "tcp"
    }
   ],
@@ -134,6 +140,7 @@
  },
  "check": "body",
  "config": {
+  "expose_bind": "0.0.0.0",
   "images": [
    "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],

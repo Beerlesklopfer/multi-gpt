@@ -1,6 +1,7 @@
 {
  "check": "inspect",
  "config": {
+  "expose_bind": "0.0.0.0",
   "images": [
    "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
@@ -37,8 +38,14 @@
    "PortBindings": {
     "8080/tcp": [
      {
-      "HostIp": "127.0.0.1",
-      "HostPort": "18080"
+      "HostIp": "0.0.0.0",
+      "HostPort": "10080"
+     }
+    ],
+    "8443/tcp": [
+     {
+      "HostIp": "0.0.0.0",
+      "HostPort": "10443"
      }
     ]
    },
@@ -55,6 +62,6 @@
   "Mounts": []
  },
  "note": "Abweichung",
- "preview_port": 18080,
+ "preview_port": 10080,
  "scratch_source": null
 }

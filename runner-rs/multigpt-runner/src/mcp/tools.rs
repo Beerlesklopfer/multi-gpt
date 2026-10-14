@@ -640,9 +640,12 @@ impl<H: ToolHost> SessionTools<H> {
     async fn tool_serve(&self, args: &Map<String, Value>) -> ToolResult<Outcome> {
         let info = self.host.start_preview(arg_opt_str(args, "path")?).await?;
         let url = info.get("url").and_then(Value::as_str).unwrap_or("");
+        let port = info.get("port").and_then(Value::as_u64).unwrap_or(10080);
         let text = format!(
-            "Vorschau läuft: {url}\nNur statische Dateien; Verzeichnisse liefern index.html, \
-             keine Listen."
+            "Vorschau läuft: {url}\nIm Heimnetz erreichbar unter http://<Rechner>:{port}/ und \
+             https://<Rechner>:{tls}/ (selbst signiertes Zertifikat); jeder im Netz kann es \
+             sehen.\nNur statische Dateien; Verzeichnisse liefern index.html, keine Listen.",
+            tls = port + 363
         );
         Ok((text, Some(info)))
     }

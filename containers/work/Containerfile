@@ -74,6 +74,7 @@ COPY --chmod=0755 runner_agent/mgpt_fs.py /usr/local/bin/mgpt-fs
 COPY --chmod=0755 runner_agent/mgpt_lighttpd.py /usr/local/bin/mgpt-serve
 COPY --chmod=0755 runner_agent/mgpt_relay.py /usr/local/bin/mgpt-relay
 
+
 # apt über den Proxy: kein Pipelining (der Proxy leitet je Verbindung genau eine
 # geprüfte GET-Anfrage weiter), wenige Wiederholungen, keine empfohlenen Pakete.
 RUN printf '%s\n' \
@@ -96,6 +97,14 @@ RUN groupadd --gid 1000 mgpt \
     && git config --system advice.detachedHead false \
     && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
     && python3 -c 'import sys; assert sys.version_info >= (3, 11)'
+
+# lighttpd als Nutzer 1000: Die Debian-Standardkonfiguration lauscht auf Port 80, wechselt
+# zu www-data und schreibt nach /var/log – nichts davon geht ohne Rechte. Stattdessen
+# liegt eine fertige Konfiguration bereit (statisch, /workspace, Port 8080), mit der
+# `lighttpd -D -f /etc/lighttpd/lighttpd.conf` direkt läuft; mit https und Zertifikat
+# startet `mgpt-serve`.
+RUN python3 /usr/local/bin/mgpt-serve --print-config --dir . > /etc/lighttpd/lighttpd.conf \
+    && /usr/sbin/lighttpd -tt -f /etc/lighttpd/lighttpd.conf
 
 # pip: Das System ist „externally managed“ (PEP 668) und schreibgeschützt;
 # --user bzw. ein venv im Arbeitsbereich sind erlaubt.

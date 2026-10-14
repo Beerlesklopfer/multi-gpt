@@ -89,7 +89,7 @@ EXAMPLES = {
                 "tmpfs_mb": 512,
                 "network": "none",
             },
-            "preview_port": 18080,
+            "preview_port": 10080,
         },
     ),
     "session_stop": (P.SERVER, {"session": "s1", "reason": "idle"}),
@@ -140,7 +140,7 @@ EXAMPLES = {
         {"session": "s1", "pty": "t1", "seq": 0, "data": P.b64encode(b"\x1b[0m$ ")},
     ),
     "pty_exit": (P.AGENT, {"session": "s1", "pty": "t1", "code": 0}),
-    "preview": (P.AGENT, {"session": "s1", "running": True, "port": 18081, "token": "z" * 32}),
+    "preview": (P.AGENT, {"session": "s1", "running": True, "port": 10081, "token": "z" * 32}),
     "preview_request": (
         P.SERVER,
         {
@@ -290,7 +290,7 @@ def test_semantic_rules():
             {"type": "preview_response", "session": "s", "request": "r", "seq": 0, "last": True}
         )
     with pytest.raises(P.ProtocolError, match="port und token"):
-        P.validate({"type": "preview", "session": "s", "running": True, "port": 18080})
+        P.validate({"type": "preview", "session": "s", "running": True, "port": 10080})
     with pytest.raises(P.ProtocolError, match="außerhalb"):
         P.validate(
             {"type": "preview", "session": "s", "running": True, "port": 8080, "token": "z" * 32}

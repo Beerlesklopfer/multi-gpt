@@ -23,6 +23,10 @@ fn bounds(config: &Value) -> Bounds {
         max_pids: config["max_pids"].as_u64().unwrap(),
         max_tmpfs_mb: config["max_tmpfs_mb"].as_u64().unwrap(),
         scratch_host_dir: config["scratch_host_dir"].as_str().map(str::to_string),
+        expose_bind: config["expose_bind"]
+            .as_str()
+            .unwrap_or("0.0.0.0")
+            .to_string(),
     }
 }
 
@@ -43,6 +47,7 @@ fn run(case: &Value) -> String {
                 &expected,
                 case["preview_port"].as_u64(),
                 case["scratch_source"].as_str(),
+                &cfg.expose_bind,
             );
             ok_or_reject(problems.is_empty())
         }

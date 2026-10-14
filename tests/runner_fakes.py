@@ -106,7 +106,7 @@ def build_server(ws: FakeWorkspace) -> MCPServer:
     @server.tool()
     def serve(path: str = ".") -> dict:
         ws.calls.append(("serve", {"path": path}))
-        return {"url": "http://127.0.0.1:18080/tok123/", "port": 18080, "token": "tok123"}
+        return {"url": "http://127.0.0.1:10080/tok123/", "port": 10080, "token": "tok123"}
 
     @server.tool()
     def publish(path: str, transfer: str, max_bytes: int, name: str = ""):

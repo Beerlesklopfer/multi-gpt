@@ -32,14 +32,22 @@ pub const LABEL_CALL: &str = "multigpt.call";
 pub const LABEL_NETWORK: &str = "multigpt.network";
 
 pub const USER: &str = "1000:1000";
+/// http im Container; unprivilegiert, denn Port 80 kann Nutzer 1000 ohne Capabilities nicht binden.
 pub const PREVIEW_CONTAINER_PORT: u64 = 8080;
+/// https im Container (selbst signiertes Zertifikat, im tmpfs erzeugt).
+pub const TLS_CONTAINER_PORT: u64 = 8443;
+/// Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …).
+pub const TLS_PORT_OFFSET: u64 = 363;
+/// Adresse des Port-Exports am Rechner (Nutzerentscheidung 2026-10-14: Heimnetz).
+pub const DEFAULT_EXPOSE_BIND: &str = "0.0.0.0";
+pub const EXPOSE_BINDS: [&str; 2] = ["0.0.0.0", "127.0.0.1"];
 pub const RELAY_BASE_PORT: u64 = 20000;
 pub const CPU_PERIOD: u64 = 100_000;
 /// Größe von `/tmp` (tmpfs) in MB, zusätzlich zu `/workspace`.
 pub const TMP_MB: u64 = 256;
 pub const NOFILE: u64 = 4096;
-/// Vorschau-Ports am Rechner (Entscheidung 8x), nur an 127.0.0.1.
-pub const PREVIEW_PORTS: std::ops::Range<u64> = 18080..18090;
+/// Host-Ports (http) am Rechner: 8080 → 10080 … 10089, https jeweils +363 (Nutzer 2026-10-14).
+pub const PREVIEW_PORTS: std::ops::Range<u64> = 10080..10090;
 pub const NETWORK_MODES: [&str; 4] = ["none", "allowlist", "default", "packages"];
 /// Port des Proxys im Relay-Container (Netzmodus „Paketquellen“).
 pub const PROXY_PORT: u64 = 3128;
@@ -218,6 +226,8 @@ pub struct Bounds {
     pub max_tmpfs_mb: u64,
     /// Host-Sicht des Ordners `~/MultiGPT/Scratch` (nur mit lokalem Scratchpad).
     pub scratch_host_dir: Option<String>,
+    /// Adresse des Port-Exports (`0.0.0.0` Heimnetz, `127.0.0.1` nur der Rechner).
+    pub expose_bind: String,
 }
 
 impl Default for Bounds {
@@ -228,6 +238,7 @@ impl Default for Bounds {
             max_memory_mb: 16384,
             max_pids: 4096,
             max_tmpfs_mb: 8192,
+            expose_bind: DEFAULT_EXPOSE_BIND.to_string(),
             scratch_host_dir: None,
         }
     }
@@ -241,6 +252,7 @@ impl From<&crate::config::Config> for Bounds {
             max_memory_mb: cfg.max_memory_mb,
             max_pids: cfg.max_pids,
             max_tmpfs_mb: cfg.max_tmpfs_mb,
+            expose_bind: cfg.expose_bind.clone(),
             scratch_host_dir: cfg
                 .scratch_host_dir
                 .as_ref()
@@ -502,6 +514,26 @@ pub fn spec_label(spec: &Value) -> String {
 /// [`CAPS_PACKAGES`] (für `apt_install` als root), Proxy-Umgebung mit `proxy_url`.
 /// `no-new-privileges` und alles Übrige bleiben.
 #[allow(clippy::too_many_arguments)]
+/// Standardexport des Arbeitscontainers: 8080 → `preview_port` (http) und
+/// 8443 → `preview_port + 363` (https), an `bind` des Rechners.
+pub fn port_mappings(preview_port: u64, bind: &str) -> Value {
+    json!([
+        {
+            "host_ip": bind,
+            "host_port": preview_port,
+            "container_port": PREVIEW_CONTAINER_PORT,
+            "protocol": "tcp",
+        },
+        {
+            "host_ip": bind,
+            "host_port": preview_port + TLS_PORT_OFFSET,
+            "container_port": TLS_CONTAINER_PORT,
+            "protocol": "tcp",
+        },
+    ])
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn work_body(
     session: &str,
     workspace: &str,
@@ -512,6 +544,7 @@ pub fn work_body(
     spec: &Value,
     scratch: Option<&Scratch>,
     proxy_url: Option<&str>,
+    expose_bind: &str,
 ) -> Value {
     let spec_text = spec_label(spec);
     let mut labels = labels_of(&[
@@ -553,15 +586,7 @@ pub fn work_body(
     }
     map.insert("mounts".into(), Value::Array(mounts));
     if let Some(port) = preview_port {
-        map.insert(
-            "portmappings".into(),
-            json!([{
-                "host_ip": "127.0.0.1",
-                "host_port": port,
-                "container_port": PREVIEW_CONTAINER_PORT,
-                "protocol": "tcp",
-            }]),
-        );
+        map.insert("portmappings".into(), port_mappings(port, expose_bind));
     }
     body
 }
@@ -1085,26 +1110,20 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
                 "Arbeitscontainer nur am eigenen Sitzungsnetz.",
             )?;
             expect(
-                port_list.is_some_and(|p| p.len() <= 1),
-                "Höchstens ein Port.",
+                port_list.is_some_and(|p| p.len() == 2 || p.is_empty()),
+                "Genau http und https oder keine.",
             )?;
-            for port in port_list.unwrap() {
-                let host_port = port.get("host_port").cloned().unwrap_or(Value::Null);
+            let ports = port_list.unwrap();
+            if !ports.is_empty() {
+                let host_port = ports[0]
+                    .get("host_port")
+                    .and_then(Value::as_u64)
+                    .filter(|p| PREVIEW_PORTS.contains(p));
+                expect(host_port.is_some(), "Port außerhalb 10080–10089.")?;
                 expect(
-                    *port
-                        == json!({
-                            "host_ip": "127.0.0.1",
-                            "host_port": host_port,
-                            "container_port": PREVIEW_CONTAINER_PORT,
-                            "protocol": "tcp",
-                        }),
-                    "Port nur 8080 an 127.0.0.1.",
-                )?;
-                expect(
-                    host_port
-                        .as_u64()
-                        .is_some_and(|p| PREVIEW_PORTS.contains(&p)),
-                    "Port außerhalb 18080–18089.",
+                    Value::Array(ports.clone())
+                        == port_mappings(host_port.unwrap(), &bounds.expose_bind),
+                    "Nur 8080 und 8443 an der vorgegebenen Adresse.",
                 )?;
             }
         }
@@ -1293,6 +1312,7 @@ pub fn check_inspect(
     expected: &Limits,
     preview_port: Option<u64>,
     scratch_source: Option<&str>,
+    expose_bind: &str,
 ) -> Vec<String> {
     let mut problems = Vec::new();
     let null = Value::Null;
@@ -1403,21 +1423,38 @@ pub fn check_inspect(
     if foreign_tmpfs {
         problems.push("fremdes tmpfs".into());
     }
-    if let Some(bindings) = host["PortBindings"].as_object() {
-        let expected_port = preview_port.map(|p| p.to_string()).unwrap_or("None".into());
-        for (port, entries) in bindings {
-            for entry in entries.as_array().into_iter().flatten() {
-                let host_port = match &entry["HostPort"] {
-                    Value::String(s) => s.clone(),
-                    Value::Null => "None".into(),
-                    other => other.to_string(),
-                };
-                if port != &format!("{PREVIEW_CONTAINER_PORT}/tcp")
-                    || entry["HostIp"] != "127.0.0.1"
-                    || host_port != expected_port
-                {
-                    problems.push(format!("Port {port} weicht ab"));
-                }
+    let bindings = host["PortBindings"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    let wanted: std::collections::BTreeMap<String, String> = preview_port
+        .map(|p| {
+            [
+                (format!("{PREVIEW_CONTAINER_PORT}/tcp"), p.to_string()),
+                (
+                    format!("{TLS_CONTAINER_PORT}/tcp"),
+                    (p + TLS_PORT_OFFSET).to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect()
+        })
+        .unwrap_or_default();
+    if !wanted.is_empty()
+        && bindings.keys().collect::<std::collections::BTreeSet<_>>()
+            != wanted.keys().collect::<std::collections::BTreeSet<_>>()
+    {
+        problems.push("Port-Export weicht ab (http und https erwartet)".into());
+    }
+    for (port, entries) in &bindings {
+        for entry in entries.as_array().into_iter().flatten() {
+            let host_port = match &entry["HostPort"] {
+                Value::String(s) => s.clone(),
+                Value::Null => "None".into(),
+                other => other.to_string(),
+            };
+            if wanted.get(port) != Some(&host_port) || entry["HostIp"] != expose_bind {
+                problems.push(format!("Port {port} weicht ab"));
             }
         }
     }

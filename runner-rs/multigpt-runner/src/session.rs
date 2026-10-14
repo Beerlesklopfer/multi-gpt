@@ -666,7 +666,8 @@ impl SessionManager {
         let info = self.engine.inspect_container(&session.container).await?;
         let port = session.state().preview_port.map(u64::from);
         let source = scratch.source.as_deref().filter(|_| scratch.is_local());
-        let problems = template::check_inspect(&info, &limits, port, source);
+        let problems =
+            template::check_inspect(&info, &limits, port, source, &self.bounds.expose_bind);
         if !problems.is_empty() {
             return Err(SessionError::new(
                 format!("Abweichende Grenzen: {}", problems.join("; ")),
@@ -950,6 +951,7 @@ impl SessionManager {
                 spec,
                 session.scratch.as_ref(),
                 proxy_url,
+                &self.bounds.expose_bind,
             );
             self.with_labels(&mut body);
             self.engine.create_container(&body).await?;
@@ -968,7 +970,7 @@ impl SessionManager {
             .map(|e| e.0)
             .unwrap_or_else(|| "alle belegt".into());
         Err(SessionError::new(
-            format!("Kein freier Vorschau-Port in 18080–18089 ({reason})."),
+            format!("Kein freier Vorschau-Port in 10080–10089 ({reason})."),
             "limit",
         ))
     }

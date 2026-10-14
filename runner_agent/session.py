@@ -274,7 +274,11 @@ class SessionManager:
         await self._start_container(session, frame["image"], spec)
         info = await self.engine.inspect_container(session.container)
         problems = template.check_inspect(
-            info, limits, session.preview_port, scratch.source if scratch.mode == "local" else None
+            info,
+            limits,
+            session.preview_port,
+            scratch.source if scratch.mode == "local" else None,
+            self.config.expose_bind,
         )
         if problems:
             raise SessionError("Abweichende Grenzen: " + "; ".join(problems), "not_allowed")
@@ -396,7 +400,7 @@ class SessionManager:
         for port in self._free_ports():
             body = template.work_body(
                 session.id, session.workspace, image, session.limits, net, port, spec,
-                session.scratch,
+                session.scratch, expose_bind=self.config.expose_bind,
             )  # fmt: skip
             body["labels"] = self._labels(body["labels"])
             await self.engine.create_container(body)
@@ -411,7 +415,7 @@ class SessionManager:
             session.preview_port = port
             return
         raise SessionError(
-            f"Kein freier Vorschau-Port in 18080–18089 ({last_error or 'alle belegt'}).", "limit"
+            f"Kein freier Vorschau-Port in 10080–10089 ({last_error or 'alle belegt'}).", "limit"
         )
 
     async def stop(self, sid: str, reason: str = "user") -> None:

@@ -85,7 +85,7 @@ def _q(text: str) -> str:
 
 def build_config(
     root: str,
-    token: str,
+    token: str | None,
     *,
     bind: str = "0.0.0.0",
     port: int = 8080,
@@ -94,7 +94,7 @@ def build_config(
     key: str | None = None,
 ) -> str:
     """lighttpd-Konfiguration (reiner Text, ohne Seiteneffekte)."""
-    if not TOKEN_RE.match(token):
+    if token is not None and not TOKEN_RE.match(token):
         raise ValueError("Token ungültig.")
     mime = ",\n".join(f"  {_q(ext)} => {_q(ctype)}" for ext, ctype in sorted(MIME.items()))
     headers = {
@@ -127,9 +127,10 @@ def build_config(
         r'$HTTP["url"] =~ "(^|/)\.git(/|$)" {',
         '  url.access-deny = ( "" )',
         "}",
-        f"alias.url = ( {_q('/' + token + '/')} => {_q(root.rstrip('/') + '/')} )",
         f"setenv.add-response-header = (\n{header_lines}\n)",
     ]
+    if token is not None:  # zusätzlich unter /<token>/ (Vorschau über MultiGPT)
+        lines.append(f"alias.url = ( {_q('/' + token + '/')} => {_q(root.rstrip('/') + '/')} )")
     if tls_port is not None:
         if not cert or not key:
             raise ValueError("Zertifikat und Schlüssel fehlen.")
@@ -195,22 +196,30 @@ def _replace_running() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mgpt-serve")
-    parser.add_argument("--token", required=True)
+    parser.add_argument("--token", help="Pfad-Token; ohne Angabe nur unter / erreichbar")
+    parser.add_argument("--print-config", action="store_true", help="Konfiguration ausgeben")
     parser.add_argument("--dir", default=".")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--tls-port", type=int, default=8443)
     parser.add_argument("--no-tls", action="store_true")
     parser.add_argument("--bind", default="0.0.0.0")
     args = parser.parse_args(argv)
-    if not TOKEN_RE.match(args.token):
+    if args.token is not None and not TOKEN_RE.match(args.token):
         print("Token ungültig.", file=sys.stderr)
         return 2
     root = os.path.realpath(os.path.join(WORKSPACE, args.dir.lstrip("/")))
     if not (root == WORKSPACE or root.startswith(WORKSPACE + os.sep)) or not os.path.isdir(root):
         print("Verzeichnis liegt nicht unter /workspace.", file=sys.stderr)
         return 2
+    if args.print_config:
+        sys.stdout.write(
+            build_config(root, args.token, bind=args.bind, port=args.port, tls_port=None)
+        )
+        return 0
     _replace_running()
     os.makedirs(RUN_DIR, mode=0o700, exist_ok=True)
+    port_note = f"http :{args.port}" + ("" if args.no_tls else f", https :{args.tls_port}")
+    print(f"mgpt-serve: {root} ({port_note})", file=sys.stderr)
     cert = key = None
     tls_port = None if args.no_tls else args.tls_port
     if tls_port is not None:

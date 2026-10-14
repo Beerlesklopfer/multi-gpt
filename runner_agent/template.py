@@ -27,7 +27,11 @@ LABEL_PREVIEW = "multigpt.preview_port"
 LABEL_CALL = "multigpt.call"  # Hilfscontainer: Kennung des Aufrufs
 
 USER = "1000:1000"
+# http im Container; unprivilegiert, denn Port 80 kann Nutzer 1000 ohne Capabilities nicht binden
 PREVIEW_CONTAINER_PORT = 8080
+TLS_CONTAINER_PORT = 8443  # https im Container
+EXPOSE_BINDS = ("0.0.0.0", "127.0.0.1")  # Adresse am Rechner (Nutzerentscheidung: Heimnetz)
+DEFAULT_EXPOSE_BIND = "0.0.0.0"
 RELAY_BASE_PORT = 20000
 CPU_PERIOD = 100_000
 TMP_MB = 256  # /tmp (tmpfs), zusätzlich zu /workspace
@@ -228,6 +232,25 @@ def _base(name: str, image: str, labels: dict, limits: Limits) -> dict:
     }
 
 
+def port_mappings(preview_port: int, bind: str = DEFAULT_EXPOSE_BIND) -> list[dict]:
+    """Standardexport des Arbeitscontainers: 8080 → ``preview_port`` (http) und
+    8443 → ``preview_port + 363`` (https), an ``bind`` des Rechners."""
+    return [
+        {
+            "host_ip": bind,
+            "host_port": preview_port,
+            "container_port": PREVIEW_CONTAINER_PORT,
+            "protocol": "tcp",
+        },
+        {
+            "host_ip": bind,
+            "host_port": preview_port + protocol.TLS_PORT_OFFSET,
+            "container_port": TLS_CONTAINER_PORT,
+            "protocol": "tcp",
+        },
+    ]
+
+
 def work_body(
     session: str,
     workspace: str,
@@ -238,6 +261,7 @@ def work_body(
     spec: dict,
     scratch: Scratch | None = None,
     proxy_url: str | None = None,
+    expose_bind: str = DEFAULT_EXPOSE_BIND,
 ) -> dict:
     """Arbeitscontainer: nur tmpfs /workspace und /tmp, Netz nur über ``network``.
 
@@ -281,15 +305,10 @@ def work_body(
             # Host-Nutzer = Nutzer 1000 im Container: Dateien im Ordner gehören ihm.
             body["userns"] = dict(KEEP_ID)
     if preview_port is not None:
+        if expose_bind not in EXPOSE_BINDS:
+            raise TemplateError("Adresse für den Port-Export nur 0.0.0.0 oder 127.0.0.1.")
         labels[LABEL_PREVIEW] = str(preview_port)
-        body["portmappings"] = [
-            {
-                "host_ip": "127.0.0.1",
-                "host_port": preview_port,
-                "container_port": PREVIEW_CONTAINER_PORT,
-                "protocol": "tcp",
-            }
-        ]
+        body["portmappings"] = port_mappings(preview_port, expose_bind)
     return body
 
 
@@ -501,19 +520,24 @@ def check_body(body: dict, config) -> str:
             set(networks) == {network_name(labels[LABEL_SESSION], "net")},
             "Arbeitscontainer nur am eigenen Sitzungsnetz.",
         )
-        _expect(isinstance(ports, list) and len(ports) <= 1, "Höchstens ein Port.")
-        for port in ports:
+        _expect(
+            isinstance(ports, list) and len(ports) in (0, 2), "Genau http und https oder keine."
+        )
+        if ports:
+            bind = getattr(config, "expose_bind", DEFAULT_EXPOSE_BIND)
+            first = ports[0]
+            _expect(isinstance(first, dict), "Port ungültig.")
+            host_port = first.get("host_port")
             _expect(
-                port
-                == {
-                    "host_ip": "127.0.0.1",
-                    "host_port": port.get("host_port"),
-                    "container_port": PREVIEW_CONTAINER_PORT,
-                    "protocol": "tcp",
-                },
-                "Port nur 8080 an 127.0.0.1.",
+                isinstance(host_port, int)
+                and not isinstance(host_port, bool)
+                and host_port in protocol.PREVIEW_PORTS,
+                "Port außerhalb 10080–10089.",
             )
-            _expect(port["host_port"] in protocol.PREVIEW_PORTS, "Port außerhalb 18080–18089.")
+            _expect(
+                ports == port_mappings(host_port, bind),
+                "Nur 8080 und 8443 an der vorgegebenen Adresse.",
+            )
     elif role == "tool":
         _expect(body.get("command") == ["sleep", "infinity"], "Befehl weicht ab.")
         _expect(not ports, "Hilfscontainer ohne Ports.")
@@ -600,7 +624,11 @@ def actual_limits(info: dict, network: str) -> Limits:
 
 
 def check_inspect(
-    info: dict, expected: Limits, preview_port: int | None, scratch_source: str | None = None
+    info: dict,
+    expected: Limits,
+    preview_port: int | None,
+    scratch_source: str | None = None,
+    expose_bind: str = DEFAULT_EXPOSE_BIND,
 ) -> list[str]:
     """Abweichungen der Ist-Werte von Soll und Vorlage (leer = in Ordnung)."""
     problems = []
@@ -653,12 +681,20 @@ def check_inspect(
     if set(host.get("Tmpfs") or {}) - {"/workspace", "/tmp", "/scratch"}:
         problems.append("fremdes tmpfs")
     bindings = host.get("PortBindings") or {}
+    wanted = {}
+    if preview_port is not None:
+        wanted = {
+            f"{PREVIEW_CONTAINER_PORT}/tcp": str(preview_port),
+            f"{TLS_CONTAINER_PORT}/tcp": str(preview_port + protocol.TLS_PORT_OFFSET),
+        }
+    if wanted and set(bindings) != set(wanted):
+        problems.append("Port-Export weicht ab (http und https erwartet)")
     for port, entries in bindings.items():
         for entry in entries or []:
             if (
-                port != f"{PREVIEW_CONTAINER_PORT}/tcp"
-                or entry.get("HostIp") != "127.0.0.1"
-                or str(entry.get("HostPort")) != str(preview_port)
+                port not in wanted
+                or entry.get("HostIp") != expose_bind
+                or str(entry.get("HostPort")) != wanted[port]
             ):
                 problems.append(f"Port {port} weicht ab")
     if (info.get("Config") or {}).get("User") != USER:

@@ -2,6 +2,44 @@
 
 use super::*;
 
+/// Standardadresse des Port-Exports in den Tests (Heimnetz).
+const BIND: &str = "0.0.0.0";
+
+#[allow(clippy::too_many_arguments)]
+fn work_body(
+    session: &str,
+    workspace: &str,
+    image: &str,
+    limits: &Limits,
+    network: &str,
+    preview_port: Option<u64>,
+    spec: &Value,
+    scratch: Option<&Scratch>,
+    proxy_url: Option<&str>,
+) -> Value {
+    super::work_body(
+        session,
+        workspace,
+        image,
+        limits,
+        network,
+        preview_port,
+        spec,
+        scratch,
+        proxy_url,
+        BIND,
+    )
+}
+
+fn check_inspect(
+    info: &Value,
+    expected: &Limits,
+    preview_port: Option<u64>,
+    scratch_source: Option<&str>,
+) -> Vec<String> {
+    super::check_inspect(info, expected, preview_port, scratch_source, BIND)
+}
+
 const IMAGE: &str = "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OTHER_IMAGE: &str = "docker.io/library/alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const SCRATCH_UUID: &str = "0b5f2c1e-7d4a-4c1b-9a8e-3f2d1c0b9a87";
@@ -32,7 +70,7 @@ fn work() -> Value {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(18080),
+        Some(10080),
         &json!({"limits": l.as_value()}),
         None,
         None,
@@ -53,9 +91,13 @@ fn work_body_matches_template() {
         json!({"limit": 512u64 << 20, "swap": 512u64 << 20})
     );
     assert_eq!(body["resource_limits"]["cpu"]["quota"], json!(150000));
+    // Standardexport (Nutzer 2026-10-14): 8080 → 10080, 8443 → 10443, im Heimnetz.
     assert_eq!(
         body["portmappings"],
-        json!([{"host_ip": "127.0.0.1", "host_port": 18080, "container_port": 8080, "protocol": "tcp"}])
+        json!([
+            {"host_ip": "0.0.0.0", "host_port": 10080, "container_port": 8080, "protocol": "tcp"},
+            {"host_ip": "0.0.0.0", "host_port": 10443, "container_port": 8443, "protocol": "tcp"},
+        ])
     );
     let dests: Vec<&str> = body["mounts"]
         .as_array()
@@ -139,8 +181,11 @@ fn mutations() -> Vec<Mutation> {
         ("tmpfs_suid", |b| {
             b["mounts"][0]["options"] = json!(["size=64m", "mode=0700"])
         }),
-        ("port_all_ifaces", |b| {
-            b["portmappings"][0]["host_ip"] = json!("0.0.0.0")
+        ("port_other_address", |b| {
+            b["portmappings"][0]["host_ip"] = json!("192.168.1.5")
+        }),
+        ("port_http_only", |b| {
+            b["portmappings"].as_array_mut().unwrap().truncate(1)
         }),
         ("port_range", |b| {
             b["portmappings"][0]["host_port"] = json!(22)
@@ -150,7 +195,7 @@ fn mutations() -> Vec<Mutation> {
         }),
         ("two_ports", |b| {
             let mut second = b["portmappings"][0].clone();
-            second["host_port"] = json!(18081);
+            second["host_port"] = json!(10081);
             b["portmappings"].as_array_mut().unwrap().push(second);
         }),
         ("no_memory_limit", |b| {
@@ -257,7 +302,7 @@ fn relay_command_and_networks_are_fixed() {
     bad["Networks"]["podman"] = json!({});
     assert!(check_body(&bad, &cfg).is_err());
     let mut bad = body.clone();
-    bad["portmappings"] = json!([{"host_ip": "127.0.0.1", "host_port": 18080, "container_port": 8080, "protocol": "tcp"}]);
+    bad["portmappings"] = port_mappings(10080, BIND); // Relay veröffentlicht nichts
     assert!(check_body(&bad, &cfg).is_err());
     let mut bad = body.clone();
     bad["command"]
@@ -346,7 +391,10 @@ fn inspect(host: Value) -> Value {
         "SecurityOpt": ["no-new-privileges"],
         "NetworkMode": "bridge",
         "PidMode": "private",
-        "PortBindings": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]},
+        "PortBindings": {
+            "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
+            "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+        },
         "Binds": [],
     });
     for (k, v) in host.as_object().unwrap() {
@@ -358,7 +406,7 @@ fn inspect(host: Value) -> Value {
 #[test]
 fn inspect_comparison_reports_deviations() {
     let expected = limits();
-    let p = Some(18080);
+    let p = Some(10080);
     assert!(check_inspect(&inspect(json!({})), &expected, p, None).is_empty());
     assert_eq!(actual_limits(&inspect(json!({})), "none"), expected);
     assert!(
@@ -374,8 +422,12 @@ fn inspect_comparison_reports_deviations() {
         json!({"Privileged": true}),
         json!({"PidMode": "host"}),
         json!({"Binds": ["/home:/x"]}),
-        json!({"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}}),
-        json!({"PortBindings": {"22/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]}}),
+        json!({"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}}),
+        json!({"PortBindings": {
+            "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}],
+            "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10443"}],
+        }}),
+        json!({"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}}),
         json!({"MemorySwap": -1}),
         json!({"PidsLimit": 0}),
         json!({"ReadonlyRootfs": false}),
@@ -414,10 +466,10 @@ fn inspect_accepts_only_the_scratch_bind() {
         inspect(json!({"Binds": [format!("{src}:/scratch:rw,noexec,nosuid,nodev,rbind")]}));
     info["Mounts"] = json!([{"Type": "bind", "Source": src, "Destination": "/scratch",
                              "Options": ["rbind", "noexec", "nosuid", "nodev"]}]);
-    assert!(check_inspect(&info, &expected, Some(18080), Some(&src)).is_empty());
-    assert!(!check_inspect(&info, &expected, Some(18080), None).is_empty());
+    assert!(check_inspect(&info, &expected, Some(10080), Some(&src)).is_empty());
+    assert!(!check_inspect(&info, &expected, Some(10080), None).is_empty());
     info["Mounts"][0]["Options"] = json!(["rbind"]);
-    assert!(!check_inspect(&info, &expected, Some(18080), Some(&src)).is_empty());
+    assert!(!check_inspect(&info, &expected, Some(10080), Some(&src)).is_empty());
 }
 
 fn local_body(cfg: &Bounds) -> Value {
@@ -533,10 +585,7 @@ fn helper_container_only_on_relay_network() {
         },
         |b| b["command"] = json!(["ssh", "x"]),
         |b| b["name"] = json!(container_name("42", "tool", Some("other"))),
-        |b| {
-            b["portmappings"] = json!([{"host_ip": "127.0.0.1", "host_port": 18080,
-                                        "container_port": 8080, "protocol": "tcp"}])
-        },
+        |b| b["portmappings"] = port_mappings(10080, BIND),
     ];
     for mutate in muts {
         let mut bad = body.clone();
@@ -557,7 +606,7 @@ fn default_network_may_use_host_dns() {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(18080),
+        Some(10080),
         &json!({}),
         None,
         None,
@@ -664,7 +713,7 @@ fn packages_work_body_passes_and_mutations_fail() {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(18080),
+        Some(10080),
         &json!({}),
         None,
         Some(&url),

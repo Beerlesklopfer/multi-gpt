@@ -1,6 +1,7 @@
 {
  "check": "inspect",
  "config": {
+  "expose_bind": "127.0.0.1",
   "images": [
    "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
@@ -14,7 +15,7 @@
  "expected": {
   "cpus": 1.5,
   "memory_mb": 512,
-  "network": "packages",
+  "network": "none",
   "pids": 256,
   "tmpfs_mb": 128
  },
@@ -24,14 +25,7 @@
   },
   "HostConfig": {
    "Binds": [],
-   "CapAdd": [
-    "CAP_CHOWN",
-    "CAP_DAC_OVERRIDE",
-    "CAP_FOWNER",
-    "CAP_FSETID",
-    "CAP_SETUID",
-    "CAP_SETGID"
-   ],
+   "CapAdd": [],
    "CpuPeriod": 100000,
    "CpuQuota": 150000,
    "Memory": 536870912,
@@ -43,12 +37,18 @@
     "8080/tcp": [
      {
       "HostIp": "0.0.0.0",
-      "HostPort": "18080"
+      "HostPort": "10080"
+     }
+    ],
+    "8443/tcp": [
+     {
+      "HostIp": "0.0.0.0",
+      "HostPort": "10443"
      }
     ]
    },
    "Privileged": false,
-   "ReadonlyRootfs": false,
+   "ReadonlyRootfs": true,
    "SecurityOpt": [
     "no-new-privileges"
    ],
@@ -59,7 +59,7 @@
   },
   "Mounts": []
  },
- "note": "Abweichung",
- "preview_port": 18080,
+ "note": "lokal erwartet",
+ "preview_port": 10080,
  "scratch_source": null
 }

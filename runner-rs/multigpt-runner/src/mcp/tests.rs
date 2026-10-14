@@ -363,7 +363,7 @@ impl ToolHost for FakeHost {
                 .clone(),
         )
         .await?;
-        Ok(json!({"url": "http://127.0.0.1:18080/tok/", "port": 18080, "token": "tok"}))
+        Ok(json!({"url": "http://127.0.0.1:10080/tok/", "port": 10080, "token": "tok"}))
     }
 
     async fn open_helper(&self) -> ToolResult<String> {
@@ -919,10 +919,10 @@ async fn serve_reports_preview_and_checks_directory() {
     let tools = SessionTools::new(Arc::new(host));
     let (text, info) = call(&tools, "serve", json!({})).await.unwrap();
     assert!(
-        text.starts_with("Vorschau läuft: http://127.0.0.1:18080/tok/"),
+        text.starts_with("Vorschau läuft: http://127.0.0.1:10080/tok/"),
         "{text}"
     );
-    assert_eq!(info.unwrap()["port"], 18080);
+    assert_eq!(info.unwrap()["port"], 10080);
     let err = call(&tools, "serve", json!({"path": "/etc"}))
         .await
         .unwrap_err();

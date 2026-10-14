@@ -66,6 +66,9 @@ pub struct Config {
     pub max_memory_mb: u64,
     pub max_pids: u64,
     pub max_tmpfs_mb: u64,
+    /// Adresse des Port-Exports 8080/8443 → 10080/10443 (`0.0.0.0` Heimnetz, `127.0.0.1`
+    /// nur der Rechner; Nutzerentscheidung 2026-10-14).
+    pub expose_bind: String,
     /// Lokales Scratchpad: Ordner `~/MultiGPT/Scratch` – Sicht des Agents.
     pub scratch_dir: Option<PathBuf>,
     /// … und Sicht von Podman (Host).
@@ -119,6 +122,7 @@ impl Config {
             max_pids: 4096,
             max_tmpfs_mb: 8192,
             scratch_dir: None,
+            expose_bind: "0.0.0.0".to_string(),
             scratch_host_dir: None,
             labels: BTreeMap::new(),
             engine: "podman".into(),
@@ -239,6 +243,15 @@ impl Config {
             PathBuf::from(get("MGPT_PODMAN_SOCKET").unwrap_or("/run/podman.sock"));
         config.images = images;
         config.insecure_dev = insecure;
+        config.expose_bind = match get("MGPT_EXPOSE_BIND").map(str::trim) {
+            None | Some("") => "0.0.0.0".to_string(),
+            Some(value @ ("0.0.0.0" | "127.0.0.1")) => value.to_string(),
+            Some(_) => {
+                return Err(ConfigError(
+                    "MGPT_EXPOSE_BIND: nur 0.0.0.0 oder 127.0.0.1.".into(),
+                ));
+            }
+        };
         config.scratch_dir = get("MGPT_SCRATCH_DIR").map(PathBuf::from);
         config.scratch_host_dir = host_dir(get("MGPT_SCRATCH_HOST_DIR"))?;
         config.hostname = hostname.chars().take(253).collect();

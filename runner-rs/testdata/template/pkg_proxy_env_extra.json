@@ -110,6 +110,7 @@
  },
  "check": "body",
  "config": {
+  "expose_bind": "0.0.0.0",
   "images": [
    "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],

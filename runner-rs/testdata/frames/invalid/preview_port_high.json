@@ -1,12 +1,12 @@
 {
  "close_code": 4400,
  "frame": {
-  "port": 18090,
+  "port": 10090,
   "running": true,
   "session": "s1",
   "token": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
   "type": "preview"
  },
- "note": "nur 18080–18089",
+ "note": "nur 10080–10089",
  "sender": "agent"
 }

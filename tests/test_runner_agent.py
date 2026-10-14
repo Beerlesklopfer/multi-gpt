@@ -167,7 +167,7 @@ def _work(**kw):
         IMAGE,
         _limits(**kw),
         template.network_name("42"),
-        18080,
+        10080,
         {"limits": _limits(**kw).as_dict()},
     )
 
@@ -181,8 +181,10 @@ def test_work_body_matches_template():
     assert body["privileged"] is False
     assert body["user"] == "1000:1000"
     assert body["resource_limits"]["memory"] == {"limit": 512 << 20, "swap": 512 << 20}
+    # Standardexport (Nutzer 2026-10-14): 8080 → 10080, 8443 → 10443, im Heimnetz.
     assert body["portmappings"] == [
-        {"host_ip": "127.0.0.1", "host_port": 18080, "container_port": 8080, "protocol": "tcp"}
+        {"host_ip": "0.0.0.0", "host_port": 10080, "container_port": 8080, "protocol": "tcp"},
+        {"host_ip": "0.0.0.0", "host_port": 10443, "container_port": 8443, "protocol": "tcp"},
     ]
     assert [m["destination"] for m in body["mounts"]] == ["/workspace", "/tmp"]
     assert "HOME" in body["env"] and body["env"]["HOME"].startswith("/tmp")
@@ -212,7 +214,7 @@ def _mutations():
         b["mounts"][0]["options"] = ["size=64m", "mode=0700"]
 
     def two_ports(b):
-        b["portmappings"].append(dict(b["portmappings"][0], host_port=18081))
+        b["portmappings"].append(dict(b["portmappings"][0], host_port=10081))
 
     yield "volumes", lambda b: b.update(volumes=[{"Name": "x", "Dest": "/workspace"}])
     yield "devices", lambda b: b.update(devices=[{"path": "/dev/kvm"}])
@@ -235,7 +237,8 @@ def _mutations():
     yield "socket_mount", socket_mount
     yield "tmpfs_dest", tmpfs_extra_dest
     yield "tmpfs_suid", tmpfs_suid
-    yield "port_all_ifaces", lambda b: b["portmappings"][0].update(host_ip="0.0.0.0")
+    yield "port_other_address", lambda b: b["portmappings"][0].update(host_ip="192.168.1.5")
+    yield "port_http_only", lambda b: b.update(portmappings=b["portmappings"][:1])
     yield "port_range", lambda b: b["portmappings"][0].update(host_port=22)
     yield "container_port", lambda b: b["portmappings"][0].update(container_port=22)
     yield "two_ports", two_ports
@@ -270,9 +273,7 @@ def test_relay_command_and_networks_are_fixed():
     with pytest.raises(template.TemplateError):
         template.check_body(bad, cfg)
     bad = copy.deepcopy(body)
-    bad["portmappings"] = [
-        {"host_ip": "127.0.0.1", "host_port": 18080, "container_port": 8080, "protocol": "tcp"}
-    ]
+    bad["portmappings"] = template.port_mappings(10080)  # Relay veröffentlicht nichts
     with pytest.raises(template.TemplateError):
         template.check_body(bad, cfg)
 
@@ -321,7 +322,10 @@ def _inspect(**host):
         "SecurityOpt": ["no-new-privileges"],
         "NetworkMode": "bridge",
         "PidMode": "private",
-        "PortBindings": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]},
+        "PortBindings": {
+            "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
+            "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+        },
         "Binds": [],
     }
     base.update(host)
@@ -330,17 +334,23 @@ def _inspect(**host):
 
 def test_inspect_comparison_reports_deviations():
     expected = _limits()
-    assert template.check_inspect(_inspect(), expected, 18080) == []
+    assert template.check_inspect(_inspect(), expected, 10080) == []
     assert template.actual_limits(_inspect(), "none") == expected
-    assert template.check_inspect(_inspect(Memory=1 << 30, MemorySwap=1 << 30), expected, 18080)
-    assert template.check_inspect(_inspect(Privileged=True), expected, 18080)
-    assert template.check_inspect(_inspect(PidMode="host"), expected, 18080)
-    assert template.check_inspect(_inspect(Binds=["/home:/x"]), expected, 18080)
-    assert template.check_inspect(
-        _inspect(PortBindings={"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}),
-        expected,
-        18080,
+    assert template.check_inspect(_inspect(Memory=1 << 30, MemorySwap=1 << 30), expected, 10080)
+    assert template.check_inspect(_inspect(Privileged=True), expected, 10080)
+    assert template.check_inspect(_inspect(PidMode="host"), expected, 10080)
+    assert template.check_inspect(_inspect(Binds=["/home:/x"]), expected, 10080)
+    loopback = {
+        "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}],
+        "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10443"}],
+    }
+    assert template.check_inspect(_inspect(PortBindings=loopback), expected, 10080)
+    assert (
+        template.check_inspect(_inspect(PortBindings=loopback), expected, 10080, None, "127.0.0.1")
+        == []
     )
+    only_http = {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}
+    assert template.check_inspect(_inspect(PortBindings=only_http), expected, 10080)
 
 
 # --- mgpt-fs -----------------------------------------------------------------------------

@@ -193,7 +193,7 @@
     {
       "name": "serve",
       "kind": "command",
-      "description": "Startet die Vorschau: ein statischer HTTP-Server liefert ein Verzeichnis des Arbeitsstands aus (HTML, JS, CSS, Bilder; keine serverseitige Ausführung). Liefert die Vorschau-Adresse für den Nutzer.",
+      "description": "Startet den Webserver lighttpd für ein Verzeichnis des Arbeitsstands: nur statische Dateien (HTML, JS, CSS, Bilder), keine serverseitige Ausführung. Im Container hört er auf 8080 (http) und 8443 (https, selbst signiert); am Rechner des Nutzers sind sie als 10080 und 10443 im Heimnetz erreichbar. Liefert die Vorschau-Adresse. Eine fertige Konfiguration liegt unter /etc/lighttpd/lighttpd.conf.",
       "input_schema": {
         "type": "object",
         "properties": {

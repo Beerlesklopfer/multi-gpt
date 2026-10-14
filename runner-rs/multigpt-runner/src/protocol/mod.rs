@@ -60,7 +60,7 @@ pub const PUBLIC_KEY_BYTES: usize = 32;
 pub const HELLO_TIMEOUT: u64 = 10;
 pub const HEARTBEAT_SECONDS: u64 = 30;
 /// Ports der Vorschau auf dem Rechner (Entscheidung 8x).
-pub const PREVIEW_PORTS: Range<u16> = 18080..18090;
+pub const PREVIEW_PORTS: Range<u16> = 10080..10090;
 
 // --- Close-Codes ---------------------------------------------------------------
 

@@ -1,6 +1,7 @@
 {
  "check": "inspect",
  "config": {
+  "expose_bind": "0.0.0.0",
   "images": [
    "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
@@ -37,8 +38,14 @@
    "PortBindings": {
     "8080/tcp": [
      {
-      "HostIp": "127.0.0.1",
-      "HostPort": "18080"
+      "HostIp": "0.0.0.0",
+      "HostPort": "10080"
+     }
+    ],
+    "8443/tcp": [
+     {
+      "HostIp": "0.0.0.0",
+      "HostPort": "10443"
      }
     ]
    },
@@ -67,6 +74,6 @@
   ]
  },
  "note": "lokales Scratchpad",
- "preview_port": 18080,
+ "preview_port": 10080,
  "scratch_source": "/home/user/MultiGPT/Scratch/0b5f2c1e-7d4a-4c1b-9a8e-3f2d1c0b9a87"
 }

@@ -119,7 +119,8 @@ MAX_ID = 64
 
 HELLO_TIMEOUT = 10  # Sekunden bis zum ersten Rahmen ``hello``
 HEARTBEAT_SECONDS = 30
-PREVIEW_PORTS = range(18080, 18090)  # Entscheidung 8x
+PREVIEW_PORTS = range(10080, 10090)  # Host-Port http (Nutzer 2026-10-14: 80 → 10080)
+TLS_PORT_OFFSET = 363  # Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …)
 
 # --- Close-Codes ---------------------------------------------------------------
 

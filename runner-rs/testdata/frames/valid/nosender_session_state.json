@@ -7,7 +7,7 @@
    "pids": 256,
    "tmpfs_mb": 512
   },
-  "preview_port": 18080,
+  "preview_port": 10080,
   "session": "s1",
   "state": "running",
   "type": "session_state"

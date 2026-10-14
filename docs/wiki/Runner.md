@@ -324,18 +324,31 @@ misst der Runner die Größe der Schicht bei jedem Heartbeat. Die Grenze legt di
 („Runner: Container-Schicht (MB)“, Vorgabe 4096 MB); wird sie überschritten, endet die Sitzung.
 Die Schicht ist flüchtig und mit dem Container weg – der Arbeitsstand bleibt.
 
-### Eigener HTML-Server
+### Webserver und Ports (lighttpd)
 
-Für die **Vorschau** gibt es weiter `serve` (mgpt-serve). Ein selbst installierter Server geht
-genauso, solange er auf **Port 8080** im Container lauscht, z. B.:
+Im Arbeits-Image ist **lighttpd** installiert, ausschließlich für **statische Dateien** (HTML, JS,
+CSS, Bilder); es gibt keine serverseitige Ausführung, keine Verzeichnislisten und keinen Zugriff auf
+`.git`.
 
-```bash
-python3 -m http.server 8080 --directory site
-npx http-server site -p 8080
-```
+| Im Container | Am Rechner | |
+|---|---|---|
+| 8080 (http) | **10080** | Standardexport für „80“ |
+| 8443 (https) | **10443** | Standardexport für „443“, selbst signiertes Zertifikat |
 
-Veröffentlicht wird nur Port 8080, und zwar wie bisher nur über MultiGPT mit dem Token der
-Sitzung (Knopf **Vorschau**). Andere Ports sind von außen nicht erreichbar.
+Die Ports 80 und 443 kann der Nutzer im Container ohne Rechte nicht binden; deshalb 8080/8443 im
+Container. Laufen mehrere Sitzungen gleichzeitig, bekommt die nächste das Paar 10081/10444, dann
+10082/10445 usw. bis 10089/10452.
+
+- **Starten:** das Werkzeug `serve` (optional mit Verzeichnis) oder im Terminal `mgpt-serve`
+  (`--dir site`). Beide starten lighttpd mit http und https.
+- **Eigene Konfiguration:** `lighttpd -D -f <datei>`; eine fertige Standardkonfiguration (statisch,
+  `/workspace`, Port 8080) liegt unter `/etc/lighttpd/lighttpd.conf`.
+- **Wer sieht es?** Standardmäßig bindet der Runner die Ports an `0.0.0.0`, also **im ganzen
+  Heimnetz ohne Anmeldung**. Auf den Rechner selbst beschränkt es `MGPT_EXPOSE_BIND=127.0.0.1` in
+  der Unit des Runners. Die Vorschau im Chat läuft unabhängig davon über MultiGPT (mit Token und
+  abgeschottet).
+- Ein anderer Server funktioniert auch, solange er auf **8080** (bzw. 8443) lauscht, z. B.
+  `python3 -m http.server 8080 --directory site`.
 
 ## Seite „Runner“: Live-Status und Audit
 

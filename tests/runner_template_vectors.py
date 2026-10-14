@@ -15,7 +15,7 @@ Format je Datei::
      # je nach check:
      "body": {...}                                  # body, network (libpod-Körper)
      "info": {...}, "expected": {cpus, memory_mb, pids, tmpfs_mb, network},
-     "preview_port": 18080 | null, "scratch_source": null | "..."   # inspect
+     "preview_port": 10080 | null, "scratch_source": null | "..."   # inspect
      "limits": {...}                                # limits (Werte des Servers)
      "image": "...", "server_images": [...] | null} # image
 
@@ -62,6 +62,7 @@ def _config_dict(cfg) -> dict:
     return {
         "images": sorted(cfg.images),
         "scratch_host_dir": cfg.scratch_host_dir,
+        "expose_bind": getattr(cfg, "expose_bind", "0.0.0.0"),
         "max_cpus": float(cfg.max_cpus),
         "max_memory_mb": cfg.max_memory_mb,
         "max_pids": cfg.max_pids,
@@ -77,11 +78,20 @@ def _mutated(body: dict, mutate) -> dict:
 
 def _work_with(**kw):
     """Arbeitscontainer mit anderer Netzart bzw. ohne Vorschau-Port."""
-    port = kw.pop("preview_port", 18080)
+    port = kw.pop("preview_port", 10080)
     scratch = kw.pop("scratch", None)
+    bind = kw.pop("expose_bind", "0.0.0.0")
     limits = _limits(**kw)
     return T.work_body(
-        "42", "7", IMAGE, limits, T.network_name("42"), port, {"limits": limits.as_dict()}, scratch
+        "42",
+        "7",
+        IMAGE,
+        limits,
+        T.network_name("42"),
+        port,
+        {"limits": limits.as_dict()},
+        scratch,
+        expose_bind=bind,
     )
 
 
@@ -105,7 +115,74 @@ def body_cases():
         "Scratchpad als tmpfs",
     )
     yield "work_scratch_local", local_cfg, local, "work", "lokales Scratchpad (Bind)"
-    yield "work_preview_last_port", cfg, _work_with(preview_port=18089), "work", "Port 18089"
+    yield "work_preview_last_port", cfg, _work_with(preview_port=10089), "work", "Port 10089"
+    # Standardexport 8080/8443 → 10080/10443 (Nutzer 2026-10-14), Adresse aus der Konfiguration.
+    loop_cfg = make_config(expose_bind="127.0.0.1")
+    yield "work_second_pair", cfg, _work_with(preview_port=10081), "work", "10081 und 10444"
+    yield "work_bind_loopback", loop_cfg, _work_with(expose_bind="127.0.0.1"), "work", "nur lokal"
+    yield "work_bind_mismatch_lan", cfg, _work_with(expose_bind="127.0.0.1"), "reject", "Adresse"
+    yield "work_bind_mismatch_loop", loop_cfg, _work_with(), "reject", "Adresse (lokal erwartet)"
+    yield (
+        "work_bind_other_ip",
+        cfg,
+        _mutated(work, lambda b: [m.update(host_ip="192.168.1.5") for m in b["portmappings"]]),
+        "reject",
+        "andere Adresse",
+    )
+    yield (
+        "work_http_only",
+        cfg,
+        _mutated(work, lambda b: b.update(portmappings=b["portmappings"][:1])),
+        "reject",
+        "https fehlt",
+    )
+    yield (
+        "work_https_only",
+        cfg,
+        _mutated(work, lambda b: b.update(portmappings=b["portmappings"][1:])),
+        "reject",
+        "http fehlt",
+    )
+    yield (
+        "work_tls_port_wrong",
+        cfg,
+        _mutated(work, lambda b: b["portmappings"][1].update(host_port=10444)),
+        "reject",
+        "https-Port gehört zu 10081",
+    )
+    yield (
+        "work_tls_container_443",
+        cfg,
+        _mutated(work, lambda b: b["portmappings"][1].update(container_port=443)),
+        "reject",
+        "Container-Port 443",
+    )
+    yield (
+        "work_third_port",
+        cfg,
+        _mutated(
+            work,
+            lambda b: b["portmappings"].append(
+                {"host_ip": "0.0.0.0", "host_port": 10445, "container_port": 22, "protocol": "tcp"}
+            ),
+        ),
+        "reject",
+        "dritter Port",
+    )
+    yield (
+        "work_ports_swapped",
+        cfg,
+        _mutated(work, lambda b: b["portmappings"].reverse()),
+        "reject",
+        "Reihenfolge",
+    )
+    yield (
+        "work_udp_port",
+        cfg,
+        _mutated(work, lambda b: b["portmappings"][0].update(protocol="udp")),
+        "reject",
+        "udp",
+    )
     yield "relay", cfg, relay, "relay", "Relay der Positivliste"
     yield "tool", cfg, tool, "tool", "Hilfscontainer ssh/telnet"
     for name, mutate in _mutations():
@@ -187,7 +264,7 @@ def body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 18080,
+                    "host_port": 10080,
                     "container_port": 8080,
                     "protocol": "tcp",
                 }
@@ -215,7 +292,7 @@ def body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 18080,
+                    "host_port": 10080,
                     "container_port": 8080,
                     "protocol": "tcp",
                 }
@@ -242,7 +319,7 @@ PACKAGE_HOSTS = [
 ]
 
 
-def _pkg_work(scratch=None, preview_port=18080, proxy_url=PROXY_URL):
+def _pkg_work(scratch=None, preview_port=10080, proxy_url=PROXY_URL):
     """Arbeitscontainer im Modus Paketquellen (gelockerte Vorlage)."""
     limits = _limits(network="packages")
     return T.work_body(
@@ -510,7 +587,7 @@ def packages_body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 18080,
+                    "host_port": 10080,
                     "container_port": 3128,
                     "protocol": "tcp",
                 }
@@ -588,9 +665,11 @@ def packages_inspect_cases():
         "tmpfs_extra": {
             "Tmpfs": {"/workspace": "size=128m", "/tmp": "size=256m", "/var": "size=1g"}
         },
-        "port_all": {"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}},
+        "port_only_http": {
+            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}
+        },
         "proxy_port": {
-            "PortBindings": {"3128/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]}
+            "PortBindings": {"3128/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}]}
         },
         "memory": {"Memory": 1 << 30, "MemorySwap": 1 << 30},
     }
@@ -636,7 +715,7 @@ def network_cases():
 
 def inspect_cases():
     expected = _limits().as_dict()
-    yield "inspect_ok", _inspect(), expected, 18080, None, "ok", "wie Soll"
+    yield "inspect_ok", _inspect(), expected, 10080, None, "ok", "wie Soll"
     bad = {
         "memory": {"Memory": 1 << 30, "MemorySwap": 1 << 30},
         "swap": {"MemorySwap": -1},
@@ -654,20 +733,44 @@ def inspect_cases():
             "Tmpfs": {"/workspace": "size=128m", "/tmp": "size=256m", "/etc": "size=1m"}
         },
         "tmpfs_size": {"Tmpfs": {"/workspace": "size=256m", "/tmp": "size=256m"}},
-        "port_all": {"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}},
-        "port_other": {"PortBindings": {"22/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]}},
+        "port_only_http": {
+            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}
+        },
+        "port_loopback": {
+            "PortBindings": {
+                "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}],
+                "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10443"}],
+            }
+        },
+        "port_other": {"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}},
         "port_number": {
-            "PortBindings": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18081"}]}
+            "PortBindings": {
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10081"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+            }
+        },
+        "port_tls_number": {
+            "PortBindings": {
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10444"}],
+            }
+        },
+        "port_extra": {
+            "PortBindings": {
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+                "22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10022"}],
+            }
         },
     }
     for name, host in bad.items():
-        yield f"inspect_{name}", _inspect(**host), expected, 18080, None, "reject", "Abweichung"
+        yield f"inspect_{name}", _inspect(**host), expected, 10080, None, "reject", "Abweichung"
     info = _inspect()
     info["Config"]["User"] = "0:0"
-    yield "inspect_root_user", info, expected, 18080, None, "reject", "Nutzer root"
+    yield "inspect_root_user", info, expected, 10080, None, "reject", "Nutzer root"
     info = _inspect()
     info["Mounts"] = [{"Type": "bind", "Source": "/home", "Destination": "/x", "Options": []}]
-    yield "inspect_mount", info, expected, 18080, None, "reject", "fremder Mount"
+    yield "inspect_mount", info, expected, 10080, None, "reject", "fremder Mount"
     source = f"{HOST_DIR}/{SCRATCH_UUID}"
     info = _inspect(Binds=[f"{source}:/scratch:rw,noexec,nosuid,nodev"])
     info["Mounts"] = [
@@ -678,14 +781,66 @@ def inspect_cases():
             "Options": ["rbind", "noexec", "nosuid", "nodev"],
         }
     ]
-    yield "inspect_local_scratch", info, expected, 18080, source, "ok", "lokales Scratchpad"
+    yield "inspect_local_scratch", info, expected, 10080, source, "ok", "lokales Scratchpad"
     info2 = copy.deepcopy(info)
     info2["Mounts"][0]["Options"] = ["rbind"]
-    yield "inspect_local_scratch_exec", info2, expected, 18080, source, "reject", "ohne noexec"
-    yield "inspect_local_scratch_unexpected", info, expected, 18080, None, "reject", "ohne Soll"
+    yield "inspect_local_scratch_exec", info2, expected, 10080, source, "reject", "ohne noexec"
+    yield "inspect_local_scratch_unexpected", info, expected, 10080, None, "reject", "ohne Soll"
     yield "inspect_no_port", _inspect(PortBindings={}), expected, None, None, "ok", "ohne Port"
     for name, info, exp, expect, note in packages_inspect_cases():
-        yield name, info, exp, 18080, None, expect, note
+        yield name, info, exp, 10080, None, expect, note
+
+
+def inspect_bind_cases():
+    """Inspect-Fälle mit eigener Adresse des Port-Exports (``expose_bind``)."""
+    expected = _limits().as_dict()
+    loop = make_config(expose_bind="127.0.0.1")
+    lan = make_config()
+    bound = {
+        host: {
+            "PortBindings": {
+                "8080/tcp": [{"HostIp": host, "HostPort": "10080"}],
+                "8443/tcp": [{"HostIp": host, "HostPort": "10443"}],
+            }
+        }
+        for host in ("0.0.0.0", "127.0.0.1")
+    }
+    yield (
+        "inspect_bind_lan_ok",
+        lan,
+        _inspect(**bound["0.0.0.0"]),
+        expected,
+        10080,
+        "ok",
+        "Heimnetz",
+    )
+    yield (
+        "inspect_bind_loop_ok",
+        loop,
+        _inspect(**bound["127.0.0.1"]),
+        expected,
+        10080,
+        "ok",
+        "lokal",
+    )
+    yield (
+        "inspect_bind_lan_vs_loop",
+        loop,
+        _inspect(**bound["0.0.0.0"]),
+        expected,
+        10080,
+        "reject",
+        "lokal erwartet",
+    )
+    yield (
+        "inspect_bind_loop_vs_lan",
+        lan,
+        _inspect(**bound["127.0.0.1"]),
+        expected,
+        10080,
+        "reject",
+        "Heimnetz erwartet",
+    )
 
 
 def limits_cases():
@@ -754,6 +909,20 @@ def build() -> dict[str, dict]:
                 "note": note,
             },
         )
+    for name, cfg, info, expected, port, expect, note in inspect_bind_cases():
+        add(
+            name,
+            {
+                "check": "inspect",
+                "config": _config_dict(cfg),
+                "info": info,
+                "expected": expected,
+                "preview_port": port,
+                "scratch_source": None,
+                "expect": expect,
+                "note": note,
+            },
+        )
     for name, cfg, limits, expect, note in limits_cases():
         add(
             name,
@@ -786,6 +955,7 @@ class _Cfg:
     def __init__(self, data: dict):
         self.images = frozenset(data["images"])
         self.scratch_host_dir = data["scratch_host_dir"]
+        self.expose_bind = data.get("expose_bind", "0.0.0.0")
         self.max_cpus = data["max_cpus"]
         self.max_memory_mb = data["max_memory_mb"]
         self.max_pids = data["max_pids"]
@@ -807,6 +977,7 @@ def evaluate(entry: dict) -> str:
                 T.Limits(**entry["expected"]),
                 entry["preview_port"],
                 entry["scratch_source"],
+                cfg.expose_bind,
             )
             return "reject" if problems else "ok"
         elif check == "limits":

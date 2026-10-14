@@ -408,8 +408,8 @@ def invalid_cases() -> list[tuple[str, str | None, dict | str, str]]:
             _example("welcome", max_frame_bytes=P.MAX_FRAME_BYTES + 1),
             "Grenze",
         ),
-        ("preview_port_low", s, _example("preview", port=18079), "nur 18080–18089"),
-        ("preview_port_high", s, _example("preview", port=18090), "nur 18080–18089"),
+        ("preview_port_low", s, _example("preview", port=10079), "nur 10080–10089"),
+        ("preview_port_high", s, _example("preview", port=10090), "nur 10080–10089"),
         ("hostname_254_umlauts", s, _example("hello", hostname="ä" * 254), "254 Zeichen"),
         ("agent_version_65", s, _example("hello", agent_version="v" * 65), "65 Zeichen"),
         (

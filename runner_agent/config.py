@@ -42,6 +42,9 @@ class Config:
     # eingebunden unter scratch_dir, für Podman (Host-Sicht) unter scratch_host_dir.
     scratch_dir: str | None = None
     scratch_host_dir: str | None = None
+    # Adresse am Rechner für den Export von 8080/8443 als 10080/10443 (Nutzerentscheidung
+    # 2026-10-14: Heimnetz, also 0.0.0.0); 127.0.0.1 beschränkt auf den Rechner selbst.
+    expose_bind: str = "0.0.0.0"
     labels: dict = field(default_factory=dict)  # zusätzliche Labels (Tests: multigpt.test=1)
 
     def read_token(self) -> str:
@@ -127,6 +130,13 @@ def _host_dir(raw: str | None) -> str | None:
     return path
 
 
+def _expose_bind(raw: str | None) -> str:
+    value = (raw or "0.0.0.0").strip()
+    if value not in ("0.0.0.0", "127.0.0.1"):
+        raise ConfigError("MGPT_EXPOSE_BIND: nur 0.0.0.0 oder 127.0.0.1.")
+    return value
+
+
 def from_env(env: dict[str, str] | None = None) -> Config:
     env = os.environ if env is None else env
     insecure = env.get("MGPT_INSECURE_DEV", "") == "1"
@@ -147,6 +157,7 @@ def from_env(env: dict[str, str] | None = None) -> Config:
         podman_socket=env.get("MGPT_PODMAN_SOCKET") or "/run/podman.sock",
         images=images,
         insecure_dev=insecure,
+        expose_bind=_expose_bind(env.get("MGPT_EXPOSE_BIND")),
         scratch_dir=env.get("MGPT_SCRATCH_DIR") or None,
         scratch_host_dir=_host_dir(env.get("MGPT_SCRATCH_HOST_DIR")),
         hostname=(env.get("MGPT_HOSTNAME") or os.uname().nodename)[:253],

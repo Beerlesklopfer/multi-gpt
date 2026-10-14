@@ -224,7 +224,7 @@ async fn session_start_reports_actual_limits() {
         state["limits"],
         json!({"cpus": 1.0, "memory_mb": 512, "pids": 256, "tmpfs_mb": 64, "network": "none"})
     );
-    assert_eq!(state["preview_port"], 18080);
+    assert_eq!(state["preview_port"], 10080);
     let net = template::network_name("s1", "net");
     {
         let st = h.engine.state();
@@ -247,7 +247,7 @@ async fn session_start_reports_actual_limits() {
             infos[0].state.as_str(),
             infos[0].preview_port
         ),
-        ("s1", Some("w1"), "running", Some(18080))
+        ("s1", Some("w1"), "running", Some(10080))
     );
     // git init im leeren Arbeitsstand
     let ws = h.engine.workspace(&h.work("s1")).unwrap();
@@ -311,8 +311,8 @@ async fn deviating_actual_limits_stop_the_container() {
 #[tokio::test]
 async fn workspace_only_in_one_session_and_busy_port_is_skipped() {
     let h = Harness::new(config());
-    h.engine.state().busy_ports.insert(18080);
-    assert_eq!(h.start("s1", "w1", json!({})).await["preview_port"], 18081);
+    h.engine.state().busy_ports.insert(10080);
+    assert_eq!(h.start("s1", "w1", json!({})).await["preview_port"], 10081);
     let state = h.start("s2", "w1", json!({})).await;
     assert_eq!(state["state"], "failed");
     assert!(
@@ -323,7 +323,7 @@ async fn workspace_only_in_one_session_and_busy_port_is_skipped() {
     );
     let state = h.start("s3", "w3", json!({})).await;
     assert_eq!(state["state"], "running");
-    assert_eq!(state["preview_port"], 18082);
+    assert_eq!(state["preview_port"], 10082);
     // Zweiter Start derselben Sitzung meldet nur den Zustand.
     let state = h.start("s1", "w1", json!({})).await;
     assert_eq!(
@@ -414,7 +414,7 @@ async fn adopt_running_containers_after_restart() {
     let infos = second.infos();
     assert_eq!(infos.len(), 1);
     assert_eq!(infos[0].state, "running");
-    assert_eq!(infos[0].preview_port, Some(18080));
+    assert_eq!(infos[0].preview_port, Some(10080));
     assert_eq!(infos[0].workspace.as_deref(), Some("w1"));
     let session = second.get("s1").unwrap();
     assert_eq!(session.state().limits.memory_mb, 512);
@@ -685,8 +685,8 @@ async fn serve_and_preview_over_back_channel() {
         .unwrap();
     let info = h.handle("s1").start_preview(Some("site")).await.unwrap();
     let token = info["token"].as_str().unwrap().to_string();
-    assert_eq!(info["port"], 18080);
-    assert_eq!(info["url"], format!("http://127.0.0.1:18080/{token}/"));
+    assert_eq!(info["port"], 10080);
+    assert_eq!(info["url"], format!("http://127.0.0.1:10080/{token}/"));
     assert!(token.len() >= 32);
     h.settle().await;
     let preview = h.last("preview");
