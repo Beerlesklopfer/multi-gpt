@@ -188,7 +188,9 @@ def matrix_hint(ai_model: AIModel) -> str:
     if not (ai_model.vram_gb or (rt and rt.size_bytes)):
         return "?"
     context = model_manager.profile_context(ai_model, rt.max_context_length if rt else None)
-    est = model_manager.estimate_model(ai_model, None, context, ai_model.load_parallel, rt)
+    est = model_manager.estimate_model(
+        ai_model, None, context, model_manager.load_parallel(ai_model), rt
+    )
     text = f"≈ {_gb(est.total)}"
     if provider.vram_budget_gb:
         usable = float(provider.vram_budget_gb - provider.vram_reserve_gb) * vram.GB
@@ -247,7 +249,7 @@ def estimate_payload(
         else:
             context = vram.default_context(capability, max_context)
     est = model_manager.estimate_model(
-        ai_model, entry, context, ai_model.load_parallel if ai_model else None, rt
+        ai_model, entry, context, model_manager.load_parallel(ai_model) if ai_model else None, rt
     )
     known = bool(entry or (rt and rt.size_bytes) or est.measured)
     parts = [f"Datei {_gb(est.weights)}", f"Kontext-Cache {_gb(est.kv)}"]

@@ -337,7 +337,9 @@ class AIModel(models.Model):
         null=True,
         blank=True,
         validators=[MinValueValidator(1), MaxValueValidator(16)],
-        help_text="Leer = Standard von LM Studio.",
+        help_text="Leer = 1. LM Studio teilt den geladenen Kontext durch diese Zahl: Bei "
+        "2 gleichzeitigen Anfragen und 16 384 Tokens bleiben je Anfrage 8 192. Mehr nur "
+        "zusammen mit größerem Kontextfenster.",
     )
     pinned = models.BooleanField(
         "angeheftet",

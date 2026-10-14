@@ -267,10 +267,16 @@ def remember_catalog(provider: Provider, catalog: list[lmstudio.CatalogModel]) -
 
 def load_parallel(ai_model: AIModel) -> int | None:
     """``parallel`` fürs Laden: Embedding-Modelle lehnen es ab (LM Studio 0.4, am Gerät
-    geprüft 2026-10-12: HTTP 400 „not supported for embedding models: parallel“)."""
+    geprüft 2026-10-12: HTTP 400 „not supported for embedding models: parallel“).
+
+    Ohne Angabe **1**: LM Studio teilt den geladenen Kontext durch die Parallelität
+    (Standard 4), bei 16 384 Tokens bliebe je Anfrage 4 096 – am Gerät am 2026-10-14
+    gesehen als „Verlauf passt nicht in den Kontext“ mit Werkzeugbeschreibungen. Mehr
+    gleichzeitige Anfragen stellt der Verwalter am Modell ein und vergrößert dazu den
+    Kontext entsprechend."""
     if ai_model.capability == AIModel.Capability.EMBEDDING:
         return None
-    return ai_model.load_parallel
+    return ai_model.load_parallel or 1
 
 
 def profile_context(ai_model: AIModel, max_context: int | None) -> int | None:
@@ -287,7 +293,7 @@ def fit_context(ai_model: AIModel, entry, context: int | None, usable: int) -> i
         return context
     stages = [s for s in vram.CONTEXT_STAGES if s <= context and s >= MIN_FIT_CONTEXT]
     for stage in sorted(stages, reverse=True):
-        if estimate_model(ai_model, entry, stage, ai_model.load_parallel).total <= usable:
+        if estimate_model(ai_model, entry, stage, load_parallel(ai_model)).total <= usable:
             if stage < context:
                 logger.info(
                     "LM Studio: Modell %s mit %d statt %d Tokens Kontext (Budget)",
@@ -621,7 +627,7 @@ def ensure_loaded(
             context = profile_context(ai_model, entry.max_context_length if entry else None)
             snap = snapshot(provider, catalog)
             context = fit_context(ai_model, entry, context, snap.usable)
-            est = estimate_model(ai_model, entry, context, ai_model.load_parallel)
+            est = estimate_model(ai_model, entry, context, load_parallel(ai_model))
             for slot in plan(snap, ai_model, est.total, interactive, swap=swap):
                 why = "Austausch" if swap and slot.pinned else "Platz"
                 _do_unload(provider, slot, f"{why} für Modell {ai_model.pk}")

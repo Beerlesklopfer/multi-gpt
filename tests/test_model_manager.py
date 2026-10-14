@@ -930,6 +930,9 @@ def test_parallel_never_sent_for_embedding_models(nomic, gpt):
     gpt.load_parallel = 2
     assert model_manager.load_parallel(nomic) is None
     assert model_manager.load_parallel(gpt) == 2
+    # Ohne Angabe 1: LM Studio teilt den Kontext sonst durch 4 (Befund 2026-10-14).
+    gpt.load_parallel = None
+    assert model_manager.load_parallel(gpt) == 1
 
 
 def test_idle_never_unloads_instances_loaded_elsewhere(lms, gpt, olmocr_model):

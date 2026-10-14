@@ -144,7 +144,7 @@ class Command(BaseCommand):
                 )
                 context = model_manager.profile_context(ai_model, max_context)
                 est = model_manager.estimate_model(
-                    ai_model, entry, context, ai_model.load_parallel, rt
+                    ai_model, entry, context, model_manager.load_parallel(ai_model), rt
                 )
                 note = ""
                 if snap is not None and snap.budget and est.total > snap.usable:
