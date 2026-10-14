@@ -293,7 +293,7 @@ def test_semantic_rules():
         P.validate({"type": "preview", "session": "s", "running": True, "port": 10080})
     with pytest.raises(P.ProtocolError, match="außerhalb"):
         P.validate(
-            {"type": "preview", "session": "s", "running": True, "port": 8080, "token": "z" * 32}
+            {"type": "preview", "session": "s", "running": True, "port": 1023, "token": "z" * 32}
         )
 
 

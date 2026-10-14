@@ -92,6 +92,7 @@ ALLOWED_KEYS = frozenset(
         "use_image_hosts",
         "use_image_resolve_conf",
         "userns",
+        "remove",
     }
 )
 # Diese Werte sind fest; jede Abweichung wird abgelehnt.
@@ -110,6 +111,8 @@ FIXED = {
     "cgroupns": {"nsmode": "private"},
     "image_volume_mode": "ignore",
     "use_image_hosts": True,
+    # Wie ``podman run --rm`` (Nutzer, 2026-10-14): Das Ende des Containers räumt ihn weg.
+    "remove": True,
 }
 LABEL_NETWORK = "multigpt.network"  # none | allowlist | default
 

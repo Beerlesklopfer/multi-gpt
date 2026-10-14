@@ -94,7 +94,7 @@ fn text() -> Check {
 }
 
 fn preview_port() -> Check {
-    int(PREVIEW_PORTS.start as i128, PREVIEW_PORTS.end as i128 - 1)
+    int(REPORTED_PORTS.0 as i128, REPORTED_PORTS.1 as i128)
 }
 
 fn engine() -> Check {

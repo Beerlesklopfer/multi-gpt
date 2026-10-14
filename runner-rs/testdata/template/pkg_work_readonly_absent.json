@@ -116,6 +116,7 @@
     "type": "core"
    }
   ],
+  "remove": true,
   "resource_limits": {
    "cpu": {
     "period": 100000,

@@ -125,6 +125,7 @@
    }
   ],
   "read_only_filesystem": true,
+  "remove": true,
   "resource_limits": {
    "cpu": {
     "period": 100000,

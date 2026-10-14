@@ -104,7 +104,7 @@ pub static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
 static IMAGE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$").unwrap());
 
-const ALLOWED_KEYS: [&str; 31] = [
+const ALLOWED_KEYS: [&str; 32] = [
     "name",
     "image",
     "command",
@@ -136,6 +136,7 @@ const ALLOWED_KEYS: [&str; 31] = [
     "use_image_hosts",
     "use_image_resolve_conf",
     "userns",
+    "remove",
 ];
 
 /// Feste Werte; jede Abweichung wird abgelehnt.
@@ -154,6 +155,8 @@ fn fixed() -> Vec<(&'static str, Value)> {
         ("cgroupns", json!({"nsmode": "private"})),
         ("image_volume_mode", json!("ignore")),
         ("use_image_hosts", json!(true)),
+        // Wie `podman run --rm` (Nutzer, 2026-10-14).
+        ("remove", json!(true)),
     ]
 }
 

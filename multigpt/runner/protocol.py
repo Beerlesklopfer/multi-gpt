@@ -120,7 +120,11 @@ MAX_ID = 64
 HELLO_TIMEOUT = 10  # Sekunden bis zum ersten Rahmen ``hello``
 HEARTBEAT_SECONDS = 30
 PREVIEW_PORTS = range(10080, 10090)  # Host-Port http (Nutzer 2026-10-14: 80 → 10080)
-TLS_PORT_OFFSET = 363  # Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …)
+TLS_PORT_OFFSET = 363
+# Gemeldete Ports (hello/session_state/preview) sind nur Auskunft: Auch Container einer
+# früheren Version (18080–18089) dürfen gemeldet werden; sonst lehnt der Server das hello
+# ab und der Agent verbindet sich endlos neu (Befund 2026-10-14).
+REPORTED_PORTS = (1024, 65535)  # Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …)
 
 # --- Close-Codes ---------------------------------------------------------------
 
@@ -403,7 +407,7 @@ SESSION_INFO = _object(
         "session": (_id, True),
         "workspace": (_id, False),
         "state": (_enum(SESSION_STATES), True),
-        "preview_port": (_int(PREVIEW_PORTS.start, PREVIEW_PORTS.stop - 1), False),
+        "preview_port": (_int(*REPORTED_PORTS), False),
         # Größe der beschreibbaren Container-Schicht (nur Netzmodus „packages“)
         "rootfs_used_mb": (_int(0, MAX_ROOTFS_MB), False),
     }
@@ -513,7 +517,7 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             "session": (_id, True),
             "state": (_enum(SESSION_STATES), True),
             "limits": (LIMITS, False),  # tatsächliche Werte aus inspect
-            "preview_port": (_int(PREVIEW_PORTS.start, PREVIEW_PORTS.stop - 1), False),
+            "preview_port": (_int(*REPORTED_PORTS), False),
             "error": (_text, False),
         },
     ),
@@ -638,7 +642,7 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
         {
             "session": (_id, True),
             "running": (_bool, True),
-            "port": (_int(PREVIEW_PORTS.start, PREVIEW_PORTS.stop - 1), False),
+            "port": (_int(*REPORTED_PORTS), False),
             "token": (_str(128, TOKEN_RE), False),
         },
     ),
