@@ -1,3 +1,30 @@
+multi-gpt (0.4.0) unstable; urgency=medium
+
+  Runner (neu): Ein Modell kann in einem Container auf dem eigenen Rechner wie ein
+  Coding-Agent arbeiten (Dateien, Befehle, Terminal und Vorschau im Browser). Der
+  Runner ist ein eigenes Programm (multigpt-runner, Linux amd64/arm64), das sich
+  ausgehend mit dem Server verbindet; Container laufen mit Podman rootless nach
+  fester Vorlage (kein Netz, keine Rechte). Der Arbeitsstand liegt als git-Bundle
+  in der Datenbank. Einrichtung: Seite „Runner“ im Kontomenü, Anleitung im Wiki.
+  Neu im Paket: Abhängigkeit git, Dienst multi-gpt-runner, nginx-Location
+  /runner/ws und /runner/pty/, Programme und Katalog unter
+  /usr/share/multi-gpt/runner. Der Installationsschlüssel entsteht beim Einbau
+  (mgpt-ctl runner pubkey zeigt ihn; keygen --force trennt alle Runner).
+
+  Achtung Netz: Der Runner veröffentlicht die Web-Ports 24080 (http) und 24443
+  (https, selbst signiert) standardmäßig an 0.0.0.0, also im ganzen Heimnetz ohne
+  Anmeldung. MGPT_EXPOSE_BIND=127.0.0.1 in der Unit beschränkt sie auf den Rechner.
+
+  Rollen: Neue Rechte „Runner nutzen“, „Paketquellen“ und „Fernzugriff“ (Verwalter
+  und Erwachsene an), API-Key-Recht runner.use, Konto „Runner-Laufzeit“
+  (600 Minuten im Monat für Erwachsene).
+
+  LM Studio: Neue Schnittstelle „LM Studio“ (eine Adresse); bestehende Anbieter mit
+  Modellverwaltung oder Port 1234 werden per Migration umgestellt. Chatmodelle laden
+  jetzt mit parallel 1; Token/s je Antwort; Denktiefe-Vorgabe je Modell.
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 17 Oct 2026 10:00:00 +0200
+
 multi-gpt (0.3.6) unstable; urgency=medium
 
   Kosten: Der EZB-Referenzkurs USD→EUR wird jetzt standardmäßig automatisch
