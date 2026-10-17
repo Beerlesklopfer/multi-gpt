@@ -490,6 +490,7 @@ class McpServer(models.Model):
         help_text="Werkzeuge der letzten erfolgreichen Prüfung: Name, gekürzte Beschreibung, "
         "Parameternamen und Hinweise (annotations) des Servers.",
     )
+    connection_revision = models.PositiveBigIntegerField(default=0, editable=False)
     tools_checked = models.DateTimeField(
         "zuletzt eingestuft",
         null=True,

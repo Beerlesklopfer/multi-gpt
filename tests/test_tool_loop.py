@@ -643,7 +643,14 @@ def test_mcp_servers_endpoint_by_role(client, server):
     data = client.get(reverse("chat:api_mcp_servers")).json()
     # online/error: gespeicherter Status (chat/mcp/status.py), ungeprüft gilt als verfügbar.
     assert data == [
-        {"id": server.pk, "name": "Test", "default_enabled": True, "online": True, "error": None}
+        {
+            "id": server.pk,
+            "name": "Test",
+            "reconnect_url": None,  # nur für Berechtigte (chat/mcp/reconnect.py)
+            "default_enabled": True,
+            "online": True,
+            "error": None,
+        }
     ]
     client.force_login(make_user("teen", "jugend"))
     assert client.get(reverse("chat:api_mcp_servers")).json() == []

@@ -330,3 +330,17 @@ def test_http_list_call_and_bearer_header(http_server_url):
     assert mcp.call_tool(server, "add", {"a": 1, "b": 2}).text == "3"
     assert mcp.call_tool(server, "header", {"name": "Authorization"}).text == "Bearer tok-123"
     assert mcp.call_tool(server, "header", {"name": "X-Extra"}).text == "ja"
+
+
+def test_reconnect_replaces_cached_connection_and_lists_tools(inproc):
+    from multigpt.chat.mcp.config import ServerConfig
+    from multigpt.chat.mcp.service import reconnect_with
+
+    server = _server()
+    mcp.list_tools(server)
+    assert len(inproc) == 1
+    tools = reconnect_with(ServerConfig.from_model(server))
+    assert len(inproc) == 2
+    assert "echo" in {t.name for t in tools}
+    assert mcp.call_tool(server, "echo", {"text": "after reconnect"}).text == "after reconnect"
+    assert len(inproc) == 2

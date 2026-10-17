@@ -109,10 +109,12 @@ mit `*`), Hinweise des Servers und eine Auswahl für die Einstufung. Einstufung 
 
 - **Neue Werkzeuge** (gemeldet, aber noch nicht eingestuft) sind farbig hervorgehoben.
   Werkzeuge, die eingestuft sind, aber nicht mehr gemeldet werden, stehen unter der Tabelle.
-- **Vorschlag des Servers:** Liefert der Server Hinweise (annotations), ist die Auswahl bei neuen
-  Werkzeugen vorbelegt: „verändernd“ (`destructiveHint`) → mit Rückfrage, „nur lesend“
-  (`readOnlyHint`) → ohne Rückfrage. Das ist nur ein Vorschlag: Der Server kann sich irren oder
-  absichtlich falsch melden. Wirksam wird die Einstufung erst beim Speichern; vorher bitte prüfen.
+- **Vorschlag des Servers:** Hinweise (annotations) erscheinen neben dem Werkzeug als
+  Vorschlag: „verändernd“ (`destructiveHint`) → mit Rückfrage, „nur lesend“
+  (`readOnlyHint`) → ohne Rückfrage. Die Auswahl zeigt dagegen ausschließlich die gespeicherte
+  Einstufung: Neue Werkzeuge stehen auf „nicht eingestuft“. So erscheint eine noch nicht
+  gespeicherte Freigabe nicht bereits als wirksam. Gewünschte Auswahl ändern und speichern;
+  anschließend gilt sie auch für die Ausführung im Chat.
 - Beschreibungen kommen vom Server und werden nur als Text (gekürzt) angezeigt.
 - In der Liste der MCP-Server zeigen die Spalten **Werkzeuge** und **davon nicht eingestuft**, wo
   noch etwas zu tun ist.
@@ -169,3 +171,31 @@ Dokumente hochladen und durchsuchen, Läufe starten, überwachen und abbrechen, 
   (`{"env": {…}}`) setzen, Programme mit vollem Pfad angeben.
 - **Werkzeug fehlt im Chat:** Server offline? Modell ohne „Werkzeuge“ oder ohne MCP-Freigabe?
   Rolle ohne Recht auf den Server?
+
+## MCP-Verbindung im Chat neu aufbauen
+
+Unter **Werkzeuge** im Eingabebereich hat jeder freigegebene MCP-Server ein
+geteiltes Widget: links Checkbox und Servername, rechts **„Neu verbinden“**.
+Der rechte Button bleibt auch bei einem offline gemeldeten Server nutzbar und
+ändert die Checkbox-Auswahl nicht. Nach dem Versuch wird der Status aktualisiert.
+Der Button schließt die bisherige Verbindung, verbindet erneut und lädt die Werkzeugliste.
+Erfolg oder Fehler erscheinen im Statusbereich des Chats. Der ursprüngliche
+Werkzeugaufruf wird nicht wiederholt. Im Werkzeugprotokoll gibt es keinen zusätzlichen
+Reconnect-Button.
+
+Für gemeinsam genutzte MCP-Server ist der Button Verwaltern mit Schreibrecht am Chat
+vorbehalten. Den eigenen Runner kann sein Besitzer mit Runner- und Schreibrecht
+neu verbinden; dafür muss im Chat bereits eine laufende Sitzung mit verbundenem
+Runner ausgewählt sein. Der Arbeitscontainer und seine Dateien bleiben erhalten.
+Andere Serverprozesse übernehmen die neue Verbindungsrevision beim nächsten Gebrauch.
+
+Damit wird die MCP-Verbindung neu aufgebaut. Ein getrenntes Runner-Programm muss
+weiterhin auf seinem Rechner gestartet werden (`systemctl --user restart multigpt-runner`).
+
+### Bilder und Dateien als Werkzeugergebnis
+
+Bild- und Dateianhänge eines MCP-Aufrufs erscheinen direkt unter der zugehörigen
+Antwort, einschließlich SVG-Zeichnungen. Im Werkzeugprotokoll bleibt ihre Herkunft
+nachvollziehbar. SVGs werden beim Speichern und vor der Auslieferung bereinigt;
+die geschützte Bildadresse erlaubt eine Vorschau auch für ältere SVG-Anhänge ohne
+vollständige Metadaten. Ein Klick auf das Bild öffnet die vergrößerte Ansicht.

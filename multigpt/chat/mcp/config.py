@@ -112,6 +112,7 @@ class ServerConfig:
     runner_id: int | None = None
     runner_session: int | None = None
     runner_pipe: str = ""
+    connection_revision: int = 0
 
     @property
     def key(self) -> tuple[int, str]:
@@ -124,6 +125,7 @@ class ServerConfig:
         material = json.dumps(
             [
                 self.transport,
+                self.connection_revision,
                 self.argv,
                 self.url,
                 self.env,
@@ -151,6 +153,7 @@ class ServerConfig:
             env=(),
             headers=(),
             timeout=timeout,
+            connection_revision=getattr(server, "connection_revision", 0),
             runner_id=runner_id,
             runner_session=session_id,
             runner_pipe=pipe,
@@ -184,4 +187,5 @@ class ServerConfig:
             env=tuple(sorted(creds.env.items())),
             headers=tuple(sorted(creds.headers.items())),
             timeout=timeout,
+            connection_revision=getattr(server, "connection_revision", 0),
         )

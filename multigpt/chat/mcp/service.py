@@ -84,6 +84,13 @@ def list_tools_with(config: ServerConfig, timeout: float | None = None) -> list[
     return [_to_spec(t) for t in tools]
 
 
+def reconnect_with(config: ServerConfig, timeout: float | None = None) -> list[ToolSpec]:
+    """Verbindung neu aufbauen; Rechte und prozessübergreifende Revision beim Aufrufer."""
+    seconds = _timeout(config, timeout)
+    tools = bridge.run(client.reconnect(config, seconds), seconds + bridge.GRACE_SECONDS)
+    return [_to_spec(t) for t in tools]
+
+
 def close_pipe(pk: int, pipe: str, timeout: float = 10.0) -> None:
     """Schließt die MCP-Verbindung einer Runner-Sitzung in diesem Prozess."""
     if bridge.is_running():

@@ -48,10 +48,16 @@ urlpatterns = [
     path("attachments/", api_attachments.upload, name="api_attachments"),
     path("attachments/<int:pk>/", api_attachments.detail, name="api_attachment_detail"),
     path("mcp-servers/", api.mcp_servers_list, name="api_mcp_servers"),
+    path("mcp-servers/<int:pk>/reconnect/", api.mcp_server_reconnect, name="api_mcp_reconnect"),
     path(
         "conversations/<int:pk>/tool-calls/confirm/",
         api.tool_confirm,
         name="api_tool_confirm",
+    ),
+    path(
+        "conversations/<int:pk>/tool-calls/<int:tool_call_id>/reconnect/",
+        api.tool_reconnect,
+        name="api_tool_reconnect",
     ),
     path("providers/status/", api.provider_status, name="api_provider_status"),
     path("mcp-servers/status/", api.mcp_status_view, name="api_mcp_status"),

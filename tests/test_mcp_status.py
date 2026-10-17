@@ -399,13 +399,13 @@ def test_change_page_lists_tools_without_connecting(admin_client, no_connect):
     assert "&lt;script&gt;" in html and '<script>alert("x")' not in html
     assert "pfad*, zeilen" in html
     assert "nur lesend" in html and "verändernd" in html
-    # Neu gemeldet: hervorgehoben, Vorschlag aus annotations vorbelegt.
+    # Neu gemeldet: Vorschlag daneben, Auswahl zeigt den gespeicherten Stand.
     assert html.count('class="mcp-tool-new"') == 2
     assert "Vorschlag des Servers: ohne Rückfrage" in html
     lesen = html.split(f'name="{_key("lesen")}"')[1].split("</select>")[0]
-    assert '<option value="auto" selected>' in lesen
+    assert '<option value="" selected>' in lesen
     loeschen = html.split(f'name="{_key("loeschen")}"')[1].split("</select>")[0]
-    assert '<option value="confirm" selected>' in loeschen
+    assert '<option value="" selected>' in loeschen
     alt = html.split(f'name="{_key("alt")}"')[1].split("</select>")[0]
     assert '<option value="auto" selected>' in alt
     # Eingestuft, aber nicht mehr gemeldet.
@@ -428,6 +428,32 @@ def test_rate_tools_via_table(admin_client):
     assert set(server.tools_requiring_confirmation) == {"weg", "loeschen"}
     assert server.tools_checked is not None
     assert mcp_status.unrated_count(server) == 1  # alt
+
+
+def test_display_save_reload_and_execution_use_same_ratings(admin_client, no_connect):
+    server = _with_tools(known_tools=[], tools_requiring_confirmation=[])
+    url = reverse("admin:chat_mcpserver_change", args=[server.pk])
+    html = admin_client.get(url).content.decode()
+    names = [tool["name"] for tool in server.reported_tools]
+    for name in names:
+        selection = html.split(f'name="{_key(name)}"')[1].split("</select>")[0]
+        # Ein readOnlyHint ist keine gespeicherte Freigabe und darf nicht so aussehen.
+        assert '<option value="" selected>' in selection
+        assert tooling.needs_confirmation(server, name)
+
+    # Alle tatsächlich angezeigten Auswahlen auf „ohne Rückfrage“ ändern und speichern.
+    posted = {_key(name): "auto" for name in names}
+    response = admin_client.post(url, _form_data(server, **posted))
+    assert response.status_code == 302
+    server.refresh_from_db()
+    assert set(server.known_tools) == set(names)
+    assert server.tools_requiring_confirmation == []
+    html = admin_client.get(url).content.decode()
+    for name in names:
+        selection = html.split(f'name="{_key(name)}"')[1].split("</select>")[0]
+        assert '<option value="auto" selected>' in selection
+        assert not tooling.needs_confirmation(server, name)
+    assert tooling.needs_confirmation(server, "neu_hinzugekommen")
 
 
 def test_form_without_table_keeps_json_lists(admin_client):
@@ -591,6 +617,7 @@ def test_api_marks_offline_server(client, adult):
     assert by_name["Oben"] == {
         "id": up.pk,
         "name": "Oben",
+        "reconnect_url": None,  # nur für Berechtigte (chat/mcp/reconnect.py)
         "default_enabled": True,
         "online": True,
         "error": None,

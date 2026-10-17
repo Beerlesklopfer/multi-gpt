@@ -207,9 +207,9 @@ class McpServerForm(SecretFieldFormMixin, forms.ModelForm):
                 continue
             key = "tool_rating_" + hashlib.sha1(name.encode()).hexdigest()[:12]
             current = mcp_status.rating(self.instance, name)
-            # Unbewertet: Vorschlag aus den annotations des Servers vorbelegen;
-            # wirksam wird er erst, wenn der Verwalter speichert.
-            initial = current or mcp_status.suggestion(tool)
+            # Auswahl zeigt nur die gespeicherte Einstufung. Hinweise des Servers
+            # stehen daneben als Vorschlag, ohne eine Freigabe vorzutäuschen.
+            initial = current
             self.fields[key] = forms.ChoiceField(
                 label=name, choices=self.RATING_CHOICES, required=False, initial=initial
             )

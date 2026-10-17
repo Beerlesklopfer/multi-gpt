@@ -356,6 +356,16 @@ async def list_tools(config: ServerConfig, timeout: float, refresh: bool = False
     return await _guarded(config, timeout, run)
 
 
+async def reconnect(config: ServerConfig, timeout: float) -> list[Any]:
+    """Eine Verbindung gezielt schließen und samt Werkzeugliste neu aufbauen."""
+
+    async def run():
+        await close_pipe(config.pk, config.runner_pipe)
+        return await get_connection(config).list_tools(refresh=True)
+
+    return await _guarded(config, timeout, run)
+
+
 async def call_tool(config: ServerConfig, name: str, arguments: dict, timeout: float) -> ToolResult:
     conn = get_connection(config)
     return await _guarded(config, timeout, lambda: conn.call_tool(name, arguments, timeout))
