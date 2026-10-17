@@ -42,7 +42,7 @@ class Config:
     # eingebunden unter scratch_dir, für Podman (Host-Sicht) unter scratch_host_dir.
     scratch_dir: str | None = None
     scratch_host_dir: str | None = None
-    # Adresse am Rechner für den Export von 8080/8443 als 10080/10443 (Nutzerentscheidung
+    # Adresse am Rechner für den Export von 8080/8443 als 24080/24443 (Nutzerentscheidung
     # 2026-10-14: Heimnetz, also 0.0.0.0); 127.0.0.1 beschränkt auf den Rechner selbst.
     expose_bind: str = "0.0.0.0"
     labels: dict = field(default_factory=dict)  # zusätzliche Labels (Tests: multigpt.test=1)

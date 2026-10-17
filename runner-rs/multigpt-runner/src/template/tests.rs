@@ -70,7 +70,7 @@ fn work() -> Value {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(10080),
+        Some(24080),
         &json!({"limits": l.as_value()}),
         None,
         None,
@@ -91,12 +91,12 @@ fn work_body_matches_template() {
         json!({"limit": 512u64 << 20, "swap": 512u64 << 20})
     );
     assert_eq!(body["resource_limits"]["cpu"]["quota"], json!(150000));
-    // Standardexport (Nutzer 2026-10-14): 8080 → 10080, 8443 → 10443, im Heimnetz.
+    // Standardexport (Nutzer 2026-10-14): 8080 → 24080, 8443 → 24443, im Heimnetz.
     assert_eq!(
         body["portmappings"],
         json!([
-            {"host_ip": "0.0.0.0", "host_port": 10080, "container_port": 8080, "protocol": "tcp"},
-            {"host_ip": "0.0.0.0", "host_port": 10443, "container_port": 8443, "protocol": "tcp"},
+            {"host_ip": "0.0.0.0", "host_port": 24080, "container_port": 8080, "protocol": "tcp"},
+            {"host_ip": "0.0.0.0", "host_port": 24443, "container_port": 8443, "protocol": "tcp"},
         ])
     );
     let dests: Vec<&str> = body["mounts"]
@@ -195,7 +195,7 @@ fn mutations() -> Vec<Mutation> {
         }),
         ("two_ports", |b| {
             let mut second = b["portmappings"][0].clone();
-            second["host_port"] = json!(10081);
+            second["host_port"] = json!(24081);
             b["portmappings"].as_array_mut().unwrap().push(second);
         }),
         ("no_memory_limit", |b| {
@@ -302,7 +302,7 @@ fn relay_command_and_networks_are_fixed() {
     bad["Networks"]["podman"] = json!({});
     assert!(check_body(&bad, &cfg).is_err());
     let mut bad = body.clone();
-    bad["portmappings"] = port_mappings(10080, BIND); // Relay veröffentlicht nichts
+    bad["portmappings"] = port_mappings(24080, BIND); // Relay veröffentlicht nichts
     assert!(check_body(&bad, &cfg).is_err());
     let mut bad = body.clone();
     bad["command"]
@@ -392,8 +392,8 @@ fn inspect(host: Value) -> Value {
         "NetworkMode": "bridge",
         "PidMode": "private",
         "PortBindings": {
-            "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
-            "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+            "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}],
+            "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24443"}],
         },
         "Binds": [],
     });
@@ -406,7 +406,7 @@ fn inspect(host: Value) -> Value {
 #[test]
 fn inspect_comparison_reports_deviations() {
     let expected = limits();
-    let p = Some(10080);
+    let p = Some(24080);
     assert!(check_inspect(&inspect(json!({})), &expected, p, None).is_empty());
     assert_eq!(actual_limits(&inspect(json!({})), "none"), expected);
     assert!(
@@ -422,12 +422,12 @@ fn inspect_comparison_reports_deviations() {
         json!({"Privileged": true}),
         json!({"PidMode": "host"}),
         json!({"Binds": ["/home:/x"]}),
-        json!({"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}}),
+        json!({"PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}]}}),
         json!({"PortBindings": {
-            "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}],
-            "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10443"}],
+            "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "24080"}],
+            "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "24443"}],
         }}),
-        json!({"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}}),
+        json!({"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}]}}),
         json!({"MemorySwap": -1}),
         json!({"PidsLimit": 0}),
         json!({"ReadonlyRootfs": false}),
@@ -466,10 +466,10 @@ fn inspect_accepts_only_the_scratch_bind() {
         inspect(json!({"Binds": [format!("{src}:/scratch:rw,noexec,nosuid,nodev,rbind")]}));
     info["Mounts"] = json!([{"Type": "bind", "Source": src, "Destination": "/scratch",
                              "Options": ["rbind", "noexec", "nosuid", "nodev"]}]);
-    assert!(check_inspect(&info, &expected, Some(10080), Some(&src)).is_empty());
-    assert!(!check_inspect(&info, &expected, Some(10080), None).is_empty());
+    assert!(check_inspect(&info, &expected, Some(24080), Some(&src)).is_empty());
+    assert!(!check_inspect(&info, &expected, Some(24080), None).is_empty());
     info["Mounts"][0]["Options"] = json!(["rbind"]);
-    assert!(!check_inspect(&info, &expected, Some(10080), Some(&src)).is_empty());
+    assert!(!check_inspect(&info, &expected, Some(24080), Some(&src)).is_empty());
 }
 
 fn local_body(cfg: &Bounds) -> Value {
@@ -585,7 +585,7 @@ fn helper_container_only_on_relay_network() {
         },
         |b| b["command"] = json!(["ssh", "x"]),
         |b| b["name"] = json!(container_name("42", "tool", Some("other"))),
-        |b| b["portmappings"] = port_mappings(10080, BIND),
+        |b| b["portmappings"] = port_mappings(24080, BIND),
     ];
     for mutate in muts {
         let mut bad = body.clone();
@@ -606,7 +606,7 @@ fn default_network_may_use_host_dns() {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(10080),
+        Some(24080),
         &json!({}),
         None,
         None,
@@ -713,7 +713,7 @@ fn packages_work_body_passes_and_mutations_fail() {
         IMAGE,
         &l,
         &network_name("42", "net"),
-        Some(10080),
+        Some(24080),
         &json!({}),
         None,
         Some(&url),

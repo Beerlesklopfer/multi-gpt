@@ -119,12 +119,12 @@ MAX_ID = 64
 
 HELLO_TIMEOUT = 10  # Sekunden bis zum ersten Rahmen ``hello``
 HEARTBEAT_SECONDS = 30
-PREVIEW_PORTS = range(10080, 10090)  # Host-Port http (Nutzer 2026-10-14: 80 → 10080)
-TLS_PORT_OFFSET = 363
+PREVIEW_PORTS = range(24080, 24090)  # Host-Port http (Nutzer 2026-10-14: 80 → 24080)
+TLS_PORT_OFFSET = 363  # Host-Port https = http + 363 (443 → 24443, 24081 → 24444, …)
 # Gemeldete Ports (hello/session_state/preview) sind nur Auskunft: Auch Container einer
 # früheren Version (18080–18089) dürfen gemeldet werden; sonst lehnt der Server das hello
 # ab und der Agent verbindet sich endlos neu (Befund 2026-10-14).
-REPORTED_PORTS = (1024, 65535)  # Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …)
+REPORTED_PORTS = (1024, 65535)
 
 # --- Close-Codes ---------------------------------------------------------------
 

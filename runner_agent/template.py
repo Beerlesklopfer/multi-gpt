@@ -535,7 +535,7 @@ def check_body(body: dict, config) -> str:
                 isinstance(host_port, int)
                 and not isinstance(host_port, bool)
                 and host_port in protocol.PREVIEW_PORTS,
-                "Port außerhalb 10080–10089.",
+                "Port außerhalb 24080–24090.",
             )
             _expect(
                 ports == port_mappings(host_port, bind),

@@ -629,6 +629,8 @@ class Hub:
         try:
             return protocol.parse(text, protocol.AGENT)
         except protocol.ProtocolError as exc:
+            # Nur Feldname und Regel, keine Inhalte (Token steht im hello).
+            logger.warning("Rahmen von %s abgewiesen (%s): %s", conn.ip or "?", exc.close_code, exc)
             await conn.close(exc.close_code, "protocol", exc.message)
             raise Closed() from None
 

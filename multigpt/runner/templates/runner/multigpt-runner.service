@@ -29,6 +29,8 @@ Environment=MGPT_IMAGES={{ work_image }}
 # Ordner <UUID> darin, im Container als /scratch (noexec, nosuid, nodev).
 Environment=MGPT_SCRATCH_DIR=%h/MultiGPT/Scratch
 Environment=MGPT_SCRATCH_HOST_DIR=%h/MultiGPT/Scratch
+# Eigene Einstellungen; Werte überschreiben die Vorgaben oben.
+EnvironmentFile=-%h/.config/multigpt-runner/config.env
 ExecStartPre=/usr/bin/mkdir -p %h/MultiGPT/Scratch
 NoNewPrivileges=true
 Restart=on-failure

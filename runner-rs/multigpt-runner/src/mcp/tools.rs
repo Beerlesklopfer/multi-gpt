@@ -30,7 +30,7 @@ pub const PTY_COLS: u16 = 120;
 pub const PTY_ROWS: u16 = 40;
 
 /// Werkzeuge, die (möglicherweise) Dateien im Arbeitsstand ändern.
-pub const CHANGING: [&str; 4] = ["write", "edit", "bash", "apt_install"];
+pub const CHANGING: [&str; 5] = ["write", "edit", "bash", "apt_install", "serve"];
 /// Höchstzahl der Pakete je `apt_install`.
 pub const APT_MAX_PACKAGES: usize = 20;
 
@@ -143,7 +143,9 @@ pub fn tool_defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "serve",
-            description: "Vorschau-Server für ein Verzeichnis starten.",
+            description: "Startet lighttpd. Fehlende /workspace/lighttpd.conf wird aus \
+                /etc/lighttpd/lighttpd.conf automatisch angelegt. Eine vorhandene \
+                Konfiguration wird unverändert verwendet.",
             input_schema: schema(json!({"path": path}), &[]),
         },
         ToolDef {
@@ -640,11 +642,16 @@ impl<H: ToolHost> SessionTools<H> {
     async fn tool_serve(&self, args: &Map<String, Value>) -> ToolResult<Outcome> {
         let info = self.host.start_preview(arg_opt_str(args, "path")?).await?;
         let url = info.get("url").and_then(Value::as_str).unwrap_or("");
-        let port = info.get("port").and_then(Value::as_u64).unwrap_or(10080);
+        let port = info.get("port").and_then(Value::as_u64).unwrap_or(24080);
+        let host = info
+            .get("host")
+            .and_then(Value::as_str)
+            .unwrap_or("<Rechner>");
         let text = format!(
-            "Vorschau läuft: {url}\nIm Heimnetz erreichbar unter http://<Rechner>:{port}/ und \
-             https://<Rechner>:{tls}/ (selbst signiertes Zertifikat); jeder im Netz kann es \
-             sehen.\nNur statische Dateien; Verzeichnisse liefern index.html, keine Listen.",
+            "Vorschau läuft: {url}\nIm Heimnetz erreichbar unter http://{host}:{port}/ und \
+             https://{host}:{tls}/ (selbst signiertes Zertifikat); jeder im Netz kann es \
+             sehen.\nNur statische Dateien; Verzeichnisse liefern index.html, keine Listen.\n\
+             lighttpd-Konfiguration: /workspace/lighttpd.conf.",
             tls = port + 363
         );
         Ok((text, Some(info)))

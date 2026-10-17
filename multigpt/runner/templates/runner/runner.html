@@ -66,7 +66,7 @@
                     aria-label="Eingabe kopieren" title="Eingabe kopieren">{% include "runner/_copy_icon.html" %}</button>
             <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
           </div>
-          <p class="hint"><code>pair</code> legt Token (nur für dich lesbar) und Schlüssel des Servers (schreibgeschützt) in <code>~/.config/multigpt-runner/</code> ab, schreibt <code>~/.config/systemd/user/{{ unit_name }}</code> und startet den Dienst. Der Runner nimmt nur Befehle an, die dieser Server signiert hat.</p>
+          <p class="hint"><code>config.env</code> wird im Einrichtungsschritt oben angelegt. Dort lassen sich alle <code>MGPT_*</code>-Einstellungen ändern, etwa <code>MGPT_EXPOSE_HOST</code>. Änderungen mit <code>systemctl --user restart multigpt-runner</code> übernehmen. <code>pair</code> legt Token (nur für dich lesbar) und Schlüssel des Servers (schreibgeschützt) in <code>~/.config/multigpt-runner/</code> ab, schreibt <code>~/.config/systemd/user/{{ unit_name }}</code> und startet den Dienst. Der Runner nimmt nur Befehle an, die dieser Server signiert hat.</p>
           <details>
             <summary>Inhalt von <code>~/.config/systemd/user/{{ unit_name }}</code></summary>
             <div class="connect-block">

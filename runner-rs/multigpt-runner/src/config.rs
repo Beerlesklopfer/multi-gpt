@@ -1,5 +1,9 @@
 //! Einstellungen des Agents aus der Umgebung (wie `runner_agent/config.py`).
 //!
+//! Der systemd-User-Dienst lädt zusätzlich `config.env` im Konfigurationsordner
+//! des Nutzers. Alle `MGPT_*`-Werte darin überschreiben die Vorgaben der Unit;
+//! das Programm selbst liest weiterhin die dadurch gesetzte Prozessumgebung.
+//!
 //! | Variable | Bedeutung |
 //! |---|---|
 //! | `MGPT_URL` | `https://host` bzw. `wss://host/runner/ws` (Pflicht) |
@@ -9,6 +13,8 @@
 //! | `MGPT_IMAGES` | lokale Positivliste der Images (mit Digest, durch Leerzeichen getrennt) |
 //! | `MGPT_INSECURE_DEV` | `1` erlaubt `ws://` (nur Entwicklung) |
 //! | `MGPT_HOSTNAME` | Name des Rechners im hello (Vorgabe: Rechnername) |
+//! | `MGPT_EXPOSE_HOST` | Adresse der nativen Web-Ausgabe (sonst automatisch ermittelt) |
+//! | `MGPT_EXPOSE_BIND` | Port-Bindung: `0.0.0.0` (Vorgabe) oder `127.0.0.1` |
 //! | `MGPT_SCRATCH_DIR`, `MGPT_SCRATCH_HOST_DIR` | lokales Scratchpad (`…/MultiGPT/Scratch`) |
 //! | `MGPT_LABELS` | zusätzliche Labels `k=v k2=v2` (Tests: `multigpt.test=1`) |
 //! | `MGPT_ENGINE` | `podman` (Vorgabe); `fake` nur mit Feature `fake-engine` und `MGPT_INSECURE_DEV=1` |
@@ -66,9 +72,12 @@ pub struct Config {
     pub max_memory_mb: u64,
     pub max_pids: u64,
     pub max_tmpfs_mb: u64,
-    /// Adresse des Port-Exports 8080/8443 → 10080/10443 (`0.0.0.0` Heimnetz, `127.0.0.1`
+    /// Adresse des Port-Exports 8080/8443 → 24080/24443 (`0.0.0.0` Heimnetz, `127.0.0.1`
     /// nur der Rechner; Nutzerentscheidung 2026-10-14).
     pub expose_bind: String,
+    /// Name oder Adresse, unter der der Rechner im Netz erreichbar ist (`MGPT_EXPOSE_HOST`);
+    /// ohne Angabe die lokale Adresse, mit der der Server erreicht wird.
+    pub expose_host: Option<String>,
     /// Lokales Scratchpad: Ordner `~/MultiGPT/Scratch` – Sicht des Agents.
     pub scratch_dir: Option<PathBuf>,
     /// … und Sicht von Podman (Host).
@@ -123,6 +132,7 @@ impl Config {
             max_tmpfs_mb: 8192,
             scratch_dir: None,
             expose_bind: "0.0.0.0".to_string(),
+            expose_host: None,
             scratch_host_dir: None,
             labels: BTreeMap::new(),
             engine: "podman".into(),
@@ -249,6 +259,22 @@ impl Config {
             Some(_) => {
                 return Err(ConfigError(
                     "MGPT_EXPOSE_BIND: nur 0.0.0.0 oder 127.0.0.1.".into(),
+                ));
+            }
+        };
+        config.expose_host = match get("MGPT_EXPOSE_HOST").map(str::trim) {
+            None | Some("") => None,
+            Some(host)
+                if host.len() <= 253
+                    && host
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':')) =>
+            {
+                Some(host.to_string())
+            }
+            Some(_) => {
+                return Err(ConfigError(
+                    "MGPT_EXPOSE_HOST: nur Name oder Adresse (Buchstaben, Ziffern, . - :).".into(),
                 ));
             }
         };

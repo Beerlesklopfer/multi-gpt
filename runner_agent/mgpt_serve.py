@@ -153,6 +153,9 @@ def _replace_running() -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mgpt-serve")
     parser.add_argument("--token", required=True)
+    parser.add_argument("--check-ready", action="store_true")
+    parser.add_argument("--prepare", action="store_true")
+    parser.add_argument("--config", default="lighttpd.conf")
     parser.add_argument("--dir", default=".")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--bind", default="0.0.0.0")
@@ -160,10 +163,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args.token.replace("-", "").replace("_", "").isalnum() or len(args.token) < 16:
         print("Token ungültig.", file=sys.stderr)
         return 2
-    root = os.path.realpath(os.path.join(WORKSPACE, args.dir.lstrip("/")))
+    directory = args.dir
+    if directory == "/workspace" or directory.startswith("/workspace/"):
+        directory = directory[len("/workspace") :].lstrip("/") or "."
+    root = os.path.realpath(os.path.join(WORKSPACE, directory))
     if not (root == WORKSPACE or root.startswith(WORKSPACE + os.sep)) or not os.path.isdir(root):
         print("Verzeichnis liegt nicht unter /workspace.", file=sys.stderr)
         return 2
+    if args.check_ready or args.prepare:
+        return 0  # FakeEngine zeichnet Hintergrunddienste nur auf.
     _replace_running()
     Handler.root = root
     Handler.prefix = f"/{args.token}/"

@@ -39,13 +39,13 @@
     "8080/tcp": [
      {
       "HostIp": "0.0.0.0",
-      "HostPort": "10080"
+      "HostPort": "24080"
      }
     ],
     "8443/tcp": [
      {
       "HostIp": "0.0.0.0",
-      "HostPort": "10443"
+      "HostPort": "24443"
      }
     ]
    },
@@ -74,6 +74,6 @@
   ]
  },
  "note": "ohne Soll",
- "preview_port": 10080,
+ "preview_port": 24080,
  "scratch_source": null
 }

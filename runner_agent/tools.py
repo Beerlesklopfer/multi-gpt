@@ -120,7 +120,11 @@ TOOLS = [
     ),
     types.Tool(
         name="serve",
-        description="Vorschau-Server für ein Verzeichnis starten.",
+        description=(
+            "Startet lighttpd. Fehlende /workspace/lighttpd.conf wird aus "
+            "/etc/lighttpd/lighttpd.conf automatisch angelegt. Eine vorhandene "
+            "Konfiguration wird unverändert verwendet."
+        ),
         input_schema=_schema({"path": _PATH}),
     ),
     types.Tool(
@@ -185,7 +189,7 @@ def catalog_text(release: str) -> str:
     )
 
 
-CHANGING = frozenset({"write", "edit", "bash"})
+CHANGING = frozenset({"write", "edit", "bash", "serve"})
 
 
 class ToolError(Exception):
@@ -381,13 +385,14 @@ class Toolbox:
 
     async def tool_serve(self, args):
         info = await self.manager.start_preview(self.session, _str(args, "path", required=False))
-        port = int(info.get("port") or 10080)
+        port = int(info.get("port") or 24080)
         text = (
             f"Vorschau läuft: {info['url']}\n"
             f"Im Heimnetz erreichbar unter http://<Rechner>:{port}/ und "
             f"https://<Rechner>:{port + 363}/ (selbst signiertes Zertifikat); jeder im Netz "
             "kann es sehen.\n"
-            "Nur statische Dateien; Verzeichnisse liefern index.html, keine Listen."
+            "Nur statische Dateien; Verzeichnisse liefern index.html, keine Listen.\n"
+            "lighttpd-Konfiguration: /workspace/lighttpd.conf."
         )
         return text, info
 

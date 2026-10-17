@@ -120,7 +120,7 @@ ENV HOME=/tmp \
 USER 1000:1000
 WORKDIR /workspace
 # Webserver (mgpt-serve → lighttpd) im Container: 8080 http, 8443 https. Der
-# Agent veröffentlicht sie als 10080 und 10443 (80 und 443 kann Nutzer 1000 ohne
+# Agent veröffentlicht sie als 24080 und 24443 (80 und 443 kann Nutzer 1000 ohne
 # Capabilities nicht binden).
 EXPOSE 8080 8443
 CMD ["sleep", "infinity"]

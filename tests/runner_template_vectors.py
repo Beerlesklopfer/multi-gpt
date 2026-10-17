@@ -15,7 +15,7 @@ Format je Datei::
      # je nach check:
      "body": {...}                                  # body, network (libpod-Körper)
      "info": {...}, "expected": {cpus, memory_mb, pids, tmpfs_mb, network},
-     "preview_port": 10080 | null, "scratch_source": null | "..."   # inspect
+     "preview_port": 24080 | null, "scratch_source": null | "..."   # inspect
      "limits": {...}                                # limits (Werte des Servers)
      "image": "...", "server_images": [...] | null} # image
 
@@ -78,7 +78,7 @@ def _mutated(body: dict, mutate) -> dict:
 
 def _work_with(**kw):
     """Arbeitscontainer mit anderer Netzart bzw. ohne Vorschau-Port."""
-    port = kw.pop("preview_port", 10080)
+    port = kw.pop("preview_port", 24080)
     scratch = kw.pop("scratch", None)
     bind = kw.pop("expose_bind", "0.0.0.0")
     limits = _limits(**kw)
@@ -115,10 +115,10 @@ def body_cases():
         "Scratchpad als tmpfs",
     )
     yield "work_scratch_local", local_cfg, local, "work", "lokales Scratchpad (Bind)"
-    yield "work_preview_last_port", cfg, _work_with(preview_port=10089), "work", "Port 10089"
-    # Standardexport 8080/8443 → 10080/10443 (Nutzer 2026-10-14), Adresse aus der Konfiguration.
+    yield "work_preview_last_port", cfg, _work_with(preview_port=24089), "work", "Port 24089"
+    # Standardexport 8080/8443 → 24080/24443 (Nutzer 2026-10-14), Adresse aus der Konfiguration.
     loop_cfg = make_config(expose_bind="127.0.0.1")
-    yield "work_second_pair", cfg, _work_with(preview_port=10081), "work", "10081 und 10444"
+    yield "work_second_pair", cfg, _work_with(preview_port=24081), "work", "24081 und 24444"
     yield "work_bind_loopback", loop_cfg, _work_with(expose_bind="127.0.0.1"), "work", "nur lokal"
     yield "work_bind_mismatch_lan", cfg, _work_with(expose_bind="127.0.0.1"), "reject", "Adresse"
     yield "work_bind_mismatch_loop", loop_cfg, _work_with(), "reject", "Adresse (lokal erwartet)"
@@ -146,9 +146,9 @@ def body_cases():
     yield (
         "work_tls_port_wrong",
         cfg,
-        _mutated(work, lambda b: b["portmappings"][1].update(host_port=10444)),
+        _mutated(work, lambda b: b["portmappings"][1].update(host_port=24444)),
         "reject",
-        "https-Port gehört zu 10081",
+        "https-Port gehört zu 24081",
     )
     yield (
         "work_tls_container_443",
@@ -163,7 +163,7 @@ def body_cases():
         _mutated(
             work,
             lambda b: b["portmappings"].append(
-                {"host_ip": "0.0.0.0", "host_port": 10445, "container_port": 22, "protocol": "tcp"}
+                {"host_ip": "0.0.0.0", "host_port": 24445, "container_port": 22, "protocol": "tcp"}
             ),
         ),
         "reject",
@@ -264,7 +264,7 @@ def body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 10080,
+                    "host_port": 24080,
                     "container_port": 8080,
                     "protocol": "tcp",
                 }
@@ -292,7 +292,7 @@ def body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 10080,
+                    "host_port": 24080,
                     "container_port": 8080,
                     "protocol": "tcp",
                 }
@@ -319,7 +319,7 @@ PACKAGE_HOSTS = [
 ]
 
 
-def _pkg_work(scratch=None, preview_port=10080, proxy_url=PROXY_URL):
+def _pkg_work(scratch=None, preview_port=24080, proxy_url=PROXY_URL):
     """Arbeitscontainer im Modus Paketquellen (gelockerte Vorlage)."""
     limits = _limits(network="packages")
     return T.work_body(
@@ -587,7 +587,7 @@ def packages_body_cases():
             portmappings=[
                 {
                     "host_ip": "127.0.0.1",
-                    "host_port": 10080,
+                    "host_port": 24080,
                     "container_port": 3128,
                     "protocol": "tcp",
                 }
@@ -666,10 +666,10 @@ def packages_inspect_cases():
             "Tmpfs": {"/workspace": "size=128m", "/tmp": "size=256m", "/var": "size=1g"}
         },
         "port_only_http": {
-            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}
+            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}]}
         },
         "proxy_port": {
-            "PortBindings": {"3128/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}]}
+            "PortBindings": {"3128/tcp": [{"HostIp": "127.0.0.1", "HostPort": "24080"}]}
         },
         "memory": {"Memory": 1 << 30, "MemorySwap": 1 << 30},
     }
@@ -715,7 +715,7 @@ def network_cases():
 
 def inspect_cases():
     expected = _limits().as_dict()
-    yield "inspect_ok", _inspect(), expected, 10080, None, "ok", "wie Soll"
+    yield "inspect_ok", _inspect(), expected, 24080, None, "ok", "wie Soll"
     bad = {
         "memory": {"Memory": 1 << 30, "MemorySwap": 1 << 30},
         "swap": {"MemorySwap": -1},
@@ -734,43 +734,43 @@ def inspect_cases():
         },
         "tmpfs_size": {"Tmpfs": {"/workspace": "size=256m", "/tmp": "size=256m"}},
         "port_only_http": {
-            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}
+            "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}]}
         },
         "port_loopback": {
             "PortBindings": {
-                "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10080"}],
-                "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "10443"}],
+                "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "24080"}],
+                "8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "24443"}],
             }
         },
-        "port_other": {"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}]}},
+        "port_other": {"PortBindings": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}]}},
         "port_number": {
             "PortBindings": {
-                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10081"}],
-                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24081"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24443"}],
             }
         },
         "port_tls_number": {
             "PortBindings": {
-                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
-                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10444"}],
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24444"}],
             }
         },
         "port_extra": {
             "PortBindings": {
-                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10080"}],
-                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10443"}],
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24080"}],
+                "8443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "24443"}],
                 "22/tcp": [{"HostIp": "0.0.0.0", "HostPort": "10022"}],
             }
         },
     }
     for name, host in bad.items():
-        yield f"inspect_{name}", _inspect(**host), expected, 10080, None, "reject", "Abweichung"
+        yield f"inspect_{name}", _inspect(**host), expected, 24080, None, "reject", "Abweichung"
     info = _inspect()
     info["Config"]["User"] = "0:0"
-    yield "inspect_root_user", info, expected, 10080, None, "reject", "Nutzer root"
+    yield "inspect_root_user", info, expected, 24080, None, "reject", "Nutzer root"
     info = _inspect()
     info["Mounts"] = [{"Type": "bind", "Source": "/home", "Destination": "/x", "Options": []}]
-    yield "inspect_mount", info, expected, 10080, None, "reject", "fremder Mount"
+    yield "inspect_mount", info, expected, 24080, None, "reject", "fremder Mount"
     source = f"{HOST_DIR}/{SCRATCH_UUID}"
     info = _inspect(Binds=[f"{source}:/scratch:rw,noexec,nosuid,nodev"])
     info["Mounts"] = [
@@ -781,14 +781,14 @@ def inspect_cases():
             "Options": ["rbind", "noexec", "nosuid", "nodev"],
         }
     ]
-    yield "inspect_local_scratch", info, expected, 10080, source, "ok", "lokales Scratchpad"
+    yield "inspect_local_scratch", info, expected, 24080, source, "ok", "lokales Scratchpad"
     info2 = copy.deepcopy(info)
     info2["Mounts"][0]["Options"] = ["rbind"]
-    yield "inspect_local_scratch_exec", info2, expected, 10080, source, "reject", "ohne noexec"
-    yield "inspect_local_scratch_unexpected", info, expected, 10080, None, "reject", "ohne Soll"
+    yield "inspect_local_scratch_exec", info2, expected, 24080, source, "reject", "ohne noexec"
+    yield "inspect_local_scratch_unexpected", info, expected, 24080, None, "reject", "ohne Soll"
     yield "inspect_no_port", _inspect(PortBindings={}), expected, None, None, "ok", "ohne Port"
     for name, info, exp, expect, note in packages_inspect_cases():
-        yield name, info, exp, 10080, None, expect, note
+        yield name, info, exp, 24080, None, expect, note
 
 
 def inspect_bind_cases():
@@ -799,8 +799,8 @@ def inspect_bind_cases():
     bound = {
         host: {
             "PortBindings": {
-                "8080/tcp": [{"HostIp": host, "HostPort": "10080"}],
-                "8443/tcp": [{"HostIp": host, "HostPort": "10443"}],
+                "8080/tcp": [{"HostIp": host, "HostPort": "24080"}],
+                "8443/tcp": [{"HostIp": host, "HostPort": "24443"}],
             }
         }
         for host in ("0.0.0.0", "127.0.0.1")
@@ -810,7 +810,7 @@ def inspect_bind_cases():
         lan,
         _inspect(**bound["0.0.0.0"]),
         expected,
-        10080,
+        24080,
         "ok",
         "Heimnetz",
     )
@@ -819,7 +819,7 @@ def inspect_bind_cases():
         loop,
         _inspect(**bound["127.0.0.1"]),
         expected,
-        10080,
+        24080,
         "ok",
         "lokal",
     )
@@ -828,7 +828,7 @@ def inspect_bind_cases():
         loop,
         _inspect(**bound["0.0.0.0"]),
         expected,
-        10080,
+        24080,
         "reject",
         "lokal erwartet",
     )
@@ -837,7 +837,7 @@ def inspect_bind_cases():
         lan,
         _inspect(**bound["127.0.0.1"]),
         expected,
-        10080,
+        24080,
         "reject",
         "Heimnetz erwartet",
     )

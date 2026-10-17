@@ -288,6 +288,10 @@ pub struct SessionManager {
     pub bounds: Bounds,
     pub scratch_dir: Option<PathBuf>,
     pub scratch_host_dir: Option<String>,
+    /// Feste Adresse für die Vorschau-Adresse (`MGPT_EXPOSE_HOST`) …
+    expose_host: Option<String>,
+    /// … sonst die lokale Adresse, mit der der Server erreicht wird (einmal bestimmt).
+    exposed_address: Mutex<Option<String>>,
     /// Zusätzliche Labels an allen Objekten (Tests: `multigpt.test=1`).
     pub labels: BTreeMap<String, String>,
     pub server_url: String,
@@ -315,6 +319,8 @@ impl SessionManager {
                 .scratch_host_dir
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned()),
+            expose_host: config.expose_host.clone(),
+            exposed_address: Mutex::new(None),
             labels: config.labels.clone(),
             server_url: config.url.clone(),
             outbox,
@@ -970,7 +976,7 @@ impl SessionManager {
             .map(|e| e.0)
             .unwrap_or_else(|| "alle belegt".into());
         Err(SessionError::new(
-            format!("Kein freier Vorschau-Port in 10080–10089 ({reason})."),
+            format!("Kein freier Vorschau-Port in 24080–24090 ({reason})."),
             "limit",
         ))
     }
@@ -1711,13 +1717,64 @@ impl SessionManager {
             &directory,
             "--port",
             "8080",
+            "--config",
+            "/workspace/lighttpd.conf",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect();
+        let mut prepare_argv = argv.clone();
+        prepare_argv.push("--prepare".into());
+        let prepared = self
+            .engine
+            .exec(
+                &session.container,
+                &prepare_argv,
+                ExecOptions {
+                    stdin: None,
+                    timeout: Duration::from_secs(45),
+                    max_output: 4096,
+                    workdir: "/workspace".into(),
+                    root: false,
+                },
+            )
+            .await?;
+        if prepared.code != Some(0) || prepared.timed_out {
+            let detail = tail(String::from_utf8_lossy(&prepared.stderr).trim(), 1500);
+            return Err(SessionError::new(
+                format!("lighttpd-Konfiguration konnte nicht vorbereitet werden.\n{detail}"),
+                "engine",
+            ));
+        }
         self.engine
             .exec_detached(&session.container, &argv, "/workspace")
             .await?;
+        let check = self
+            .engine
+            .exec(
+                &session.container,
+                &[
+                    "mgpt-serve".into(),
+                    "--token".into(),
+                    token.clone(),
+                    "--check-ready".into(),
+                ],
+                ExecOptions {
+                    stdin: None,
+                    timeout: Duration::from_secs(20),
+                    max_output: 4096,
+                    workdir: "/workspace".into(),
+                    root: false,
+                },
+            )
+            .await?;
+        if check.code != Some(0) || check.timed_out {
+            let detail = tail(String::from_utf8_lossy(&check.stderr).trim(), 1500);
+            return Err(SessionError::new(
+                format!("lighttpd ist nicht gestartet; /workspace/lighttpd.conf prüfen.\n{detail}"),
+                "engine",
+            ));
+        }
         {
             let mut st = session.state();
             st.preview_token = Some(token.clone());
@@ -1728,8 +1785,28 @@ impl SessionManager {
             json!({"session": session.id, "running": true, "port": port, "token": token}),
         )
         .await?;
-        let url = format!("http://127.0.0.1:{port}/{token}/");
-        Ok(json!({"url": url, "port": port, "token": token}))
+        let host = self.exposed_host().await;
+        let url = format!("http://{host}:{port}/");
+        Ok(json!({"url": url, "port": port, "token": token, "host": host}))
+    }
+
+    /// Adresse, unter der der Rechner im Netz erreichbar ist: `MGPT_EXPOSE_HOST`, bei der
+    /// Bindung an 127.0.0.1 diese, sonst die lokale Adresse der Verbindung zum Server.
+    pub async fn exposed_host(&self) -> String {
+        if let Some(host) = &self.expose_host {
+            return host.clone();
+        }
+        if self.bounds.expose_bind == "127.0.0.1" {
+            return "127.0.0.1".into();
+        }
+        if let Some(cached) = guard(&self.exposed_address).clone() {
+            return cached;
+        }
+        let found = local_address_towards(&self.server_url)
+            .await
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        *guard(&self.exposed_address) = Some(found.clone());
+        found
     }
 
     /// Vorschau über den Rückkanal (8p): Datei per `mgpt-fs fetch`, nie Verzeichnislisten.
@@ -2172,6 +2249,35 @@ impl ToolHost for SessionHandle {
             output: report.output,
         })
     }
+}
+
+/// Lokale Adresse, mit der `url` (ws://host:port/...) erreicht wird: UDP-Socket „verbinden“
+/// (sendet nichts) und die gewählte Quelladresse lesen.
+async fn local_address_towards(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) && !h.contains(']') => {
+            (h.to_string(), p.parse::<u16>().ok()?)
+        }
+        _ => (
+            authority.to_string(),
+            if url.starts_with("wss://") { 443 } else { 80 },
+        ),
+    };
+    let addr = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .ok()?
+        .next()?;
+    let bind = if addr.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
+    let socket = tokio::net::UdpSocket::bind(bind).await.ok()?;
+    socket.connect(addr).await.ok()?;
+    let ip = socket.local_addr().ok()?.ip();
+    (!ip.is_unspecified()).then(|| ip.to_string())
 }
 
 #[cfg(test)]

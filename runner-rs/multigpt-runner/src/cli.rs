@@ -262,7 +262,19 @@ pub fn write_pair_files(dir: &Path, token: &str, key_b64: &str) -> std::io::Resu
     // schreibgeschützt; vorhandene (schreibgeschützte) Datei vorher entfernen
     let key_file = dir.join("server.pub");
     let _ = std::fs::remove_file(&key_file);
-    write_private(&key_file, &format!("{key_b64}\n"), 0o444)
+    write_private(&key_file, &format!("{key_b64}\n"), 0o444)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(dir.join("config.env")) {
+        Ok(mut file) => file.write_all(include_bytes!("../systemd/config.env.example")),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn write_private(path: &Path, content: &str, mode: u32) -> std::io::Result<()> {
@@ -482,12 +494,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = dir.path().join("multigpt-runner");
         write_pair_files(&cfg, &token, &key).unwrap();
-        write_pair_files(&cfg, &token, &key).unwrap(); // zweimal (server.pub schreibgeschützt)
+        let custom = "MGPT_EXPOSE_HOST=192.168.24.127\nMGPT_EXPOSE_BIND=0.0.0.0\n";
+        assert!(
+            std::fs::read_to_string(cfg.join("config.env"))
+                .unwrap()
+                .contains("MGPT_IMAGES")
+        );
+        std::fs::write(cfg.join("config.env"), custom).unwrap();
+        write_pair_files(&cfg, &token, &key).unwrap(); // eigene Konfiguration bleibt
+        assert_eq!(
+            std::fs::read_to_string(cfg.join("config.env")).unwrap(),
+            custom
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode(&cfg.join("token")), 0o600);
+            assert_eq!(mode(&cfg.join("config.env")), 0o600);
             assert_eq!(mode(&cfg.join("server.pub")), 0o444);
             assert_eq!(mode(&cfg), 0o700);
         }
@@ -520,6 +544,7 @@ mod tests {
         )));
         assert!(unit.contains("MGPT_TOKEN_FILE=/home/u/.config/multigpt-runner/token"));
         assert!(unit.contains("RestartPreventExitStatus=2 3"));
+        assert!(unit.contains("EnvironmentFile=-/home/u/.config/multigpt-runner/config.env"));
         assert!(!unit.contains('@') || !unit.contains("@MGPT"));
         let plain = render_unit(
             Path::new("/x"),

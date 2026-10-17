@@ -14,16 +14,18 @@ Entscheidungen (Nutzer, 2026-10-14):
   nutzt den Pfad mit Token).
 - Port 8080 (http) und 8443 (https, selbst signiertes Zertifikat, beim Start
   im tmpfs erzeugt und nie gespeichert). Nutzer 1000 ohne Capabilities kann die
-  Ports 80/443 nicht binden; der Agent veröffentlicht sie als 10080/10443.
-- Nur GET und HEAD, keine Symlinks, ``.git`` gesperrt, strenge Kopfzeilen und CSP
-  mit ``sandbox`` (eigener Ursprung).
+  Ports 80/443 nicht binden; der Agent veröffentlicht sie als 24080/24443.
+- Nur GET und HEAD, keine Symlinks, ``.git`` gesperrt, strenge Kopfzeilen und CSP.
+  Die native Seite behält ihren Ursprung; die MultiGPT-Vorschau setzt ihre eigene Sandbox.
 - Eine laufende Vorschau (anderes Verzeichnis) wird beendet und ersetzt: lighttpd
   ersetzt diesen Prozess per ``exec``, die PID bleibt gleich und steht in der PID-Datei.
+- Die erzeugte Konfiguration liegt in /workspace/lighttpd.conf und wird mit -f übergeben.
 """
 
 from __future__ import annotations
 
 import argparse
+import http.client
 import os
 import re
 import signal
@@ -36,14 +38,18 @@ TMP = os.environ.get("MGPT_TMP") or "/tmp"
 RUN_DIR = os.path.join(TMP, "mgpt-lighttpd")
 PIDFILE = os.path.join(TMP, "mgpt-serve.pid")
 LIGHTTPD = os.environ.get("MGPT_LIGHTTPD") or "/usr/sbin/lighttpd"
+TEMPLATE = "/etc/lighttpd/lighttpd.conf"
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 
+# Native Webseiten behalten ihren HTTP-Ursprung, damit CSS, Module und fetch
+# von derselben Adresse zusammen mit CORP same-origin funktionieren.
 CSP = (
-    "sandbox allow-scripts allow-forms allow-modals allow-popups; "
     "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
     "connect-src 'self'; form-action 'none'; base-uri 'none'"
 )
+
+LEGACY_CSP = "sandbox allow-scripts allow-forms allow-modals allow-popups; " + CSP
 
 MIME = {
     ".html": "text/html; charset=utf-8",
@@ -144,6 +150,38 @@ def build_config(
     return "\n".join(lines) + "\n"
 
 
+def config_from_template(root: str, token: str | None, **options) -> str:
+    """Image-Vorlage übernehmen und die Werte der Sitzung einsetzen."""
+    generated = build_config(root, token, **options)
+    try:
+        with open(TEMPLATE, encoding="utf-8") as fh:
+            config = fh.read()
+    except FileNotFoundError:
+        return generated
+    config = config.replace(_q(LEGACY_CSP), _q(CSP))
+    replacements = {
+        "server.document-root": _q(root),
+        "server.bind": _q(options["bind"]),
+        "server.port": str(options["port"]),
+    }
+    for name, value in replacements.items():
+        config, count = re.subn(
+            rf"^{re.escape(name)}[ \t]*=.*$",
+            lambda _, name=name, value=value: f"{name} = {value}",
+            config,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if count != 1:
+            raise ValueError(f"Image-Vorlage enthält {name} nicht.")
+    if token is not None:
+        config += f"\nalias.url = ( {_q('/' + token + '/')} => {_q(root.rstrip('/') + '/')} )\n"
+    if options.get("tls_port") is not None:
+        config += '\nserver.modules += ( "mod_openssl" )\n'
+        config += generated[generated.index('$SERVER["socket"]') :]
+    return config
+
+
 def make_certificate(directory: str) -> tuple[str, str]:
     """Selbst signiertes Wegwerf-Zertifikat im tmpfs (nie im Arbeitsstand)."""
     cert = os.path.join(directory, "cert.pem")
@@ -194,10 +232,31 @@ def _replace_running() -> None:
         fh.write(str(os.getpid()))
 
 
+def check_ready(token: str, port: int) -> int:
+    """Erfolg erst melden, wenn der gestartete Server HTTP beantwortet."""
+    for _ in range(50):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=0.2)
+        try:
+            connection.request("HEAD", "/")
+            response = connection.getresponse()
+            if response.status < 500:
+                return 0
+        except (OSError, http.client.HTTPException):
+            pass
+        finally:
+            connection.close()
+        time.sleep(0.2)
+    print("Webserver wurde nicht erreichbar; Start und lighttpd.conf prüfen.", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mgpt-serve")
     parser.add_argument("--token", help="Pfad-Token; ohne Angabe nur unter / erreichbar")
     parser.add_argument("--print-config", action="store_true", help="Konfiguration ausgeben")
+    parser.add_argument("--check-ready", action="store_true")
+    parser.add_argument("--prepare", action="store_true")
+    parser.add_argument("--config", default="lighttpd.conf", help="Konfiguration unter /workspace")
     parser.add_argument("--dir", default=".")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--tls-port", type=int, default=8443)
@@ -207,7 +266,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.token is not None and not TOKEN_RE.match(args.token):
         print("Token ungültig.", file=sys.stderr)
         return 2
-    root = os.path.realpath(os.path.join(WORKSPACE, args.dir.lstrip("/")))
+    directory = args.dir
+    if directory == "/workspace" or directory.startswith("/workspace/"):
+        directory = directory[len("/workspace") :].lstrip("/") or "."
+    root = os.path.realpath(os.path.join(WORKSPACE, directory))
     if not (root == WORKSPACE or root.startswith(WORKSPACE + os.sep)) or not os.path.isdir(root):
         print("Verzeichnis liegt nicht unter /workspace.", file=sys.stderr)
         return 2
@@ -216,7 +278,8 @@ def main(argv: list[str] | None = None) -> int:
             build_config(root, args.token, bind=args.bind, port=args.port, tls_port=None)
         )
         return 0
-    _replace_running()
+    if args.check_ready:
+        return check_ready(args.token or "", args.port)
     os.makedirs(RUN_DIR, mode=0o700, exist_ok=True)
     port_note = f"http :{args.port}" + ("" if args.no_tls else f", https :{args.tls_port}")
     print(f"mgpt-serve: {root} ({port_note})", file=sys.stderr)
@@ -228,12 +291,29 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, subprocess.SubprocessError):
             print("Zertifikat konnte nicht erzeugt werden; nur http.", file=sys.stderr)
             tls_port = None
-    config = build_config(
+    config = config_from_template(
         root, args.token, bind=args.bind, port=args.port, tls_port=tls_port, cert=cert, key=key
     )
-    path = os.path.join(RUN_DIR, "lighttpd.conf")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(config)
+    path = os.path.join(WORKSPACE, args.config)
+    if os.path.dirname(os.path.realpath(path)) != WORKSPACE or os.path.islink(path):
+        print("Konfiguration muss direkt unter /workspace liegen.", file=sys.stderr)
+        return 2
+    # Eine vom Modell angepasste Kopie der Image-Vorlage bleibt erhalten.
+    if not os.path.exists(path):
+        with open(path, "x", encoding="utf-8") as fh:
+            fh.write(config)
+    else:
+        # Nur den früher von uns erzeugten, widersprüchlichen Header migrieren.
+        with open(path, encoding="utf-8") as fh:
+            existing = fh.read()
+        migrated = existing.replace(_q(LEGACY_CSP), _q(CSP))
+        if migrated != existing:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(migrated)
+    subprocess.run([LIGHTTPD, "-tt", "-f", path], check=True, timeout=10)
+    if args.prepare:
+        return 0
+    _replace_running()
     os.execv(LIGHTTPD, ["lighttpd", "-D", "-f", path])
     return 0  # pragma: no cover
 

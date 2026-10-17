@@ -102,7 +102,7 @@ def make_session(user, runner, *, status=RunnerSession.Status.RUNNING, preview=T
         runner=runner,
         workspace=workspace,
         status=status,
-        preview_port=10080 if preview else None,
+        preview_port=24080 if preview else None,
         **extra,
     )
 

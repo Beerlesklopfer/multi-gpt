@@ -415,7 +415,7 @@ class SessionManager:
             session.preview_port = port
             return
         raise SessionError(
-            f"Kein freier Vorschau-Port in 10080–10089 ({last_error or 'alle belegt'}).", "limit"
+            f"Kein freier Vorschau-Port in 24080–24090 ({last_error or 'alle belegt'}).", "limit"
         )
 
     async def stop(self, sid: str, reason: str = "user") -> None:
@@ -727,16 +727,42 @@ class SessionManager:
         if session.preview_port is None:
             raise SessionError("Für diese Sitzung ist kein Vorschau-Port frei.", "limit")
         token = session.preview_token or secrets.token_urlsafe(24)
-        await self.engine.exec_detached(
+        argv = [
+            "mgpt-serve",
+            "--token",
+            token,
+            "--dir",
+            directory,
+            "--port",
+            "8080",
+            "--config",
+            "/workspace/lighttpd.conf",
+        ]
+        prepared = await self.engine.exec(session.container, [*argv, "--prepare"], timeout=45)
+        if prepared.code != 0 or prepared.timed_out:
+            raise SessionError(
+                "lighttpd-Konfiguration konnte nicht vorbereitet werden.\n"
+                + prepared.stderr.decode("utf-8", errors="replace")[-1500:],
+                "engine",
+            )
+        await self.engine.exec_detached(session.container, argv)
+        check = await self.engine.exec(
             session.container,
-            ["mgpt-serve", "--token", token, "--dir", directory, "--port", "8080"],
+            ["mgpt-serve", "--token", token, "--check-ready"],
+            timeout=20,
         )
+        if check.code != 0 or check.timed_out:
+            raise SessionError(
+                "lighttpd ist nicht gestartet; /workspace/lighttpd.conf prüfen.\n"
+                + check.stderr.decode("utf-8", errors="replace")[-1500:],
+                "engine",
+            )
         session.preview_token = token
         session.preview_dir = directory
         await self.send(
             "preview", session=session.id, running=True, port=session.preview_port, token=token
         )
-        url = f"http://127.0.0.1:{session.preview_port}/{token}/"
+        url = f"http://127.0.0.1:{session.preview_port}/"
         return {"url": url, "port": session.preview_port, "token": token}
 
     async def preview_request(self, frame: dict) -> None:

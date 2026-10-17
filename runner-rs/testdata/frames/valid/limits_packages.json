@@ -8,7 +8,7 @@
    "rootfs_mb": 4096,
    "tmpfs_mb": 512
   },
-  "preview_port": 10080,
+  "preview_port": 24080,
   "session": "s1",
   "state": "running",
   "type": "session_state"

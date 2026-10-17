@@ -481,10 +481,10 @@ def test_pty_and_preview_are_routed(online, anna):
 
         delivery.send(runner.pk, {"type": "session_stop", "session": sid, "reason": "user"})
         receive(ws)
-        send(ws, "preview", session=sid, running=True, port=10083, token="t" * 32)
-        assert events.get(timeout=5)["port"] == 10083
+        send(ws, "preview", session=sid, running=True, port=24083, token="t" * 32)
+        assert events.get(timeout=5)["port"] == 24083
     session.refresh_from_db()
-    assert session.preview_port == 10083
+    assert session.preview_port == 24083
     assert session.preview_token != "t" * 32  # Token des Agents bleibt beim Agent
 
 

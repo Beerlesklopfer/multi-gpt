@@ -876,7 +876,7 @@ def _outcome(result, tool_call: ToolCall, message) -> tooling.Outcome:
             f"[{len(ids)} Datei(en) als Anhang gespeichert und dem Nutzer angezeigt. "
             f"{tooling.NOTE_ATTACHMENT_SHOWN}]"
         )
-        text = f"{text}\n\n{note}" if text else note
+        text = (f"{text}\n\n{note}" if text else note) + tooling.scratchpad_note(ids)
     status = ToolCall.Status.ERROR if result.is_error else ToolCall.Status.OK
     return tooling.Outcome(status, text or tooling.MSG_EMPTY, bool(result.is_error), ids)
 

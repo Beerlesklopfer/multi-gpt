@@ -39,13 +39,13 @@
     "8080/tcp": [
      {
       "HostIp": "0.0.0.0",
-      "HostPort": "10080"
+      "HostPort": "24080"
      }
     ],
     "8443/tcp": [
      {
       "HostIp": "0.0.0.0",
-      "HostPort": "10443"
+      "HostPort": "24443"
      }
     ]
    },
@@ -74,6 +74,6 @@
   ]
  },
  "note": "lokales Scratchpad",
- "preview_port": 10080,
+ "preview_port": 24080,
  "scratch_source": "/home/user/MultiGPT/Scratch/0b5f2c1e-7d4a-4c1b-9a8e-3f2d1c0b9a87"
 }

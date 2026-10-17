@@ -17,7 +17,7 @@ import pytest
 
 from runner_agent import protocol, template, tools
 from runner_agent.engine import FakeEngine
-from runner_agent.session import SessionManager
+from runner_agent.session import SessionError, SessionManager
 from tests.test_runner_agent import OTHER_IMAGE, make_config
 
 
@@ -141,14 +141,14 @@ def test_session_start_reports_actual_limits(harness):
             "network": "none",
             "rootfs_mb": None,  # nur im Netzmodus „packages“ (parse ergänzt None)
         }
-        assert state["preview_port"] == 10080
+        assert state["preview_port"] == 24080
         net = template.network_name("s1")
         assert harness.engine.networks[net]["internal"] is True
         body = harness.engine.created[0]
         assert body["Networks"] == {net: {}}
         assert template.check_body(body, harness.config) == "work"
         assert harness.manager.infos() == [
-            {"session": "s1", "workspace": "w1", "state": "running", "preview_port": 10080}
+            {"session": "s1", "workspace": "w1", "state": "running", "preview_port": 24080}
         ]
         # git init im leeren Arbeitsstand
         ws = harness.engine.workspace(template.container_name("s1"))
@@ -208,14 +208,14 @@ def test_deviating_actual_limits_stop_the_container(harness):
 
 
 def test_workspace_only_in_one_session_and_busy_port_is_skipped(harness):
-    harness.engine.busy_ports.add(10080)
+    harness.engine.busy_ports.add(24080)
 
     async def scenario():
-        assert (await harness.start())["preview_port"] == 10081
+        assert (await harness.start())["preview_port"] == 24081
         state = await harness.start(session="s2", workspace="w1")
         assert state["state"] == "failed" and "schon in einer Sitzung" in state["error"]
         state = await harness.start(session="s3", workspace="w3")
-        assert state["state"] == "running" and state["preview_port"] == 10082
+        assert state["state"] == "running" and state["preview_port"] == 24082
 
     run(scenario())
 
@@ -252,7 +252,7 @@ def test_adopt_running_containers_after_restart(tmp_path):
         second = SessionManager(first.engine, first.config, first.send)
         await second.adopt()
         assert second.infos() == [
-            {"session": "s1", "workspace": "w1", "state": "running", "preview_port": 10080}
+            {"session": "s1", "workspace": "w1", "state": "running", "preview_port": 24080}
         ]
         assert second.sessions["s1"].limits.memory_mb == 512
 
@@ -400,8 +400,8 @@ def test_serve_and_preview_over_back_channel(harness):
         await harness.start()
         await harness.call("write", path="site/index.html", content="<h1>Vorschau</h1>")
         text, info = await harness.call("serve", path="site")
-        assert info["port"] == 10080 and info["url"].startswith("http://127.0.0.1:10080/")
-        assert info["url"].endswith(f"/{info['token']}/")
+        assert info["port"] == 24080 and info["url"].startswith("http://127.0.0.1:24080/")
+        assert info["url"] == "http://127.0.0.1:24080/"
         preview = harness.of("preview")[-1]
         assert preview["running"] and preview["token"] == info["token"]
         box = harness.engine.containers[template.container_name("s1")]
@@ -748,5 +748,51 @@ def test_telnet_login_in_helper_container_and_password_masked(harness):
         assert len(tool_boxes) == 1  # bleibt für weitere Eingaben offen
         await harness.manager.stop("s1")
         assert harness.engine.containers == {}
+
+    run(scenario())
+
+
+def test_serve_does_not_announce_failed_webserver(harness, monkeypatch):
+    from runner_agent.engine import ExecResult
+
+    original = harness.engine.exec
+
+    async def failed_readiness(name, argv, **kwargs):
+        if "--check-ready" in argv:
+            return ExecResult(1, stderr=b"Webserver nicht erreichbar")
+        return await original(name, argv, **kwargs)
+
+    monkeypatch.setattr(harness.engine, "exec", failed_readiness)
+
+    async def scenario():
+        await harness.start()
+        with pytest.raises(SessionError, match="lighttpd ist nicht gestartet"):
+            await harness.manager.start_preview(harness.manager.get("s1"), ".")
+        assert not harness.of("preview")
+        box = harness.engine.containers[template.container_name("s1")]
+        assert box["detached"][-1][-2:] == ["--config", "/workspace/lighttpd.conf"]
+
+    run(scenario())
+
+
+def test_serve_reports_configuration_error_before_start(harness, monkeypatch):
+    from runner_agent.engine import ExecResult
+
+    original = harness.engine.exec
+
+    async def failed_prepare(name, argv, **kwargs):
+        if "--prepare" in argv:
+            return ExecResult(1, stderr=b"lighttpd.conf line 12: syntax error")
+        return await original(name, argv, **kwargs)
+
+    monkeypatch.setattr(harness.engine, "exec", failed_prepare)
+
+    async def scenario():
+        await harness.start()
+        with pytest.raises(SessionError, match="line 12: syntax error"):
+            await harness.manager.start_preview(harness.manager.get("s1"), "/workspace")
+        assert not harness.of("preview")
+        box = harness.engine.containers[template.container_name("s1")]
+        assert not box.get("detached")
 
     run(scenario())

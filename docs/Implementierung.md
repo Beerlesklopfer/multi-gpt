@@ -621,7 +621,7 @@ Werkzeuge im Stil von Claude Code: `read` (mit Zeilenbereich), `write`, `edit` (
 
 - **Standardwerkzeuge im Arbeits-Image (ohne Compiler):** lighttpd, curl, wget, jq, ripgrep, tree, less, nano, vim-tiny, make, patch, rsync, zip/unzip, sqlite3, file, openssl, python3 mit pip/venv, git, node/npm, ssh- und telnet-Client. Compiler (build-essential) nicht im Image; bei Bedarf `apt_install`. Image-Größe etwa 600 MB.
 - **Webserver lighttpd** statt `mgpt-serve` (Python), nur statische Dateien: kein CGI, keine Templates, keine Verzeichnislisten, strenge Kopfzeilen; Docroot `/workspace` bzw. das Unterverzeichnis aus `serve`. `mgpt-serve` bleibt als Hülle, die die Konfiguration im tmpfs erzeugt und lighttpd startet.
-- **Standardexport 80 → 10080 und 443 → 10443:** Der Container hört unprivilegiert auf 8080 und 8443 (Nutzer 1000 ohne Capabilities kann Port 80 nicht binden – am Gerät geprüft, `Permission denied`); am Rechner erscheinen sie als **10080 (http)** und **10443 (https)**. Weitere Sitzungen gleichzeitig bekommen die Ersatzpaare 10081/10444 … 10089/10452. Bindung **0.0.0.0, also im Heimnetz erreichbar** (ausdrückliche Entscheidung des Nutzers; Einstellung `MGPT_EXPOSE_BIND`, Vorgabe 0.0.0.0, `127.0.0.1` beschränkt auf den Rechner). Folge: Was das Modell dort hinstellt, ist ohne Anmeldung und ohne Token für das ganze Netz sichtbar und läuft als Skript im Browser; der Chat weist darauf hin. Die Vorschau über MultiGPT (mit Token, abgeschottet) bleibt unverändert.
+- **Standardexport 80 → 24080 und 443 → 24443:** Der Container hört unprivilegiert auf 8080 und 8443 (Nutzer 1000 ohne Capabilities kann Port 80 nicht binden – am Gerät geprüft, `Permission denied`); am Rechner erscheinen sie als **24080 (http)** und **24443 (https)**. Weitere Sitzungen gleichzeitig bekommen die Ersatzpaare 24081/24444 … 24089/24452. Bindung **0.0.0.0, also im Heimnetz erreichbar** (ausdrückliche Entscheidung des Nutzers; Einstellung `MGPT_EXPOSE_BIND`, Vorgabe 0.0.0.0, `127.0.0.1` beschränkt auf den Rechner). Folge: Was das Modell dort hinstellt, ist ohne Anmeldung und ohne Token für das ganze Netz sichtbar und läuft als Skript im Browser; der Chat weist darauf hin. Die Vorschau über MultiGPT (mit Token, abgeschottet) bleibt unverändert.
 - **443:** lighttpd mit selbst signiertem Zertifikat, beim Start im tmpfs erzeugt (nie persistiert, nie im Arbeitsstand).
 - **Volumen je Benutzer:** Ein benanntes Podman-Volume `multigpt-data` je Runner (ein Runner gehört zu genau einem Konto) wird als `/data` in jeden Arbeitscontainer eingebunden (`nosuid,nodev`). Zusätzlich zum Arbeitsstand: Der Quelltext bleibt als Bundle auf dem Server (Verlauf, Datenbanksicherung); das Volumen hält **Ergebnisse und Caches** (Build-Ausgaben, venv, node_modules, pip/npm-Caches) über Sitzungen hinweg. Einzige Ausnahme vom „nur tmpfs“ neben dem lokalen Scratchpad; Größengrenze je Rolle (Vorgabe 2 GB, `du` je Heartbeat, schreibende Werkzeuge über der Grenze abgelehnt). Das Modell erfährt es im Werkzeugtext: `/workspace` wird gesichert, `/data` bleibt auf diesem Rechner.
 - **Umsetzung** in drei Stufen: (1) Image mit Werkzeugen und lighttpd, (2) Ports und Adresse samt Vorlage, Python-Orakel und Vektoren, (3) Volumen mit Grenze und Hinweis im Werkzeugtext.
@@ -1359,3 +1359,67 @@ vertrauenswürdig – wie Webtext.
 - **Mitteilungen an den Besitzer (LOP A15, 2026-10-12):** `chat.Notice` (`chat/models_notice.py`, Migration `chat 0041_notice`) und `chat/notices.py` – Empfänger mit Recht D löscht/archiviert (auch zurückholt) einen geteilten Chat (`api_manage`) oder löscht eine Antwort samt Folgeverlauf (`api.message_delete`) → Mitteilung an den Besitzer mit Anzeigenamen und Titel, ohne Inhalte (beim Löschen ohne Verweis auf den Chat); Anzeige im persönlichen Menü mit Zahl ungelesener (`notice_tags`), Seite `/mitteilungen/` (`views_notices.py`), gelesene löscht der Worker nach 90 Tagen; Tests `tests/test_notices.py`.
 
 - **Chats lesen über MCP (Nutzerwunsch 2026-10-12, 0.3.6):** Recht `chat.read` (Datenmigration `node 0005_chat_read_scope`: Rollen mit `chat.ask` bekommen es dazu), Werkzeuge `list_chats` und `read_chat` in `node/tool_chats.py`. Lesbar sind nur eigene und mit dem Konto geteilte Chats (`sharing.access_for`: Besitzer oder Freigabe), nie über die Einsicht von Verwaltern. `read_chat` rendert den angezeigten Pfad als Markdown mit Werkzeugaufrufen (Argumente ≤ 600, Ergebnis ≤ 1 500 Zeichen), Quellen [n] je Antwort, Status, Fehlern und Anhangsnamen, seitenweise zu 30 000 Zeichen. Zweck: Fehler in Chats der Produktion aus der Ferne nachvollziehen (Key nur mit `chat.read`).
+
+- **Runner-Konfiguration (2026-10-14):** Der systemd-User-Dienst liest optional
+  `~/.config/multigpt-runner/config.env` (`EnvironmentFile=-…`) für sämtliche
+  unterstützten `MGPT_*`-Einstellungen. Werte überschreiben die Vorgaben in der
+  Unit. `pair` legt die kommentierte Vorlage mit Modus 0600 an und erhält eine
+  vorhandene Datei bei erneuter Kopplung. Beide Unit-Vorlagen sind angepasst.
+  Dokumentiert in Wiki „Runner“ (vollständige Liste, WS-Joerg, bestehende
+  Installationen, Neustart) und „Konfiguration“. Das Programm selbst liest weiter
+  seine Prozessumgebung; systemd lädt die Datei. CLI-Tests: 4 bestanden.
+
+- **MCP neu verbinden im Chat (2026-10-14):** Button beim MCP-Werkzeugaufruf,
+  POST mit CSRF und erneuter Rechteprüfung. Allgemeine Server nur für Verwalter,
+  eigene Runner mit laufender Sitzung für deren Besitzer; Schreibrecht am Chat
+  erforderlich. Keine Wiederholung des ursprünglichen Aufrufs. Migration
+  `chat 0046_mcpserver_connection_revision` sorgt dafür, dass andere Prozesse
+  ihre Verbindung beim nächsten Gebrauch ebenfalls ersetzen. HTTP/stdio und
+  bestehende Runner-pipe werden über die gemeinsame MCP-Brücke neu aufgebaut.
+
+- **MCP-Auswahlwidget (2026-10-14):** Gemeinsames Widget im Eingabebereich,
+  links Checkbox und Servername, rechts unabhängiger Button „Neu verbinden“.
+  Der Button ist kein Teil des Checkbox-Labels, bleibt bei offline gemeldeten
+  Servern erreichbar und erhält die Auswahl beim Aktualisieren der Serverliste.
+  Neuer POST-Endpunkt `/api/mcp-servers/<id>/reconnect/`, auch ohne vorhandenen
+  Werkzeugaufruf; Rechte wie beim Protokoll-Button, Runner mit Chat-Sitzung.
+
+- **MCP-Einstufungsanzeige korrigiert (2026-10-14):** Neue Werkzeuge wurden
+  bisher im Admin mit einer aus `annotations` vorbelegten Auswahl angezeigt,
+  obwohl diese Einstufung nicht gespeichert war und der Chat weiter nachfragte.
+  Die Auswahl zeigt jetzt ausschließlich die gespeicherte Einstufung; Vorschläge
+  stehen separat daneben. Regression prüft Anzeige, Speichern, erneutes Laden und
+  `tooling.needs_confirmation` gemeinsam. Die Einstufung wird weiterhin explizit
+  durch den Verwalter gespeichert, nie allein aus Angaben eines MCP-Servers.
+
+- **SVG-Daten-URLs im Markdown (2026-10-14):** Markdown-Bilder mit eingebettetem
+  SVG (Base64 oder URL-kodiert) nutzen die vorhandene SVG-Codevorschau, statt
+  als langer Daten-URL-Text auszugeben. Dekodierung mit UTF-8 und 512-KB-Grenze;
+  Bereinigung und Darstellung ausschließlich über `svg_preview.js`. Rohtext,
+  Kopieren und Export bleiben erhalten. Im Firefox geprüft: beide Kodierungen,
+  Unicode, Bildanzeige, Code/Download, fehlerhafte Daten, Entfernung aktiver
+  Inhalte und externer SVG-Verweise sowie keine automatischen externen Bilder.
+
+- **MCP-Bildanhänge sichtbar (2026-10-14):** Werkzeugdateien wurden aus der
+  Anhangsliste der Antwort herausgefiltert und erschienen nur als Text im
+  eingeklappten Werkzeugprotokoll. Nachrichtentemplate und JSON liefern jetzt
+  sämtliche Anhänge der Nachricht. MCP-Speicherung ergänzt MIME-Typ, Größe,
+  Dateiname und bei SVG die Maße; SVG-Bereinigung vor Speicherung und Auslieferung.
+  Bestehende `.svg`-Anhänge ohne MIME-Metadaten werden ebenfalls geschützt und
+  bereinigt inline ausgeliefert. Keine Änderung der Originalantwort erforderlich.
+
+- **Zentrales Datei-Scratchpad (Nutzerentscheidung 2026-10-14):** Neue App
+  `multigpt.scratchpad`, `ScratchFile` je erzeugtem MCP-Anhang mit eigenem
+  Besitzer, separater Mediendatei, MIME-Typ, Maßen, Werkzeugname und optionalem
+  Herkunftsverweis. Unabhängig vom Chat-Lebenszyklus (Herkunft `SET_NULL`),
+  ausschließlich für den Besitzer lesbar. Menü „Scratchpad“, `/scratchpad/`
+  mit Vorschau und Download; SVGs bereinigt. MCP-Ergebnis nennt den dauerhaften
+  lokalen Pfad ausdrücklich ohne externe Link-Ablauffrist. `scratchpad_import`
+  übernimmt bestehende Werkzeuganhänge idempotent, optional je Konto/Werkzeug.
+  Migration `scratchpad 0001_initial`; Wiki „Scratchpad“. Das Dokument-Scratchpad
+  M13 bleibt ein eigener Ausbau; Runner-`/scratch` bleibt separat.
+
+- **Scratchpad-Dateien löschen (2026-10-14):** „Löschen“ neben Download,
+  Bestätigungsseite mit Pflicht-Häkchen, POST und CSRF. Nur Besitzer; fremde
+  Dateien auch für Verwalter 404. `post_delete` entfernt die separate Mediendatei
+  nach Commit, auch bei Konto-Löschung. Chat-Anhang bleibt erhalten.

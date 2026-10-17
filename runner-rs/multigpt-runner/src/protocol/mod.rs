@@ -60,7 +60,7 @@ pub const PUBLIC_KEY_BYTES: usize = 32;
 pub const HELLO_TIMEOUT: u64 = 10;
 pub const HEARTBEAT_SECONDS: u64 = 30;
 /// Ports der Vorschau auf dem Rechner (Entscheidung 8x).
-pub const PREVIEW_PORTS: Range<u16> = 10080..10090;
+pub const PREVIEW_PORTS: Range<u16> = 24080..24090;
 /// Gemeldete Ports (hello/session_state/preview) sind nur Auskunft; auch Container einer
 /// früheren Version (18080–18089) werden gemeldet, ohne dass der Server das hello ablehnt.
 pub const REPORTED_PORTS: (u16, u16) = (1024, 65535);

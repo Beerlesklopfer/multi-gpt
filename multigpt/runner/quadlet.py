@@ -136,6 +136,21 @@ def render_unit(mgpt_url: str) -> str:
     )
 
 
+def config_setup_command() -> str:
+    """Persönliche Konfiguration auf dem Runner-Rechner einmalig anlegen."""
+    template = render_to_string("runner/config.env.example")
+    return (
+        'runner_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/multigpt-runner"\n'
+        'mkdir -p "$runner_config_dir" && (\n'
+        "  umask 077\n"
+        '  if [ ! -e "$runner_config_dir/config.env" ]; then\n'
+        "    set -C\n"
+        "    cat > \"$runner_config_dir/config.env\" <<'MGPT_CONFIG_EOF'\n"
+        + template.rstrip("\n")
+        + "\nMGPT_CONFIG_EOF\n  fi\n)"
+    )
+
+
 def native_commands(mgpt_url: str, binaries: dict) -> list[tuple[str, str]]:
     """Befehle in Reihenfolge: (Erklärung, Befehl). ``binaries``: arch → {name,
     sha256} aus ``trust.dist_info``. Der Token steht nie in einem Befehl
@@ -157,6 +172,10 @@ def native_commands(mgpt_url: str, binaries: dict) -> list[tuple[str, str]]:
         (
             "Programm installieren",
             "install -D -m 0755 multigpt-runner-linux-$ARCH ~/.local/bin/multigpt-runner",
+        ),
+        (
+            "Persönliche Konfiguration anlegen (vorhandene Datei bleibt erhalten)",
+            config_setup_command(),
         ),
         (
             "Koppeln und als Dienst starten (danach die Eingabe unten einfügen, dann Strg+D)",

@@ -147,6 +147,104 @@ mit Strg+D abschließen:
 `~/.config/systemd/user/multigpt-runner.service` und startet den Dienst. Der Token steht nie in
 einem Befehl (Shell-Verlauf), in der Unit-Datei oder im Container.
 
+### Konfigurationsdatei des Runner-Agents
+
+`~/.config/multigpt-runner/config.env` (bei XDG entsprechend
+`$XDG_CONFIG_HOME/multigpt-runner/config.env`). `pair` legt eine kommentierte Vorlage
+an und erhält eine vorhandene Datei bei erneuter Kopplung. Die Kopplungsseite bietet
+zusätzlich vor `pair` den Schritt „Persönliche Konfiguration anlegen“: Der erzeugte
+Befehl schreibt die Vorlage auf dem Runner-Rechner mit Modus 0600, wenn sie fehlt.
+Der systemd-User-Dienst
+liest alle dort gesetzten `MGPT_*`-Einstellungen; sie überschreiben die Vorgaben
+in der Unit. Ohne Datei gelten die bisherigen Vorgaben. Beispiel:
+
+```ini
+MGPT_EXPOSE_HOST=192.168.24.127
+MGPT_EXPOSE_BIND=0.0.0.0
+MGPT_HOSTNAME=WS-Joerg
+```
+
+Format `KEY=value`, kein `export`. Für Dateipfade absolute Pfade verwenden;
+`~`, `$HOME` und `%h` werden innerhalb der Datei nicht ersetzt. Anschließend
+`systemctl --user restart multigpt-runner`. Für bestehende Installationen einmal
+per `systemctl --user edit multigpt-runner` ergänzen:
+
+```ini
+[Service]
+EnvironmentFile=-%h/.config/multigpt-runner/config.env
+```
+
+Falls die Datei noch fehlt, als Benutzer des Runners anlegen und bearbeiten:
+
+```sh
+mkdir -p ~/.config/multigpt-runner
+touch ~/.config/multigpt-runner/config.env
+chmod 600 ~/.config/multigpt-runner/config.env
+nano ~/.config/multigpt-runner/config.env
+```
+
+Nach dem erstmaligen Ergänzen der Unit:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user restart multigpt-runner
+systemctl --user status multigpt-runner
+```
+
+Bei späteren Änderungen an `config.env` genügt der Neustart. `systemctl --user cat
+multigpt-runner` zeigt die Unit samt Drop-ins und damit, ob `EnvironmentFile` eingebunden
+ist. Mit einem eigenen XDG-Konfigurationsordner den Pfad in der Unit und den Befehlen
+entsprechend anpassen.
+
+Bei direktem Start des Programms ohne systemd werden weiterhin die
+Prozess-Umgebungsvariablen verwendet; die Datei wird durch systemd geladen.
+Die Datei enthält keine Token oder privaten Schlüssel, sondern nur Einstellungen und
+Pfade. Token und öffentlicher Server-Schlüssel bleiben in `token` und `server.pub`.
+Eine kommentierte Vorlage liegt im Quellcode unter
+[`runner-rs/multigpt-runner/systemd/config.env.example`](https://github.com/Beerlesklopfer/multi-gpt/blob/main/runner-rs/multigpt-runner/systemd/config.env.example).
+
+#### Unterstützte Einstellungen
+
+Die Datei kann alle folgenden `MGPT_*`-Werte setzen. Die bei der Kopplung erzeugte
+Unit liefert bereits Server-Adresse, Image-Freigabe, Secret-Pfade, Podman-Socket und
+Scratchpad-Pfade. In `config.env` müssen daher nur gewünschte Abweichungen stehen.
+
+| Einstellung | Bedeutung und Vorgabe |
+|---|---|
+| `MGPT_URL` | Server-Adresse als `https://host` oder `wss://host/runner/ws`; bei `pair` vorgegeben. |
+| `MGPT_CA_SHA256` | SHA-256-Fingerprint des Server-Zertifikats, bei selbst signierten Zertifikaten; ohne Angabe reguläre Zertifikatsprüfung. |
+| `MGPT_IMAGES` | Erlaubte Arbeits-Images mit Digest; mehrere durch Leerzeichen getrennt, z. B. `MGPT_IMAGES="registry/image@sha256:… registry/other@sha256:…"`. Die Freigabe des Servers muss ebenfalls passen. |
+| `MGPT_HOSTNAME` | Anzeigename des Rechners beim Verbinden; ohne Angabe der Rechnername. |
+| `MGPT_EXPOSE_HOST` | Name oder IP für die native Web-Adresse, ohne Schema, Port oder Pfad; z. B. `192.168.24.127`. Ohne Angabe ermittelt der Agent die lokale Adresse seiner Verbindung zum Server. |
+| `MGPT_EXPOSE_BIND` | Bindung der exportierten Ports: `0.0.0.0` (Vorgabe, im Heimnetz erreichbar) oder `127.0.0.1` (nur auf dem Runner-Rechner). `EXPOSE_HOST` ändert nur die angezeigte Adresse, diese Einstellung bestimmt die Erreichbarkeit. |
+| `MGPT_TOKEN_FILE` | Absoluter Pfad zur Token-Datei; bei `pair` im Konfigurationsordner als `token`. |
+| `MGPT_SERVER_KEY_FILE` | Absoluter Pfad zum öffentlichen Installationsschlüssel des Servers; bei `pair` im Konfigurationsordner als `server.pub`. |
+| `MGPT_PODMAN_SOCKET` | Podman-Socket; die User-Unit setzt `/run/user/<UID>/podman/podman.sock`. Ohne Unit-Vorgabe verwendet das Programm `/run/podman.sock`. |
+| `MGPT_SCRATCH_DIR` | Lokaler Scratchpad-Ordner aus Sicht des Agents; die User-Unit setzt `~/MultiGPT/Scratch`. |
+| `MGPT_SCRATCH_HOST_DIR` | Derselbe Ordner aus Sicht von Podman; bei nativem Agent normalerweise identisch zu `MGPT_SCRATCH_DIR`. |
+| `MGPT_CATALOG_FILE` | Optionaler Dienstkatalog als Datei statt des eingebauten Katalogs. |
+| `MGPT_CATALOG_SIG_FILE` | Signaturdatei des optionalen Dienstkatalogs. |
+| `MGPT_CATALOG_KEY` | ID des Signaturschlüssels, 16 Hex-Zeichen; bei signiertem externem Katalog erforderlich. |
+| `MGPT_LABELS` | Zusätzliche Container-Labels als `"k=v k2=v2"`; normalerweise nicht erforderlich. |
+| `MGPT_INSECURE_DEV` | `1` erlaubt unverschlüsselte `ws://`-Verbindungen für Entwicklung; standardmäßig aus. |
+| `MGPT_ENGINE` | `podman` (Vorgabe). `fake` ist ausschließlich in Testbauten mit Feature `fake-engine` und `MGPT_INSECURE_DEV=1` verfügbar. |
+
+#### Beispiel für WS-Joerg
+
+```ini
+MGPT_HOSTNAME=WS-Joerg
+MGPT_EXPOSE_HOST=192.168.24.127
+MGPT_EXPOSE_BIND=0.0.0.0
+```
+
+Bei einer Sitzung auf dem ersten Portpaar zeigt `serve` damit
+`http://192.168.24.127:24080/`; HTTPS liegt auf Port `24443`. Weitere gleichzeitige
+Sitzungen verwenden die nächsten freigegebenen Portpaare. Eine bereits vom LLM
+formulierte Chatantwort wird durch die Konfigurationsänderung nicht umgeschrieben;
+nach dem Neustart eine neue Sitzung starten und `serve` erneut aufrufen.
+
+### Dienst prüfen
+
 Prüfen: `systemctl --user status multigpt-runner` bzw. `journalctl --user -u multigpt-runner`.
 Auf der Seite **Runner** steht der Rechner nach wenigen Sekunden als *verbunden*.
 
@@ -161,6 +259,7 @@ Environment=MGPT_TOKEN_FILE=%h/.config/multigpt-runner/token
 Environment=MGPT_SERVER_KEY_FILE=%h/.config/multigpt-runner/server.pub
 Environment=MGPT_PODMAN_SOCKET=%t/podman/podman.sock
 Environment=MGPT_IMAGES=ghcr.io/…/multigpt-runner-work@sha256:…
+EnvironmentFile=-%h/.config/multigpt-runner/config.env
 Restart=on-failure
 RestartPreventExitStatus=2 3
 ```
@@ -332,12 +431,12 @@ CSS, Bilder); es gibt keine serverseitige Ausführung, keine Verzeichnislisten u
 
 | Im Container | Am Rechner | |
 |---|---|---|
-| 8080 (http) | **10080** | Standardexport für „80“ |
-| 8443 (https) | **10443** | Standardexport für „443“, selbst signiertes Zertifikat |
+| 8080 (http) | **24080** | Standardexport für „80“ |
+| 8443 (https) | **24443** | Standardexport für „443“, selbst signiertes Zertifikat |
 
 Die Ports 80 und 443 kann der Nutzer im Container ohne Rechte nicht binden; deshalb 8080/8443 im
-Container. Laufen mehrere Sitzungen gleichzeitig, bekommt die nächste das Paar 10081/10444, dann
-10082/10445 usw. bis 10089/10452.
+Container. Laufen mehrere Sitzungen gleichzeitig, bekommt die nächste das Paar 24081/24444, dann
+24082/24445 usw. bis 24089/24452.
 
 - **Starten:** das Werkzeug `serve` (optional mit Verzeichnis) oder im Terminal `mgpt-serve`
   (`--dir site`). Beide starten lighttpd mit http und https.

@@ -89,7 +89,7 @@ EXAMPLES = {
                 "tmpfs_mb": 512,
                 "network": "none",
             },
-            "preview_port": 10080,
+            "preview_port": 24080,
         },
     ),
     "session_stop": (P.SERVER, {"session": "s1", "reason": "idle"}),
@@ -140,7 +140,7 @@ EXAMPLES = {
         {"session": "s1", "pty": "t1", "seq": 0, "data": P.b64encode(b"\x1b[0m$ ")},
     ),
     "pty_exit": (P.AGENT, {"session": "s1", "pty": "t1", "code": 0}),
-    "preview": (P.AGENT, {"session": "s1", "running": True, "port": 10081, "token": "z" * 32}),
+    "preview": (P.AGENT, {"session": "s1", "running": True, "port": 24081, "token": "z" * 32}),
     "preview_request": (
         P.SERVER,
         {
@@ -290,7 +290,7 @@ def test_semantic_rules():
             {"type": "preview_response", "session": "s", "request": "r", "seq": 0, "last": True}
         )
     with pytest.raises(P.ProtocolError, match="port und token"):
-        P.validate({"type": "preview", "session": "s", "running": True, "port": 10080})
+        P.validate({"type": "preview", "session": "s", "running": True, "port": 24080})
     with pytest.raises(P.ProtocolError, match="außerhalb"):
         P.validate(
             {"type": "preview", "session": "s", "running": True, "port": 1023, "token": "z" * 32}
@@ -386,6 +386,10 @@ def test_protocol_has_no_django_imports():
     assert "django" not in source.lower().replace("django-importe", "")
     imports = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
     assert all("multigpt" not in line and "django" not in line for line in imports)
+
+
+def test_preview_ports_cover_all_ten_export_pairs():
+    assert list(P.PREVIEW_PORTS) == list(range(24080, 24090))
 
 
 def test_agent_copy_is_identical():

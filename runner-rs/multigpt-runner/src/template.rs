@@ -36,7 +36,7 @@ pub const USER: &str = "1000:1000";
 pub const PREVIEW_CONTAINER_PORT: u64 = 8080;
 /// https im Container (selbst signiertes Zertifikat, im tmpfs erzeugt).
 pub const TLS_CONTAINER_PORT: u64 = 8443;
-/// Host-Port https = http + 363 (443 → 10443, 10081 → 10444, …).
+/// Host-Port https = http + 363 (443 → 24443, 24081 → 24444, …).
 pub const TLS_PORT_OFFSET: u64 = 363;
 /// Adresse des Port-Exports am Rechner (Nutzerentscheidung 2026-10-14: Heimnetz).
 pub const DEFAULT_EXPOSE_BIND: &str = "0.0.0.0";
@@ -46,8 +46,8 @@ pub const CPU_PERIOD: u64 = 100_000;
 /// Größe von `/tmp` (tmpfs) in MB, zusätzlich zu `/workspace`.
 pub const TMP_MB: u64 = 256;
 pub const NOFILE: u64 = 4096;
-/// Host-Ports (http) am Rechner: 8080 → 10080 … 10089, https jeweils +363 (Nutzer 2026-10-14).
-pub const PREVIEW_PORTS: std::ops::Range<u64> = 10080..10090;
+/// Host-Ports (http) am Rechner: 8080 → 24080 … 24089, https jeweils +363 (Nutzer 2026-10-14).
+pub const PREVIEW_PORTS: std::ops::Range<u64> = 24080..24090;
 pub const NETWORK_MODES: [&str; 4] = ["none", "allowlist", "default", "packages"];
 /// Port des Proxys im Relay-Container (Netzmodus „Paketquellen“).
 pub const PROXY_PORT: u64 = 3128;
@@ -1122,7 +1122,7 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
                     .get("host_port")
                     .and_then(Value::as_u64)
                     .filter(|p| PREVIEW_PORTS.contains(p));
-                expect(host_port.is_some(), "Port außerhalb 10080–10089.")?;
+                expect(host_port.is_some(), "Port außerhalb 24080–24090.")?;
                 expect(
                     Value::Array(ports.clone())
                         == port_mappings(host_port.unwrap(), &bounds.expose_bind),

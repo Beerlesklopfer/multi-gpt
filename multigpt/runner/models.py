@@ -329,7 +329,7 @@ class RunnerSession(models.Model):
     last_tool_at = models.DateTimeField("letzter Werkzeugaufruf", null=True, blank=True)
     # Kontingent ausgeschöpft: Stopp angefordert; ohne Bestätigung trennt der Server nach 60 s.
     quota_stop_sent = models.DateTimeField("Stopp (Kontingent) angefordert", null=True, blank=True)
-    # Vorschau (8p/8x): Port am Browser-Rechner (10080–10089) und Zufalls-Token im Pfad.
+    # Vorschau (8p/8x): Port am Browser-Rechner (24080–24090) und Zufalls-Token im Pfad.
     preview_port = models.PositiveIntegerField("Vorschau-Port", null=True, blank=True)
     preview_token = models.CharField(
         "Vorschau-Token", max_length=64, default=new_preview_token, editable=False

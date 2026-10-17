@@ -209,8 +209,13 @@ _TOOLS = [
         "Startet den Webserver lighttpd für ein Verzeichnis des Arbeitsstands: nur statische "
         "Dateien (HTML, JS, CSS, Bilder), keine serverseitige Ausführung. Im Container hört "
         "er auf 8080 (http) und 8443 (https, selbst signiert); am Rechner des Nutzers sind "
-        "sie als 10080 und 10443 im Heimnetz erreichbar. Liefert die Vorschau-Adresse. Eine "
-        "fertige Konfiguration liegt unter /etc/lighttpd/lighttpd.conf.",
+        "sie als 24080 und 24443 im Heimnetz erreichbar. Liefert die Vorschau-Adresse. Die "
+        "Konfiguration wird als /workspace/lighttpd.conf abgelegt und an lighttpd übergeben. "
+        "Fehlt die Datei, legt serve sie automatisch aus /etc/lighttpd/lighttpd.conf an und "
+        "passt Dokumentwurzel und Ports an. Eine vorhandene /workspace/lighttpd.conf bleibt "
+        "unverändert und kann dort bearbeitet werden. Bei HTTP-Arbeiten nach dem Erstellen "
+        "der Dateien "
+        "serve aufrufen.",
         _schema({"path": {"type": "string", "description": "Verzeichnis (Standard: /workspace)."}}),
     ),
     RunnerTool(
