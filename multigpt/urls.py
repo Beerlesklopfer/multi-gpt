@@ -38,6 +38,7 @@ urlpatterns = [
     ),
     # Runner (M14): Kopplung und Arbeitsstände; /runner/ws bedient der Runner-Dienst.
     path("runner/", include("multigpt.runner.urls")),
+    path("scratchpad/", include("multigpt.scratchpad.urls")),
     # Mit und ohne Schrägstrich: Clients posten an die eingetragene Adresse, eine
     # Weiterleitung (APPEND_SLASH) würde den POST verlieren.
     path("mcp/", node_views.mcp_endpoint, name="mcp"),

@@ -35,7 +35,7 @@ from django.core.files.base import ContentFile
 
 from multigpt.accounts.permissions import Action, can
 
-from . import mcp
+from . import mcp, svg_clean
 from .models import Attachment, McpServer, ToolCall
 from .providers.base import ToolSpec
 
@@ -359,9 +359,23 @@ class Outcome:
 def _attachment(message, tool_call: ToolCall, item, kind: str) -> Attachment | None:
     if not item.data or len(item.data) > MAX_ATTACHMENT_BYTES:
         return None
-    ext = mimetypes.guess_extension(item.mime_type or "") or ".bin"
-    attachment = Attachment(message=message, tool_call=tool_call, kind=kind)
-    attachment.file.save(f"tool{ext}", ContentFile(item.data), save=True)
+    mime_type = (item.mime_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    data, width, height = item.data, None, None
+    if mime_type == "image/svg+xml":
+        data, width, height = svg_clean.clean(data)
+        kind = Attachment.Kind.IMAGE
+    ext = mimetypes.guess_extension(mime_type) or ".bin"
+    attachment = Attachment(
+        message=message,
+        tool_call=tool_call,
+        kind=kind,
+        mime_type=mime_type,
+        size=len(data),
+        width=width,
+        height=height,
+        original_name=item.name or f"werkzeug{ext}",
+    )
+    attachment.file.save(f"tool{ext}", ContentFile(data), save=True)
     return attachment
 
 
@@ -378,12 +392,28 @@ def _store_files(message, tool_call: ToolCall, result) -> list[int]:
     for item, kind in items:
         try:
             attachment = _attachment(message, tool_call, item, kind)
+            if attachment is not None:
+                from multigpt.scratchpad.services import store_attachment
+
+                store_attachment(attachment)
+                ids.append(attachment.pk)
         except Exception as exc:
             logger.error("Anhang zu Werkzeugaufruf %s: %s", tool_call.pk, type(exc).__name__)
-            continue
-        if attachment is not None:
-            ids.append(attachment.pk)
     return ids
+
+
+def scratchpad_note(attachment_ids) -> str:
+    from multigpt.scratchpad.models import ScratchFile
+
+    items = ScratchFile.objects.filter(source_attachment_id__in=attachment_ids)
+    if not items:
+        return ""
+    entries = "; ".join(f"{item.name}: {item.url}" for item in items)
+    return (
+        f"\n[Im zentralen Server-Scratchpad dauerhaft gespeichert: {entries}. "
+        "Diese lokalen Kopien haben keine 15-Minuten-Frist; Ablaufzeiten externer "
+        "Bildlinks gelten für sie nicht. Die Dateien sind auch über das Menü Scratchpad verfügbar.]"
+    )
 
 
 def _clip(text: str, limit: int) -> str:
@@ -425,7 +455,7 @@ def execute(server: McpServer, tool_call: ToolCall, message, runner=None) -> Out
                 f"[{len(ids)} Datei(en) als Anhang gespeichert und dem Nutzer angezeigt. "
                 f"{NOTE_ATTACHMENT_SHOWN}]"
             )
-            text = f"{text}\n\n{note}" if text else note
+            text = (f"{text}\n\n{note}" if text else note) + scratchpad_note(ids)
         status = ToolCall.Status.ERROR if result.is_error else ToolCall.Status.OK
         outcome = Outcome(status, text or MSG_EMPTY, bool(result.is_error), ids)
     elapsed = record(tool_call, outcome, started)

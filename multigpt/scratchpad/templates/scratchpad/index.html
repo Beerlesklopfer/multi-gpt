@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Scratchpad – MultiGPT{% endblock %}
+{% block content %}
+<section class="page page-wide" aria-labelledby="scratchpad-title">
+  <h1 id="scratchpad-title">Scratchpad</h1>
+  <p class="page-intro">Deine erzeugten Werkzeugdateien. Sie bleiben auf diesem Server gespeichert, auch wenn du den zugehörigen Chat löschst.</p>
+  {% for item in page %}
+    <article class="module">
+      <h2 class="section-title">{{ item.name }}</h2>
+      <p class="hint">{{ item.created|date:"d.m.Y H:i" }} · {{ item.size|filesizeformat }}{% if item.tool_name %} · {{ item.tool_name }}{% endif %}</p>
+      {% if item.is_image %}
+        <a class="attachment-thumb" href="{{ item.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ item.url }}" alt="{{ item.name }}" loading="lazy"{% if item.width and item.height %} width="{{ item.width }}" height="{{ item.height }}"{% endif %}></a>
+      {% endif %}
+      <p><a class="button button-small" href="{{ item.url }}?download=1">Herunterladen</a> <a class="button button-small" href="{% url 'scratchpad:delete' item.pk %}">Löschen</a></p>
+    </article>
+  {% empty %}<p class="hint">Noch keine Dateien. Bilder und Dateien aus MCP-Werkzeugaufrufen werden hier automatisch abgelegt.</p>{% endfor %}
+  {% if page.has_other_pages %}
+    <nav aria-label="Seiten">
+      {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Zurück</a>{% endif %}
+      <span>Seite {{ page.number }} von {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Weiter</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
+{% endblock %}

@@ -22,6 +22,23 @@ unter [nginx und TLS](nginx-und-TLS).
 Einstellungen, die im Admin gepflegt werden, stehen nicht in dieser Datei, z. B. Grundregeln,
 Standard-Kreativität und Standard-Denktiefe (siehe [Chat-Einstellungen](Chat-Einstellungen)).
 
+## Konfiguration des Runner-Rechners
+
+Der native Runner auf PC, Laptop oder Zielsystem hat eine eigene Datei:
+**`~/.config/multigpt-runner/config.env`** (bei eigenem XDG-Konfigurationsordner
+entsprechend dort). Sie wird vom systemd-User-Dienst gelesen und überschreibt dessen
+Vorgaben für alle unterstützten `MGPT_*`-Einstellungen, etwa `MGPT_EXPOSE_HOST`,
+`MGPT_EXPOSE_BIND`, `MGPT_HOSTNAME`, `MGPT_IMAGES` und `MGPT_URL`.
+
+Dateiformat, vollständige Einstellungsliste, Beispiel für WS-Joerg und die einmalige
+Einrichtung bei bestehenden Installationen stehen unter
+[Runner: Konfigurationsdatei des Runner-Agents](Runner#konfigurationsdatei-des-runner-agents).
+Nach Änderungen genügt auf dem Runner-Rechner als dessen Benutzer:
+
+```sh
+systemctl --user restart multigpt-runner
+```
+
 ## Grundlagen
 
 | Schlüssel | Standard (Code) | Debian-Paket | Bedeutung |

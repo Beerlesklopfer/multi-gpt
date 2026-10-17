@@ -24,6 +24,7 @@
 - [RAG einrichten](RAG-Einrichtung)
 - [Verzeichnisquellen](RAG-Verzeichnisquellen)
 - [Zitieren](Zitieren)
+- [Scratchpad: erzeugte Dateien](Scratchpad)
 
 **Websuche**
 

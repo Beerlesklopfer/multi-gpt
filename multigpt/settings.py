@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "multigpt.node",
     # Runner (M14): Container auf dem Browser-Rechner, Arbeitsstände als git-Bundle.
     "multigpt.runner",
+    "multigpt.scratchpad",
 ]
 
 MIDDLEWARE = [

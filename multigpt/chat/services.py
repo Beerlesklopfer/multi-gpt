@@ -288,8 +288,8 @@ def _load_path(ids: list[int], tree: Tree, *, prefetch: bool) -> list[Message]:
     messages = [by_id[pk] for pk in ids if pk in by_id]
     for m in messages:
         if prefetch:
-            # Hochgeladene Anhänge (ohne Dateien aus Werkzeugaufrufen).
-            m.upload_attachments = [a for a in m.attachments.all() if a.tool_call_id is None]
+            # Auch Werkzeug-Ergebnisse direkt an der Antwort anzeigen.
+            m.display_attachments = list(m.attachments.all())
         m.sibling_ids = tree.siblings(m.pk)
         m.sibling_index = m.sibling_ids.index(m.pk)
         m.sibling_count = len(m.sibling_ids)

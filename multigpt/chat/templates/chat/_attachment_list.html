@@ -1,7 +1,7 @@
-{% comment %}Anhänge einer Nachricht (vom Nutzer hochgeladen; Werkzeug-Anhänge zeigt der Werkzeugaufruf).
+{% comment %}Anhänge einer Nachricht, einschließlich erzeugter Dateien aus Werkzeugaufrufen.
 Aufbau wie in attachments.js (buildMessageList). Namen nur über Auto-Escaping, Bilder nur über die
 geschützten URLs; ohne JavaScript öffnet ein Klick das Bild bzw. lädt die Datei.{% endcomment %}
-{% with atts=msg.upload_attachments %}{% if atts %}
+{% with atts=msg.display_attachments %}{% if atts %}
   <ul class="message-attachments" aria-label="Anhänge">
     {# Erst die Bilder, dann die Dateien. #}
     {% for a in atts %}{% if a.is_image %}{% include "chat/_attachment_item.html" %}{% endif %}{% endfor %}

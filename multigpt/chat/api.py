@@ -133,8 +133,8 @@ def _serialize_message(message: Message, user=None) -> dict:
         "web_search_notice": message.web_search_notice,
         "attachments": [
             chat_attachments.serialize(a)
-            for a in getattr(message, "upload_attachments", None)
-            or [a for a in message.attachments.all() if a.tool_call_id is None]
+            for a in getattr(message, "display_attachments", None)
+            or list(message.attachments.all())
         ],
     }
 
@@ -193,11 +193,16 @@ def mcp_servers_list(request):
     (Plan 8g): Alle erlaubten Server sind eingeschaltet, außer zuletzt offline
     geprüften (``online`` false, Ursache in ``error``; gespeicherter Stand, kein
     Netzaufruf)."""
+    from .mcp.reconnect import allowed_server
+
     return JsonResponse(
         [
             {
                 "id": s.pk,
                 "name": s.name,
+                "reconnect_url": reverse("chat:api_mcp_reconnect", args=[s.pk])
+                if allowed_server(request.user, s)
+                else None,
                 "default_enabled": not mcp_status.known_offline(s),
                 "online": not mcp_status.known_offline(s),
                 "error": s.last_error if mcp_status.known_offline(s) else None,
@@ -206,6 +211,40 @@ def mcp_servers_list(request):
         ],
         safe=False,
     )
+
+
+@require_POST
+@api_login_required
+def mcp_server_reconnect(request, pk: int):
+    from .mcp import reconnect as mcp_reconnect
+    from .mcp.errors import McpError
+    from .models import McpServer
+
+    server = McpServer.objects.filter(pk=pk, active=True).first()
+    if server is None or not can(request.user, Action.USE_MCP_SERVER, server):
+        return _error("MCP-Server nicht gefunden.", 404)
+    if not mcp_reconnect.allowed_server(request.user, server):
+        return _error("Du darfst diese MCP-Verbindung nicht neu aufbauen.", 403)
+    data = _json_body(request)
+    if data is None:
+        return _error("Ungültige Anfrage.", 400)
+    conversation = None
+    conversation_id, valid = _optional_pk(data, "conversation")
+    if not valid:
+        return _error("Ungültiger Chat.", 400)
+    if conversation_id is not None:
+        conversation = _get_conversation(request, conversation_id)
+        if conversation is None:
+            return _error("Chat nicht gefunden.", 404)
+        if not can(request.user, Action.WRITE, conversation):
+            return _error("Du darfst in diesem Chat nicht schreiben.", 403)
+    try:
+        return JsonResponse(mcp_reconnect.reconnect_server(request.user, server, conversation))
+    except PermissionError as exc:
+        return _error(str(exc), 403)
+    except McpError as exc:
+        mcp_status.mark_failed(server, exc)
+        return _error(str(exc), 502)
 
 
 @require_GET
@@ -479,6 +518,34 @@ def _event_stream(events) -> StreamingHttpResponse:
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+@require_POST
+@api_login_required
+def tool_reconnect(request, pk: int, tool_call_id: int):
+    from .mcp import reconnect as mcp_reconnect
+    from .mcp.errors import McpError
+
+    conversation = _get_conversation(request, pk)
+    if conversation is None:
+        return _error("Chat nicht gefunden.", 404)
+    tool_call = (
+        ToolCall.objects.select_related("server", "message__conversation")
+        .filter(pk=tool_call_id, message__conversation=conversation)
+        .first()
+    )
+    if tool_call is None:
+        return _error("Werkzeugaufruf nicht gefunden.", 404)
+    if not mcp_reconnect.allowed(request.user, tool_call):
+        return _error("Du darfst diese MCP-Verbindung nicht neu aufbauen.", 403)
+    if tool_call.status in (ToolCall.Status.RUNNING, ToolCall.Status.AWAITING_CONFIRMATION):
+        return _error("Bitte den laufenden Werkzeugaufruf zuerst beenden.", 409)
+    try:
+        return JsonResponse(mcp_reconnect.reconnect(request.user, tool_call))
+    except PermissionError as exc:
+        return _error(str(exc), 403)
+    except McpError as exc:
+        return _error(str(exc), 502)
 
 
 @require_POST

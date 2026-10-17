@@ -30,7 +30,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from multigpt.accounts.permissions import Action, can
 
-from . import attachments
+from . import attachments, svg_clean
 from .api import api_login_required
 from .models import Attachment, Conversation
 from .views_collections import x_accel_path
@@ -156,6 +156,21 @@ def serve(request, pk: int):
     attachment = readable_attachment(request.user, pk)
     stored = attachment.file.name or ""
     content_type = _content_type(attachment, stored)
+    if content_type == "image/svg+xml":
+        # Auch ältere MCP-Anhänge ohne gespeicherten MIME-Typ sicher anzeigen.
+        try:
+            with attachment.file.open("rb") as handle:
+                data, _, _ = svg_clean.clean(handle.read(svg_clean.MAX_BYTES + 1))
+        except (OSError, ValueError, svg_clean.SvgError) as exc:
+            raise Http404("SVG nicht lesbar.") from exc
+        response = HttpResponse(data, content_type="image/svg+xml")
+        response["Content-Disposition"] = content_disposition_header(
+            False, download_name(attachment, stored)
+        )
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Content-Security-Policy"] = CSP
+        return response
     pdf = viewable_pdf(attachment) and content_type == PDF_TYPE
     return _serve(
         attachment,

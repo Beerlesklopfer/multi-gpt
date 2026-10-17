@@ -22,6 +22,7 @@
       <li><a href="{% url 'settings' %}#profilbild">Profilbild ändern</a></li>
       <li><a href="{% url 'usage' %}">Mein Verbrauch</a></li>
       {% if user|can_use_api_keys %}<li><a href="{% url 'api_keys' %}">API-Keys</a></li>{% endif %}
+      <li><a href="{% url 'scratchpad:index' %}">Scratchpad</a></li>
       {% if user|can_use_runner %}<li><a href="{% url 'runner:index' %}">Runner</a></li>{% endif %}
       {% if user|can_manage_family %}<li><a href="{% url 'family:overview' %}">Familie</a></li>{% endif %}
       {% if user.is_staff %}<li><a href="{% url 'admin:index' %}">Verwaltung</a></li>{% endif %}

@@ -221,15 +221,19 @@ def test_fragment_renders_attachments(anna_client, chat_with_attachments):
     assert "<script" not in html
 
 
-def test_tool_attachments_not_listed_as_uploads(anna_client, anna, ai_model, chat_with_attachments):
+def test_tool_attachments_are_shown_with_the_answer(
+    anna_client, anna, ai_model, chat_with_attachments
+):
     data = chat_with_attachments
     call = ToolCall.objects.create(
         message=data["answer"], tool="bild", arguments={}, status=ToolCall.Status.OK
     )
     add_attachment(data["answer"], anna, "image", "erzeugt.png", tool_call=call)
     html = page(anna_client, data["conv"])
-    assert "message-attachments" not in article(html, data["answer"].pk)
-    assert 'alt="erzeugt.png"' not in html
+    # Seit dem Scratchpad-Umbau zeigt die Antwort auch Dateien aus Werkzeugaufrufen
+    # (Message.display_attachments), nicht mehr nur Hochgeladenes.
+    assert "message-attachments" in article(html, data["answer"].pk)
+    assert 'alt="erzeugt.png"' in html
 
 
 def test_static_script_has_no_html_injection_of_names():

@@ -19,7 +19,7 @@ ohne neue Abhängigkeit mit der Standardbibliothek:
   ``style``-Attributen, Präsentationsattributen und ``<style>``.
 
 Ausgeliefert wird das Ergebnis nur über die geschützte Anhang-Auslieferung
-(Download mit CSP ``sandbox``, ``nosniff``) und angezeigt nur als ``<img>``
+(inline mit CSP ``sandbox``, ``nosniff``) und angezeigt nur als ``<img>``
 (dort laufen ohnehin keine Skripte und keine externen Ressourcen).
 """
 

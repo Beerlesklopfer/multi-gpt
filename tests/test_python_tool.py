@@ -800,7 +800,7 @@ def test_file_limit_per_answer(answer, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_svg_served_as_download_with_csp(client, answer, monkeypatch):
+def test_svg_served_inline_with_csp(client, answer, monkeypatch):
     user, message = answer
     fake_run(monkeypatch, files=[sandbox.OutputFile("d.svg", EVIL_SVG)])
     tools_python._tool_run(user, {"code": "x"}, Collector(message))
@@ -809,7 +809,7 @@ def test_svg_served_as_download_with_csp(client, answer, monkeypatch):
     response = client.get(svg.url)
     assert response.status_code == 200
     assert response["Content-Type"] == "image/svg+xml"
-    assert "attachment" in response["Content-Disposition"]
+    assert "inline" in response["Content-Disposition"]
     assert "sandbox" in response["Content-Security-Policy"]
     assert response["X-Content-Type-Options"] == "nosniff"
     other = make_user("adult", "fremd")
