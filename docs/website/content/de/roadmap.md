@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 description: "Die Meilensteine von MultiGPT und ihr Stand."
-lead: "MultiGPT wird Meilenstein für Meilenstein gebaut. Nach jedem Meilenstein laufen die Tests, es gibt einen kurzen Bericht, dann geht es weiter. Stand Version 0.3.6: Die Meilensteine 1 bis 8 einschließlich 4a sowie der Knoten (15) sind umgesetzt, Bilder (9), Betrieb (12) und Scratchpad (13, bisher das Kontextmenü) teilweise. Am Runner (14) wird für Version 0.4.0 gearbeitet; er ist noch nicht veröffentlicht. Unter jedem Meilenstein stehen seine Arbeitspakete mit Stand. Offen sind Sprache (10) und Musik (11)."
+lead: "MultiGPT wird Meilenstein für Meilenstein gebaut. Nach jedem Meilenstein laufen die Tests, es gibt einen kurzen Bericht, dann geht es weiter. Stand Version 0.4.0: Die Meilensteine 1 bis 8 einschließlich 4a, der Runner (14, mit wenigen offenen Punkten) und der Knoten (15) sind umgesetzt, Bilder (9), Betrieb (12) und Scratchpad (13, bisher das Kontextmenü und die Ablage von Werkzeug-Dateien) teilweise. Unter jedem Meilenstein stehen seine Arbeitspakete mit Stand. Offen sind Sprache (10) und Musik (11)."
 menus:
   main:
     weight: 40

@@ -1,13 +1,13 @@
 ---
 title: "Installation"
 description: "Install MultiGPT as a Debian package, with Docker, or for development with make."
-lead: "The current version is 0.3.6. Ready-made packages for Debian 13 (amd64) are available from a dedicated apt repository, so updates arrive with `apt upgrade`. If you prefer to build yourself, use `make deb`. After that you can chat using your own API keys."
+lead: "The current version is 0.4.0. Ready-made packages for Debian 13 (amd64) are available from a dedicated apt repository, so updates arrive with `apt upgrade`. If you prefer to build yourself, use `make deb`. After that you can chat using your own API keys."
 menus:
   main:
     weight: 30
 ---
 
-> **Status 0.3.6:** For every version tag, GitHub Actions builds the package on Debian 13,
+> **Status 0.4.0:** For every version tag, GitHub Actions builds the package on Debian 13,
 > attaches it to the [GitHub release](https://github.com/Beerlesklopfer/multi-gpt/releases) and
 > publishes it in the apt repository (the last three versions). New dependencies are bubblewrap (calculations) plus Pango,
 > harfbuzz and the DejaVu fonts (PDF sheets). Coming from 0.2? Read
@@ -143,6 +143,19 @@ is in the [wiki: RAG einrichten](https://github.com/Beerlesklopfer/multi-gpt/wik
 **7. Set up web search (optional):** run a SearXNG in the home network, enter its address
 in the admin, check it with “SearXNG testen” and then switch web search on. The guide is in
 the [wiki: SearXNG](https://github.com/Beerlesklopfer/multi-gpt/wiki/SearXNG) (German).
+
+### Runner (optional)
+
+The runner gives models a container on a computer in your home network as a workspace. It is
+a program of its own (`multigpt-runner`) and not part of the server installation. On the
+computer the browser runs on you need Linux (amd64 or arm64) with systemd and rootless
+Podman. Steps: create a token on the “Runner” page in MultiGPT, download the program there
+from MultiGPT (with a checksum) and pair it with `pair`. The steps are in the wiki under
+[Runner](https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner).
+
+A note on security: by default the runner's web ports (24080 and 24443) are reachable by the
+whole home network without any login. If you do not want that, set
+`MGPT_EXPOSE_BIND=127.0.0.1` (details in the wiki).
 
 ## Updating to 0.3
 

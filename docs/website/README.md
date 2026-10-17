@@ -34,7 +34,7 @@ hugo --source docs/website --minify          # Build nach docs/website/public/
 | `assets/css/main.css` | Stylesheet (über Hugo Pipes minifiziert und mit Fingerprint) |
 
 Status nach einem Meilenstein ändern: `status` in `data/roadmap.toml` und
-`data/features.toml` (`done`, `partial`, `progress` = in Arbeit und noch nicht veröffentlicht, `planned`) sowie die Statusmarken
+`data/features.toml` (`done`, `partial`, `progress` = in Arbeit und noch nicht veröffentlicht – derzeit ungenutzt, `planned`) sowie die Statusmarken
 `{{</* status ... */>}}` in `content/*/features.md`.
 
 ## Platzhalter

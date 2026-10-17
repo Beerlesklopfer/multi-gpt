@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
-eyebrow: "Self-hosted · in development · version 0.3.6"
+eyebrow: "Self-hosted · in development · version 0.4.0"
 headline: "One AI chat for the whole family – on your own server"
 lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to a local LM Studio. Chats, accounts and API keys stay on your own server."
 pillarsTitle: "The idea behind it"
@@ -79,17 +79,20 @@ Updating from 0.2? The required steps are under
 - **Costs:** the ECB rate for dollars is fetched automatically, and accounts can be switched
   to USD; **scipy** in the sandbox for calculations (0.3.6).
 
-## In progress: version 0.4.0
+## New in 0.4.0
 
-Not yet released – 0.4.0 will only come out after thorough testing.
-
-- **Runner:** a container on your own computer in which a model works like a coding tool –
-  locked in, with a terminal and preview in the browser; the work is versioned on the server.
-  It reaches devices on the home network via `ssh` or `telnet` only if the administrator
-  approves them, and only with a confirmation.
-- **“LM Studio” interface** as a provider type of its own, **tokens per second** in the header
-  of every answer, a **swap prompt** when graphics memory is full, and the **reasoning effort
-  per model**.
+- **Runner:** a container on your own computer (rootless Podman) in which a model works like
+  a coding tool – locked in, with a terminal, preview and web server; the work is stored on
+  the server as a git bundle. It reaches devices on the home network via `ssh` or `telnet`
+  only if the administrator approves them, and only with a confirmation. The web server in
+  the container is by default reachable by the whole home network without any login (can be
+  restricted, see features). You download the `multigpt-runner` program from MultiGPT; the
+  guide is in the wiki under “Runner”.
+- **“LM Studio” interface** as a provider type of its own, **tokens per second** and time to
+  the first token in the header of every answer, a **swap prompt** when graphics memory is
+  full, and the **reasoning effort per model**.
+- **Scratchpad on the server** for files from tool calls and **reconnecting MCP servers** in
+  the chat.
 
 More under [features]({{< relref "features" >}}).
 
@@ -97,7 +100,7 @@ More under [features]({{< relref "features" >}}).
 
 It already runs for real with OpenAI and LM Studio; the other cloud providers have mostly
 been tested with simulations so far. A fresh Debian installation is still pending, and the
-Docker build is untested. Image editing, voice, music, backup and the scratchpad follow –
+Docker build is untested. There is no Docker support for the runner, only Podman. Image editing, voice, music, backup and the actual scratchpad follow –
 details in the [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence

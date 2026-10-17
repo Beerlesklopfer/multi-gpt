@@ -1,7 +1,7 @@
 ---
 title: "Features"
-description: "What MultiGPT does and is meant to do: many providers, LM Studio with model management, attachments, projects, shared chats, family accounts, billing accounts, your own documents with citations, web search, calculations, PDF sheets, images, MCP tools, MultiGPT as an MCP server and the runner that is currently being built."
-lead: "This page describes what MultiGPT version 1 is meant to do, as of version 0.3.6. Done: chatting with many providers and LM Studio including model management, attachments, projects, shared chats, the context menu in the chat, family accounts with billing accounts and budgets, comparison mode, MCP tools, MultiGPT as an MCP server, calculations, PDF sheets, your own documents with citations, web search and image generation. Work on the runner is in progress for version 0.4.0; image editing, voice and the scratchpad are planned. Every section shows its status and milestone."
+description: "What MultiGPT does and is meant to do: many providers, LM Studio with model management, attachments, projects, shared chats, family accounts, billing accounts, your own documents with citations, web search, calculations, PDF sheets, images, MCP tools, MultiGPT as an MCP server and the runner."
+lead: "This page describes what MultiGPT version 1 is meant to do, as of version 0.4.0. Done: chatting with many providers and LM Studio including model management, attachments, projects, shared chats, the context menu in the chat, family accounts with billing accounts and budgets, comparison mode, MCP tools, MultiGPT as an MCP server, calculations, PDF sheets, your own documents with citations, web search, image generation and the runner (new in 0.4.0). Image editing, voice and the actual scratchpad are planned. Every section shows its status and milestone."
 menus:
   main:
     weight: 10
@@ -420,54 +420,84 @@ opens in the chat with “Ansehen” (view).
   with its origin and citation data.
 - Turn it into a fully referenced document: the model writes only from the entries, MultiGPT
   sets in-text citations and the bibliography, and verbatim quotes are checked.
-- As a first step, the context menu in the chat has been available since 0.3.2 (see above);
+- As first steps, the context menu in the chat has been available since 0.3.2 (see above)
+  and, since 0.4.0, permanent storage of files from tool calls (see “New in 0.4.0”);
   your own prompt templates and “add to scratchpad” follow.
 
 ## Runner
 
-{{< status "progress" "14" >}}
+{{< status "done" "14" >}}
 
-**In progress for version 0.4.0, not yet released.** The runner is a workspace for models –
-not on the server, but as a **container on the computer the browser runs on**. Inside it, a
-model works like a coding tool, but locked in.
+Since version 0.4.0. The runner is a workspace for models – not on the server, but as a
+**container on the computer the browser runs on**. Inside it, a model works like a coding
+tool, but locked in. A guide is in the wiki under
+[Runner](https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner).
 
-- **How it works:** the model reads, searches and edits files, runs commands, tests and
-  fixes – over many rounds until the task is done. Python, git and Node are available in the
-  container.
-- **Locked in:** by default the container has no network (can be enabled per role), no home
-  directory and only a volatile in-memory workspace. Only a fixed image is started, with
-  fixed limits for CPU, memory and processes.
+- **How it works:** the model reads, searches and edits files (`read`, `write`, `edit`,
+  `glob`, `grep`), runs commands with `bash`, tests and fixes – over many rounds until the
+  task is done. The work image has Python, git, Node and other standard tools.
+- **Locked in:** the container runs with rootless Podman and by default has no network (can
+  be enabled per role), no home directory and only a volatile in-memory workspace. Only a
+  fixed image is started, with fixed limits for CPU, memory and processes.
 - **Work stored on the server:** every change is committed; the work is kept as a git bundle
   with its full history in MultiGPT's database, is backed up with it and can be downloaded.
-  Nothing is left on the computer after the session.
-- **In the browser:** a terminal (also for programs that wait for input), a preview for HTML
-  pages in a sandboxed frame and the model's task list. Results can be brought into the chat
-  as an attachment on request.
+  Nothing is left on the computer after the session. For now the whole state is transferred
+  each time; uploading only the changes (incremental bundles) is still missing.
+- **In the browser:** a terminal (directly over a WebSocket, also for programs that wait for
+  input), a preview for HTML pages in a sandboxed frame and the model's task list. Results
+  can be brought into the chat as an attachment on request.
+- **Web server and ports:** with `serve` the model starts the lighttpd web server for static
+  files. In the container it listens on 8080 (http) and 8443 (https) and is reachable on the
+  computer at 24080 and 24443. **Note:** by default the runner binds these ports to
+  `0.0.0.0`, i.e. the whole home network and without any login. The setting
+  `MGPT_EXPOSE_BIND=127.0.0.1` restricts them to the computer itself.
+- **Installing packages:** with the “package sources” role permission the model can install
+  Debian packages (`apt_install`) as well as pip, npm, cargo and GitHub packages – only
+  through a proxy with a fixed allow list of package sources, never to the home network or
+  arbitrary sites.
+- **Scratchpad:** a place for intermediate results, either in the container (volatile) or in
+  a folder on the computer. Only what the model explicitly publishes with `publish` as an
+  attachment reaches MultiGPT.
 - **Devices on the home network:** via `ssh` or `telnet`, but only to devices the
   administrator approves, and with a confirmation before every command. The model picks
-  devices by name only; the server manages the credentials.
+  devices by name only; the server manages the credentials. With `setup_host`, a model can,
+  after confirmation, set up an approved computer as another runner.
 - **MultiGPT stays the central point:** every access goes through the server, which checks
   permissions, confirmations, quota and the audit log. The runner connects outgoing only, over
-  TLS, and is paired via a token (revocable, with an expiry date).
-- **Time quota:** container minutes per role or person and month, a warning from 80 %, a stop
-  at 100 % – the work is kept.
-- **Requirement:** rootless Podman; on Windows and macOS via Podman machine.
+  TLS, and is paired via a token (revocable, with an expiry date). The server signs its
+  frames, and the runner's tools are listed in a signed catalog; the runner accepts nothing
+  that does not match.
+- **The agent team:** agents such as n8n or Claude also reach the runner only through a
+  MultiGPT API key with the `runner.use` permission.
+- **“Runner runtime” time quota:** container minutes per role or person and month, a warning
+  from 80 %, a stop at 100 % – the work is kept.
+- **The runner agent:** a small Rust program `multigpt-runner` (static binaries for amd64 and
+  arm64) that you download from MultiGPT and run as a service of your own user. Requirement:
+  Linux with systemd and rootless Podman; on Windows and macOS via WSL2 or a Linux VM.
+- **Still open:** Docker is not supported, only Podman. Container logs on the “Runner” page
+  are missing, and tool runs do not yet appear live in the chat terminal.
 
-## Coming next: version 0.4.0
+## New in 0.4.0
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Besides the runner, these changes since 0.3.6 are done and will ship with 0.4.0 once it is
-released after thorough testing:
+Besides the runner (see above), 0.4.0 brings these changes since 0.3.6:
 
 - **“LM Studio” interface:** a provider type of its own where you only enter the address of
-  the LM Studio server. Model management will run through it only.
+  the LM Studio server. Chat runs over `/v1`, management over `/api/v1`. Model management
+  runs through it only.
 - **Tokens per second for each answer:** the header of every answer shows the speed and the
   time to the first token, measured by MultiGPT itself – for all providers.
 - **Swapping when graphics memory is full:** if another model is taking up the space, the
   chat offers to unload it and load the requested one – only after confirmation.
 - **Reasoning effort per model:** MultiGPT reads the available levels from LM Studio, and a
   default can be set per model.
+- **Memory estimates** for Gemma 4 and Qwen3.8 based on measured needs; chat models without
+  a setting are loaded with “parallel 1”.
+- **Scratchpad on the server:** files from tool calls (including SVG, sanitised) are stored
+  permanently, appear on the answer and in the “Scratchpad” menu.
+- **Reconnect MCP servers:** after an outage, an MCP server can be reconnected right in the
+  chat.
 
 ## Deliberately not in version 1
 

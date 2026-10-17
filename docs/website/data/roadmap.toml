@@ -1,9 +1,8 @@
 # Meilensteine aus doc/Plan.md, Abschnitt 11.
 # status: "done" | "partial" | "progress" | "planned"  (Texte dazu in i18n/*.toml;
-#   "progress" = in Arbeit, noch nicht veröffentlicht)
+#   "progress" = in Arbeit, noch nicht veröffentlicht; derzeit nirgends in Gebrauch)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei. Stand: Version 0.3.6 (veröffentlicht),
-# Meilenstein 14 in Arbeit für 0.4.0.
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.4.0 (veröffentlicht).
 # steps: Arbeitspakete je Meilenstein (id, status, optional version = erschienen mit;
 #   version nur für veröffentlichte Versionen setzen).
 
@@ -17,8 +16,8 @@
     de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
     en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
-    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.3.6). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
-    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.3.6). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.4.0). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.4.0). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
 
   [[milestones.steps]]
     id = "M1-01"
@@ -819,104 +818,119 @@
 
 [[milestones]]
   id = "14"
-  status = "progress"
+  status = "done"
   [milestones.title]
     de = "Runner"
     en = "Runner"
   [milestones.text]
-    de = "Ein Container auf dem Rechner, an dem der Browser läuft (Podman rootless, unter Windows und macOS mit Podman machine), als Arbeitsumgebung für Modelle: Sie lesen, suchen und ändern Dateien, führen Befehle aus, testen und bessern nach – wie ein Programmierwerkzeug, aber eingesperrt. Der Container hat kein Netz und nur einen flüchtigen Arbeitsbereich im Arbeitsspeicher; der Arbeitsstand liegt als git-Bundle mit der ganzen Historie auf dem Server und wird mit der Datenbank gesichert. Gekoppelt wird per Token (nur gehasht gespeichert, widerrufbar, mit Ablauf), die Verbindung geht nur ausgehend per WebSocket über TLS. Jeder Zugriff läuft über MultiGPT: Rechte, Rückfrage-Modi, Kontingent und Audit-Log prüft der Server. Im Chat gibt es ein Terminal im Browser, eine Vorschau für HTML-Seiten im abgeschotteten Rahmen und die Aufgabenliste des Modells. Geräte im Heimnetz lassen sich per `ssh` oder `telnet` steuern – nur solche, die der Verwalter freigibt, und mit Rückfrage vor jedem Befehl. Abgerechnet wird über die Kontoart „Laufzeit“ in Container-Minuten je Rolle bzw. Person und Monat, mit Hinweis ab 80 % und Stopp bei 100 % – der Arbeitsstand bleibt erhalten."
-    en = "A container on the computer the browser runs on (rootless Podman, on Windows and macOS via Podman machine) as a workspace for models: they read, search and edit files, run commands, test and fix – like a coding tool, but locked in. The container has no network and only a volatile in-memory workspace; the work is stored on the server as a git bundle with its full history and is backed up with the database. Pairing uses a token (stored only as a hash, revocable, with an expiry date), and the runner connects outgoing only, via WebSocket over TLS. Every access goes through MultiGPT: the server checks permissions, confirmation modes, quota and the audit log. In the chat there is a terminal in the browser, a preview for HTML pages in a sandboxed frame and the model's task list. Devices on the home network can be controlled via `ssh` or `telnet` – only those the administrator approves, and with a confirmation before every command. Usage is billed through the “runtime” account type in container minutes per role or person and month, with a warning from 80 % and a stop at 100 % – the work is kept."
+    de = "Ein Container auf dem Rechner, an dem der Browser läuft (Podman rootless; unter Windows und macOS über WSL2 bzw. eine Linux-VM), als Arbeitsumgebung für Modelle: Sie lesen, suchen und ändern Dateien, führen Befehle aus, testen und bessern nach – wie ein Programmierwerkzeug, aber eingesperrt. Der Container hat standardmäßig kein Netz (nur mit dem Rollenrecht „Paketquellen“ über einen Proxy zu festen Paketquellen) und nur einen flüchtigen Arbeitsbereich im Arbeitsspeicher; der Arbeitsstand liegt als git-Bundle mit der ganzen Historie auf dem Server und wird mit der Datenbank gesichert. Gekoppelt wird per Token (nur gehasht gespeichert, widerrufbar, mit Ablauf), die Verbindung geht nur ausgehend per WebSocket über TLS. Jeder Zugriff läuft über MultiGPT: Rechte, Rückfrage-Modi, Kontingent und Audit-Log prüft der Server. Im Chat gibt es ein Terminal im Browser, eine Vorschau für HTML-Seiten im abgeschotteten Rahmen und die Aufgabenliste des Modells. Geräte im Heimnetz lassen sich per `ssh` oder `telnet` steuern – nur solche, die der Verwalter freigibt, und mit Rückfrage vor jedem Befehl. Abgerechnet wird über die Kontoart „Laufzeit“ in Container-Minuten je Rolle bzw. Person und Monat, mit Hinweis ab 80 % und Stopp bei 100 % – der Arbeitsstand bleibt erhalten."
+    en = "A container on the computer the browser runs on (rootless Podman; on Windows and macOS via WSL2 or a Linux VM) as a workspace for models: they read, search and edit files, run commands, test and fix – like a coding tool, but locked in. By default the container has no network (with the “package sources” permission only through a proxy to fixed package sources) and only a volatile in-memory workspace; the work is stored on the server as a git bundle with its full history and is backed up with the database. Pairing uses a token (stored only as a hash, revocable, with an expiry date), and the runner connects outgoing only, via WebSocket over TLS. Every access goes through MultiGPT: the server checks permissions, confirmation modes, quota and the audit log. In the chat there is a terminal in the browser, a preview for HTML pages in a sandboxed frame and the model's task list. Devices on the home network can be controlled via `ssh` or `telnet` – only those the administrator approves, and with a confirmation before every command. Usage is billed through the “runtime” account type in container minutes per role or person and month, with a warning from 80 % and a stop at 100 % – the work is kept."
   [milestones.note]
-    de = "In Arbeit für Version 0.4.0, noch nicht veröffentlicht. Alle offenen Fragen sind entschieden; Server-Dienst, Runner-Programm, Container-Images, Terminal, Vorschau und Laufzeit-Kontingent sind geschrieben und werden jetzt ausgiebig getestet. Gegenüber dem ersten Plan geändert: Arbeitsstand als git-Bundle auf dem Server statt Volumes auf dem Rechner, das Modell arbeitet in vielen Runden wie ein Coding-Werkzeug statt nur einzelne Befehle auszuführen, dazu `ssh` und `telnet` zu freigegebenen Geräten. Unterstützt wird zunächst nur Podman."
-    en = "In progress for version 0.4.0, not yet released. All open questions are decided; the server service, the runner program, the container images, terminal, preview and runtime quota are written and are now being tested thoroughly. Changed from the first plan: the work is stored as a git bundle on the server instead of volumes on the client, the model works in many rounds like a coding tool instead of running single commands only, plus `ssh` and `telnet` to approved devices. Only Podman is supported at first."
+    de = "Erschienen mit Version 0.4.0. Gegenüber dem ersten Plan geändert: Arbeitsstand als git-Bundle auf dem Server statt Volumes auf dem Rechner, das Modell arbeitet in vielen Runden wie ein Coding-Werkzeug statt nur einzelne Befehle auszuführen, dazu `ssh` und `telnet` zu freigegebenen Geräten, Paketquellen über einen Proxy mit Positivliste, ein Webserver (lighttpd) und der Agent als Rust-Programm `multigpt-runner`. Die Web-Ports des Runners sind standardmäßig im ganzen Heimnetz ohne Anmeldung erreichbar. Noch offen: Docker wird nicht unterstützt (nur Podman), es fehlen inkrementelle Bundles, Container-Logs auf der Seite „Runner“ und die Live-Ausgabe der Werkzeugläufe im Chat-Terminal."
+    en = "Released with version 0.4.0. Changed from the first plan: the work is stored as a git bundle on the server instead of volumes on the client, the model works in many rounds like a coding tool instead of running single commands only, plus `ssh` and `telnet` to approved devices, package sources through a proxy with an allow list, a web server (lighttpd) and the agent as a Rust program `multigpt-runner`. The runner's web ports are by default reachable by the whole home network without any login. Still open: Docker is not supported (Podman only), and incremental bundles, container logs on the “Runner” page and live output of tool runs in the chat terminal are missing."
 
   [[milestones.steps]]
     id = "M14-01"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Datenmodell und Rechte"
     en = "Data model and permissions"
 
   [[milestones.steps]]
     id = "M14-02"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Kopplung per Token im Web"
     en = "Pairing via token on the web"
 
   [[milestones.steps]]
     id = "M14-03"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Rahmenprotokoll"
     en = "Frame protocol"
 
   [[milestones.steps]]
     id = "M14-04"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Runner-Dienst auf dem Server"
     en = "Runner service on the server"
 
   [[milestones.steps]]
     id = "M14-05"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Zustellung über PostgreSQL (LISTEN/NOTIFY)"
     en = "Delivery via PostgreSQL (LISTEN/NOTIFY)"
 
   [[milestones.steps]]
     id = "M14-06"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Runner-Werkzeuge im Chat (MCP-Transport)"
     en = "Runner tools in the chat (MCP transport)"
 
   [[milestones.steps]]
     id = "M14-07"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Paketierung und nginx"
     en = "Packaging and nginx"
 
   [[milestones.steps]]
     id = "M14-08"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Runner-Programm, Grundgerüst"
     en = "Runner program, groundwork"
 
   [[milestones.steps]]
     id = "M14-09"
-    status = "progress"
+    status = "partial"
+    version = "0.4.0"
     de = "Arbeitscontainer und Werkzeuge"
     en = "Work container and tools"
 
   [[milestones.steps]]
     id = "M14-10"
-    status = "progress"
+    status = "partial"
+    version = "0.4.0"
     de = "Arbeitsstände und Sitzungen (git-Bundle)"
     en = "Workspaces and sessions (git bundle)"
 
   [[milestones.steps]]
     id = "M14-11"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Zeitkontingent „Laufzeit“"
     en = "“Runtime” time quota"
 
   [[milestones.steps]]
     id = "M14-12"
-    status = "progress"
+    status = "partial"
+    version = "0.4.0"
     de = "Verwaltung, Audit-Log, Admin"
     en = "Management, audit log, admin"
 
   [[milestones.steps]]
     id = "M14-13"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Container-Images und Verteilung"
     en = "Container images and distribution"
 
   [[milestones.steps]]
     id = "M14-14"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Sicherheit, Datenschutz, Doku"
     en = "Security, privacy, documentation"
 
   [[milestones.steps]]
     id = "M14-15"
-    status = "progress"
+    status = "done"
+    version = "0.4.0"
     de = "Ende-zu-Ende-Test mit echtem Podman"
     en = "End-to-end test with real Podman"
 

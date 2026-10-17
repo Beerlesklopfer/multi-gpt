@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Selbst gehostetes Multi-KI-Chatsystem für Familie und Haushalt: eigene Daten, viele Anbieter, ein Chat."
-eyebrow: "Selbst gehostet · in Entwicklung · Version 0.3.6"
+eyebrow: "Selbst gehostet · in Entwicklung · Version 0.4.0"
 headline: "Ein KI-Chat für die ganze Familie – auf dem eigenen Server"
 lead: "MultiGPT ist eine Web-App für das Heimnetz, über die alle im Haushalt mit verschiedenen KI-Modellen chatten – von OpenAI über Anthropic und Google bis zum lokalen LM Studio. Chats, Konten und API-Keys bleiben dabei auf dem eigenen Server."
 pillarsTitle: "Die Idee dahinter"
@@ -81,17 +81,20 @@ Wer von 0.2 aktualisiert, findet die nötigen Schritte unter
 - **Kosten:** Der EZB-Kurs für Dollar kommt automatisch, Konten lassen sich auf USD umstellen;
   **scipy** in der Sandbox für Berechnungen (0.3.6).
 
-## In Arbeit: Version 0.4.0
+## Neu in 0.4.0
 
-Noch nicht veröffentlicht – 0.4.0 erscheint erst nach ausgiebigem Test.
-
-- **Runner:** ein Container auf dem eigenen Rechner, in dem ein Modell wie ein
-  Coding-Werkzeug arbeitet – eingesperrt, mit Terminal und Vorschau im Browser; der
-  Arbeitsstand liegt versioniert auf dem Server. Geräte im Heimnetz erreicht er per `ssh`
-  oder `telnet` nur, wenn der Verwalter sie freigibt, und nur mit Rückfrage.
-- **Schnittstelle „LM Studio“** als eigene Anbieterart, **Token pro Sekunde** im Kopf jeder
-  Antwort, eine **Austausch-Frage**, wenn der Grafikspeicher voll ist, und die **Denktiefe je
-  Modell**.
+- **Runner:** ein Container auf dem eigenen Rechner (Podman rootless), in dem ein Modell wie
+  ein Coding-Werkzeug arbeitet – eingesperrt, mit Terminal, Vorschau und Webserver; der
+  Arbeitsstand liegt als git-Bundle auf dem Server. Geräte im Heimnetz erreicht er per `ssh`
+  oder `telnet` nur, wenn der Verwalter sie freigibt, und nur mit Rückfrage. Der Webserver
+  im Container ist standardmäßig im ganzen Heimnetz ohne Anmeldung erreichbar (abschaltbar,
+  siehe Funktionen). Das Programm `multigpt-runner` lädt man von MultiGPT herunter; die
+  Anleitung steht im Wiki unter „Runner“.
+- **Schnittstelle „LM Studio“** als eigene Anbieterart, **Token pro Sekunde** und Zeit bis
+  zum ersten Token im Kopf jeder Antwort, eine **Austausch-Frage**, wenn der Grafikspeicher
+  voll ist, und die **Denktiefe je Modell**.
+- **Scratchpad auf dem Server** für Dateien aus Werkzeugaufrufen und das **Neuverbinden von
+  MCP-Servern** im Chat.
 
 Mehr dazu unter [Funktionen]({{< relref "features" >}}).
 
@@ -99,8 +102,8 @@ Mehr dazu unter [Funktionen]({{< relref "features" >}}).
 
 Mit OpenAI und LM Studio läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher
 überwiegend simuliert getestet; eine frische Debian-Installation steht noch aus, der
-Docker-Build ist ungetestet. Bildbearbeitung, Sprache, Musik, Backup und das Scratchpad
-folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
+Docker-Build ist ungetestet. Docker für den Runner gibt es nicht, nur Podman. Bildbearbeitung,
+Sprache, Musik, Backup und das eigentliche Scratchpad folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
 

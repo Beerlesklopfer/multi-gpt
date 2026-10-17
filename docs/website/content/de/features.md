@@ -1,8 +1,8 @@
 ---
 title: "Funktionen"
 slug: "funktionen"
-description: "Was MultiGPT kann und können soll: viele Anbieter, LM Studio mit Modellverwaltung, Anhänge, Projekte, geteilte Chats, Familienkonten, Kontenrahmen, eigene Dokumente mit Zitaten, Websuche, Berechnungen, PDF-Blätter, Bilder, MCP-Werkzeuge, MultiGPT als MCP-Server und der Runner, an dem gerade gearbeitet wird."
-lead: "Hier steht, was MultiGPT in Version 1 können soll, Stand Version 0.3.6. Umgesetzt sind Chatten mit vielen Anbietern und LM Studio samt Modellverwaltung, Anhänge, Projekte, geteilte Chats, das Kontextmenü im Chat, Familienkonten mit Kontenrahmen und Budgets, der Vergleichsmodus, MCP-Werkzeuge, MultiGPT als MCP-Server, Berechnungen, PDF-Blätter, eigene Dokumente mit Zitaten, die Websuche und die Bilderzeugung. Am Runner wird für Version 0.4.0 gearbeitet; Bildbearbeitung, Sprache und Scratchpad sind geplant. Jeder Abschnitt trägt seinen Status und den Meilenstein."
+description: "Was MultiGPT kann und können soll: viele Anbieter, LM Studio mit Modellverwaltung, Anhänge, Projekte, geteilte Chats, Familienkonten, Kontenrahmen, eigene Dokumente mit Zitaten, Websuche, Berechnungen, PDF-Blätter, Bilder, MCP-Werkzeuge, MultiGPT als MCP-Server und der Runner."
+lead: "Hier steht, was MultiGPT in Version 1 können soll, Stand Version 0.4.0. Umgesetzt sind Chatten mit vielen Anbietern und LM Studio samt Modellverwaltung, Anhänge, Projekte, geteilte Chats, das Kontextmenü im Chat, Familienkonten mit Kontenrahmen und Budgets, der Vergleichsmodus, MCP-Werkzeuge, MultiGPT als MCP-Server, Berechnungen, PDF-Blätter, eigene Dokumente mit Zitaten, die Websuche, die Bilderzeugung und der Runner (neu in 0.4.0). Bildbearbeitung, Sprache und das eigentliche Scratchpad sind geplant. Jeder Abschnitt trägt seinen Status und den Meilenstein."
 menus:
   main:
     weight: 10
@@ -429,56 +429,88 @@ Seit 0.3.1: Wer um ein Blatt bittet, bekommt ein **druckfertiges PDF** (Werkzeug
   jeweils mit Herkunft und Zitierangabe.
 - Daraus ein belegtes Gesamtdokument erzeugen: Das Modell schreibt nur aus den Einträgen,
   Kurzbelege und Literaturverzeichnis setzt MultiGPT, wörtliche Zitate werden geprüft.
-- Vorab gibt es seit 0.3.2 das Kontextmenü im Chat (siehe oben); eigene Prompt-Vorlagen und
-  „Ins Scratchpad“ folgen.
+- Vorab gibt es seit 0.3.2 das Kontextmenü im Chat (siehe oben) und seit 0.4.0 die
+  dauerhafte Ablage von Dateien aus Werkzeugaufrufen (siehe „Neu in 0.4.0“); eigene
+  Prompt-Vorlagen und „Ins Scratchpad“ folgen.
 
 ## Runner
 
-{{< status "progress" "14" >}}
+{{< status "done" "14" >}}
 
-**In Arbeit für Version 0.4.0, noch nicht veröffentlicht.** Der Runner ist eine
-Arbeitsumgebung für Modelle – nicht auf dem Server, sondern als **Container auf dem Rechner,
-an dem der Browser läuft**. Darin arbeitet ein Modell wie ein Coding-Werkzeug, aber
-eingesperrt.
+Seit Version 0.4.0. Der Runner ist eine Arbeitsumgebung für Modelle – nicht auf dem
+Server, sondern als **Container auf dem Rechner, an dem der Browser läuft**. Darin arbeitet
+ein Modell wie ein Coding-Werkzeug, aber eingesperrt. Eine Anleitung steht im Wiki unter
+[Runner](https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner).
 
-- **Arbeitsweise:** Das Modell liest, sucht und ändert Dateien, führt Befehle aus, testet
-  und bessert nach – in vielen Runden, bis die Aufgabe erledigt ist. Im Container stehen
-  Python, git und Node bereit.
-- **Eingesperrt:** Der Container hat standardmäßig kein Netz (je Rolle einschaltbar), kein
-  Home-Verzeichnis und nur einen flüchtigen Arbeitsbereich im Arbeitsspeicher. Gestartet wird nur ein festes Image mit
-  festen Grenzen für CPU, Speicher und Prozesse.
+- **Arbeitsweise:** Das Modell liest, sucht und ändert Dateien (`read`, `write`, `edit`,
+  `glob`, `grep`), führt Befehle mit `bash` aus, testet und bessert nach – in vielen Runden,
+  bis die Aufgabe erledigt ist. Im Arbeits-Image stehen Python, git, Node und weitere
+  Standardwerkzeuge bereit.
+- **Eingesperrt:** Der Container läuft mit Podman rootless, hat standardmäßig kein Netz (je
+  Rolle einschaltbar), kein Home-Verzeichnis und nur einen flüchtigen Arbeitsbereich im
+  Arbeitsspeicher. Gestartet wird nur ein festes Image mit festen Grenzen für CPU, Speicher
+  und Prozesse.
 - **Arbeitsstand auf dem Server:** Nach jeder Änderung wird committet; der Arbeitsstand liegt
   als git-Bundle mit der ganzen Historie in der Datenbank von MultiGPT, wird mit ihr
   gesichert und lässt sich herunterladen. Auf dem Rechner bleibt nach der Sitzung nichts
-  übrig.
-- **Im Browser:** ein Terminal (auch für Programme, die eine Eingabe erwarten), eine Vorschau
-  für HTML-Seiten im abgeschotteten Rahmen und die Aufgabenliste des Modells. Ergebnisse
-  holt man auf Wunsch als Anhang in den Chat.
+  übrig. Bisher wird jedes Mal der ganze Stand übertragen; nur die Änderungen hochzuladen
+  (inkrementelle Bundles) fehlt noch.
+- **Im Browser:** ein Terminal (direkt per WebSocket, auch für Programme, die eine Eingabe
+  erwarten), eine Vorschau für HTML-Seiten im abgeschotteten Rahmen und die Aufgabenliste des
+  Modells. Ergebnisse holt man auf Wunsch als Anhang in den Chat.
+- **Webserver und Ports:** Mit `serve` startet das Modell den Webserver lighttpd für
+  statische Dateien. Er lauscht im Container auf 8080 (http) und 8443 (https) und ist am
+  Rechner unter 24080 und 24443 erreichbar. **Achtung:** Standardmäßig bindet der Runner
+  diese Ports an `0.0.0.0`, also im ganzen Heimnetz und ohne Anmeldung. Auf den Rechner
+  selbst beschränkt sie die Einstellung `MGPT_EXPOSE_BIND=127.0.0.1`.
+- **Pakete nachladen:** Mit dem Rollenrecht „Paketquellen“ kann das Modell Debian-Pakete
+  (`apt_install`) sowie pip-, npm-, cargo- und GitHub-Pakete nachladen – nur über einen
+  Proxy mit fester Positivliste von Paketquellen, nie ins Heimnetz oder zu beliebigen
+  Seiten.
+- **Scratchpad:** eine Ablage für Zwischenergebnisse, wahlweise im Container (flüchtig)
+  oder in einem Ordner auf dem Rechner. Nach MultiGPT kommt nur, was das Modell mit
+  `publish` als Anhang veröffentlicht.
 - **Geräte im Heimnetz:** per `ssh` oder `telnet`, aber nur zu Geräten, die der Verwalter
-  freigibt, und mit Rückfrage vor jedem Befehl. Das Modell wählt Geräte nur nach Namen,
-  die Zugangsdaten verwaltet der Server.
+  freigibt, und mit Rückfrage vor jedem Befehl. Das Modell wählt Geräte nur nach Namen, die
+  Zugangsdaten verwaltet der Server. Mit `setup_host` richtet ein Modell auf Nachfrage einen
+  freigegebenen Rechner als weiteren Runner ein.
 - **MultiGPT bleibt der zentrale Punkt:** Jeder Zugriff läuft über den Server, der Rechte,
   Rückfragen, Kontingent und Audit-Log prüft. Der Runner verbindet sich nur ausgehend über
-  TLS und wird per Token gekoppelt (widerrufbar, mit Ablauf).
-- **Zeitkontingent:** Container-Minuten je Rolle bzw. Person und Monat, Hinweis ab 80 %,
-  Stopp bei 100 % – der Arbeitsstand bleibt.
-- **Voraussetzung:** Podman rootless; unter Windows und macOS mit Podman machine.
+  TLS und wird per Token gekoppelt (widerrufbar, mit Ablauf). Der Server signiert seine
+  Rahmen, und die Werkzeuge des Runners stehen in einem signierten Katalog; was nicht
+  stimmt, nimmt der Runner nicht an.
+- **Das Agententeam:** Auch Agenten wie n8n oder Claude erreichen den Runner nur über einen
+  API-Key von MultiGPT mit dem Recht `runner.use`.
+- **Zeitkontingent „Runner-Laufzeit“:** Container-Minuten je Rolle bzw. Person und Monat,
+  Hinweis ab 80 %, Stopp bei 100 % – der Arbeitsstand bleibt.
+- **Der Runner-Agent:** ein kleines Rust-Programm `multigpt-runner` (statische Programme für
+  amd64 und arm64), das man von MultiGPT herunterlädt und als Dienst des eigenen Nutzers
+  betreibt. Voraussetzung: Linux mit systemd und Podman rootless; unter Windows und macOS
+  über WSL2 bzw. eine Linux-VM.
+- **Noch offen:** Docker wird nicht unterstützt, nur Podman. Container-Logs auf der Seite
+  „Runner“ fehlen, und die Werkzeugläufe erscheinen noch nicht live im Chat-Terminal.
 
-## Was noch kommt: Version 0.4.0
+## Neu in 0.4.0
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Neben dem Runner sind diese Änderungen seit 0.3.6 fertig und kommen mit 0.4.0, sobald es nach
-ausgiebigem Test erscheint:
+Außer dem Runner (siehe oben) bringt 0.4.0 diese Änderungen seit 0.3.6:
 
 - **Schnittstelle „LM Studio“:** eine eigene Anbieterart, bei der nur die Adresse des
-  LM-Studio-Servers anzugeben ist. Die Modellverwaltung läuft künftig nur darüber.
+  LM-Studio-Servers anzugeben ist. Der Chat läuft über `/v1`, die Verwaltung über
+  `/api/v1`. Die Modellverwaltung läuft nur darüber.
 - **Token pro Sekunde je Antwort:** Im Kopf jeder Antwort stehen die Geschwindigkeit und die
   Zeit bis zum ersten Token, von MultiGPT selbst gemessen – für alle Anbieter.
 - **Austausch bei vollem Grafikspeicher:** Blockiert ein anderes Modell den Platz, bietet der
   Chat an, es zu entladen und das gewünschte zu laden – nur nach Bestätigung.
 - **Denktiefe je Modell:** Die möglichen Stufen liest MultiGPT aus LM Studio, und je Modell
   lässt sich eine Vorgabe setzen.
+- **Speicherschätzung** für Gemma 4 und Qwen3.8 nach gemessenem Bedarf; Chatmodelle ohne
+  Angabe werden mit „parallel 1“ geladen.
+- **Scratchpad auf dem Server:** Dateien aus Werkzeugaufrufen (auch SVG, bereinigt) werden
+  dauerhaft gespeichert, erscheinen an der Antwort und im Menü „Scratchpad“.
+- **MCP-Server neu verbinden:** Nach einem Ausfall lässt sich ein MCP-Server direkt im Chat
+  wieder verbinden.
 
 ## Bewusst nicht in Version 1
 

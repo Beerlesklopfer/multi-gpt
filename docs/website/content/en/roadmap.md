@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 description: "MultiGPT's milestones and their status."
-lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. As of version 0.3.6, milestones 1 to 8 including 4a and the node (15) are done, images (9), operations (12) and the scratchpad (13, so far the context menu) partly. Work on the runner (14) is in progress for version 0.4.0; it has not been released yet. Each milestone lists its work packages with their status. Voice (10) and music (11) are still open."
+lead: "MultiGPT is built milestone by milestone. After each milestone the tests run, there is a short report, and then work continues. As of version 0.4.0, milestones 1 to 8 including 4a, the runner (14, with a few open points) and the node (15) are done, images (9), operations (12) and the scratchpad (13, so far the context menu and storage of files from tools) partly. Each milestone lists its work packages with their status. Voice (10) and music (11) are still open."
 menus:
   main:
     weight: 40

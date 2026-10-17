@@ -1,7 +1,7 @@
 # Funktionskacheln der Startseite.
 # status: "done" | "partial" | "progress" | "planned"; milestone verweist auf data/roadmap.toml.
-# "progress" = in Arbeit, noch nicht veröffentlicht.
-# Stand: Version 0.3.6 (Runner in Arbeit für 0.4.0)
+# "progress" = in Arbeit, noch nicht veröffentlicht (derzeit nirgends in Gebrauch).
+# Stand: Version 0.4.0
 
 [[items]]
   status = "done"
@@ -20,8 +20,8 @@
     de = "Debian-Paket und systemd"
     en = "Debian package and systemd"
   [items.text]
-    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`, aktuell 0.3.6. Seit 0.3.4 über eine signierte apt-Paketquelle für Debian 13, Updates mit `apt upgrade`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
-    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command, currently 0.3.6. Since 0.3.4 from a signed apt repository for Debian 13, with updates via `apt upgrade`. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
+    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`, aktuell 0.4.0. Seit 0.3.4 über eine signierte apt-Paketquelle für Debian 13, Updates mit `apt upgrade`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
+    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command, currently 0.4.0. Since 0.3.4 from a signed apt repository for Debian 13, with updates via `apt upgrade`. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
 
 [[items]]
   status = "done"
@@ -254,11 +254,11 @@
     en = "Collect material from chats, documents and the web with its origin, and turn it into a fully referenced document with verified quotes and a bibliography."
 
 [[items]]
-  status = "progress"
+  status = "done"
   milestone = "14"
   [items.title]
     de = "Runner"
     en = "Runner"
   [items.text]
-    de = "In Arbeit für 0.4.0: ein Container auf dem eigenen Rechner, in dem ein Modell wie ein Coding-Werkzeug arbeitet – eingesperrt und standardmäßig ohne Netz. Terminal und HTML-Vorschau im Browser, Arbeitsstand versioniert auf dem Server, Zeitkontingent je Rolle."
-    en = "In progress for 0.4.0: a container on your own computer in which a model works like a coding tool – locked in and without network by default. Terminal and HTML preview in the browser, work versioned on the server, a time quota per role."
+    de = "Neu in 0.4.0: ein Container auf dem eigenen Rechner (Podman rootless), in dem ein Modell wie ein Coding-Werkzeug arbeitet – eingesperrt und standardmäßig ohne Netz. Terminal, HTML-Vorschau und Webserver, Arbeitsstand als git-Bundle auf dem Server, Zeitkontingent je Rolle. Die Web-Ports sind standardmäßig im Heimnetz ohne Anmeldung erreichbar. Docker wird nicht unterstützt."
+    en = "New in 0.4.0: a container on your own computer (rootless Podman) in which a model works like a coding tool – locked in and without network by default. Terminal, HTML preview and web server, work stored as a git bundle on the server, a time quota per role. The web ports are by default reachable on the home network without any login. Docker is not supported."
