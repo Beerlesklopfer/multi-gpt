@@ -1,3 +1,14 @@
+multi-gpt (0.4.0) unstable; urgency=medium
+
+  * Runner: Rust-Agent, Podman-Arbeitscontainer, Terminal und Vorschau,
+    signierte Befehle, Paketquellen-Proxy und Laufzeit-Kontingent
+  * LM Studio: eigene Schnittstelle, Modellverwaltung und Antwortstatistiken
+  * Scratchpad: Dateien aus Werkzeugaufrufen dauerhaft speichern und anzeigen
+  * Chat-Oberfläche, MCP-Neuverbindung und Website aktualisiert
+  * Release-Notizen und Upgrade-Hinweise siehe docs/releases/0.4.0.md und NEWS
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 17 Oct 2026 10:27:05 +0200
+
 multi-gpt (0.3.6) unstable; urgency=medium
 
   * MCP: read_chat zeigt die Quellen [n] jeder Antwort
