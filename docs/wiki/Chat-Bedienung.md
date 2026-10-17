@@ -150,3 +150,12 @@ eine Rückfrage; rückgängig machen lässt sich das Löschen nicht.
 | Escape | Leiste unter der Markierung | Leiste ausblenden |
 | Bild auf/ab, Pos1, Ende | Verlauf | scrollen (Bild auf hält das Mitscrollen an) |
 | Umschalt+Rechtsklick | überall | Browsermenü statt eigenem Menü |
+
+### SVG-Zeichnungen in Antworten
+
+SVG-Codeblöcke und eingebettete SVG-Bilder (`data:image/svg+xml`, auch Base64)
+werden als bereinigte Bildvorschau angezeigt. Mit **Code** lässt sich der SVG-Text
+ansehen, mit **Als Datei speichern** die bereinigte Zeichnung herunterladen.
+Kopieren der Nachricht und Markdown-Export erhalten den ursprünglichen Quelltext.
+Die Vorschau ist auf 512 KB je SVG begrenzt; externe Bilder werden weiterhin als
+Links dargestellt und nicht automatisch geladen.

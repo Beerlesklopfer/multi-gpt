@@ -10,7 +10,7 @@
 // - Code: Hervorhebung mit highlight.js (arbeitet auf Text), Kopierknopf.
 // - Formeln (LaTeX): math.js schützt sie vor marked und setzt sie nach der
 //   Bereinigung mit KaTeX in Platzhalter-Elemente (nicht durch DOMPurify).
-// - SVG-Codeblöcke: svg_preview.js zeigt sie bereinigt als <img> (data:-URL).
+// - SVG-Codeblöcke und eingebettete SVG-Daten-URLs: bereinigte Bildvorschau.
 // Fehlen die Bibliotheken, bleibt der Rohtext als Text stehen.
 "use strict";
 
@@ -61,6 +61,30 @@
       .replace(/'/g, "&#39;");
   }
 
+  // Eingebettete SVG-Bilder nutzen dieselbe bereinigte Vorschau wie SVG-Codeblöcke.
+  const SVG_DATA_URI = /^data:image\/svg\+xml(?:;charset=(?:utf-8|us-ascii))?(;base64)?,/i;
+  const SVG_MAX_BYTES = 512 * 1024;
+
+  function embeddedSvg(href) {
+    const match = SVG_DATA_URI.exec(href);
+    if (!match) return null;
+    if (href.length > SVG_MAX_BYTES * 3 + 100) return { error: "SVG ist größer als 512 KB." };
+    try {
+      const payload = href.slice(match[0].length);
+      const text = match[1]
+        ? new TextDecoder("utf-8", { fatal: true }).decode(
+          Uint8Array.from(atob(decodeURIComponent(payload)), (char) => char.charCodeAt(0)),
+        )
+        : decodeURIComponent(payload);
+      if (new TextEncoder().encode(text).length > SVG_MAX_BYTES) {
+        return { error: "SVG ist größer als 512 KB." };
+      }
+      return { text };
+    } catch {
+      return { error: "SVG-Daten konnten nicht gelesen werden." };
+    }
+  }
+
   // Ziel eines Anhang-Verweises: ID oder Dateiname (ohne Pfad, ohne Leerzeichen).
   const ATTACHMENT_REF = /^(?:anhang|attachment):([^\s/\\]{1,200})$/i;
 
@@ -87,6 +111,13 @@
         },
         // Keine externen Bilder laden: als Link darstellen.
         image(token) {
+          const svg = embeddedSvg(String(token.href || "").trim());
+          if (svg) {
+            const label = escapeHtml(token.text || "SVG-Grafik");
+            if (svg.error) return `<span class="hint">${label}: ${escapeHtml(svg.error)}</span>`;
+            return `<figure class="embedded-svg"><figcaption>${label}</figcaption>`
+              + `<pre><code class="language-svg">${escapeHtml(svg.text)}</code></pre></figure>`;
+          }
           // ![…](anhang:ID) bzw. ![…](attachment:NAME): Verweis auf einen Anhang
           // per ID oder Dateiname (linkAttachments unten). Modelle schreiben
           // gern attachment:balken.png statt anhang:12.

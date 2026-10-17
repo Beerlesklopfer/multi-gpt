@@ -3692,6 +3692,13 @@ span.message-source-link {
 
 /* Ungeprüfte Links (citations.js markLinks): Warnsymbol und Hinweis unter der Antwort */
 
+.link-unverified-icon svg,
+.unverified-links-icon svg {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
 .link-unverified-icon {
   margin-left: 0.15em;
   color: var(--warning);
@@ -4382,4 +4389,68 @@ span.message-source-link {
 .runner-table td:nth-child(3) {
   min-width: 14rem;
   overflow-wrap: anywhere;
+}
+
+/* Ein gemeinsames Widget: links Auswahl, rechts unabhängiger Reconnect-Button. */
+.tool-server-widget {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.tool-server-widget[hidden] {
+  display: none;
+}
+
+.tool-server-widget:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.tool-server-widget > .tool-switch {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tool-server-reconnect {
+  flex-shrink: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.1rem 0.6rem;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-server-reconnect:hover {
+  background: var(--bg-hover, var(--bg));
+}
+
+.tool-server-reconnect:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tool-server-reconnect:focus-visible,
+.tool-server-widget > .tool-switch:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.embedded-svg {
+  margin: 0.75rem 0;
+  max-width: 100%;
+}
+
+.embedded-svg > figcaption {
+  margin-bottom: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }

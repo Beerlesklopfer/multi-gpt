@@ -36,6 +36,25 @@
     return element;
   }
 
+  function warningIcon(className) {
+    const wrapper = node("span", className);
+    wrapper.setAttribute("aria-hidden", "true");
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("focusable", "false");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", "M12 3 22 21H2Z M12 9v5 M12 17v.1");
+    svg.append(path);
+    wrapper.append(svg);
+    return wrapper;
+  }
+
   // Webquelle: nur http(s) mit Host. Dokumentquelle: nur eigene, relative Pfade.
   function safeHref(source) {
     const raw = typeof source.url === "string" ? source.url.trim() : "";
@@ -385,8 +404,7 @@
       }
       link.classList.add("link-unverified");
       link.title = UNVERIFIED;
-      const icon = node("span", "link-unverified-icon", "⚠");
-      icon.setAttribute("aria-hidden", "true");
+      const icon = warningIcon("link-unverified-icon");
       link.append(icon, node("span", "sr-only link-unverified-label", ` (${UNVERIFIED})`));
       unverified.push(url.href);
     }
@@ -404,8 +422,7 @@
       (article.querySelector(".message-sources") || content).after(notice);
     }
     const input = document.getElementById("message-input");
-    notice.replaceChildren(node("span", "unverified-links-icon", "⚠"));
-    notice.firstChild.setAttribute("aria-hidden", "true");
+    notice.replaceChildren(warningIcon("unverified-links-icon"));
     if (!input) {
       notice.append(" Diese Antwort enthält Links ohne Quelle.");
       return;

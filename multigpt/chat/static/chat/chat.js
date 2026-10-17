@@ -899,6 +899,8 @@
         for (const input of toolSwitchList.querySelectorAll("input")) {
           const ok = !allowed || allowed.has(input.value);
           input.closest("label").hidden = !ok;
+          const widget = input.closest(".tool-server-widget");
+          if (widget) widget.hidden = !ok;
           shown += ok ? 1 : 0;
         }
         toolFieldset.hidden = !mcpServers.length || !tools;
@@ -917,6 +919,9 @@
       if (!toolFieldset || !urls.mcpServers) {
         return;
       }
+      const selected = new Map(
+        Array.from(toolSwitchList.querySelectorAll("input"), (input) => [input.value, input.checked]),
+      );
       try {
         const response = await fetch(urls.mcpServers, {
           credentials: "same-origin",
@@ -938,7 +943,8 @@
           input.type = "checkbox";
           input.name = "mcp_servers";
           input.value = String(server.id);
-          input.checked = server.default_enabled !== false;
+          input.checked = selected.has(String(server.id))
+            ? selected.get(String(server.id)) : server.default_enabled !== false;
           const text = document.createElement("span");
           text.textContent = String(server.name ?? "");
           label.append(input, text);
@@ -953,7 +959,40 @@
               ? `${server.name} ist offline – ${server.error}`
               : `${server.name} ist offline.`;
           }
-          return label;
+          const widget = node("div", "tool-server-widget");
+          widget.setAttribute("role", "group");
+          widget.setAttribute("aria-label", `MCP-Server ${server.name}`);
+          widget.append(label);
+          if (server.reconnect_url) {
+            const button = node("button", "tool-server-reconnect", "Neu verbinden");
+            button.type = "button";
+            button.dataset.serverId = String(server.id);
+            button.setAttribute("aria-label", `${server.name}: MCP neu verbinden`);
+            button.addEventListener("click", async (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (isBusy() || button.disabled) return;
+              button.disabled = true;
+              button.textContent = "Verbinde …";
+              try {
+                const response = await postJson(server.reconnect_url, {
+                  conversation: conversationId ? Number(conversationId) : null,
+                });
+                if (!response.ok) throw new Error(await errorMessage(response));
+                const result = await response.json();
+                setStatus(`${result.server}: neu verbunden (${result.tools} Werkzeuge).`);
+              } catch (error) {
+                setStatus(error.message || "Neuverbinden fehlgeschlagen.", true);
+              } finally {
+                await loadMcpServers();
+                toolSwitchList.querySelector(
+                  `.tool-server-reconnect[data-server-id="${server.id}"]`,
+                )?.focus({ preventScroll: true });
+              }
+            });
+            widget.append(button);
+          }
+          return widget;
         }),
       );
       updateToolSwitches();
