@@ -1550,7 +1550,16 @@ mod podman {
                 let st = session.state();
                 (st.limits.clone(), st.preview_port)
             };
-            assert!(template::check_inspect(&info, &limits, port.map(u64::from), None).is_empty());
+            assert!(
+                template::check_inspect(
+                    &info,
+                    &limits,
+                    port.map(u64::from),
+                    None,
+                    &h.manager.bounds.expose_bind,
+                )
+                .is_empty()
+            );
 
             // Dateien, git und Python im Container
             assert_eq!(h.write(&s1, "main.py", "print(6*7)\n").await.unwrap(), "");
@@ -1851,7 +1860,13 @@ mod podman {
             let limits = h.manager.get(&s5).unwrap().state().limits.clone();
             let port = h.manager.get(&s5).unwrap().state().preview_port;
             assert_eq!(
-                template::check_inspect(&info, &limits, port.map(u64::from), None),
+                template::check_inspect(
+                    &info,
+                    &limits,
+                    port.map(u64::from),
+                    None,
+                    &h.manager.bounds.expose_bind,
+                ),
                 Vec::<String>::new()
             );
             // Nutzer 1000: Proxy nur zu freigegebenen Hosts, direkt gar nicht.
