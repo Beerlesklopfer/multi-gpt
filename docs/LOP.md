@@ -70,6 +70,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | Meilenstein | Stand |
 |---|---|
 | M9-02 Bilder bearbeiten (Maske) | skizziert |
+| FLUX.1 über Rust-Runner | Planung 2026-10-17: GPU-Container auf WS-Joerg; Laufzeit im Image, Gewichte/Cache in Volumes, Ergebnisse als Chat-Versionen in MultiGPT. Bestandsaufnahme von `~/D/f/flux1-project` offen. [Plan und Umsetzungsschritte](plans/FLUX-Runner.md). |
 | M10 Sprache (Spracherkennung, Vorlesen) | offen |
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
