@@ -34,7 +34,9 @@ Aufruf:
   multigpt-runner                 Agent starten (Einstellungen aus der Umgebung, MGPT_*)
   multigpt-runner --version       Version ausgeben
   multigpt-runner pair --url <URL> --images \"<image@sha256:…> …\" [--ca-sha256 <hex>] [--no-start]
-                                  Kopplung einrichten; stdin: Zeile 1 Token, Zeile 2 Server-Schlüssel (Base64)
+                                  Kopplung einrichten. In einem Terminal fragt das Programm nach Token und
+                                  Server-Schlüssel (Token unsichtbar); sonst stdin: Zeile 1 Token,
+                                  Zeile 2 Server-Schlüssel (Base64)
 ";
 
 /// Protokollierung nach stderr (journald), Stufe über `RUST_LOG` (Vorgabe info).
@@ -244,7 +246,11 @@ pub fn read_pair_secrets(input: &mut dyn BufRead) -> Result<(String, String), Co
     let token = line("Token")?;
     let key = line("Server-Schlüssel")?;
     if !protocol::is_token(&token) {
-        return Err(ConfigError("Zeile 1 ist kein gültiger Token.".into()));
+        return Err(ConfigError(
+            "Zeile 1 (stdin) ist kein gültiger Token. Ohne Terminal: Token, Zeilenumbruch, \
+             Server-Schlüssel."
+                .into(),
+        ));
     }
     if protocol::signed::verifying_key_from_b64(&key).is_none() {
         return Err(ConfigError(
@@ -252,6 +258,91 @@ pub fn read_pair_secrets(input: &mut dyn BufRead) -> Result<(String, String), Co
         ));
     }
     Ok((token, key))
+}
+
+/// Eine Zeile von stdin ohne Anzeige der Eingabe (Echo aus, danach wieder an).
+fn read_hidden_line() -> std::io::Result<String> {
+    use std::os::fd::AsRawFd;
+    let fd = std::io::stdin().as_raw_fd();
+    // SAFETY: termios wird nur gelesen und mit denselben Werten zurückgesetzt.
+    let saved = unsafe {
+        let mut term = std::mem::MaybeUninit::<libc::termios>::uninit();
+        if libc::tcgetattr(fd, term.as_mut_ptr()) != 0 {
+            None
+        } else {
+            let saved = term.assume_init();
+            let mut quiet = saved;
+            quiet.c_lflag &= !libc::ECHO;
+            libc::tcsetattr(fd, libc::TCSANOW, &quiet);
+            Some(saved)
+        }
+    };
+    let mut text = String::new();
+    let read = std::io::stdin().lock().read_line(&mut text);
+    if let Some(saved) = saved {
+        // SAFETY: stellt die zuvor gelesenen Einstellungen wieder her.
+        unsafe { libc::tcsetattr(fd, libc::TCSANOW, &saved) };
+        eprintln!(); // die Eingabetaste wurde nicht angezeigt
+    }
+    read.map(|_| text.trim().to_string())
+}
+
+/// Eine Zeile von stdin mit sichtbarer Eingabe.
+fn read_visible_line() -> std::io::Result<String> {
+    let mut text = String::new();
+    std::io::stdin().lock().read_line(&mut text)?;
+    Ok(text.trim().to_string())
+}
+
+/// Fragt in einem Terminal nach Token und Server-Schlüssel (höchstens dreimal je Wert).
+/// Der Token bleibt unsichtbar; der öffentliche Schlüssel wird angezeigt.
+fn prompt_pair_secrets() -> Result<(String, String), ConfigError> {
+    const TRIES: usize = 3;
+    eprintln!("Kopplung mit MultiGPT. Beides steht auf der Seite „Runner“ nach „Token erzeugen“.");
+    let mut token = String::new();
+    for attempt in 1..=TRIES {
+        eprint!("Kopplungs-Token (mgrt_…, Eingabe unsichtbar): ");
+        let _ = std::io::stderr().flush();
+        token = read_hidden_line().map_err(|_| ConfigError("Token nicht lesbar".into()))?;
+        if protocol::is_token(&token) {
+            break;
+        }
+        token.clear();
+        if attempt < TRIES {
+            eprintln!("Das ist kein gültiger Token. Bitte den ganzen Wert einfügen.");
+        }
+    }
+    if token.is_empty() {
+        return Err(ConfigError("Kein gültiger Token eingegeben.".into()));
+    }
+    let mut key = String::new();
+    for attempt in 1..=TRIES {
+        eprint!("Öffentlicher Schlüssel des Servers (Base64, eine Zeile): ");
+        let _ = std::io::stderr().flush();
+        key = read_visible_line().map_err(|_| ConfigError("Schlüssel nicht lesbar".into()))?;
+        if protocol::signed::verifying_key_from_b64(&key).is_some() {
+            break;
+        }
+        key.clear();
+        if attempt < TRIES {
+            eprintln!("Das ist kein Ed25519-Schlüssel (Base64, 32 Byte). Bitte erneut einfügen.");
+        }
+    }
+    if key.is_empty() {
+        return Err(ConfigError(
+            "Kein gültiger Server-Schlüssel eingegeben.".into(),
+        ));
+    }
+    Ok((token, key))
+}
+
+/// Token und Schlüssel holen: im Terminal per Eingabeaufforderung, sonst von stdin.
+fn pair_secrets() -> Result<(String, String), ConfigError> {
+    if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        prompt_pair_secrets()
+    } else {
+        read_pair_secrets(&mut std::io::stdin().lock())
+    }
 }
 
 /// Dateien der Kopplung schreiben: token (0600) und server.pub (0444).
@@ -379,7 +470,7 @@ fn pair_main(args: &[String]) -> i32 {
             return EXIT_CONFIG;
         }
     };
-    let (token, key) = match read_pair_secrets(&mut std::io::stdin().lock()) {
+    let (token, key) = match pair_secrets() {
         Ok(secrets) => secrets,
         Err(e) => {
             eprintln!("{e}");
