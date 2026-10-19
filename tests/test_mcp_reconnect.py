@@ -165,3 +165,21 @@ def test_picker_does_not_offer_admin_reconnect_to_adult(client, setup):
     assert entry["reconnect_url"] is None
     assert client.post(url, "{}", content_type="application/json").status_code == 403
     assert calls == []
+
+
+def test_runner_server_listed_online_when_runner_connected(client, setup):
+    from django.utils import timezone
+
+    user, _, _, _, _, _ = setup
+    server = ensure_mcp_server(user)
+    server.last_checked = timezone.now()
+    server.online = False
+    server.last_error = "alter Fehler"
+    server.save()
+    entry = lambda: next(  # noqa: E731
+        s for s in client.get("/api/mcp-servers/").json() if s["id"] == server.pk
+    )
+    assert entry()["online"] is False
+    token = RunnerToken.objects.create(owner=user, prefix="test", token_hash="0" * 64)
+    Runner.objects.create(token=token, status="online", last_seen=timezone.now())
+    assert entry()["online"] is True

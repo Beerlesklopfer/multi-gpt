@@ -439,7 +439,13 @@ def mark_failed(server: McpServer, exc: McpError) -> None:
 
 
 def known_offline(server: McpServer) -> bool:
-    """Zuletzt geprüft und dabei nicht erreichbar (ungeprüft gilt als verfügbar)."""
+    """Zuletzt geprüft und dabei nicht erreichbar (ungeprüft gilt als verfügbar).
+
+    Beim Runner zählt der Stand des Agenten jetzt, nicht eine alte Fehlermeldung."""
+    if server.transport == "runner":
+        from multigpt.runner.chat import _online_runner
+
+        return server.owner_id is None or _online_runner(server.owner) is None
     return server.last_checked is not None and not server.online and bool(server.last_error)
 
 
