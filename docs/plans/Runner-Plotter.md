@@ -114,6 +114,35 @@ Orchestrator selbst liefern.
 3. Aufwand: LM-Studio-Anbindung (Provider `lmstudio`, Verwaltung, Statistik) läuft weiter, bis
    der Orchestrator denselben Vertrag erfüllt – Umstieg je Provider, nicht auf einmal.
 
+## Entscheidung 2026-10-19: alles Rust
+
+Der Nutzer legt fest: Orchestrator, Treiber und Laufzeiten werden **in Rust** gebaut. Das ersetzt
+die Python-/C++-Laufzeiten der Recherche oben als Ziel; sie bleiben Vergleichsmaßstab und Übergang.
+
+Folgen für den Entwurf:
+
+- **Ein Programm, ein Verwalter je GPU:** Der Orchestrator wird ein Modul/Crate im Runner
+  (`runner-rs`) oder ein eigener Dienst-Prozess desselben Workspaces. Er hält VRAM-Buch, Warteschlange
+  und Zeitgeber (Leerlauf-Entladen) selbst und spricht mit MultiGPT über den bestehenden signierten
+  Kanal; Benutzer-Container sehen weder GPU noch Orchestrator.
+- **Laufzeit für Sprachmodelle:** **mistral.rs** (Rust, MIT) ist der natürliche Kandidat: Chat,
+  Vision, Sprache und Embeddings in einer Laufzeit, OpenAI-kompatibel, `unload`/`reload`/`status`
+  zur Laufzeit, auch als Bibliothek einbettbar. Zweiter Weg: Anbindung an llama.cpp über eine
+  Rust-Bindung (GGUF), dann aber C++ im Prozess. **candle** (HF) bleibt Baukasten darunter.
+- **Bildmodelle sind die Lücke:** In Rust gibt es FLUX derzeit nur in mistral.rs, dort **nur in
+  voller Genauigkeit** (`Flux`/`FluxOffloaded`, keine Quantisierung); candle hat kein FLUX-Beispiel.
+  Auf 24 GB ist das knapp (siehe Familienrechner-Plan). Bis das gemessen oder gelöst ist, gilt:
+  Bilddienst als **ausgetauschter Dienst-Container** hinter demselben Vertrag, erst später Rust.
+- **HPGL und Blackpill** sind ohnehin Rust: reines Rechenmodul plus serieller Treiber
+  (`tokio-serial`), ohne fremde Laufzeit.
+- **Was fehlt und selbst zu bauen ist:** Denkoptionen je Modell, Statistik je Antwort (Token/s),
+  Speicherschätzung, Verdrängung und Rangfolge, VRAM-Meldung (NVML-Bindung oder `nvidia-smi`).
+- **Vertrag bleibt klein** (anfordern, Status/VRAM, abbrechen, freigeben), damit die Rust-Laufzeit
+  Schritt für Schritt hinter dem Provider `lmstudio` hervortreten kann.
+
+Nächster Schritt (Versuch): mistral.rs auf dem GPU-Rechner messen – ein Chat-Modell und FLUX.1 –
+mit Ladezeit, Token/s, VRAM, `unload`/`reload` und Anfrage an ein entladenes Modell.
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
