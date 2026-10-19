@@ -268,3 +268,28 @@ def test_admin_notes_that_loading_makes_room_instead_of_warning(provider):
         "Reserve" not in data["budget_text"]
         or "Reserve für Anzeige/System 0,0" in data["budget_text"]
     )
+
+
+def test_model_on_cpu_does_not_occupy_gpu_pool(provider):
+    """Läuft ein Modell im CPU-Pool, zählt es nicht als „belegt“ im GPU-Pool."""
+    make(provider, SMALL)
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock, loaded={SMALL: 18.0}, total_gb=12.0, budget_gb=22.0)
+        mock.get(f"{ROOT}/api/v1/status").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"key": SMALL, "state": "loaded", "device": "cpu", "vram_bytes": 18 * GB}
+                    ]
+                },
+                headers=SERVER,
+            )
+        )
+        catalog = lmstudio.list_models(provider)
+        pool = lmstudio.estimate(provider, BIG).pool
+        snap = model_manager.snapshot(provider, catalog, pool=pool)
+    assert pool.name == "gpu"
+    assert snap.slots == []
+    assert ai.pk

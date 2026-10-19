@@ -264,6 +264,7 @@ class Pool:
     fits_now: bool = True
     fits_after_eviction: bool = True
     max_context_length: int | None = None
+    name: str = "gpu"  # "gpu" oder "cpu": der Pool, in dem das Modell läuft
 
 
 @dataclass
@@ -310,6 +311,7 @@ def parse_estimate(data) -> Estimate:
             fits_now=bool(item.get("fits_now", True)),
             fits_after_eviction=bool(item.get("fits_after_eviction", True)),
             max_context_length=_int(item.get("max_context_length")),
+            name=str(name),
         )
     return Estimate(
         model=str(data.get("model") or ""),
@@ -348,8 +350,10 @@ def estimate(
         raise LmsError(MSG_INVALID) from exc
 
 
-def instance_bytes(provider, timeout: float = LIST_TIMEOUT) -> dict[str, int]:
-    """Belegter Speicher je geladenem Modell laut Eliezer (``/api/v1/status``, ``vram_bytes``)."""
+def instance_status(provider, timeout: float = LIST_TIMEOUT) -> dict[str, tuple[int, str]]:
+    """Geladene Modelle laut Eliezer (``/api/v1/status``): Schlüssel -> (Bytes, Pool).
+
+    Der Pool (``device``) ist ``gpu`` oder ``cpu``, wo das Modell läuft."""
     response = _request(provider, "GET", "/api/v1/status", timeout)
     _check(response, "Status", provider)
     try:
@@ -360,9 +364,14 @@ def instance_bytes(provider, timeout: float = LIST_TIMEOUT) -> dict[str, int]:
     if not isinstance(models, list):
         raise LmsError(MSG_INVALID)
     return {
-        item["key"]: _count(item.get("vram_bytes"))
+        item["key"]: (_count(item.get("vram_bytes")), str(item.get("device") or "gpu"))
         for item in models
         if isinstance(item, dict)
         and isinstance(item.get("key"), str)
         and item.get("state") in ("loaded", "loading", "unloading")
     }
+
+
+def instance_bytes(provider, timeout: float = LIST_TIMEOUT) -> dict[str, int]:
+    """Belegter Speicher je geladenem Modell laut Eliezer (``vram_bytes``)."""
+    return {key: size for key, (size, _) in instance_status(provider, timeout).items()}

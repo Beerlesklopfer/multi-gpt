@@ -443,10 +443,10 @@ def snapshot(
     und der Platz aus ``pool`` (Schätzung); ohne beides gilt die eigene Rechnung."""
     if catalog is None:
         catalog = lmstudio.list_models(provider)
-    measured: dict[str, int] = {}
+    measured: dict[str, tuple[int, str]] = {}
     if eliezer(provider):
         try:
-            measured = lmstudio.instance_bytes(provider)
+            measured = lmstudio.instance_status(provider)
         except lmstudio.LmsError:
             measured = {}
     models = list(provider.ai_models.all())
@@ -468,8 +468,11 @@ def snapshot(
     for entry in catalog:
         for inst in entry.instances:
             ai_model = by_instance.get(inst.id) or by_key.get(entry.key)
-            if inst.id in measured or entry.key in measured:
-                size, source = measured.get(inst.id, measured.get(entry.key, 0)), "eliezer"
+            known = measured.get(inst.id) or measured.get(entry.key)
+            if known is not None and pool is not None and known[1] != pool.name:
+                continue  # läuft in einem anderen Pool (z. B. CPU): belegt diesen Pool nicht
+            if known is not None:
+                size, source = known[0], "eliezer"
             else:
                 est = estimate_model(ai_model, entry, inst.context_length, inst.parallel)
                 size, source = est.total, est.source
