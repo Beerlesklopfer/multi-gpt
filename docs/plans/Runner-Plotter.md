@@ -143,6 +143,21 @@ Folgen für den Entwurf:
 Nächster Schritt (Versuch): mistral.rs auf dem GPU-Rechner messen – ein Chat-Modell und FLUX.1 –
 mit Ladezeit, Token/s, VRAM, `unload`/`reload` und Anfrage an ein entladenes Modell.
 
+## Entscheidung 2026-10-19: mistral.rs
+
+Die Laufzeit ist **mistral.rs**. Modelle werden mit einem **Hugging-Face-Token** nachgeladen.
+
+- **Token:** nur auf dem GPU-Rechner, als Datei mit Rechten 0600 oder Umgebungsvariable des
+  Dienstes (`HF_TOKEN`); nie im Repository, nie im Chat, nie in Logs und nicht in der Datenbank
+  des Servers. Lesezugriff genügt (Token-Art „read“, möglichst auf die nötigen Modelle begrenzt).
+  Der Orchestrator reicht ihn nur an die Laufzeit weiter, die Benutzer-Container sehen ihn nicht.
+- **Modellauswahl:** eine Positivliste (Modell-ID und Revision/Digest) im Orchestrator; geladen
+  wird nur, was dort steht. Gesperrte oder lizenzpflichtige Modelle (z. B. FLUX.1 dev) brauchen
+  zuerst die Zustimmung zur Lizenz im HF-Konto des Tokens.
+- **Speicherort:** ein eigenes Cache-Verzeichnis (`HF_HOME`) auf einem Volume mit Größengrenze;
+  Herunterladen nur auf Anforderung des Verwalters, mit Fortschrittsmeldung.
+- **Nächster Schritt:** Versuch auf dem GPU-Rechner (dieser Entwicklungsrechner hat keine GPU).
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
