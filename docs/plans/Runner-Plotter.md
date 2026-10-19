@@ -177,6 +177,20 @@ Recherche (Dokumentation und Drittquellen, nicht selbst gemessen):
   Nachladen per HF-Token wie oben. Ob die Rust-Umsetzung vor oder nach einem Übergangsdienst
   kommt, entscheidet der Versuch.
 
+### Vorhanden: `qwen-image-2.1-UC-Q4_K_M.gguf` (Hinweis des Nutzers, 2026-10-19)
+
+Auf dem GPU-Rechner liegt eine Qwen-Image-Datei in GGUF (Q4_K_M). Einordnung:
+
+- **Laufzeit:** stable-diffusion.cpp lädt Qwen-Image als GGUF (Unsloth-Anleitung, ByteShape-Dateien).
+  Für mistral.rs ist GGUF bei Diffusionsmodellen nicht belegt. Damit ist stable-diffusion.cpp der
+  Kandidat für den **Übergangsdienst** (Dienst-Container hinter dem Vertrag) mit dieser Datei.
+- **Speicher:** Für Q4_K_M werden etwa 13–14 GB (VRAM plus RAM) genannt; die Quellen widersprechen
+  sich. Mit `--offload-to-cpu`, `--diffusion-fa` und `--vae-tiling` ist auch weniger möglich.
+- **Dazu nötig:** Beim GGUF liegt nur der Transformer vor; Textencoder (Qwen2.5-VL) und VAE kommen
+  aus eigenen Dateien. Fehlen sie, lädt der Dienst sie mit dem HF-Token nach.
+- **Offen:** Herkunft und Lizenz der Datei („2.1-UC“ ist mir nicht bekannt) prüft der Nutzer;
+  FLUX.2 klein 4B bleibt die Rust-Linie, Qwen-Image ist bis dahin die Auswahl im Chat.
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
