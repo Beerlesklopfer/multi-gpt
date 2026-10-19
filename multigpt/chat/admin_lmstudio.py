@@ -224,6 +224,16 @@ def _entry(catalog, model_id: str):
     return None
 
 
+def _eliezer_estimate(provider: Provider, model_id: str, context, parallel):
+    """Eliezers Schätzung für das Laden, sonst ``None`` (ältere Version, nicht erreichbar)."""
+    try:
+        return lmstudio.estimate(
+            provider, model_id, context_length=context, parallel=parallel, timeout=ADMIN_TIMEOUT
+        )
+    except lmstudio.LmsError:
+        return None
+
+
 def estimate_payload(
     provider: Provider,
     ai_model: AIModel | None,
@@ -248,9 +258,22 @@ def estimate_payload(
             context = ai_model.load_context_length
         else:
             context = vram.default_context(capability, max_context)
-    est = model_manager.estimate_model(
-        ai_model, entry, context, model_manager.load_parallel(ai_model) if ai_model else None, rt
-    )
+    parallel = model_manager.load_parallel(ai_model) if ai_model else None
+    eliezer = None
+    if entry is not None and model_manager.eliezer(provider):
+        eliezer = _eliezer_estimate(provider, entry.key, context, parallel)
+    pool = eliezer.pool if eliezer is not None else None
+    if eliezer is not None:
+        est = vram.Estimate(
+            eliezer.weights + eliezer.vision,
+            eliezer.kv_cache,
+            eliezer.overhead,
+            context,
+            f"Eliezer: {eliezer.basis}",
+            eliezer.basis == "measured",
+        )
+    else:
+        est = model_manager.estimate_model(ai_model, entry, context, parallel, rt)
     known = bool(entry or (rt and rt.size_bytes) or est.measured)
     parts = [f"Datei {_gb(est.weights)}", f"Kontext-Cache {_gb(est.kv)}"]
     parts.append(f"Zuschlag {_gb(est.overhead)}")
@@ -269,12 +292,12 @@ def estimate_payload(
         "fits": None,
         "error": error,
     }
-    if not provider.vram_budget_gb:
+    if pool is None and not provider.vram_budget_gb:
         if provider.is_local:
             result["budget_text"] = "Kein Speicherbudget beim Anbieter eingestellt."
         return result
     if catalog is not None:
-        snap = model_manager.snapshot(provider, catalog)
+        snap = model_manager.snapshot(provider, catalog, pool=pool)
         others = [
             s
             for s in snap.slots
@@ -289,7 +312,11 @@ def estimate_payload(
         usable = int(float(provider.vram_budget_gb - provider.vram_reserve_gb) * vram.GB)
         reserve = int(float(provider.vram_reserve_gb) * vram.GB)
     used = sum(s.bytes for s in others)
-    free = usable - used
+    if pool is not None:
+        # Eliezers freier Platz zählt alles Geladene; das eigene Modell wird nicht abgezogen.
+        free = pool.free + sum(s.bytes for s in snap.slots if s not in others)
+    else:
+        free = usable - used
     by = ", ".join(f"{s.label} {_gb(s.bytes)}" for s in others) or "nichts"
     result["budget"] = {
         "budget_gb": vram.gb(usable + reserve),

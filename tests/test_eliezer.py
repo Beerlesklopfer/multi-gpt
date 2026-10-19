@@ -80,7 +80,13 @@ class FakeEliezer:
             "context_length": context,
             "parallel": body.get("parallel"),
             "device": "gpu",
-            "estimate": {"total_bytes": self.total, "basis": "calculated"},
+            "estimate": {
+                "total_bytes": self.total,
+                "basis": "calculated",
+                "weights_bytes": self.total - 3 * GB,
+                "kv_cache_bytes": 2 * GB,
+                "overhead_bytes": GB,
+            },
             "pools": {
                 "gpu": {
                     "budget_bytes": self.budget,
@@ -178,7 +184,7 @@ def test_loads_with_eliezers_numbers_not_own_budget(provider):
 
 
 def test_unloads_by_eliezers_free_bytes(provider):
-    """Belegt durch andere: Bedarf kommt von estimate, belegt von status, nicht aus eigener Summe."""
+    """Belegt durch andere: Bedarf von estimate, Belegung von status, keine eigene Summe."""
     other = make(provider, SMALL, load_priority=10)
     ai = make(provider, BIG, load_priority=20)
     with respx.mock(assert_all_called=False) as mock:
@@ -227,3 +233,20 @@ def test_older_eliezer_without_estimate_uses_own_calculation(provider):
         provider.save()
         assert model_manager.ensure_loaded(ai, interactive=True) is True
     assert any(c[0] == "load" for c in fake.calls)
+
+
+def test_admin_estimate_uses_eliezers_numbers(provider):
+    from multigpt.chat import admin_lmstudio
+
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock, loaded={SMALL: 18.0}, total_gb=12.0, budget_gb=22.0)
+        provider.vram_budget_gb = None  # beim Anbieter ist nichts eingestellt: Eliezers Pool gilt
+        provider.save()
+        data = admin_lmstudio.estimate_payload(provider, ai, BIG, 32768)
+    assert data["estimate"]["source"] == "Eliezer: calculated"
+    assert data["estimate"]["total_gb"] == 12.0
+    assert data["budget"]["usable_gb"] == 22.0
+    assert data["budget"]["free_gb"] == 4.0  # 22 − 18 belegt durch andere
+    assert "belegt durch andere" in data["budget_text"]
+    assert "passt nicht" in data["warning"]  # 12 GB brauchen mehr als die 4 GB frei
