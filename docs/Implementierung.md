@@ -1139,8 +1139,7 @@ Entwurf (2026-10-19), Plan: [plans/Runner-Plotter.md](plans/Runner-Plotter.md); 
 - **M16-06** Bilddienst: Übergang stable-diffusion.cpp (Qwen-Image-GGUF) als Dienst-Container hinter demselben Vertrag; Ziel FLUX.2 klein 4B (Apache-2.0) in Rust, sobald die Architektur in mistral.rs/candle vorliegt.
 - **M16-07** Vertrag und Anbindung: Anbieterart `eliezer` in MultiGPT mit allem, was `lmstudio` heute liefert (Modellliste mit Zustand, Laden/Entladen mit Kontext und Parallelität, `fit_context`, Verdrängungsangebot, Statistik). Rechte, Rangfolge und Abrechnung bleiben in MultiGPT.
 - **M16-08** Betrieb über den Runner: Dienst im signierten Katalog (feste GPU-Vorlage, Benutzer-Container sehen weder GPU noch Token), `GpuLease` als Anzeige und Vorab-Prüfung.
-- **M16-09** Plotter (HPGL, Blackpill): Rechenmodul mit Grenzen (nur `IN`, `SP`, `PU`, `PD`), serieller Treiber, Dienst `plotter`, Vorschau und Rückfrage im Chat.
-- **M16-10** Ablösung von LM Studio: je Anbieter umstellen, `lmstudio` bleibt bis zur Gleichwertigkeit; Wiki und `debian/NEWS`.
+- **M16-09** Ablösung von LM Studio: je Anbieter umstellen, `lmstudio` bleibt bis zur Gleichwertigkeit; Wiki und `debian/NEWS`.
 
 *Abnahme:* Ein Chat-Modell und ein Bildauftrag wechseln sich auf der 24-GB-Karte ab, das Chat-Modell kommt danach von selbst zurück, die Statistik im Antwortkopf stimmt mit der Messung überein, und MultiGPT läuft ohne LM Studio.
 
@@ -1159,8 +1158,8 @@ M7-13 + M8 + M5-06 ─┬─> M13-01/02 (Kontextmenü, Vorlagen; vorab lieferbar
                     └─> M13-03 ─> M13-04 ─> M13-05 ─> M13-06 ─> M13-07 ─> M13-08 ─> M13-09 ─> M13-10 ─> M13-11
 M5-07 Projekte + Projektfreigabe ─────────────> M13-12
 M4a + M6 + M7 + M12-01 ─> M15 (Knoten, umgesetzt)
-M14-06 + M14-09 ─> M16-01 ─> M16-02 ─> M16-03 ─┬─> M16-04 ─> M16-05 ─> M16-07 ─> M16-10
-                                              ├─> M16-06 ─> M16-08 ─> M16-09
+M14-06 + M14-09 ─> M16-01 ─> M16-02 ─> M16-03 ─┬─> M16-04 ─> M16-05 ─> M16-07 ─> M16-09
+                                              └─> M16-06 ─> M16-08
 M4a + M6-06 + M12-01 ─> M14-01 ─> M14-02 ─> M14-03 ─> M14-04 ─> M14-05 ─┬─> M14-06
                                                                    ├─> M14-07
                                                                    └─> M14-08 ─> M14-09
