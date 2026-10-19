@@ -1,0 +1,229 @@
+"""Eliezer als Modellserver: Speicherbedarf und freier Platz kommen von dort (``estimate``,
+``status``) statt aus der eigenen Rechnung. Kein echter Eliezer: respx bildet ihn nach."""
+
+import json
+from decimal import Decimal
+
+import httpx
+import pytest
+import respx
+
+from multigpt.chat import lmstudio, model_manager
+from multigpt.chat.models import AIModel, Provider
+
+pytestmark = pytest.mark.django_db
+
+ROOT = "http://eliezer.example.invalid:1234"
+GB = 1_000_000_000
+BIG = "qwen/qwen3.8-27b"
+SMALL = "qwen/qwen3-coder-30b"
+SERVER = {"Server": "eliezer/0.5.0"}
+
+
+def entry(key, size_gb, loaded_context=None):
+    item = {
+        "type": "llm",
+        "key": key,
+        "display_name": key,
+        "architecture": "qwen3",
+        "params_string": "27B",
+        "size_bytes": int(size_gb * GB),
+        "max_context_length": 131072,
+        "capabilities": {"vision": False},
+        "loaded_instances": [],
+    }
+    if loaded_context:
+        item["loaded_instances"] = [{"id": key, "config": {"context_length": loaded_context}}]
+    return item
+
+
+class FakeEliezer:
+    """``/api/v1/models``, ``status``, ``estimate``, ``load``, ``unload`` mit festen Zahlen."""
+
+    def __init__(self, mock, loaded=None, total_gb=20.0, budget_gb=22.0, max_context=None):
+        self.loaded = dict(loaded or {})  # Schlüssel -> belegte GB
+        self.total = int(total_gb * GB)
+        self.budget = int(budget_gb * GB)
+        self.max_context = max_context
+        self.calls = []
+        self.estimate_bodies = []
+        self.free_after = None
+        mock.get(f"{ROOT}/api/v1/models").mock(side_effect=self._list)
+        mock.get(f"{ROOT}/api/v1/status").mock(side_effect=self._status)
+        mock.post(f"{ROOT}/api/v1/models/estimate").mock(side_effect=self._estimate)
+        mock.post(f"{ROOT}/api/v1/models/load").mock(side_effect=self._load)
+        mock.post(f"{ROOT}/api/v1/models/unload").mock(side_effect=self._unload)
+
+    def used(self):
+        return int(sum(self.loaded.values()) * GB)
+
+    def _list(self, request):
+        models = [entry(k, 17, 32768 if k in self.loaded else None) for k in (BIG, SMALL)]
+        return httpx.Response(200, json={"models": models}, headers=SERVER)
+
+    def _status(self, request):
+        models = [
+            {"key": k, "state": "loaded", "device": "gpu", "vram_bytes": int(gb * GB)}
+            for k, gb in self.loaded.items()
+        ]
+        return httpx.Response(200, json={"gpu": {}, "models": models}, headers=SERVER)
+
+    def _estimate(self, request):
+        body = json.loads(request.content)
+        self.estimate_bodies.append(body)
+        free = max(0, self.budget - self.used())
+        after = self.budget if self.free_after is None else self.free_after
+        limit = self.max_context
+        context = body.get("context_length")
+        data = {
+            "model": body["model"],
+            "context_length": context,
+            "parallel": body.get("parallel"),
+            "device": "gpu",
+            "estimate": {"total_bytes": self.total, "basis": "calculated"},
+            "pools": {
+                "gpu": {
+                    "budget_bytes": self.budget,
+                    "free_bytes": free,
+                    "free_after_eviction_bytes": after,
+                    "fits_budget": self.total <= self.budget,
+                    "fits_now": self.total <= free,
+                    "fits_after_eviction": self.total <= after,
+                    "max_context_length": limit,
+                }
+            },
+        }
+        return httpx.Response(200, json=data, headers=SERVER)
+
+    def _load(self, request):
+        body = json.loads(request.content)
+        self.calls.append(("load", body["model"], body.get("context_length")))
+        self.loaded[body["model"]] = self.total / GB
+        return httpx.Response(
+            200,
+            json={"type": "llm", "instance_id": body["model"], "status": "loaded"},
+            headers=SERVER,
+        )
+
+    def _unload(self, request):
+        body = json.loads(request.content)
+        self.calls.append(("unload", body["instance_id"]))
+        self.loaded.pop(body["instance_id"], None)
+        return httpx.Response(200, json={"instance_id": body["instance_id"]}, headers=SERVER)
+
+
+@pytest.fixture(autouse=True)
+def _fresh():
+    model_manager._verified.clear()
+    lmstudio._servers.clear()
+    yield
+    model_manager._verified.clear()
+    lmstudio._servers.clear()
+
+
+@pytest.fixture
+def provider():
+    return Provider.objects.create(
+        name="Eliezer",
+        kind=Provider.Kind.LMSTUDIO,
+        base_url=ROOT,
+        is_local=True,
+        manage_models=True,
+        vram_budget_gb=Decimal("8"),  # absichtlich falsch: Eliezers Zahlen müssen gelten
+        vram_reserve_gb=Decimal("2"),
+        reported_models=[BIG, SMALL],
+    )
+
+
+def make(provider, model_id, **kwargs):
+    return AIModel.objects.create(
+        provider=provider, model_id=model_id, display_name=model_id, **kwargs
+    )
+
+
+def test_parse_estimate_reads_pools():
+    est = lmstudio.parse_estimate(
+        {
+            "model": "m",
+            "device": "gpu",
+            "estimate": {"total_bytes": 5, "basis": "measured"},
+            "pools": {
+                "gpu": {"budget_bytes": 9, "free_bytes": 4, "free_after_eviction_bytes": 7},
+                "cpu": {"budget_bytes": 100},
+            },
+        }
+    )
+    assert est.total == 5 and est.basis == "measured"
+    assert est.pool.budget == 9 and est.pool.free == 4 and est.pool.free_after_eviction == 7
+    with pytest.raises(lmstudio.LmsError):
+        lmstudio.parse_estimate({"estimate": {}})
+
+
+def test_server_kind_comes_from_header(provider):
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock)
+        assert not model_manager.eliezer(provider)
+        lmstudio.list_models(provider)
+        assert model_manager.eliezer(provider)
+
+
+def test_loads_with_eliezers_numbers_not_own_budget(provider):
+    """Der Anbieter ist auf 8 GB eingestellt, Eliezer meldet 22 GB Budget: es wird geladen."""
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock, total_gb=20.0, budget_gb=22.0)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+    assert ("load", BIG, 32768) in fake.calls
+    assert fake.estimate_bodies and fake.estimate_bodies[0]["model"] == BIG
+
+
+def test_unloads_by_eliezers_free_bytes(provider):
+    """Belegt durch andere: Bedarf kommt von estimate, belegt von status, nicht aus eigener Summe."""
+    other = make(provider, SMALL, load_priority=10)
+    ai = make(provider, BIG, load_priority=20)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock, loaded={SMALL: 18.0}, total_gb=20.0, budget_gb=22.0)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+    assert fake.calls[0] == ("unload", SMALL)
+    assert other.pk
+
+
+def test_refuses_when_eliezer_cannot_evict_enough(provider):
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock, loaded={SMALL: 18.0}, total_gb=20.0, budget_gb=22.0)
+        fake.free_after = 10 * GB  # Eliezer hält Teile fest (angeheftet, laufende Anfrage)
+        with pytest.raises(model_manager.ModelUnavailable) as err:
+            model_manager.ensure_loaded(ai, interactive=True)
+    assert "10,0" in str(err.value) or "10.0" in str(err.value)
+    assert not [c for c in fake.calls if c[0] in ("load", "unload")]
+
+
+def test_context_follows_max_context_length_of_pool(provider):
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock, total_gb=10.0, budget_gb=22.0, max_context=16384)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+    assert ("load", BIG, 16384) in fake.calls
+    assert [b.get("context_length") for b in fake.estimate_bodies] == [32768, 16384]
+
+
+def test_explicit_context_stays(provider):
+    ai = make(provider, BIG, load_context_length=65536)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock, total_gb=10.0, budget_gb=22.0, max_context=16384)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+    assert ("load", BIG, 65536) in fake.calls
+
+
+def test_older_eliezer_without_estimate_uses_own_calculation(provider):
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        fake = FakeEliezer(mock)
+        mock.post(f"{ROOT}/api/v1/models/estimate").mock(
+            return_value=httpx.Response(404, json={"error": {"message": "nicht gefunden"}})
+        )
+        provider.vram_budget_gb = Decimal("24")
+        provider.save()
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+    assert any(c[0] == "load" for c in fake.calls)

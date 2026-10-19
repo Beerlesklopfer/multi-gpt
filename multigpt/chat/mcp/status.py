@@ -325,7 +325,9 @@ def _store(server: McpServer, tools: list[dict] | None, error: str) -> CheckOutc
     return CheckOutcome(server.pk, online, "" if online else error, tools or [])
 
 
-ERR_RUNNER_OFFLINE = "Der Runner ist nicht verbunden: Agent auf dem Rechner starten (multigpt-runner)."
+ERR_RUNNER_OFFLINE = (
+    "Der Runner ist nicht verbunden: Agent auf dem Rechner starten (multigpt-runner)."
+)
 
 
 def _check_runner(server: McpServer) -> CheckOutcome:

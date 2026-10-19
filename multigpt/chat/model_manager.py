@@ -305,6 +305,36 @@ def fit_context(ai_model: AIModel, entry, context: int | None, usable: int) -> i
     return context
 
 
+def eliezer_fit(
+    provider: Provider, ai_model: AIModel, entry, context: int | None
+) -> tuple[int | None, int, lmstudio.Pool | None] | None:
+    """Kontext, Bedarf und Pool laut Eliezers ``estimate`` statt eigener Rechnung.
+
+    Ohne eigenes Kontextfenster wird die größte Stufe gewählt, die in den Pool passt
+    (``max_context_length`` von Eliezer). ``None``, wenn Eliezer die Schätzung nicht kennt
+    (ältere Version): dann gilt die eigene Rechnung."""
+    key = entry.key if entry else ai_model.model_id
+    parallel = load_parallel(ai_model)
+    try:
+        est = lmstudio.estimate(provider, key, context_length=context, parallel=parallel)
+        pool = est.pool
+        limit = pool.max_context_length if pool else None
+        if not ai_model.load_context_length and context and limit and limit < context:
+            stages = [s for s in vram.CONTEXT_STAGES if MIN_FIT_CONTEXT <= s <= limit]
+            if stages:
+                context = max(stages)
+                est = lmstudio.estimate(provider, key, context_length=context, parallel=parallel)
+                pool = est.pool
+                logger.info(
+                    "Eliezer: Modell %s mit %d Tokens Kontext (Platz im Pool)", ai_model.pk, context
+                )
+    except lmstudio.LmsError as exc:
+        if exc.status in (404, 405) or exc.unreachable:
+            return None
+        raise
+    return context, est.total, pool
+
+
 def estimate_model(
     ai_model: AIModel | None,
     entry: lmstudio.CatalogModel | None,
@@ -376,9 +406,14 @@ class Snapshot:
     slots: list[Slot] = field(default_factory=list)
     catalog: list[lmstudio.CatalogModel] = field(default_factory=list)
     run_open: bool = False
+    # Eliezer: Platz im Pool laut seiner Schätzung (``estimate``); dann zählen Budget und freier
+    # Speicher von dort statt der eigenen Summen.
+    pool: lmstudio.Pool | None = None
 
     @property
     def usable(self) -> int:
+        if self.pool is not None:
+            return self.pool.budget
         return max(0, self.budget - self.reserve)
 
     @property
@@ -387,13 +422,33 @@ class Snapshot:
 
     @property
     def free(self) -> int:
+        if self.pool is not None:
+            return self.pool.free
         return self.usable - self.used
 
 
-def snapshot(provider: Provider, catalog: list[lmstudio.CatalogModel] | None = None) -> Snapshot:
-    """Belegung laut LM Studio (ruft die Liste ab, wenn ``catalog`` fehlt)."""
+def eliezer(provider: Provider) -> bool:
+    """Antwortet dort Eliezer (Kopf ``Server: eliezer/…`` der letzten Antwort)?"""
+    return lmstudio.server_kind(provider) == "eliezer"
+
+
+def snapshot(
+    provider: Provider,
+    catalog: list[lmstudio.CatalogModel] | None = None,
+    pool: lmstudio.Pool | None = None,
+) -> Snapshot:
+    """Belegung laut LM Studio bzw. Eliezer (ruft die Liste ab, wenn ``catalog`` fehlt).
+
+    Bei Eliezer kommt die Belegung je Modell von dort (``vram_bytes`` aus ``/api/v1/status``)
+    und der Platz aus ``pool`` (Schätzung); ohne beides gilt die eigene Rechnung."""
     if catalog is None:
         catalog = lmstudio.list_models(provider)
+    measured: dict[str, int] = {}
+    if eliezer(provider):
+        try:
+            measured = lmstudio.instance_bytes(provider)
+        except lmstudio.LmsError:
+            measured = {}
     models = list(provider.ai_models.all())
     by_instance = {m.model_id: m for m in models}
     by_key = {m.model_id: m for m in models}
@@ -408,11 +463,16 @@ def snapshot(provider: Provider, catalog: list[lmstudio.CatalogModel] | None = N
         reserve=int(float(provider.vram_reserve_gb or 0) * vram.GB),
         catalog=catalog,
         run_open=run_open(),
+        pool=pool,
     )
     for entry in catalog:
         for inst in entry.instances:
             ai_model = by_instance.get(inst.id) or by_key.get(entry.key)
-            est = estimate_model(ai_model, entry, inst.context_length, inst.parallel)
+            if inst.id in measured or entry.key in measured:
+                size, source = measured.get(inst.id, measured.get(entry.key, 0)), "eliezer"
+            else:
+                est = estimate_model(ai_model, entry, inst.context_length, inst.parallel)
+                size, source = est.total, est.source
             rt = runtimes.get(ai_model.pk) if ai_model else None
             snap.slots.append(
                 Slot(
@@ -420,8 +480,8 @@ def snapshot(provider: Provider, catalog: list[lmstudio.CatalogModel] | None = N
                     key=entry.key,
                     ai_model=ai_model,
                     context=inst.context_length,
-                    bytes=est.total,
-                    source=est.source,
+                    bytes=size,
+                    source=source,
                     pinned=bool(ai_model and ai_model.pinned),
                     busy=bool(ai_model and ai_model.pk in busy),
                     indexing=bool(ai_model and ai_model.pk in indexing),
@@ -468,6 +528,17 @@ def plan(
     free = snap.free
     if free >= need:
         return []
+    if snap.pool is not None and need > snap.pool.free_after_eviction:
+        # Eliezer: auch nach dem Verdrängen, was er verdrängen darf, reicht es nicht.
+        holders = ", ".join(f"{s.label} ({vram.gb_text(s.bytes)})" for s in snap.slots)
+        raise ModelUnavailable(
+            MSG_NO_ROOM.format(
+                name=name,
+                need=vram.gb_text(need),
+                free=vram.gb_text(snap.pool.free_after_eviction),
+                by=holders or "–",
+            )
+        )
     candidates = []
     blocked = []
     for slot in snap.slots:
@@ -625,10 +696,15 @@ def ensure_loaded(
                 _mark_verified(ai_model)
                 return False
             context = profile_context(ai_model, entry.max_context_length if entry else None)
-            snap = snapshot(provider, catalog)
-            context = fit_context(ai_model, entry, context, snap.usable)
-            est = estimate_model(ai_model, entry, context, load_parallel(ai_model))
-            for slot in plan(snap, ai_model, est.total, interactive, swap=swap):
+            fit = eliezer_fit(provider, ai_model, entry, context) if eliezer(provider) else None
+            if fit is not None:
+                context, need, pool = fit
+                snap = snapshot(provider, catalog, pool=pool)
+            else:
+                snap = snapshot(provider, catalog)
+                context = fit_context(ai_model, entry, context, snap.usable)
+                need = estimate_model(ai_model, entry, context, load_parallel(ai_model)).total
+            for slot in plan(snap, ai_model, need, interactive, swap=swap):
                 why = "Austausch" if swap and slot.pinned else "Platz"
                 _do_unload(provider, slot, f"{why} für Modell {ai_model.pk}")
             ModelRuntime.objects.update_or_create(

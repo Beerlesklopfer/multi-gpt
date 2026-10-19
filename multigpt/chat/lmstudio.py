@@ -177,11 +177,24 @@ def parse_models(data) -> list[CatalogModel]:
     return result
 
 
+# Eliezer (Modellverwalter, Ersatz für LM Studio) spricht dieselbe Schnittstelle und meldet sich
+# im Kopf ``Server: eliezer/<Version>``. Die Art wird aus der letzten Antwort gemerkt.
+_servers: dict[int, str] = {}
+
+
+def server_kind(provider) -> str:
+    """``"eliezer"``, wenn die letzte Antwort dieses Anbieters von Eliezer kam, sonst ``""``."""
+    return _servers.get(provider.pk, "")
+
+
 def _request(provider, method: str, path: str, timeout: float, body=None) -> httpx.Response:
     url = api_root(provider) + path
     try:
         with httpx.Client(timeout=timeout) as client:
-            return client.request(method, url, headers=_headers(provider), json=body)
+            response = client.request(method, url, headers=_headers(provider), json=body)
+        header = response.headers.get("server", "")
+        _servers[provider.pk] = "eliezer" if header.lower().startswith("eliezer/") else ""
+        return response
     except httpx.TimeoutException as exc:
         raise LmsError(f"{MSG_UNREACHABLE} (Zeitüberschreitung)", unreachable=True) from exc
     except httpx.HTTPError as exc:
@@ -238,3 +251,118 @@ def unload(provider, instance_id: str, timeout: float = UNLOAD_TIMEOUT) -> None:
         provider, "POST", "/api/v1/models/unload", timeout, {"instance_id": instance_id}
     )
     _check(response, "Entladen", provider)
+
+
+@dataclass
+class Pool:
+    """Speicher eines Pools (GPU oder CPU) laut Eliezer, bezogen auf eine Ladeanfrage."""
+
+    budget: int
+    free: int
+    free_after_eviction: int
+    fits_budget: bool = True
+    fits_now: bool = True
+    fits_after_eviction: bool = True
+    max_context_length: int | None = None
+
+
+@dataclass
+class Estimate:
+    """Antwort von ``POST /api/v1/models/estimate``: was Eliezer für das Laden rechnet."""
+
+    model: str
+    context_length: int | None
+    parallel: int | None
+    device: str
+    total: int
+    basis: str = ""
+    weights: int = 0
+    kv_cache: int = 0
+    overhead: int = 0
+    vision: int = 0
+    pools: dict[str, Pool] = field(default_factory=dict)
+
+    @property
+    def pool(self) -> Pool | None:
+        """Pool, in den das Modell käme (``device``), sonst der GPU-Pool."""
+        return self.pools.get(self.device) or self.pools.get("gpu")
+
+
+def _count(value) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def parse_estimate(data) -> Estimate:
+    """Antwort von ``/api/v1/models/estimate`` -> ``Estimate``; Unbrauchbares ist ``LmsError``."""
+    est = data.get("estimate") if isinstance(data, dict) else None
+    pools = data.get("pools") if isinstance(data, dict) else None
+    if not isinstance(est, dict) or not isinstance(pools, dict) or "total_bytes" not in est:
+        raise LmsError(MSG_INVALID)
+    result: dict[str, Pool] = {}
+    for name, item in pools.items():
+        if not isinstance(item, dict):
+            continue
+        result[str(name)] = Pool(
+            budget=_count(item.get("budget_bytes")),
+            free=_count(item.get("free_bytes")),
+            free_after_eviction=_count(item.get("free_after_eviction_bytes")),
+            fits_budget=bool(item.get("fits_budget", True)),
+            fits_now=bool(item.get("fits_now", True)),
+            fits_after_eviction=bool(item.get("fits_after_eviction", True)),
+            max_context_length=_int(item.get("max_context_length")),
+        )
+    return Estimate(
+        model=str(data.get("model") or ""),
+        context_length=_int(data.get("context_length")),
+        parallel=_int(data.get("parallel")),
+        device=str(data.get("device") or "gpu"),
+        total=_count(est.get("total_bytes")),
+        basis=str(est.get("basis") or ""),
+        weights=_count(est.get("weights_bytes")),
+        kv_cache=_count(est.get("kv_cache_bytes")),
+        overhead=_count(est.get("overhead_bytes")),
+        vision=_count(est.get("vision_bytes")),
+        pools=result,
+    )
+
+
+def estimate(
+    provider,
+    model_key: str,
+    *,
+    context_length: int | None = None,
+    parallel: int | None = None,
+    timeout: float = LIST_TIMEOUT,
+) -> Estimate:
+    """Speicherbedarf und Platz, wie Eliezer ihn rechnet (``POST /api/v1/models/estimate``)."""
+    body: dict = {"model": model_key}
+    if context_length:
+        body["context_length"] = int(context_length)
+    if parallel:
+        body["parallel"] = int(parallel)
+    response = _request(provider, "POST", "/api/v1/models/estimate", timeout, body)
+    _check(response, "Schätzung", provider)
+    try:
+        return parse_estimate(response.json())
+    except ValueError as exc:
+        raise LmsError(MSG_INVALID) from exc
+
+
+def instance_bytes(provider, timeout: float = LIST_TIMEOUT) -> dict[str, int]:
+    """Belegter Speicher je geladenem Modell laut Eliezer (``/api/v1/status``, ``vram_bytes``)."""
+    response = _request(provider, "GET", "/api/v1/status", timeout)
+    _check(response, "Status", provider)
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise LmsError(MSG_INVALID) from exc
+    models = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        raise LmsError(MSG_INVALID)
+    return {
+        item["key"]: _count(item.get("vram_bytes"))
+        for item in models
+        if isinstance(item, dict)
+        and isinstance(item.get("key"), str)
+        and item.get("state") in ("loaded", "loading", "unloading")
+    }
