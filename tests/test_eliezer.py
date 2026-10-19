@@ -250,3 +250,21 @@ def test_admin_estimate_uses_eliezers_numbers(provider):
     assert data["budget"]["free_gb"] == 4.0  # 22 − 18 belegt durch andere
     assert "belegt durch andere" in data["budget_text"]
     assert "passt nicht" in data["warning"]  # 12 GB brauchen mehr als die 4 GB frei
+
+
+def test_admin_notes_that_loading_makes_room_instead_of_warning(provider):
+    """Weicht das andere Modell beim Laden, ist „passt nicht“ falsch: nur ein Hinweis."""
+    from multigpt.chat import admin_lmstudio
+
+    make(provider, SMALL)  # von MultiGPT verwaltet, gleiche Priorität: darf weichen
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock, loaded={SMALL: 18.0}, total_gb=12.0, budget_gb=22.0)
+        data = admin_lmstudio.estimate_payload(provider, ai, BIG, 32768)
+    assert data["fits"] is False and data["fits_after_eviction"] is True
+    assert not data["warning"]
+    assert "Platz geschaffen" in data["budget_text"] and SMALL in data["budget_text"]
+    assert (
+        "Reserve" not in data["budget_text"]
+        or "Reserve für Anzeige/System 0,0" in data["budget_text"]
+    )

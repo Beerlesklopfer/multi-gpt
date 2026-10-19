@@ -808,6 +808,13 @@ def test_vram_view_estimate_and_warning(admin_client, lms, provider, gpt, olmocr
     provider.vram_budget_gb = Decimal("20")
     provider.save()
     data = vram_json(admin_client, model=f"m{gpt.pk}", context="65536").json()
+    # OLMOCR darf beim Laden weichen: kein „passt nicht“, nur der Hinweis auf das Platzschaffen.
+    assert data["fits"] is False and data["fits_after_eviction"] is True
+    assert not data["warning"]
+    assert "olmocr" in data["budget_text"] and "Platz geschaffen" in data["budget_text"]
+    olmocr_model.pinned = True
+    olmocr_model.save()
+    data = vram_json(admin_client, model=f"m{gpt.pk}", context="65536").json()
     assert data["fits"] is False and data["warning"].startswith("passt nicht:")
     assert "olmocr" in data["budget_text"]
 

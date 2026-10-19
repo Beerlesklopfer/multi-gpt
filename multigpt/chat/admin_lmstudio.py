@@ -306,7 +306,8 @@ def estimate_payload(
             and (ai_model is None or s.ai_model is None or s.ai_model.pk != ai_model.pk)
         ]
         usable = snap.usable
-        reserve = snap.reserve
+        # Eliezers Pool ist schon um die Reserve gekürzt.
+        reserve = 0 if pool is not None else snap.reserve
     else:
         others = []
         usable = int(float(provider.vram_budget_gb - provider.vram_reserve_gb) * vram.GB)
@@ -331,15 +332,35 @@ def estimate_payload(
     )
     if known:
         result["fits"] = est.total <= free
+        # Was beim Laden weichen darf (nach den Regeln der Modellverwaltung), zählt als Platz.
+        requester = ai_model or AIModel(
+            load_priority=AIModel._meta.get_field("load_priority").default
+        )
+        giveable = [
+            s
+            for s in others
+            if not model_manager._evictable(s, requester, True, snap) and s.ai_model is not None
+        ]
+        reach = free + sum(s.bytes for s in giveable)
+        if pool is not None:
+            reach = min(
+                reach,
+                pool.free_after_eviction + sum(s.bytes for s in snap.slots if s not in others),
+            )
+        result["fits_after_eviction"] = est.total <= reach
         if est.total > usable:
             result["warning"] = (
                 f"passt nie: {_gb(est.total - usable)} mehr als das ganze Budget – "
                 "kleinere Stufe oder kleineres Modell wählen."
             )
+        elif est.total > free and est.total <= reach:
+            names = ", ".join(f"{s.label} {_gb(s.bytes)}" for s in giveable)
+            result["budget_text"] += f" Beim Laden wird Platz geschaffen: {names} werden entladen."
         elif est.total > free:
             result["warning"] = (
-                f"passt nicht: {_gb(est.total - free)} zu viel – kleinere Stufe wählen oder "
-                "anderes Modell entladen (geschieht beim Laden automatisch, soweit erlaubt)."
+                f"passt nicht: {_gb(est.total - reach)} zu viel, auch nachdem alles entladen ist, "
+                "was weichen darf – kleinere Stufe wählen oder angeheftete bzw. höher "
+                "priorisierte Modelle entladen."
             )
     return result
 
