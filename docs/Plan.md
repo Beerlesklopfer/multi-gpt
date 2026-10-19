@@ -303,7 +303,7 @@ Der Runner gibt Modellen eine Arbeitsumgebung, ohne den Server zu belasten oder 
 - **Rolle:** bestimmt Höchstwerte für CPU und RAM sowie Netz an/aus. Netz ist standardmäßig aus.
 - **Web-Oberfläche:** Status, Starten, Stoppen, Zurücksetzen, Logs und ein Audit-Log aller Befehle.
 - **Abgrenzung:** zuerst nur Werkzeuge, kein Coding-Agent im Container.
-- **Modellverwalter (Entwurf):** Eliezer ersetzt LM Studio und wechselt Chat- und Bildmodelle auf einer GPU. Der Runner bleibt dabei nur ausgehend verbunden; MultiGPT behält Rechte, Rangfolge und Abrechnung. Siehe `docs/plans/Eliezer.md`, Meilenstein M16. Ein HPGL-Plotter ist nur als Idee notiert (`docs/plans/Runner-Plotter.md`).
+- **Modellverwalter (Entwurf):** Eliezer ersetzt LM Studio und wechselt Chat- und Bildmodelle auf einer GPU. Der Runner bleibt dabei nur ausgehend verbunden; MultiGPT behält Rechte, Rangfolge und Abrechnung. Siehe `docs/plans/Eliezer.md`, Meilenstein M16.
 
 ## 8j. Knoten: MultiGPT als MCP-Server
 
