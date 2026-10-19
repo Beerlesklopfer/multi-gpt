@@ -77,6 +77,43 @@ ein Modell oder eine Datenbankzeile kann also keinen beliebigen Text an das Ger�
   (Rückfrage vor dem ersten Strich, mit Bild der geplanten Linien).
 - Katalogeinträge `flux` und `plotter` im signierten Dienstkatalog.
 
+## Eigener Orchestrator statt LM Studio – Recherche Hugging Face (2026-10-19)
+
+Richtung des Nutzers: LM Studio durch einen eigenen Orchestrator ersetzen (Chat-, Vision- und
+Bildmodelle, ein Verwalter je GPU). Frühere Recherche zu diffusers, mistral.rs und candle steht im
+Familienrechner-Plan; hier das, was Hugging Face für **Sprachmodelle** bietet.
+
+| Baustein | Was er kann | Was fehlt für den Ersatz |
+|---|---|---|
+| **TGI** (Text Generation Inference, Apache-2.0) | Produktionsserver, Backends u. a. llama.cpp und TensorRT-LLM | **Wartungsmodus**: nimmt nur noch kleine Korrekturen an und empfiehlt für Neues vLLM, SGLang oder llama.cpp/MLX. Ein Modell je Start (`--model-id`), kein Laden/Entladen. Fällt aus. |
+| **`transformers serve`** (HF, ab Transformers v5) | OpenAI-kompatibel (`/v1/chat/completions`, `/v1/responses`, Audio, Tool-Aufrufe, Bilder/Audio/Video); **lädt jedes Modell bei Bedarf** (`/load_model` mit Fortschritt per SSE), **entlädt nach 300 s Leerlauf** (`--model-timeout`, `-1` aus), Continuous Batching | Selbst als „leichtgewichtig für Test und mäßige Last“ beschrieben, für große Produktion verweist HF auf vLLM/SGLang. Keine Warteschlange/Verdrängung zwischen Modellen belegt, VRAM-Meldung nicht dokumentiert, kein GGUF-Weg. |
+| **llama.cpp `llama-server` Router-Modus** (jetzt im HF-Umfeld `ggml-org`) | Ohne `-m` gestartet: **ein Prozess je Modell**, Entdeckung aus Cache oder `--models-dir`, Laden bei erster Anfrage, **LRU-Verdrängung** ab `--models-max` (4), `GET /models` (loaded/loading/unloaded), `POST /models/load` und `/models/unload`, Voreinstellungen je Modell (`--models-preset`, z. B. `ctx-size`) | Kein Leerlauf-Entladen im Router belegt (Diskussion „Model router never unloads a model automatically“, nur Titel gelesen); `--sleep-idle-seconds` gilt je Server. Keine VRAM-Rechnung, keine Rangfolge. |
+| **candle-vllm** (Community auf HF-Candle) | OpenAI-API, Rust | Ein Modell je Instanz, laut README „instabil“. |
+| **llama-swap** (Fremdwerkzeug) | Proxy: liest `model` der Anfrage, startet/stoppt den passenden Backend-Server (llama.cpp, vLLM) | Kein HF-Produkt, aber genau das Muster „Orchestrator vor Servern“. |
+
+**Schluss:** Hugging Face hat **keinen fertigen Orchestrator** im Umfang von LM Studio. Die
+tragenden Teile sind zwei Laufzeiten mit Lebenszyklus: `transformers serve` (PyTorch, volle
+Gewichte, Laden bei Bedarf plus Leerlaufentladen) und der llama.cpp-Router (GGUF, Prozess je
+Modell, LRU). HF selbst rät bei Last zu vLLM/SGLang. Der Rest – VRAM-Buch, Rangfolge,
+Warteschlange, Verdrängung zwischen Chat und Bild, Abrechnung – bleibt Eigenbau und passt zum
+Runner: Dienst-Container je Laufzeit, Steuerung über den kleinen Vertrag (anfordern, Status/VRAM,
+abbrechen, freigeben).
+
+**Was MultiGPT heute von LM Studio nutzt** (muss der Ersatz leisten): Modellliste samt
+Zustand und Speicherschätzung, Laden/Entladen mit Kontext (`fit_context`), Parallelität
+(`parallel`), Denkoptionen je Modell (`none` = aus), Verdrängungsangebot (SwapPossible),
+Statistik je Antwort (Token/s, Prompt-Zeit). Davon deckt der llama.cpp-Router Laden/Entladen,
+Kontext je Modell und Status ab; Denkoptionen, Statistik und Speicherschätzung müsste der
+Orchestrator selbst liefern.
+
+**Offene Prüfungen vor der Entscheidung:**
+1. Reicht llama.cpp-Router + Eigenbau (GGUF, Prozess je Modell) oder soll `transformers serve`/vLLM
+   dahinter? Messung auf der 24-GB-Karte: Ladezeit, Token/s, Qualität gegenüber LM Studio.
+2. Leerlauf-Entladen und Wechsel Chat ↔ Bild: macht der Orchestrator selbst (Zeitgeber), nicht
+   die Laufzeit.
+3. Aufwand: LM-Studio-Anbindung (Provider `lmstudio`, Verwaltung, Statistik) läuft weiter, bis
+   der Orchestrator denselben Vertrag erfüllt – Umstieg je Provider, nicht auf einmal.
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
