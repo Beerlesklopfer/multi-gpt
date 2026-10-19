@@ -19,7 +19,7 @@ set -g restart 1
 set -g dry 0
 set -g venv /usr/share/python/multi-gpt
 set -g units multi-gpt multi-gpt-worker multi-gpt-runner
-set -g health http://127.0.0.1:8000/healthz/
+set -g health http://127.0.0.1:8000/healthz
 
 function usage
     echo 'Aufruf: ./deploy.sh [--host <ziel>] [--deps] [--backup] [--no-migrate] [--no-restart] [--dry-run]'

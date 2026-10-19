@@ -20,7 +20,7 @@ RESTART=1
 DRY=0
 VENV=/usr/share/python/multi-gpt
 UNITS="multi-gpt multi-gpt-worker multi-gpt-runner"
-HEALTH="http://127.0.0.1:8000/healthz/"
+HEALTH="http://127.0.0.1:8000/healthz"
 
 usage() {
     cat <<'TXT'
