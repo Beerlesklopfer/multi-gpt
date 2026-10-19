@@ -112,13 +112,29 @@ def test_runner_reconnect_uses_existing_owned_session(client, setup):
     assert session.status == "running"
 
 
-def test_runner_requires_existing_session(client, setup):
+def test_runner_reconnect_fails_without_connected_runner(client, setup):
     user, _, _, call, calls, url = setup
     call.server = ensure_mcp_server(user)
     call.save()
     response = client.post(url)
-    assert response.status_code == 502 and "Keine laufende" in response.json()["error"]
+    assert response.status_code == 502 and "nicht verbunden" in response.json()["error"]
     assert calls == []
+
+
+def test_runner_reconnect_without_session_accepts_online_runner(client, setup):
+    from django.utils import timezone
+
+    user, _, _, call, calls, url = setup
+    server = ensure_mcp_server(user)
+    call.server = server
+    call.save()
+    token = RunnerToken.objects.create(owner=user, prefix="test", token_hash="0" * 64)
+    Runner.objects.create(token=token, status="online", last_seen=timezone.now())
+    response = client.post(url)
+    assert response.status_code == 200 and "Sitzung startet" in response.json()["message"]
+    assert calls == []
+    server.refresh_from_db()
+    assert server.online
 
 
 def test_picker_exposes_reconnect_and_recovers_offline_server(client, setup):

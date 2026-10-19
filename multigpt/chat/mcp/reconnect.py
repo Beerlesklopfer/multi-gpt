@@ -36,7 +36,7 @@ def reconnect_server(user, server, conversation=None) -> dict:
         raise PermissionError("Du darfst diese MCP-Verbindung nicht neu aufbauen.")
     session = None
     if server.transport == McpServer.Transport.RUNNER:
-        from multigpt.runner.chat import pipe_for
+        from multigpt.runner.chat import _online_runner, pipe_for
         from multigpt.runner.models import ChatWorkspace, Runner, RunnerSession
 
         selection = (
@@ -50,7 +50,19 @@ def reconnect_server(user, server, conversation=None) -> dict:
             .first()
         )
         if selection is None:
-            raise McpError("Keine laufende, verbundene Runner-Sitzung in diesem Chat.")
+            # Sitzungen entstehen erst beim ersten Werkzeugaufruf: ohne Sitzung genügt ein
+            # verbundener Runner, damit der Chat ihn wieder als online zeigt.
+            if _online_runner(user) is None:
+                raise McpError("Der Runner ist nicht verbunden.")
+            now = timezone.now()
+            McpServer.objects.filter(pk=server.pk).update(
+                online=True, last_error="", last_checked=now, last_online=now
+            )
+            return {
+                "server": server.name,
+                "tools": 0,
+                "message": "Runner verbunden; die Sitzung startet beim ersten Werkzeugaufruf.",
+            }
         session = selection.session
     # Auch andere Gunicorn-Prozesse verwerfen ihre alte Verbindung beim nächsten Gebrauch.
     McpServer.objects.filter(pk=server.pk).update(connection_revision=F("connection_revision") + 1)
