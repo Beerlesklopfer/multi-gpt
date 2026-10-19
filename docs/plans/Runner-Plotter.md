@@ -191,6 +191,29 @@ Auf dem GPU-Rechner liegt eine Qwen-Image-Datei in GGUF (Q4_K_M). Einordnung:
 - **Offen:** Herkunft und Lizenz der Datei („2.1-UC“ ist mir nicht bekannt) prüft der Nutzer;
   FLUX.2 klein 4B bleibt die Rust-Linie, Qwen-Image ist bis dahin die Auswahl im Chat.
 
+## Bestand an fertigen Orchestratoren (Recherche 2026-10-19, nach Einwand des Nutzers)
+
+Der Bedarf ist erkannt und bedient. Es gibt Lösungen für „ein Rechner, eine GPU, Chat- **und**
+Bildmodelle im Wechsel“ – nur nicht in Rust. Aus Dokumentation und Vergleichsseiten, nicht selbst erprobt:
+
+| Projekt | Sprache/Art | Was es für unseren Fall leistet |
+|---|---|---|
+| **llama-swap** | Go, Proxy vor beliebigen OpenAI-kompatiblen Servern | Liest `model` der Anfrage, startet/stoppt den passenden Server; `ttl` je Modell (Leerlauf-Entladen), `groups` (was gleichzeitig laden darf); fertiges Container-Image mit llama-server, **stable-diffusion.cpp** und whisper.cpp; Bild-Endpunkte (`/v1/images/generations`). |
+| **LocalAI** | Go, Backends (llama.cpp, stable-diffusion u. a.) | `--max-active-backends` mit **LRU-Verdrängung** (1 = immer nur ein Modell), Watchdog (Leerlauf 15 min, Busy 5 min), angeheftete Modelle, laufende Anfragen werden beim Verdrängen abgewartet. |
+| **Lemonade** (AMD) | Orchestrator über llama.cpp, whisper.cpp, stable-diffusion.cpp, Kokoro | Wählt Backend je Hardware; läuft seit 10.7 auch auf NVIDIA (CUDA). |
+| **GPUStack / Xinference** | Python, Cluster-Verwalter | Text, Bild (diffusers), Audio; für mehrere Rechner ausgelegt, für einen Familienrechner schwer. |
+| Rust | – | Kein Projekt gefunden, das LLM **und** Diffusion unter einem VRAM-Plan verwaltet (mistral.rs ist Laufzeit, kein Verwalter). |
+
+Folge für „alles Rust“: Der Verwalter selbst muss nicht neu erfunden werden. Zwei Wege:
+
+1. **Fertigen Verwalter einsetzen** (llama-swap oder LocalAI) als Dienst-Container des Runners,
+   mit mistral.rs und stable-diffusion.cpp dahinter. Schnell, erprobt; der Verwalter ist Go.
+2. **Eigener Verwalter in Rust**, aber klein: Proxy mit `model`-Routing, TTL, Gruppen, VRAM-Buch,
+   so wie llama-swap es vormacht. Mehr Aufwand, dafür ein Programm im Runner-Workspace.
+
+MultiGPT behält in beiden Fällen die Richtlinie (Rechte, Rangfolge, Abrechnung) und den kleinen
+Vertrag; die Wahl kann später gewechselt werden.
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
