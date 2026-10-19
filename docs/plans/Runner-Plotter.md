@@ -22,7 +22,7 @@ die den Django-Server nicht belasten sollen:
 |---|---|---|
 | Axum-/gRPC-Schnittstelle, Django ruft den Runner an | Der Runner bleibt **nur ausgehend** verbunden (WebSocket/TLS, Protokoll 2); Befehle kommen als signierte Rahmen vom Server | Keine offenen Ports am Rechner; Signatur und Token schützen vor Fremdbefehlen |
 | Eigener Orchestrator mit Mutex | Server führt Buch (`GpuLease`, Warteschlange); der Runner setzt durch und meldet Tatsachen | Rechte, Kontingent und Rangfolge liegen schon im Server |
-| Modelle per Candle oder mistral.rs im Runner | Chat-Modell bleibt bei **LM Studio** (Laden/Entladen über dessen API, wie umgesetzt); FLUX läuft im Dienst-Container des Runners | Kein zweiter Inferenzstapel; siehe „Einordnung mistral.rs“ im Familienrechner-Plan |
+| Modelle per Candle oder mistral.rs im Runner | Überholt: Der Quellplan hatte recht – die Laufzeit wird **eingebettet** (mistral.rs-Crate, Candle als Rückfall). Sie liegt im Projekt Eliezer, nicht im Runner (siehe [Eliezer.md](Eliezer.md)) | Entscheidung des Nutzers 2026-10-19 |
 | Plotter-Zugriff direkt | Neuer Dienst im signierten Katalog, Gerät nur in fester Vorlage | Wie `flux`: Dienste sind freigegebene, signierte Einträge |
 
 ## Ablauf des VRAM-Wechsels
