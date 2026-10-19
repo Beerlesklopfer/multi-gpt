@@ -183,3 +183,19 @@ def test_runner_server_listed_online_when_runner_connected(client, setup):
     token = RunnerToken.objects.create(owner=user, prefix="test", token_hash="0" * 64)
     Runner.objects.create(token=token, status="online", last_seen=timezone.now())
     assert entry()["online"] is True
+
+
+def test_check_of_runner_server_reports_tools_when_runner_online(setup):
+    from django.utils import timezone
+
+    from multigpt.chat.mcp import status
+
+    user, _, _, _, _, _ = setup
+    server = ensure_mcp_server(user)
+    assert status.force_check(server).online is False
+    token = RunnerToken.objects.create(owner=user, prefix="test", token_hash="0" * 64)
+    Runner.objects.create(token=token, status="online", last_seen=timezone.now())
+    outcome = status.force_check(server)
+    assert outcome.online and {"bash", "read"} <= {t["name"] for t in outcome.tools}
+    server.refresh_from_db()
+    assert server.online and not server.last_error

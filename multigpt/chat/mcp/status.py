@@ -325,6 +325,36 @@ def _store(server: McpServer, tools: list[dict] | None, error: str) -> CheckOutc
     return CheckOutcome(server.pk, online, "" if online else error, tools or [])
 
 
+ERR_RUNNER_OFFLINE = "Der Runner ist nicht verbunden: Agent auf dem Rechner starten (multigpt-runner)."
+
+
+def _check_runner(server: McpServer) -> CheckOutcome:
+    """Runner haben keine eigene MCP-Verbindung außerhalb einer Sitzung: Prüfung heißt,
+    der Agent des Besitzers ist verbunden; gemeldet werden die Werkzeuge, die er anbietet."""
+    from types import SimpleNamespace
+
+    from multigpt.runner import tools as runner_tools
+    from multigpt.runner.chat import _online_runner
+
+    runner = _online_runner(server.owner) if server.owner_id else None
+    if runner is None:
+        return _store(server, None, ERR_RUNNER_OFFLINE)
+    services = frozenset(runner.services or ()) if runner.services else None
+    summaries = [
+        summarize_tool(
+            SimpleNamespace(
+                name=spec.name,
+                description=spec.description,
+                title=None,
+                input_schema=spec.parameters,
+                annotations=None,
+            )
+        )
+        for spec in runner_tools.specs(services=services)
+    ]
+    return _store(server, summaries, "")
+
+
 def _run_checks(servers: list[McpServer], close_after: bool) -> list[CheckOutcome]:
     """Prüft ``servers`` parallel im Loop und speichert die Ergebnisse."""
     from . import bridge
@@ -333,6 +363,9 @@ def _run_checks(servers: list[McpServer], close_after: bool) -> list[CheckOutcom
     outcomes: dict[int, CheckOutcome] = {}
     jobs, pending = [], []
     for server in servers:
+        if server.transport == "runner":
+            outcomes[server.pk] = _check_runner(server)
+            continue
         try:
             config = ServerConfig.from_model(server)
         except McpError as exc:
