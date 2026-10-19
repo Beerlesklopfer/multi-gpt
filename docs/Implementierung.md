@@ -1127,21 +1127,15 @@ MultiGPT wird selbst MCP-Server. Externe Orchestratoren (n8n, Claude Desktop, an
 
 *Abnahme:* In n8n liest ein Workflow eine neue Datei aus dem NAS-Ordner, lädt sie mit `upload_document` hoch und fragt `run_status` ab, bis der Lauf fertig ist; `mgpt-ctl index status --follow` zeigt denselben Lauf. Ein Key ohne `docs.write` sieht `upload_document` nicht; ein widerrufener Key bekommt sofort 401. `ask` mit Sammlung liefert eine Antwort mit Quellen, die Kosten stehen im Verbrauch des Kontos, der Chat „API: …“ ist sichtbar. Die Seite „Integrationen“ zeigt den n8n-MCP-Server online.
 
-### M16 – Eliezer (Modellverwalter, Ersatz für LM Studio)
+### M16 – Anbindung von Eliezer (Ersatz für LM Studio)
 
-Entwurf (2026-10-19), Plan: [plans/Runner-Plotter.md](plans/Runner-Plotter.md); Repository `Beerlesklopfer/eliezer` (privat). Entschieden: alles Rust, Laufzeit mistral.rs, Modelle per Hugging-Face-Token (nur auf dem GPU-Rechner, nie im Repository oder in Logs), im Chat eine einzige Bildauswahl. Offen: Verwalter fertig einsetzen (llama-swap/LocalAI) oder klein in Rust bauen; Zielversion legt der Nutzer fest.
+Der Modellverwalter Eliezer ist ein eigenes Projekt mit eigener Roadmap: <https://github.com/Beerlesklopfer/eliezer> (privat), `docs/Implementierung.md` dort, Meilensteine M1 bis M6. Hintergrund und Recherche: [plans/Runner-Plotter.md](plans/Runner-Plotter.md). Hier steht nur, was auf Seite von MultiGPT geschieht. Zielversion legt der Nutzer fest.
 
-- **M16-01** Versuch auf dem GPU-Rechner (WS-JOERG): mistral.rs mit einem Chat-Modell und stable-diffusion.cpp mit `qwen-image-2.1-UC-Q4_K_M.gguf`, gemessen an Ladezeit, Token/s, VRAM, `unload`/`reload`, Anfrage an ein entladenes Modell. Entscheidet über den Weg (fertiger Verwalter oder Eigenbau).
-- **M16-02** Gerüst: Cargo-Workspace und Lizenz in `eliezer`, CI wie `runner-rs` (Format, Clippy, Tests).
-- **M16-03** Verwalter: Routing nach `model`, Zustände geladen/lädt/entladen, `ttl` je Modell, VRAM-Buch (Modelldatei + KV-Cache wie `vram.py`), Warteschlange, Verdrängung nach Priorität, laufende Anfragen werden abgewartet.
-- **M16-04** Laufzeit mistral.rs: Chat und Vision, OpenAI-kompatibel; Denkoptionen je Modell, Statistik je Antwort, Speicherschätzung.
-- **M16-05** Modellbezug: Positivliste (Modell-ID mit Revision), Cache-Volume mit Größengrenze, Herunterladen nur auf Anforderung des Verwalters mit Fortschritt.
-- **M16-06** Bilddienst: Übergang stable-diffusion.cpp (Qwen-Image-GGUF) als Dienst-Container hinter demselben Vertrag; Ziel FLUX.2 klein 4B (Apache-2.0) in Rust, sobald die Architektur in mistral.rs/candle vorliegt.
-- **M16-07** Vertrag und Anbindung: Anbieterart `eliezer` in MultiGPT mit allem, was `lmstudio` heute liefert (Modellliste mit Zustand, Laden/Entladen mit Kontext und Parallelität, `fit_context`, Verdrängungsangebot, Statistik). Rechte, Rangfolge und Abrechnung bleiben in MultiGPT.
-- **M16-08** Betrieb über den Runner: Dienst im signierten Katalog (feste GPU-Vorlage, Benutzer-Container sehen weder GPU noch Token), `GpuLease` als Anzeige und Vorab-Prüfung.
-- **M16-09** Ablösung von LM Studio: je Anbieter umstellen, `lmstudio` bleibt bis zur Gleichwertigkeit; Wiki und `debian/NEWS`.
+- **M16-01** Anbieterart `eliezer` mit allem, was `lmstudio` heute liefert: Modellliste mit Zustand und Speicherschätzung, Laden/Entladen mit Kontext und Parallelität, `fit_context`, Verdrängungsangebot, Denkoptionen je Modell, Statistik je Antwort. Rechte, Rangfolge und Abrechnung bleiben in MultiGPT.
+- **M16-02** Betrieb über den Runner: Dienst im signierten Katalog (feste GPU-Vorlage, Benutzer-Container sehen weder GPU noch Token), `GpuLease` als Anzeige und Vorab-Prüfung.
+- **M16-03** Ablösung von LM Studio: je Anbieter umstellen, `lmstudio` bleibt bis zur Gleichwertigkeit; Wiki und `debian/NEWS`.
 
-*Abnahme:* Ein Chat-Modell und ein Bildauftrag wechseln sich auf der 24-GB-Karte ab, das Chat-Modell kommt danach von selbst zurück, die Statistik im Antwortkopf stimmt mit der Messung überein, und MultiGPT läuft ohne LM Studio.
+*Abnahme:* MultiGPT läuft ohne LM Studio; Chat-Modell und Bildauftrag wechseln sich auf der GPU ab.
 
 ---
 
@@ -1158,8 +1152,7 @@ M7-13 + M8 + M5-06 ─┬─> M13-01/02 (Kontextmenü, Vorlagen; vorab lieferbar
                     └─> M13-03 ─> M13-04 ─> M13-05 ─> M13-06 ─> M13-07 ─> M13-08 ─> M13-09 ─> M13-10 ─> M13-11
 M5-07 Projekte + Projektfreigabe ─────────────> M13-12
 M4a + M6 + M7 + M12-01 ─> M15 (Knoten, umgesetzt)
-M14-06 + M14-09 ─> M16-01 ─> M16-02 ─> M16-03 ─┬─> M16-04 ─> M16-05 ─> M16-07 ─> M16-09
-                                              └─> M16-06 ─> M16-08
+Eliezer M3 + M14-06 ─> M16-01 ─> M16-02 ─> M16-03
 M4a + M6-06 + M12-01 ─> M14-01 ─> M14-02 ─> M14-03 ─> M14-04 ─> M14-05 ─┬─> M14-06
                                                                    ├─> M14-07
                                                                    └─> M14-08 ─> M14-09
