@@ -1129,7 +1129,7 @@ MultiGPT wird selbst MCP-Server. Externe Orchestratoren (n8n, Claude Desktop, an
 
 ### M16 – Anbindung von Eliezer (Ersatz für LM Studio)
 
-Der Modellverwalter Eliezer ist ein eigenes Projekt mit eigener Roadmap: <https://github.com/Beerlesklopfer/eliezer> (privat), `docs/Implementierung.md` dort, Meilensteine M1 bis M6. Hintergrund und Recherche: [plans/Runner-Plotter.md](plans/Runner-Plotter.md). Hier steht nur, was auf Seite von MultiGPT geschieht. Zielversion legt der Nutzer fest.
+Der Modellverwalter Eliezer ist ein eigenes Projekt mit eigener Roadmap: <https://github.com/Beerlesklopfer/eliezer> (privat), `docs/Implementierung.md` dort, Meilensteine M1 bis M6. Hintergrund und Recherche: [plans/Eliezer.md](plans/Eliezer.md). Hier steht nur, was auf Seite von MultiGPT geschieht. Zielversion legt der Nutzer fest.
 
 - **M16-01** Anbieterart `eliezer` mit allem, was `lmstudio` heute liefert: Modellliste mit Zustand und Speicherschätzung, Laden/Entladen mit Kontext und Parallelität, `fit_context`, Verdrängungsangebot, Denkoptionen je Modell, Statistik je Antwort. Rechte, Rangfolge und Abrechnung bleiben in MultiGPT.
 - **M16-02** Betrieb über den Runner: Dienst im signierten Katalog (feste GPU-Vorlage, Benutzer-Container sehen weder GPU noch Token), `GpuLease` als Anzeige und Vorab-Prüfung.

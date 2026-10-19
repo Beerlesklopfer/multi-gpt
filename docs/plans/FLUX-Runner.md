@@ -61,6 +61,11 @@ und eine eigene Antwortversion.
 ## Container und persistente Daten
 
 Vorschlag: ein eigenes Profil `flux`, getrennt von normalen Coding-Sitzungen.
+Entschieden am 2026-10-17: Die GPU wird bei der Ersteinrichtung ausgewählt.
+Der Runner zeigt die erkannten Geräte an und speichert die Auswahl lokal;
+es gibt keine automatische Freigabe des ersten Geräts. Solange die Auswahl
+fehlt, darf kein GPU-Container starten. Vor einem späteren Start muss die
+gespeicherte Geräteidentität erneut abgeglichen werden (geänderte Gerätenummern).
 GPU-Zugriff und Mounts werden ausschließlich lokal vom Betreiber eingerichtet;
 Server und Chatmodell können keine beliebigen Geräte oder Hostpfade anfordern.
 Die existierende Coding-Vorlage behält ihre bisherigen Grenzen.
@@ -167,3 +172,18 @@ werden allein durch dieses Planungsdokument ausgelöst.
 
 Nächster Schritt: F1 anhand des tatsächlichen Projekts auf WS-Joerg abschließen;
 anschließend Container-Profil und Auftragsinterface konkret spezifizieren.
+
+## Begonnene Umsetzung
+
+Erster Baustein: `runner-rs/multigpt-runner/src/flux.rs` und Einbindung in
+`Config`. Ohne FLUX-Einstellungen bleibt das Profil deaktiviert. Lokale Variablen
+`MGPT_FLUX_IMAGE` (mit Digest), `MGPT_FLUX_MODELS_VOLUME` und
+`MGPT_FLUX_CACHE_VOLUME` beschreiben das Profil. `MGPT_FLUX_RENDER_DEVICE` hält
+die spätere lokale GPU-Auswahl fest; es gibt keinen Standardwert. Eine fehlende
+Auswahl ist ein Zustand vor Abschluss der Ersteinrichtung, keine Gerätefreigabe.
+Hostpfade als Volume-Namen, breite Gerätepfade und Images ohne Digest werden
+abgewiesen. Die Freigabe erweitert nicht die Coding-Image-Liste.
+
+Noch nicht implementiert: Geräteerkennung und interaktive Ersteinrichtung,
+GPU-Containerstart, FLUX-Laufzeit und Auftragsweg. Daher ist dies noch kein
+einsatzfähiger FLUX-Dienst; die Variablen starten keine Container.
