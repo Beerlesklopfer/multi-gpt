@@ -61,8 +61,6 @@ Folgen für den Entwurf:
   voller Genauigkeit** (`Flux`/`FluxOffloaded`, keine Quantisierung); candle hat kein FLUX-Beispiel.
   Auf 24 GB ist das knapp (siehe Familienrechner-Plan). Bis das gemessen oder gelöst ist, gilt:
   Bilddienst als **ausgetauschter Dienst-Container** hinter demselben Vertrag, erst später Rust.
-- **HPGL und Blackpill** sind ohnehin Rust: reines Rechenmodul plus serieller Treiber
-  (`tokio-serial`), ohne fremde Laufzeit.
 - **Was fehlt und selbst zu bauen ist:** Denkoptionen je Modell, Statistik je Antwort (Token/s),
   Speicherschätzung, Verdrängung und Rangfolge, VRAM-Meldung (NVML-Bindung oder `nvidia-smi`).
 - **Vertrag bleibt klein** (anfordern, Status/VRAM, abbrechen, freigeben), damit die Rust-Laufzeit
