@@ -59,3 +59,10 @@ def test_503_without_db_logs_warning_only(client, db_down, caplog):
     assert len(warnings) == 1
     assert warnings[0].levelno == logging.WARNING
     assert warnings[0].exc_info is None
+
+
+@pytest.mark.django_db
+def test_ok_without_trailing_slash(client):
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.content == b"ok"

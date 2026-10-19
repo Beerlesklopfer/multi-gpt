@@ -1,4 +1,4 @@
-"""Health-Check unter /healthz/ für systemd, Docker und Monitoring.
+"""Health-Check unter /healthz und /healthz/ für systemd, Docker und Monitoring.
 
 Als erste Middleware beantwortet sie die Anfrage selbst, bevor Django den
 Host-Header prüft (CommonMiddleware, SecurityMiddleware). Deshalb muss
@@ -11,7 +11,7 @@ import logging
 from django.db import DatabaseError, connection
 from django.http import HttpResponse, HttpResponseNotAllowed
 
-HEALTH_PATH = "/healthz/"
+HEALTH_PATHS = ("/healthz", "/healthz/")
 
 logger = logging.getLogger("multigpt.health")
 
@@ -21,7 +21,7 @@ class HealthCheckMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.path_info != HEALTH_PATH:
+        if request.path_info not in HEALTH_PATHS:
             return self.get_response(request)
 
         if request.method not in ("GET", "HEAD"):
