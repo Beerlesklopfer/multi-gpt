@@ -303,6 +303,7 @@ Der Runner gibt Modellen eine Arbeitsumgebung, ohne den Server zu belasten oder 
 - **Rolle:** bestimmt Höchstwerte für CPU und RAM sowie Netz an/aus. Netz ist standardmäßig aus.
 - **Web-Oberfläche:** Status, Starten, Stoppen, Zurücksetzen, Logs und ein Audit-Log aller Befehle.
 - **Abgrenzung:** zuerst nur Werkzeuge, kein Coding-Agent im Container.
+- **Hardware-Dienste (Entwurf):** GPU-Wechsel zwischen Chat- und Bildmodell sowie ein HPGL-Plotter über ein Blackpill-Board. Der Runner bleibt dabei nur ausgehend verbunden; der Server führt Buch und entscheidet, der Runner setzt durch. Siehe `docs/plans/Runner-Plotter.md`, `docs/plans/FLUX-Runner.md`, `docs/plans/Runner-Familienrechner.md`.
 
 ## 8j. Knoten: MultiGPT als MCP-Server
 
