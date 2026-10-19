@@ -158,6 +158,25 @@ Die Laufzeit ist **mistral.rs**. Modelle werden mit einem **Hugging-Face-Token**
   Herunterladen nur auf Anforderung des Verwalters, mit Fortschrittsmeldung.
 - **Nächster Schritt:** Versuch auf dem GPU-Rechner (dieser Entwicklungsrechner hat keine GPU).
 
+## Entscheidung 2026-10-19: Bildmodell FLUX.2 (eine Auswahl)
+
+Im Chat gibt es **eine** Bildmodell-Auswahl, kein Diffusor-Menü. Gewählt: **FLUX.2**.
+
+Recherche (Dokumentation und Drittquellen, nicht selbst gemessen):
+
+- **mistral.rs kennt nur FLUX.1** (Beispiel `FLUX.1-schnell`, `Flux`/`FluxOffloaded`). Für FLUX.2
+  fand sich kein Beleg. Lücke: Die FLUX.2-Architektur (Transformer, neuer Textencoder, neue
+  Autoencoder) müsste in mistral.rs/candle **neu implementiert** werden, oder ein anderer Weg
+  dient als Übergang (stable-diffusion.cpp bzw. diffusers als Dienst-Container).
+- **Größen:** FLUX.2 [dev] 32 Mrd. Parameter (bf16 etwa 64 GB, fp8 etwa 32 GB, GGUF Q4 etwa
+  19 GB) – auf 24 GB nur als GGUF, und mistral.rs quantisiert/lädt keine Diffusions-GGUF.
+  [klein] 4B (destilliert, 4 Schritte) etwa 8–13 GB VRAM (Quellen widersprechen sich), 9B etwa 22 GB.
+- **Lizenz:** klein 4B Apache-2.0; klein 9B und dev nur nicht-kommerziell (Zustimmung im HF-Konto
+  des Tokens nötig).
+- **Folge:** Für 24 GB und Familienbetrieb passt **FLUX.2 klein 4B** (Apache-2.0, 4 Schritte).
+  Nachladen per HF-Token wie oben. Ob die Rust-Umsetzung vor oder nach einem Übergangsdienst
+  kommt, entscheidet der Versuch.
+
 ## Umsetzungsschritte
 
 1. HPGL-Modul als Rust-Bibliothek mit Tests (Koordinaten, Grenzen, Befehlsmenge). Keine Hardware.
