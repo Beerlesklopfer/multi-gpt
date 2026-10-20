@@ -1,9 +1,10 @@
 // MultiGPT – Modus „Bild“ (M9-01). Mit dem Schalter „Bild erzeugen“ geht die
 // Nachricht als Bildbeschreibung direkt an das Bildmodell (Request mit
 // "image": {format, quality}); Format und Qualität merkt sich der Browser.
-// Ohne Modus: Kann das gewählte Chatmodell keine Werkzeuge und klingt die
-// Nachricht wie ein Bildauftrag, zeigt ein Hinweis vor dem Senden den Knopf
-// „Mit Bildmodell erzeugen“ – nie ein Umleiten ohne Zustimmung. Die Muster
+// Ohne Modus: Klingt die Nachricht wie ein Bildauftrag, zeigt ein Hinweis vor dem
+// Senden den Knopf „Mit Bildmodell erzeugen“ – nie ein Umleiten ohne Zustimmung.
+// Auch bei Modellen mit Werkzeugen: kleine Modelle rufen „generate_image“ nicht
+// zuverlässig auf (Prod-Chat 31: Mistral 7B antwortete „kann keine Bilder“). Die Muster
 // kommen vom Server (images.REQUEST_PATTERNS). chat.js fragt über
 // MultiGPT.imageMode {beforeSend, extend, label, isActive}. Kein Inline-JS.
 "use strict";
@@ -79,7 +80,6 @@
     const imageModel = document.getElementById("image-mode-model");
     const currentName = () =>
       imageModel?.selectedOptions?.[0]?.textContent || box.dataset.modelName || "";
-    const modelName = currentName();
     const patterns = loadPatterns();
     const placeholder = textarea.placeholder;
     let dismissedFor = null; // Text, für den der Hinweis weggeklickt wurde
@@ -91,9 +91,17 @@
     hint.setAttribute("role", "status");
     hint.hidden = true;
     const hintText = document.createElement("p");
-    hintText.textContent =
-      "Das gewählte Modell kann keine Bilder erzeugen und würde höchstens Code (z. B. SVG) " +
-      `schreiben. Mit dem Bildmodell ${modelName} entsteht ein echtes Bild.`;
+    // Text je nach Chatmodell: ohne Werkzeuge kann es gar keine Bilder, mit Werkzeugen ruft es
+    // das Bildwerkzeug nicht immer auf.
+    function hintMessage() {
+      const name = currentName();
+      return chatModelHasTools()
+        ? "Das gewählte Modell kann Bilder nur über ein Werkzeug erzeugen und ruft es nicht " +
+            `immer auf. Mit dem Bildmodell ${name} entsteht sicher ein echtes Bild.`
+        : "Das gewählte Modell kann keine Bilder erzeugen und würde höchstens Code (z. B. SVG) " +
+            `schreiben. Mit dem Bildmodell ${name} entsteht ein echtes Bild.`;
+    }
+    hintText.textContent = hintMessage();
     const useButton = document.createElement("button");
     useButton.type = "button";
     useButton.className = "button button-small button-primary";
@@ -121,18 +129,18 @@
       return option?.dataset.tools === "true";
     }
 
-    // Hinweis nur ohne Modus, bei Modellen ohne Werkzeuge und passendem Text.
+    // Hinweis nur ohne Modus und bei passendem Text (egal, ob das Chatmodell Werkzeuge hat).
     function wantsHint(text) {
       return (
-        !toggle.checked &&
-        !chatModelHasTools() &&
-        text.trim() !== dismissedFor &&
-        looksLikeImageRequest(text, patterns)
+        !toggle.checked && text.trim() !== dismissedFor && looksLikeImageRequest(text, patterns)
       );
     }
 
     function updateHint() {
       hint.hidden = !wantsHint(textarea.value);
+      if (!hint.hidden) {
+        hintText.textContent = hintMessage();
+      }
     }
 
     function setActive(on) {
@@ -188,6 +196,7 @@
         }
         if (wantsHint(text)) {
           hint.hidden = false;
+          hintText.textContent = hintMessage();
           useButton.focus();
           MultiGPT.chatView?.setStatus(
             "Bildwunsch erkannt: Bitte wählen, ob das Bildmodell das Bild erzeugen soll.",

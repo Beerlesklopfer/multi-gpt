@@ -8,9 +8,10 @@ Drei Wege führen hierher, alle mit derselben Rechte- und Budgetprüfung:
   dass es Bildwünsche damit erfüllt statt SVG/Code zu schreiben.
 - **Modus „Bild“** im Eingabefeld (``api_images.stream``): Die Nachricht geht
   direkt an das Bildmodell, ohne Chatmodell.
-- **Hinweis ohne Werkzeuge** (``image_mode.js``): Klingt die Nachricht wie ein
-  Bildauftrag und kann das Chatmodell keine Werkzeuge, bietet die Oberfläche
-  vor dem Senden den Modus „Bild“ an. Erkennung: ``REQUEST_PATTERNS``.
+- **Hinweis vor dem Senden** (``image_mode.js``): Klingt die Nachricht wie ein
+  Bildauftrag, bietet die Oberfläche vor dem Senden den Modus „Bild“ an – auch bei
+  Chatmodellen mit Werkzeugen, weil kleine Modelle ``generate_image`` nicht zuverlässig
+  aufrufen (Prod-Chat 31, Mistral 7B). Erkennung: ``REQUEST_PATTERNS``.
 
 Entscheidungen:
 
