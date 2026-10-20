@@ -252,3 +252,28 @@ def test_deleting_a_question_version_keeps_the_other_versions(client, anna, chat
     assert "Frage 2b" in remaining(chat)  # die andere Version der Frage bleibt
     assert not {"Frage 2", "Antwort 2", "Antwort 2b", "Frage 3", "Antwort 3"} & remaining(chat)
     assert other.pk
+
+
+def test_version_counters_shrink_after_deleting_a_version(client, anna, chat):
+    """Nach dem Löschen zählt der Umschalter „i/n“ nur noch die übrigen Versionen."""
+    client.force_login(anna)
+    page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
+    assert "1/1" not in page  # Vorher: Frage 3 hängt an Antwort 2b, Antwort 2/2b haben 2 Versionen
+    response = client.delete(version_url(chat, chat["a2b"]))
+    assert response.status_code == 200
+    counts = {m["content"]: m["sibling_count"] for m in response.json()}
+    assert counts["Antwort 2"] == 1  # nur noch eine Version
+    page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
+    assert "1/2" not in page and "2/2" not in page
+
+
+def test_question_version_counters_shrink_after_deleting_a_question(client, anna, chat):
+    other = msg(chat["conv"], chat["a1"], Message.Role.USER, "Frage 2b")
+    chat["conv"].current_leaf = chat["a3"]
+    chat["conv"].save()
+    client.force_login(anna)
+    response = client.delete(url(chat, chat["q2"]))
+    assert response.status_code == 200
+    counts = {m["content"]: m["sibling_count"] for m in response.json()}
+    assert counts["Frage 2b"] == 1
+    assert other.pk
