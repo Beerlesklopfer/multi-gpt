@@ -365,3 +365,29 @@ def test_select_models_dialog_preselects_image_for_eliezer(admin_client, provide
     assert response.status_code == 200
     row = next(r for r in response.context["rows"] if r["model_id"] == "qwen-image-2.1")
     assert row["capability"] == "image"
+
+
+def test_detect_action_updates_can_edit_images_from_the_report(provider):
+    """„Fähigkeiten erkennen“ übernimmt capabilities.image_edit; ohne Meldung bleibt der Wert."""
+    from multigpt.chat import detect
+
+    flux = entry("flux2-klein-4b", 8.9)
+    flux["type"] = "image"
+    flux["capabilities"] = {"image_generation": True, "image_edit": True}
+    qwen = entry("qwen-image-2.1", 14.6)
+    qwen["type"] = "image"
+    qwen["capabilities"] = {"image_generation": True}
+    kwargs = {"capability": AIModel.Capability.IMAGE}
+    flux_model = make(provider, "flux2-klein-4b", **kwargs)
+    qwen_model = make(provider, "qwen-image-2.1", can_edit_images=True, **kwargs)  # fälschlich an
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{ROOT}/api/v0/models").mock(return_value=httpx.Response(404, headers=SERVER))
+        mock.get(f"{ROOT}/api/v1/models").mock(
+            return_value=httpx.Response(200, json={"models": [flux, qwen]}, headers=SERVER)
+        )
+        changes = detect.diff([flux_model, qwen_model])
+        detect.apply(changes)
+    flux_model.refresh_from_db()
+    qwen_model.refresh_from_db()
+    assert flux_model.can_edit_images is True
+    assert qwen_model.can_edit_images is False  # Eliezer meldet kein image_edit

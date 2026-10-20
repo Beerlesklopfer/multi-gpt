@@ -38,6 +38,7 @@ FIELDS = {
     "capability": "Fähigkeit",
     "supports_tools": "Werkzeuge",
     "supports_vision": "Bilder verstehen",
+    "can_edit_images": "Bilder bearbeiten",
 }
 
 
@@ -132,6 +133,10 @@ def diff(models) -> list[Change]:
                 "supports_tools": detected.tools,
                 "supports_vision": detected.vision,
             }
+            if detected.source == "lmstudio" and detected.capability == "image":
+                # Nur, was der Anbieter selbst meldet (Eliezer: capabilities.image_edit): die
+                # Namensregel kennt das Bearbeiten nicht und darf Hand-Einstellungen nicht löschen.
+                target["can_edit_images"] = detected.edit
             changes = {
                 name: (getattr(model, name), value)
                 for name, value in target.items()
