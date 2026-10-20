@@ -159,3 +159,80 @@ def test_button_only_with_delete_right(client, anna, chat):
     client.force_login(ben)
     html = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
     assert "data-delete-message" not in html
+
+
+def version_url(chat_, message):
+    return url(chat_, message) + "?scope=version"
+
+
+def test_delete_version_keeps_the_question_and_the_other_versions(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(version_url(chat, chat["a2b"]))
+    assert response.status_code == 200
+    # Nur a2b und was an ihr hängt (Frage 3, Antwort 3) sind weg; Frage 2 und Antwort 2 bleiben.
+    assert remaining(chat) == {"Frage 1", "Antwort 1", "Frage 2", "Antwort 2"}
+    assert [m["content"] for m in response.json()] == [
+        "Frage 1",
+        "Antwort 1",
+        "Frage 2",
+        "Antwort 2",
+    ]
+    chat["conv"].refresh_from_db()
+    assert chat["conv"].current_leaf_id == chat["a2"].pk  # die übrige Version wird angezeigt
+
+
+def test_delete_the_only_version_leaves_the_question_unanswered(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(version_url(chat, chat["a1"]))
+    assert response.status_code == 200
+    assert remaining(chat) == {"Frage 1"}  # alles ab Antwort 1 hing an ihr
+    chat["conv"].refresh_from_db()
+    assert chat["conv"].current_leaf_id == chat["q1"].pk
+
+
+def test_delete_version_of_a_side_branch_keeps_the_shown_path(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(version_url(chat, chat["a2"]))
+    assert response.status_code == 200
+    assert "Antwort 2" not in remaining(chat) and "Antwort 2b" in remaining(chat)
+    chat["conv"].refresh_from_db()
+    assert chat["conv"].current_leaf_id == chat["a3"].pk  # angezeigter Pfad unberührt
+
+
+def test_delete_version_removes_only_its_files(
+    client, anna, chat, settings, tmp_path, django_capture_on_commit_callbacks
+):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    keep = Attachment(message=chat["a2"], kind=Attachment.Kind.IMAGE, mime_type="image/png")
+    keep.file.save("keep.png", ContentFile(b"png"), save=True)
+    gone = Attachment(message=chat["a2b"], kind=Attachment.Kind.IMAGE, mime_type="image/png")
+    gone.file.save("gone.png", ContentFile(b"png"), save=True)
+    gone_path, keep_path = gone.file.path, keep.file.path
+    client.force_login(anna)
+    with django_capture_on_commit_callbacks(execute=True):
+        assert client.delete(version_url(chat, chat["a2b"])).status_code == 200
+    assert not Attachment.objects.filter(pk=gone.pk).exists()
+    assert Attachment.objects.filter(pk=keep.pk).exists()
+    assert os.path.exists(keep_path)
+    assert not os.path.exists(gone_path)
+
+
+def test_delete_version_needs_an_answer(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(version_url(chat, chat["q2"]))
+    assert response.status_code == 400
+    assert "Frage 2" in remaining(chat)
+
+
+def test_delete_version_needs_the_delete_right(client, chat):
+    stranger = make_user("fremd")
+    client.force_login(stranger)
+    response = client.delete(version_url(chat, chat["a2b"]))
+    assert response.status_code in (403, 404)
+    assert "Antwort 2b" in remaining(chat)
+
+
+def test_chat_page_offers_deleting_a_single_version(client, anna, chat):
+    client.force_login(anna)
+    page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
+    assert "data-delete-version" in page and "Nur diese Version löschen" in page

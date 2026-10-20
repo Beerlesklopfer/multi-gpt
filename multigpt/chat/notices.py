@@ -28,6 +28,7 @@ DELETED = "deleted"
 ARCHIVED = "archived"
 UNARCHIVED = "unarchived"
 EXCHANGE_DELETED = "exchange_deleted"
+VERSION_DELETED = "version_deleted"
 
 _TEXTS = {
     DELETED: "{actor} hat deinen geteilten Chat „{title}“ gelöscht.",
@@ -36,6 +37,9 @@ _TEXTS = {
     EXCHANGE_DELETED: (
         "{actor} hat in deinem geteilten Chat „{title}“ eine Antwort samt Frage "
         "und Folgeverlauf gelöscht."
+    ),
+    VERSION_DELETED: (
+        "{actor} hat in deinem geteilten Chat „{title}“ eine Version einer Antwort gelöscht."
     ),
 }
 

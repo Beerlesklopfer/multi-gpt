@@ -663,7 +663,7 @@
             !form || !article.dataset.messageId || article.dataset.status === "awaiting_confirmation";
           button.disabled = busy || !modelsReady;
         }
-        for (const button of bar.querySelectorAll("[data-delete-message]")) {
+        for (const button of bar.querySelectorAll("[data-delete-message], [data-delete-version]")) {
           button.hidden = !article.dataset.messageId;
           button.disabled = busy;
         }
@@ -1614,16 +1614,19 @@
 
     // --- Löschen: Frage, Antwort (alle Versionen) und alles danach ---
 
-    async function deleteExchange(article) {
+    // ``versionOnly``: nur diese Antwortversion (die Frage und andere Versionen bleiben).
+    async function deleteExchange(article, versionOnly = false) {
       const messageId = article.dataset.messageId;
       if (!messageId || !urls.messageDeleteTemplate || !conversationId) {
         return;
       }
       const openDialog = window.MultiGPT.openDialog;
-      const heading = "Antwort löschen?";
-      const text =
-        "Gelöscht werden die Frage dazu, alle Versionen dieser Antwort und der ganze Verlauf " +
-        "danach. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht.";
+      const heading = versionOnly ? "Diese Version löschen?" : "Antwort löschen?";
+      const text = versionOnly
+        ? "Gelöscht werden nur diese Version der Antwort und was nach ihr folgt. Die Frage und " +
+          "andere Versionen bleiben. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht."
+        : "Gelöscht werden die Frage dazu, alle Versionen dieser Antwort und der ganze Verlauf " +
+          "danach. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht.";
       const ok = openDialog
         ? await openDialog({ heading, text, confirmLabel: "Löschen", danger: true })
         : window.confirm(`${heading}\n\n${text}`);
@@ -1631,14 +1634,18 @@
         return;
       }
       // Ab hier neu aufbauen: die Frage (Nachricht davor) ist die erste, die fehlt.
-      const previous = article.previousElementSibling?.closest(".chat-message") || article;
+      // Nur eine Version: die Frage bleibt, ab dieser Antwort wird neu aufgebaut.
+      const previous = versionOnly
+        ? article
+        : article.previousElementSibling?.closest(".chat-message") || article;
       closeEditor(false);
       log.setAttribute("aria-busy", "true");
       try {
-        const url = fillTemplate(urls.messageDeleteTemplate, conversationId).replace(
-          "/999999999/",
-          `/${encodeURIComponent(messageId)}/`,
-        );
+        const url =
+          fillTemplate(urls.messageDeleteTemplate, conversationId).replace(
+            "/999999999/",
+            `/${encodeURIComponent(messageId)}/`,
+          ) + (versionOnly ? "?scope=version" : "");
         const response = await fetch(url, {
           method: "DELETE",
           credentials: "same-origin",
@@ -1824,7 +1831,7 @@
 
     log.addEventListener("click", (event) => {
       const button = event.target.closest(
-        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message]",
+        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message], [data-delete-version]",
       );
       const article = button?.closest(".chat-message");
       if (!button || !article || button.disabled) {
@@ -1842,6 +1849,8 @@
         // Austausch im Grafikspeicher bestätigt: mit dem Modell dieser Antwort neu.
         const modelId = Number(button.dataset.swapMessage);
         regenerate(article, modelId ? { swap: true, model: modelId } : { swap: true });
+      } else if (button.hasAttribute("data-delete-version")) {
+        deleteExchange(article, true);
       } else if (button.hasAttribute("data-delete-message")) {
         deleteExchange(article);
       } else {

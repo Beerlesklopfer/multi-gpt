@@ -42,6 +42,10 @@ Neu erzeugen W, Löschen (Frage, Antwort und alles danach) D.{% endcomment %}
       </button>
     {% endif %}
     {% if can_delete %}
+      <button type="button" class="icon-button" data-delete-version hidden
+              aria-label="Nur diese Version der Antwort löschen" title="Nur diese Version löschen (Frage und andere Versionen bleiben)">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 12h8"/></svg>
+      </button>
       <button type="button" class="icon-button" data-delete-message hidden
               aria-label="Frage, Antwort und alles danach löschen" title="Löschen (mit Frage und allem danach)">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
