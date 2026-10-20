@@ -85,8 +85,41 @@
     // Mehrere Bildmodelle: Auswahl „Modell“; sonst fest das eine (data-model-name).
     const imageModel = document.getElementById("image-mode-model");
     const keepWorking = document.getElementById("image-mode-continue");
+    const resolutionBox = document.getElementById("image-mode-resolution-box");
+    const resolution = document.getElementById("image-mode-resolution");
+    const customSize = document.getElementById("image-mode-custom-size");
+    const widthInput = document.getElementById("image-mode-width");
+    const heightInput = document.getElementById("image-mode-height");
     const currentName = () =>
       imageModel?.selectedOptions?.[0]?.dataset.name || box.dataset.modelName || "";
+    // Nimmt das gewählte Bildmodell beliebige Größen (data-size)? Nur dann gibt es „Auflösung“.
+    const canResize = () =>
+      imageModel
+        ? imageModel.selectedOptions?.[0]?.dataset.size === "true"
+        : box.dataset.size === "true";
+    // Gewünschte Größe "BxH" oder "" (Format gilt); null = ungültige eigene Angabe.
+    function chosenSize() {
+      if (!resolutionBox || !canResize() || !resolution.value) {
+        return "";
+      }
+      if (resolution.value !== "custom") {
+        return resolution.value;
+      }
+      const w = Number(widthInput.value);
+      const h = Number(heightInput.value);
+      const lo = Number(widthInput.min);
+      const hi = Number(widthInput.max);
+      const ok = (v) => Number.isInteger(v) && v >= lo && v <= hi;
+      return ok(w) && ok(h) ? `${w}x${h}` : null;
+    }
+    function updateResolution() {
+      if (!resolutionBox) {
+        return;
+      }
+      resolutionBox.hidden = !canResize();
+      customSize.hidden = resolution.value !== "custom";
+      format.disabled = canResize() && Boolean(resolution.value); // die Auflösung ersetzt das Format
+    }
     // Kann das gewählte Bildmodell Bilder bearbeiten (data-edit am Eintrag bzw. am Kasten)?
     const canEdit = () =>
       imageModel
@@ -171,6 +204,18 @@
     ) {
       imageModel.value = String(saved.model);
     }
+    if (resolution && saved.resolution) {
+      const known = resolution.querySelector(`option[value="${CSS.escape(String(saved.resolution))}"]`);
+      if (known) {
+        resolution.value = String(saved.resolution);
+      }
+    }
+    if (widthInput && saved.width) {
+      widthInput.value = String(saved.width);
+    }
+    if (heightInput && saved.height) {
+      heightInput.value = String(saved.height);
+    }
     if (keepWorking && saved.continue === false) {
       keepWorking.checked = false; // gemerkt: ausdrücklich ausgeschaltet
     }
@@ -180,10 +225,18 @@
         quality: quality.value,
         model: imageModel?.value,
         continue: keepWorking ? keepWorking.checked : true,
+        resolution: resolution?.value,
+        width: widthInput?.value,
+        height: heightInput?.value,
       });
-    for (const select of [format, quality, imageModel, keepWorking].filter(Boolean)) {
+    for (const select of [format, quality, imageModel, keepWorking, resolution].filter(Boolean)) {
       select.addEventListener("change", remember);
+      select.addEventListener("change", updateResolution);
     }
+    for (const input of [widthInput, heightInput].filter(Boolean)) {
+      input.addEventListener("change", remember);
+    }
+    updateResolution();
     textarea.addEventListener("input", updateHint);
     modelSelect?.addEventListener("change", updateHint);
     document.addEventListener("multigpt:models-loaded", updateHint);
@@ -205,6 +258,13 @@
       // false = nicht senden (Hinweis zeigen bzw. Anhänge im Modus „Bild“).
       beforeSend(text) {
         if (toggle.checked) {
+          if (chosenSize() === null) {
+            MultiGPT.chatView?.setStatus(
+              `Eigene Auflösung: Breite und Höhe von ${widthInput.min} bis ${widthInput.max} Pixel angeben.`,
+              true,
+            );
+            return false;
+          }
           // Mit angehängten Bildern wird bearbeitet: nur mit einem Modell, das das kann.
           if ((MultiGPT.attachments?.count() ?? 0) > 0 && !canEdit()) {
             MultiGPT.chatView?.setStatus(
@@ -240,6 +300,10 @@
           result.attachments = payload.attachments;
         }
         result.image = { format: format.value, quality: quality.value };
+        const size = chosenSize();
+        if (size) {
+          result.image.size = size;
+        }
         if (imageModel?.value) {
           result.image.model = Number(imageModel.value);
         }

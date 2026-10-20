@@ -2,7 +2,7 @@
 {% comment %}Modus „Bild“ (M9-01, image_mode.js): Die Nachricht geht direkt an das Bildmodell.
 Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online).{% endcomment %}
 {% if image_mode.available %}
-  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}" data-edit="{{ image_mode.edit|yesno:'true,false' }}">
+  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}" data-edit="{{ image_mode.edit|yesno:'true,false' }}" data-size="{{ image_mode.size|yesno:'true,false' }}">
     <label class="tool-switch image-mode-switch" for="image-mode-toggle">
       <input type="checkbox" id="image-mode-toggle" aria-describedby="image-mode-hint">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
@@ -20,6 +20,21 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
           {% for value, label in image_mode.qualities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select>
       </label>
+      {# Eigene Auflösung (z. B. Hintergrundbild): nur bei Modellen, die beliebige Größen nehmen. #}
+      <span class="image-mode-field image-mode-resolution" id="image-mode-resolution-box" hidden>
+        <label><span>Auflösung</span>
+          <select id="image-mode-resolution">
+            <option value="">wie Format</option>
+            {% for value, label in image_mode.resolutions %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            <option value="custom">eigene …</option>
+          </select>
+        </label>
+        <span id="image-mode-custom-size" hidden>
+          <input type="number" id="image-mode-width" min="{{ image_mode.side.min }}" max="{{ image_mode.side.max }}" inputmode="numeric" placeholder="Breite" aria-label="Breite in Pixel">
+          <span aria-hidden="true">×</span>
+          <input type="number" id="image-mode-height" min="{{ image_mode.side.min }}" max="{{ image_mode.side.max }}" inputmode="numeric" placeholder="Höhe" aria-label="Höhe in Pixel">
+        </span>
+      </span>
       <label class="image-mode-field image-mode-continue" title="Ist im Chat schon ein Bild entstanden, gilt eine kurze Nachricht (bis 200 Zeichen) als Änderung daran: mit Modellen, die Bilder bearbeiten, wird das letzte Bild verändert, sonst wird die vorige Beschreibung mit der Änderung fortgesetzt. Längere Texte beginnen ein neues Bild.">
         <input type="checkbox" id="image-mode-continue" checked>
         <span>Am letzten Bild weiterarbeiten</span>
@@ -27,7 +42,7 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">
-          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
+          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}" data-size="{{ m.size|yesno:'true,false' }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
         </select>
       </label>
       {% else %}

@@ -46,11 +46,13 @@ def answer_text(
     revised_prompt: str = "",
     edited: bool = False,
     chained: bool = False,
+    size: str | None = None,
 ) -> str:
     """Text der Antwort (geht wie jede Antwort später auch an Chatmodelle)."""
     text = (
         f"Bild {'bearbeitet' if edited else 'erzeugt'} mit {ai_model.display_name} "
-        f"({images.FORMAT_LABELS[fmt]}, Qualität {images.QUALITIES[quality]})."
+        f"({size.replace('x', '×') if size else images.FORMAT_LABELS[fmt]}, "
+        f"Qualität {images.QUALITIES[quality]})."
     )
     if chained:
         text += "\n\nWeitergearbeitet an der Beschreibung des vorigen Bildes."
@@ -89,6 +91,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         continue_last = options.get("continue", False)
         if not isinstance(continue_last, bool):
             return error(MSG_INVALID, 400)
+        target = images.parse_size(options["size"]) if options.get("size") else None
     except images.ImageError as exc:
         return error(exc.message, exc.status)
     expected_leaf, valid = parse_pk(data, "leaf")
@@ -120,6 +123,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             continue_last=continue_last
             and not sources
             and len(content) <= images.CONTINUE_MAX_CHARS,
+            target=target,
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
@@ -137,6 +141,7 @@ def prepare(
     transparent,
     sources=(),
     continue_last=False,
+    target=None,
 ):
     """Nutzernachricht und (leere) Antwort des Bildmodells anlegen."""
     with transaction.atomic():
@@ -159,6 +164,10 @@ def prepare(
                 message=user_message, conversation=conversation
             )
         image_state = {"format": fmt, "quality": quality, "transparent": transparent}
+        if target is not None:
+            if not images.supports_custom_size(ai_model):
+                raise services.TurnError(images.MSG_SIZE_UNSUPPORTED)
+            image_state["size"] = f"{target[0]}x{target[1]}"
         prompt = content  # was das Bildmodell bekommt
         reuse = []
         if drafts:
@@ -294,6 +303,8 @@ def prepare_rerun(user, conversation, kind, old, question, content, state, ids, 
         sources = [*drafts, *originals]
         prompt, reuse = content, []
         new_state = {"format": fmt, "quality": quality, "transparent": transparent}
+        if state.get("size"):
+            new_state["size"] = state["size"]
         if sources:
             new_state["edit"] = True
         elif state.get("continued"):
@@ -382,6 +393,8 @@ def run(turn, fmt: str, quality: str, transparent: bool):
         chained = bool(state.get("continued")) and not source_ids
         common = {"ai_model": turn.ai_model, "fmt": fmt, "quality": quality}
         common["transparent"] = transparent
+        if state.get("size"):
+            common["target"] = images.parse_size(state["size"])
         if source_ids:
             sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
             try:
@@ -409,7 +422,15 @@ def run(turn, fmt: str, quality: str, transparent: bool):
                 )
         else:
             attachment, revised = images.generate(turn.user, msg, turn.query, **common)
-        text = answer_text(turn.ai_model, fmt, quality, revised, edited=edited, chained=chained)
+        text = answer_text(
+            turn.ai_model,
+            fmt,
+            quality,
+            revised,
+            edited=edited,
+            chained=chained,
+            size=state.get("size"),
+        )
         cost = attachment.cost
     except sharing.AccessRevoked:
         status, error = Message.Status.ABORTED, sharing.MSG_REVOKED

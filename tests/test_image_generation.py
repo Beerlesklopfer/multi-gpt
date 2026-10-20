@@ -1389,3 +1389,132 @@ def test_long_message_starts_a_new_image_even_with_continue(
     assert len(long_text) > images.CONTINUE_MAX_CHARS
     events_of(post(client, conversation, content=long_text, image={"continue": True}))
     assert image_calls[1]["prompt"] == long_text.strip()
+
+
+def test_parse_size_accepts_the_usual_spellings_and_limits():
+    assert images.parse_size("1920x1080") == (1920, 1080)
+    assert images.parse_size(" 3840 × 2160 ") == (3840, 2160)
+    for bad in ("", "1920", "axb", "100x100", "5000x1000", "1920x1080x3", None):
+        with pytest.raises(images.ImageError):
+            images.parse_size(bad)
+
+
+def test_generation_size_keeps_the_aspect_ratio_within_the_pixel_limit():
+    w, h = images.generation_size(3840, 2160)
+    assert w * h <= images.GENERATION_MAX_PIXELS
+    assert w % images.GENERATION_STEP == 0 and h % images.GENERATION_STEP == 0
+    assert abs(w / h - 3840 / 2160) < 0.03
+    assert images.generation_size(1024, 1024) == (1024, 1024)  # klein genug: unverändert
+
+
+def test_fit_to_size_crops_to_the_ratio_and_scales_to_the_exact_size():
+    import io as _io
+
+    from PIL import Image
+
+    source = Image.new("RGB", (400, 300), (200, 30, 30))
+    raw = _io.BytesIO()
+    source.save(raw, "PNG")
+    out = Image.open(_io.BytesIO(images.fit_to_size(raw.getvalue(), 640, 360)))
+    assert out.size == (640, 360)
+    same = images.fit_to_size(raw.getvalue(), 400, 300)
+    assert same == raw.getvalue()  # schon so groß: unverändert
+
+
+@pytest.mark.django_db
+def test_custom_resolution_gets_exact_size_from_a_model_that_renders_smaller(
+    client, conversation, local_image_model, fakes
+):
+    _, image_calls = fakes()
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Berge bei Sonnenaufgang",
+            image={"model": local_image_model.pk, "size": "1920x1080"},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    w, h = images.generation_size(1920, 1080)
+    assert image_calls[0]["size"] == f"{w}x{h}"  # so rechnet das Modell
+    reply = Message.objects.get(role="assistant")
+    attachment = Attachment.objects.get(message=reply)
+    assert (attachment.width, attachment.height) == (1920, 1080)  # so kommt es an
+    assert reply.tool_state["image"]["size"] == "1920x1080"
+    assert "1920×1080" in reply.content
+
+
+@pytest.mark.django_db
+def test_custom_resolution_larger_than_the_old_edge_limit_is_kept(
+    client, conversation, local_image_model, fakes
+):
+    fakes()
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Wallpaper",
+            image={"model": local_image_model.pk, "size": "3840x2160"},
+        )
+    )
+    attachment = Attachment.objects.get(message__role="assistant")
+    assert (attachment.width, attachment.height) == (3840, 2160)  # nicht auf 2048 verkleinert
+
+
+@pytest.mark.django_db
+def test_custom_resolution_is_refused_for_models_with_fixed_formats(
+    client, conversation, image_model, fakes
+):
+    fakes()
+    response = post(client, conversation, content="x", image={"size": "1920x1080"})
+    assert response.status_code == 400
+    assert images.MSG_SIZE_UNSUPPORTED in response.json()["error"]
+    assert not Message.objects.filter(role="assistant").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("size", ["abc", "100x100", "9000x9000"])
+def test_custom_resolution_is_validated(client, conversation, local_image_model, fakes, size):
+    fakes()
+    response = post(
+        client, conversation, content="x", image={"model": local_image_model.pk, "size": size}
+    )
+    assert response.status_code == 400
+    assert images.MSG_BAD_SIZE in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_regenerate_keeps_the_custom_resolution(
+    client, conversation, chat_model, local_image_model, fakes
+):
+    _, image_calls = fakes()
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Wallpaper",
+            image={"model": local_image_model.pk, "size": "1920x1080"},
+        )
+    )
+    reply = Message.objects.get(role="assistant")
+    events_of(post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk))
+    assert image_calls[1]["size"] == image_calls[0]["size"]
+    newest = Message.objects.filter(role="assistant").order_by("pk").last()
+    attachment = Attachment.objects.get(message=newest)
+    assert (attachment.width, attachment.height) == (1920, 1080)
+
+
+@pytest.mark.django_db
+def test_chat_page_offers_resolution_only_for_models_that_take_any_size(
+    client, adult, conversation, image_model, local_image_model
+):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'id="image-mode-resolution"' in page and "Full HD 1920×1080" in page
+    assert (
+        f'value="{local_image_model.pk}" data-name="Qwen Image" data-edit="false" data-size="true"'
+        in page
+    )
+    assert (
+        f'value="{image_model.pk}" data-name="GPT Image" data-edit="false" data-size="false"'
+        in page
+    )

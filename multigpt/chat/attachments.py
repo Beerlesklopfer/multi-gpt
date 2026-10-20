@@ -205,10 +205,12 @@ def _encode(image: Image.Image, fmt: str) -> bytes:
     return out.getvalue()
 
 
-def process_image(fileobj) -> dict:
+def process_image(fileobj, max_edge: int = MAX_EDGE) -> dict:
     """Bild prüfen, drehen, verkleinern, Metadaten entfernen, Vorschau erzeugen.
 
     Liefert ``{"data", "mime_type", "extension", "width", "height", "thumbnail"}``.
+    ``max_edge``: längste Kante nach dem Verkleinern (Uploads 2048 px; erzeugte Bilder dürfen
+    für Hintergrundbilder größer sein).
     """
     image = _open_image(fileobj)
     source_format = image.format or ""
@@ -218,7 +220,7 @@ def process_image(fileobj) -> dict:
         logger.info("EXIF-Drehung nicht möglich, Bild bleibt ungedreht")
     target = source_format if source_format in ("JPEG", "WEBP", "PNG") else "PNG"
     image = _without_metadata(image, target)
-    image.thumbnail((MAX_EDGE, MAX_EDGE), Image.Resampling.LANCZOS)
+    image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
     data = _encode(image, target)
 
     thumb = image.copy()

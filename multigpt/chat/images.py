@@ -55,10 +55,12 @@ from __future__ import annotations
 import inspect
 import io
 import logging
+import re
 
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.text import slugify
+from PIL import Image
 
 from multigpt.accounts import usage
 from multigpt.accounts.permissions import Action, can, model_permitted
@@ -81,6 +83,21 @@ FORMAT_LABELS = {"square": "quadratisch", "portrait": "hoch", "landscape": "quer
 QUALITIES = {"auto": "automatisch", "low": "niedrig", "medium": "mittel", "high": "hoch"}
 DEFAULT_FORMAT = "square"
 DEFAULT_QUALITY = "auto"
+# Eigene Auflösung (z. B. Hintergrundbild): nur bei Anbieterarten, die beliebige Größen nehmen
+# (Eliezer, LM Studio). Das Modell erzeugt höchstens ``GENERATION_MAX_PIXELS`` und rechnet in der
+# Seitenform des Ziels; MultiGPT schneidet mittig zu und skaliert auf genau die Zielgröße.
+MIN_SIDE, MAX_SIDE = 256, 4096
+GENERATION_MAX_PIXELS = 2_000_000
+GENERATION_STEP = 16  # Seitenlängen für das Modell: Vielfache davon
+MAX_GENERATED_EDGE = MAX_SIDE
+CUSTOM_SIZE_KINDS = (Provider.Kind.LMSTUDIO,)
+RESOLUTION_PRESETS = [
+    ("1920x1080", "Full HD 1920×1080"),
+    ("2560x1440", "WQHD 2560×1440"),
+    ("3840x2160", "4K 3840×2160"),
+    ("1080x1920", "Handy hoch 1080×1920"),
+    ("2048x2048", "Quadrat 2048×2048"),
+]
 # Anbieterarten, deren Adapter ``generate_image`` kann.
 SUPPORTED_KINDS = (Provider.Kind.OPENAI_COMPAT, Provider.Kind.LMSTUDIO, Provider.Kind.GOOGLE)
 # Beschreibung höchstens so lang (DALL·E 3: 4000 Zeichen; GPT Image mehr).
@@ -98,6 +115,13 @@ MSG_EDIT_UNSUPPORTED = (
 )
 # Längere Nachrichten sind eine eigene Bildbeschreibung, keine Änderung am letzten Bild.
 CONTINUE_MAX_CHARS = 200
+MSG_BAD_SIZE = (
+    f"Ungültige Auflösung: Breite und Höhe von {MIN_SIDE} bis {MAX_SIDE} Pixel, z. B. 1920x1080."
+)
+MSG_SIZE_UNSUPPORTED = (
+    "Dieses Bildmodell kennt nur die festen Formate (quadratisch, hoch, quer), keine eigene "
+    "Auflösung."
+)
 MSG_NO_SOURCE = "Zum Bearbeiten bitte ein Bild anhängen."
 MSG_SOURCE_UNREADABLE = "Das angehängte Bild lässt sich nicht lesen."
 MAX_SOURCES = 4
@@ -152,6 +176,60 @@ class ImageError(Exception):
         super().__init__(message)
         self.message = message
         self.status = status
+
+
+def supports_custom_size(ai_model: AIModel) -> bool:
+    """Nimmt der Anbieter dieses Modells beliebige Bildgrößen?"""
+    return ai_model.provider.kind in CUSTOM_SIZE_KINDS
+
+
+def parse_size(raw) -> tuple[int, int]:
+    """``"1920x1080"`` (auch ``×`` und Leerzeichen) -> (Breite, Höhe) innerhalb der Grenzen."""
+    match = re.fullmatch(r"\s*(\d{2,5})\s*[x×]\s*(\d{2,5})\s*", str(raw or ""), re.IGNORECASE)
+    if not match:
+        raise ImageError(MSG_BAD_SIZE)
+    width, height = int(match.group(1)), int(match.group(2))
+    if not (MIN_SIDE <= width <= MAX_SIDE and MIN_SIDE <= height <= MAX_SIDE):
+        raise ImageError(MSG_BAD_SIZE)
+    return width, height
+
+
+def generation_size(width: int, height: int) -> tuple[int, int]:
+    """Größe, in der das Modell rechnet: Seitenform des Ziels, höchstens ``GENERATION_MAX_PIXELS``,
+    Seiten als Vielfache von ``GENERATION_STEP``."""
+    scale = min(1.0, (GENERATION_MAX_PIXELS / (width * height)) ** 0.5)
+
+    def snap(value: float) -> int:
+        return max(MIN_SIDE, round(value * scale / GENERATION_STEP) * GENERATION_STEP)
+
+    return snap(width), snap(height)
+
+
+def fit_to_size(raw: bytes, width: int, height: int) -> bytes:
+    """Bild mittig auf die Seitenform zuschneiden und auf genau ``width`` × ``height`` skalieren
+    (PNG). Ist es schon so groß, bleibt es unverändert."""
+    try:
+        with Image.open(io.BytesIO(raw)) as source:
+            source.load()
+            image = source.convert("RGBA" if "A" in source.mode else "RGB")
+    except Exception as exc:  # noqa: BLE001 - kein lesbares Bild
+        raise ImageError(MSG_INVALID_IMAGE) from exc
+    if image.size == (width, height):
+        return raw
+    target_ratio = width / height
+    ratio = image.width / image.height
+    if ratio > target_ratio:  # zu breit: Seiten abschneiden
+        crop_width = round(image.height * target_ratio)
+        left = (image.width - crop_width) // 2
+        image = image.crop((left, 0, left + crop_width, image.height))
+    elif ratio < target_ratio:  # zu hoch: oben und unten abschneiden
+        crop_height = round(image.width / target_ratio)
+        top = (image.height - crop_height) // 2
+        image = image.crop((0, top, image.width, top + crop_height))
+    image = image.resize((width, height), Image.Resampling.LANCZOS)
+    out = io.BytesIO()
+    image.save(out, "PNG")
+    return out.getvalue()
 
 
 class EditUnsupported(ImageError):
@@ -286,12 +364,17 @@ def _book(attachment: Attachment, ai_model: AIModel, units: dict, image_usage, u
         logger.error("Buchung für Bild %s fehlgeschlagen: %s", attachment.pk, type(exc).__name__)
 
 
-def _store(message, ai_model: AIModel, image, prompt: str, source=None) -> Attachment:
+def _store(message, ai_model: AIModel, image, prompt: str, source=None, target=None) -> Attachment:
     """Bild prüfen, ohne Metadaten neu kodieren, Vorschau, als Anhang speichern."""
     if len(image.data) > chat_attachments.max_image_bytes():
         raise ImageError(MSG_IMAGE_TOO_LARGE)
+    data = image.data
+    if target is not None:
+        data = fit_to_size(data, *target)  # eigene Auflösung: genau die Zielgröße
     try:
-        result = chat_attachments.process_image(io.BytesIO(image.data))
+        result = chat_attachments.process_image(
+            io.BytesIO(data), max_edge=max(MAX_GENERATED_EDGE, *(target or (0, 0)))
+        )
     except chat_attachments.UploadError as exc:
         raise ImageError(MSG_INVALID_IMAGE) from exc
     attachment = Attachment(
@@ -329,6 +412,7 @@ def generate(
     fmt: str = DEFAULT_FORMAT,
     quality: str = DEFAULT_QUALITY,
     transparent: bool = False,
+    target: tuple[int, int] | None = None,
 ) -> tuple[Attachment, str]:
     """Ein Bild zu ``prompt`` mit ``ai_model`` erzeugen und an ``message`` hängen.
 
@@ -344,7 +428,7 @@ def generate(
         raise ImageError(MSG_PROMPT_TOO_LONG)
     if not can(user, Action.USE_MODEL, ai_model):
         raise ImageError(usage.blocked_reason(user, ai_model) or MSG_NO_IMAGE_MODEL, 403)
-    size = FORMATS[fmt]
+    size = _request_size(fmt, target)
     adapter = registry.get_adapter(ai_model.provider)
     result = _provider_call(
         message,
@@ -359,7 +443,7 @@ def generate(
         ),
     )
     image = result.images[0]
-    attachment = _store(message, ai_model, image, prompt)
+    attachment = _store(message, ai_model, image, prompt, target=target)
     _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
     attachment.refresh_from_db(fields=["cost"])
     logger.info(
@@ -370,6 +454,14 @@ def generate(
         attachment.size,
     )
     return attachment, image.revised_prompt
+
+
+def _request_size(fmt: str, target: tuple[int, int] | None) -> str:
+    """Größe für den Anbieter: die des Formats, bei eigener Auflösung die Rechengröße."""
+    if target is None:
+        return FORMATS[fmt]
+    width, height = generation_size(*target)
+    return f"{width}x{height}"
 
 
 def _provider_call(message, ai_model: AIModel, call, *, editing: bool = False):
@@ -414,6 +506,7 @@ def edit(
     fmt: str = DEFAULT_FORMAT,
     quality: str = DEFAULT_QUALITY,
     transparent: bool = False,
+    target: tuple[int, int] | None = None,
 ) -> tuple[Attachment, str]:
     """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern.
 
@@ -436,7 +529,7 @@ def edit(
         if raw is None:
             raise ImageError(MSG_SOURCE_UNREADABLE)
         payload.append((source.display_name or "bild.png", source.mime_type or "image/png", raw))
-    size = FORMATS[fmt]
+    size = _request_size(fmt, target)
     adapter = registry.get_adapter(ai_model.provider)
     result = _provider_call(
         message,
@@ -453,7 +546,7 @@ def edit(
         editing=True,
     )
     image = result.images[0]
-    attachment = _store(message, ai_model, image, prompt, source=sources[0])
+    attachment = _store(message, ai_model, image, prompt, source=sources[0], target=target)
     _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
     attachment.refresh_from_db(fields=["cost"])
     logger.info(
