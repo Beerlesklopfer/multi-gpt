@@ -22,7 +22,8 @@ def image_mode_config(context) -> dict:
         "available": True,
         "model_name": models[0].display_name,
         # Mehrere Bildmodelle (z. B. OpenAI und ein lokales): im Chat wählbar, Standard zuerst.
-        "models": [{"id": m.pk, "name": m.display_name} for m in models],
+        "models": [{"id": m.pk, "name": m.display_name, "edit": m.can_edit_images} for m in models],
+        "edit": models[0].can_edit_images,
         "formats": list(images.FORMAT_LABELS.items()),
         "qualities": list(images.QUALITIES.items()),
         "patterns": {

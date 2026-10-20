@@ -137,6 +137,7 @@ MSG_EMPTY_EMBED_INPUT = "Leere Texte lassen sich nicht einbetten."
 # eine Minute oder mehr, beim ersten Aufruf lädt LM Studio das Modell noch.
 VISION_TIMEOUT = httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0)
 MSG_EMPTY_IMAGE = "Es wurde kein Bild übergeben."
+MSG_NO_IMAGE_SOURCE = "Zum Bearbeiten fehlt das Ausgangsbild."
 MSG_INVALID_VISION_ANSWER = (
     "Der Anbieter hat eine unerwartete Antwort auf die Bildanfrage geliefert."
 )
@@ -483,10 +484,35 @@ class OpenAICompatAdapter(ProviderAdapter):
         if not (prompt or "").strip():
             raise ProviderError(MSG_EMPTY_IMAGE_PROMPT)
         body = _image_body(model_id, prompt, params)
+        return self._image_request("images/generations", model_id, json=body)
+
+    def edit_image(self, model_id: str, images, prompt: str, **params) -> ImageResult:
+        """``POST /images/edits`` (multipart): vorhandene Bilder nach ``prompt`` verändern.
+
+        ``images``: Liste von ``(Dateiname, Inhaltstyp, Bytes)``; eines geht als ``image``, mehrere
+        als ``image[]`` (GPT Image nimmt mehrere Vorlagen). Antwort wie bei der Erzeugung
+        (``b64_json``); nie eine URL nachladen."""
+        if not (prompt or "").strip():
+            raise ProviderError(MSG_EMPTY_IMAGE_PROMPT)
+        images = list(images)
+        if not images:
+            raise ProviderError(MSG_NO_IMAGE_SOURCE)
+        fields = {
+            k: v
+            for k, v in _image_body(model_id, prompt, params).items()
+            if k not in ("response_format",)
+        }
+        data = {k: str(v) for k, v in fields.items()}
+        name = "image" if len(images) == 1 else "image[]"
+        files = [(name, (fname, raw, mime)) for fname, mime, raw in images]
+        return self._image_request("images/edits", model_id, data=data, files=files)
+
+    def _image_request(self, path: str, model_id: str, **request) -> ImageResult:
+        """Gemeinsamer Teil von Erzeugen und Bearbeiten: senden, Fehler übersetzen, parsen."""
         try:
             with httpx.Client(timeout=IMAGE_TIMEOUT) as client:
                 response = client.post(
-                    f"{self.base_url}/images/generations", headers=self._headers(), json=body
+                    f"{self.base_url}/{path}", headers=self._headers(), **request
                 )
         except Exception as exc:
             self._log("Bilderzeugung", type(exc).__name__)

@@ -2,7 +2,7 @@
 {% comment %}Modus „Bild“ (M9-01, image_mode.js): Die Nachricht geht direkt an das Bildmodell.
 Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online).{% endcomment %}
 {% if image_mode.available %}
-  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}">
+  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}" data-edit="{{ image_mode.edit|yesno:'true,false' }}">
     <label class="tool-switch image-mode-switch" for="image-mode-toggle">
       <input type="checkbox" id="image-mode-toggle" aria-describedby="image-mode-hint">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
@@ -23,7 +23,7 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">
-          {% for m in image_mode.models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
         </select>
       </label>
       {% else %}

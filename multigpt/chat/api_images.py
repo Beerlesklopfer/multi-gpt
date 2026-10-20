@@ -8,8 +8,11 @@ erzeugter Anhang an der Antwort. SSE-Events wie beim Chat: start, status,
 [error], usage, done; die Oberfläche lädt danach den Verlauf neu und zeigt das
 Bild mit Vorschau. Das Standardmodell des Chats bleibt unverändert.
 
-Noch nicht im Modus „Bild“: Bearbeiten, Neu erzeugen und Anhänge (Bild
-bearbeiten folgt mit M9-02).
+Bilder bearbeiten (M9-02): Hängen Bilder an der Nachricht (``"attachments"``), geht die
+Nachricht mit den Bildern als Vorlage an ein Bildmodell mit „Bilder bearbeiten“
+(``images.edit``); das Ergebnis verweist über ``source_image`` auf die Vorlage.
+
+Noch nicht im Modus „Bild“: Neu erzeugen und Bearbeiten einer gesendeten Nachricht.
 """
 
 from __future__ import annotations
@@ -21,21 +24,21 @@ from django.utils import timezone
 
 from . import images, services, sharing
 from . import status as provider_status
-from .models import Conversation, Message
+from .models import Attachment, Conversation, Message
 
 logger = logging.getLogger(__name__)
 
 MSG_ONLY_NEW = "Im Modus „Bild“ lassen sich nur neue Nachrichten senden."
-MSG_NO_ATTACHMENTS = (
-    "Im Modus „Bild“ sind noch keine Anhänge möglich. Bilder bearbeiten folgt später."
-)
+MSG_ONLY_IMAGES = "Im Modus „Bild“ lassen sich nur Bilder anhängen."
 MSG_INVALID = "Ungültige Angaben für den Modus „Bild“."
 
 
-def answer_text(ai_model, fmt: str, quality: str, revised_prompt: str = "") -> str:
+def answer_text(
+    ai_model, fmt: str, quality: str, revised_prompt: str = "", edited: bool = False
+) -> str:
     """Text der Antwort (geht wie jede Antwort später auch an Chatmodelle)."""
     text = (
-        f"Bild erzeugt mit {ai_model.display_name} "
+        f"Bild {'bearbeitet' if edited else 'erzeugt'} mit {ai_model.display_name} "
         f"({images.FORMAT_LABELS[fmt]}, Qualität {images.QUALITIES[quality]})."
     )
     if revised_prompt.strip():
@@ -52,8 +55,14 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         return error(MSG_INVALID, 400)
     if data.get("regenerate") is True or data.get("edit_of") is not None:
         return error(MSG_ONLY_NEW, 400)
-    if data.get("attachments"):
-        return error(MSG_NO_ATTACHMENTS, 400)
+    sources = data.get("attachments")
+    if sources is not None and not (
+        isinstance(sources, list)
+        and len(sources) <= images.MAX_SOURCES
+        and all(isinstance(i, int) and not isinstance(i, bool) for i in sources)
+    ):
+        return error(MSG_INVALID, 400)
+    sources = list(dict.fromkeys(sources or []))
     content = data.get("content")
     if not isinstance(content, str) or not content.strip():
         return error(images.MSG_EMPTY_PROMPT, 400)
@@ -72,24 +81,27 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
     preferred = options.get("model")
     if preferred is not None and (isinstance(preferred, bool) or not isinstance(preferred, int)):
         return error(MSG_INVALID, 400)
-    ai_model, reason = images.pick_image_model(user, preferred)
+    editing = bool(sources)
+    ai_model, reason = images.pick_image_model(user, preferred, edit=editing)
     if ai_model is not None and ai_model.provider.check_status:
         # Lokaler bzw. geprüfter Anbieter: Status bei Bedarf auffrischen.
         provider_status.refresh(ai_model.provider)
         if images.blocked_reason(user, ai_model):
-            ai_model, reason = images.pick_image_model(user, preferred)
+            ai_model, reason = images.pick_image_model(user, preferred, edit=editing)
     if ai_model is None:
         return error(reason, images.reason_status(reason))
     try:
         turn = prepare(
-            user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent
+            user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent, sources
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
     return event_stream(run(turn, fmt, quality, transparent))
 
 
-def prepare(user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent):
+def prepare(
+    user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent, sources=()
+):
     """Nutzernachricht und (leere) Antwort des Bildmodells anlegen."""
     with transaction.atomic():
         Conversation.objects.select_for_update().filter(pk=conversation.pk).first()
@@ -98,9 +110,21 @@ def prepare(user, conversation, ai_model, content, expected_leaf, fmt, quality, 
         if expected_leaf is not None and expected_leaf != parent_id:
             raise services.TurnError(sharing.STALE_MESSAGE, 409)
         services.close_pending(conversation)
+        drafts = []
+        if sources:
+            drafts, _ = services._resolve_attachments(user, list(sources), None)
+            if not all(a.kind == Attachment.Kind.IMAGE for a in drafts):
+                raise services.TurnError(MSG_ONLY_IMAGES)
         user_message = services.append_message(
             conversation, parent=parent_id, role=Message.Role.USER, content=content, author=user
         )
+        if drafts:
+            Attachment.objects.filter(pk__in=[a.pk for a in drafts]).update(
+                message=user_message, conversation=conversation
+            )
+        image_state = {"format": fmt, "quality": quality, "transparent": transparent}
+        if drafts:
+            image_state["edit"] = True
         assistant = services.append_message(
             conversation,
             parent=user_message.pk,
@@ -108,7 +132,7 @@ def prepare(user, conversation, ai_model, content, expected_leaf, fmt, quality, 
             model=ai_model,
             author=user,
             status=Message.Status.ABORTED,  # Platzhalter wie in services
-            tool_state={"image": {"format": fmt, "quality": quality, "transparent": transparent}},
+            tool_state={"image": image_state},
         )
         fields = {"updated": timezone.now()}
         if not conversation.title:
@@ -116,7 +140,10 @@ def prepare(user, conversation, ai_model, content, expected_leaf, fmt, quality, 
         Conversation.objects.filter(pk=conversation.pk).update(**fields)
         for key, value in fields.items():
             setattr(conversation, key, value)
-    return services.Turn(user, conversation, ai_model, user_message, assistant, query=content)
+    options = {"image_sources": [a.pk for a in drafts]} if drafts else {}
+    return services.Turn(
+        user, conversation, ai_model, user_message, assistant, options=options, query=content
+    )
 
 
 def run(turn, fmt: str, quality: str, transparent: bool):
@@ -131,19 +158,34 @@ def run(turn, fmt: str, quality: str, transparent: bool):
             "parent_id": turn.user_message.parent_id,
         },
     )
-    yield "status", {"text": f"Bild wird mit {turn.ai_model.display_name} erzeugt …"}
+    verb = "bearbeitet" if turn.options.get("image_sources") else "erzeugt"
+    yield "status", {"text": f"Bild wird mit {turn.ai_model.display_name} {verb} …"}
     try:
         sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
-        attachment, revised = images.generate(
-            turn.user,
-            msg,
-            turn.query,
-            ai_model=turn.ai_model,
-            fmt=fmt,
-            quality=quality,
-            transparent=transparent,
-        )
-        text = answer_text(turn.ai_model, fmt, quality, revised)
+        source_ids = turn.options.get("image_sources") or []
+        if source_ids:
+            sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
+            attachment, revised = images.edit(
+                turn.user,
+                msg,
+                turn.query,
+                sources,
+                ai_model=turn.ai_model,
+                fmt=fmt,
+                quality=quality,
+                transparent=transparent,
+            )
+        else:
+            attachment, revised = images.generate(
+                turn.user,
+                msg,
+                turn.query,
+                ai_model=turn.ai_model,
+                fmt=fmt,
+                quality=quality,
+                transparent=transparent,
+            )
+        text = answer_text(turn.ai_model, fmt, quality, revised, edited=bool(source_ids))
         cost = attachment.cost
     except sharing.AccessRevoked:
         status, error = Message.Status.ABORTED, sharing.MSG_REVOKED

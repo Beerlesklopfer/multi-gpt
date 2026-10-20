@@ -85,7 +85,12 @@
     // Mehrere Bildmodelle: Auswahl „Modell“; sonst fest das eine (data-model-name).
     const imageModel = document.getElementById("image-mode-model");
     const currentName = () =>
-      imageModel?.selectedOptions?.[0]?.textContent || box.dataset.modelName || "";
+      imageModel?.selectedOptions?.[0]?.dataset.name || box.dataset.modelName || "";
+    // Kann das gewählte Bildmodell Bilder bearbeiten (data-edit am Eintrag bzw. am Kasten)?
+    const canEdit = () =>
+      imageModel
+        ? imageModel.selectedOptions?.[0]?.dataset.edit === "true"
+        : box.dataset.edit === "true";
     const patterns = loadPatterns();
     const placeholder = textarea.placeholder;
     let dismissedFor = null; // Text, für den der Hinweis weggeklickt wurde
@@ -191,9 +196,11 @@
       // false = nicht senden (Hinweis zeigen bzw. Anhänge im Modus „Bild“).
       beforeSend(text) {
         if (toggle.checked) {
-          if ((MultiGPT.attachments?.count() ?? 0) > 0) {
+          // Mit angehängten Bildern wird bearbeitet: nur mit einem Modell, das das kann.
+          if ((MultiGPT.attachments?.count() ?? 0) > 0 && !canEdit()) {
             MultiGPT.chatView?.setStatus(
-              "Im Modus „Bild“ sind noch keine Anhänge möglich. Bitte die Anhänge entfernen.",
+              "Dieses Bildmodell kann Bilder nicht bearbeiten. Bitte ein anderes Modell wählen " +
+                "oder die Anhänge entfernen.",
               true,
             );
             return false;
@@ -219,6 +226,9 @@
         const result = { content: payload.content, model: payload.model };
         if (payload.leaf) {
           result.leaf = payload.leaf;
+        }
+        if (Array.isArray(payload.attachments) && payload.attachments.length) {
+          result.attachments = payload.attachments;
         }
         result.image = { format: format.value, quality: quality.value };
         if (imageModel?.value) {

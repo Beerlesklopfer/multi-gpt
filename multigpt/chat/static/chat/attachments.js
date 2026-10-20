@@ -732,7 +732,9 @@
       if (!visionHint) {
         return;
       }
-      const blind = tray.hasImages() ? blindModels() : [];
+      // Im Modus „Bild“ liest das Bildmodell die Bilder, nicht das Chatmodell.
+      const inImageMode = MultiGPT.imageMode?.isActive?.() === true;
+      const blind = tray.hasImages() && !inImageMode ? blindModels() : [];
       visionHint.hidden = !blind.length;
       visionHint.textContent = blind.length ? visionText(blind) : "";
     }
@@ -856,7 +858,9 @@
         MultiGPT.chatView?.setStatus("Warte, bis alle Anhänge hochgeladen sind …");
         await target.waitIdle();
       }
-      const imageModels = target.hasImages() ? models().filter((m) => !visionOf(m.id)) : [];
+      const inImageMode = MultiGPT.imageMode?.isActive?.() === true;
+      const imageModels =
+        target.hasImages() && !inImageMode ? models().filter((m) => !visionOf(m.id)) : [];
       if (imageModels.length) {
         MultiGPT.chatView?.setStatus(visionText(imageModels), true);
         return false;

@@ -139,3 +139,22 @@ Folge für „alles Rust“: Der Verwalter selbst muss nicht neu erfunden werden
 
 MultiGPT behält in beiden Fällen die Richtlinie (Rechte, Rangfolge, Abrechnung) und den kleinen
 Vertrag; die Wahl kann später gewechselt werden.
+
+## Anforderung an Eliezer: Bilder bearbeiten (2026-10-20)
+
+MultiGPT kann hochgeladene Bilder von einem Bildmodell verändern lassen (M9-02, Modus „Bild“ mit
+angehängten Bildern). Bei Cloud-Anbietern läuft das über den OpenAI-Pfad; für Eliezer fehlt der
+Endpunkt. Was MultiGPT sendet und erwartet:
+
+- `POST /v1/images/edits`, `multipart/form-data` (wie OpenAI). Felder: `model` (Schlüssel), `prompt`,
+  `image` (eine Datei) bzw. `image[]` (mehrere, höchstens 4), `n` (1), `size` (`BxH`), außerdem
+  `quality`, `background`, `output_format`: werden ignoriert. Bilder PNG, JPEG oder WebP.
+- Antwort wie bei `/v1/images/generations`: `{"created": …, "data": [{"b64_json": "…", "revised_prompt": …}]}`.
+- Fehler wie dort (`400 invalid_request`, wenn das Modell keine Bearbeitung kann oder kein Bild
+  mitkommt; Bildgröße über dem Limit → 413).
+- Modellmeldung: `capabilities.image_edit = true` in `GET /api/v1/models` für Bildmodelle mit
+  Bearbeitung. Der Admin von MultiGPT stellt „Bilder bearbeiten“ am Modell heute von Hand ein;
+  mit der Meldung kann er es vorbelegen.
+- Laufzeit: stable-diffusion.cpp bearbeitet mit Referenzbild (FLUX.2 klein kann das von Haus aus,
+  Qwen-Image über eine Edit-Fassung des Modells); ob das mit den vorhandenen GGUF-Dateien läuft,
+  prüft die Eliezer-Sitzung.

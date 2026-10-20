@@ -82,6 +82,12 @@ MAX_PROMPT = 4000
 MAX_IMAGES_PER_ANSWER = 4
 
 MSG_NO_IMAGE_MODEL = "Es ist kein Modell zur Bilderzeugung eingerichtet bzw. freigegeben."
+MSG_NO_EDIT_MODEL = (
+    "Kein freigegebenes Bildmodell kann Bilder bearbeiten (Admin: „Bilder bearbeiten“ am Modell)."
+)
+MSG_NO_SOURCE = "Zum Bearbeiten bitte ein Bild anhängen."
+MSG_SOURCE_UNREADABLE = "Das angehängte Bild lässt sich nicht lesen."
+MAX_SOURCES = 4
 MSG_NOT_ALLOWED = "Die Bilderzeugung ist für dieses Konto nicht freigegeben."
 MSG_EMPTY_PROMPT = "Bitte beschreiben, welches Bild erzeugt werden soll."
 MSG_PROMPT_TOO_LONG = f"Die Bildbeschreibung ist zu lang (höchstens {MAX_PROMPT} Zeichen)."
@@ -138,7 +144,7 @@ class ImageError(Exception):
 # --- Auswahl des Bildmodells ---------------------------------------------------------
 
 
-def candidate_models(user) -> list[AIModel]:
+def candidate_models(user, edit: bool = False) -> list[AIModel]:
     """Aktive Bildmodelle unterstützter, aktiver Anbieter, die die Rolle erlaubt
     (ohne Budget- und Statusprüfung). Reihenfolge wie in der Modellauswahl."""
     qs = AIModel.objects.filter(
@@ -147,6 +153,8 @@ def candidate_models(user) -> list[AIModel]:
         provider__active=True,
         provider__kind__in=SUPPORTED_KINDS,
     ).select_related("provider")
+    if edit:
+        qs = qs.filter(can_edit_images=True)
     return [m for m in qs if model_permitted(user, m)]
 
 
@@ -164,9 +172,10 @@ def blocked_reason(user, ai_model: AIModel) -> str:
     return ""
 
 
-def ordered_models(user) -> list[AIModel]:
-    """Nutzbare Bildmodelle der Rolle, das Standardmodell der Einstellungen zuerst."""
-    models = candidate_models(user)
+def ordered_models(user, edit: bool = False) -> list[AIModel]:
+    """Nutzbare Bildmodelle der Rolle, das Standardmodell der Einstellungen zuerst
+    (``edit``: nur Modelle, die Bilder bearbeiten können)."""
+    models = candidate_models(user, edit)
     default_id = (
         ChatSettings.objects.filter(pk=ChatSettings.SINGLETON_PK)
         .values_list("default_image_model_id", flat=True)
@@ -176,25 +185,27 @@ def ordered_models(user) -> list[AIModel]:
     return models
 
 
-def pick_image_model(user, preferred_id: int | None = None) -> tuple[AIModel | None, str]:
+def pick_image_model(
+    user, preferred_id: int | None = None, edit: bool = False
+) -> tuple[AIModel | None, str]:
     """(Bildmodell, "") oder (None, Grund für Nutzer bzw. Modell).
 
     ``preferred_id``: das im Chat gewählte Bildmodell; ist es nicht erlaubt oder gerade
     nicht nutzbar, gibt es kein anderes (die Wahl ist ausdrücklich)."""
     if not can(user, Action.IMAGES):
         return None, MSG_NOT_ALLOWED
-    models = ordered_models(user)
+    models = ordered_models(user, edit)
     if preferred_id is not None:
         models = [m for m in models if m.pk == preferred_id]
         if not models:
-            return None, MSG_NO_IMAGE_MODEL
+            return None, MSG_NO_EDIT_MODEL if edit else MSG_NO_IMAGE_MODEL
     first_reason = ""
     for ai_model in models:
         reason = blocked_reason(user, ai_model)
         if not reason:
             return ai_model, ""
         first_reason = first_reason or reason
-    return None, first_reason or MSG_NO_IMAGE_MODEL
+    return None, first_reason or (MSG_NO_EDIT_MODEL if edit else MSG_NO_IMAGE_MODEL)
 
 
 def selectable_models(user) -> list[AIModel]:
@@ -207,7 +218,7 @@ def selectable_models(user) -> list[AIModel]:
 def reason_status(reason: str) -> int:
     """HTTP-Status zum Grund aus ``pick_image_model``: kein Modell 409, offline
     503, sonst (Recht, Budget) 403."""
-    if reason == MSG_NO_IMAGE_MODEL:
+    if reason in (MSG_NO_IMAGE_MODEL, MSG_NO_EDIT_MODEL):
         return 409
     if reason.endswith(MSG_OFFLINE.split("}", 1)[1]):
         return 503
@@ -258,7 +269,7 @@ def _book(attachment: Attachment, ai_model: AIModel, units: dict, image_usage, u
         logger.error("Buchung für Bild %s fehlgeschlagen: %s", attachment.pk, type(exc).__name__)
 
 
-def _store(message, ai_model: AIModel, image, prompt: str) -> Attachment:
+def _store(message, ai_model: AIModel, image, prompt: str, source=None) -> Attachment:
     """Bild prüfen, ohne Metadaten neu kodieren, Vorschau, als Anhang speichern."""
     if len(image.data) > chat_attachments.max_image_bytes():
         raise ImageError(MSG_IMAGE_TOO_LARGE)
@@ -277,6 +288,7 @@ def _store(message, ai_model: AIModel, image, prompt: str) -> Attachment:
         size=len(result["data"]),
         original_name=_file_name(prompt).removesuffix(".png") + result["extension"],
         generated_by_model=ai_model,
+        source_image=source,
     )
     try:
         with transaction.atomic():
@@ -317,15 +329,36 @@ def generate(
         raise ImageError(usage.blocked_reason(user, ai_model) or MSG_NO_IMAGE_MODEL, 403)
     size = FORMATS[fmt]
     adapter = registry.get_adapter(ai_model.provider)
-    try:
-        result = adapter.generate_image(
+    result = _provider_call(
+        message,
+        ai_model,
+        lambda: adapter.generate_image(
             ai_model.model_id,
             prompt,
             size=size,
             quality=quality,
             background="transparent" if transparent else None,
             n=1,
-        )
+        ),
+    )
+    image = result.images[0]
+    attachment = _store(message, ai_model, image, prompt)
+    _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
+    attachment.refresh_from_db(fields=["cost"])
+    logger.info(
+        "Bild %s erzeugt (Nachricht %s, Modell %s, %d Bytes)",
+        attachment.pk,
+        message.pk,
+        ai_model.pk,
+        attachment.size,
+    )
+    return attachment, image.revised_prompt
+
+
+def _provider_call(message, ai_model: AIModel, call):
+    """Anbieteraufruf mit den deutschen Fehlertexten (Erzeugen und Bearbeiten gleich)."""
+    try:
+        return call()
     except NotImplementedError:
         raise ImageError(MSG_UNSUPPORTED, 409) from None
     except ContentBlocked as exc:
@@ -341,16 +374,65 @@ def generate(
         if getattr(exc, "retryable", False):
             provider_status.invalidate(ai_model.provider_id)
         raise ImageError(str(exc) or MSG_FAILED, 502) from None
+
+
+def edit(
+    user,
+    message,
+    prompt: str,
+    sources: list[Attachment],
+    *,
+    ai_model: AIModel,
+    fmt: str = DEFAULT_FORMAT,
+    quality: str = DEFAULT_QUALITY,
+    transparent: bool = False,
+) -> tuple[Attachment, str]:
+    """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern.
+
+    Wie ``generate``; das Ergebnis verweist über ``source_image`` auf das erste Ausgangsbild.
+    Das Modell muss „Bilder bearbeiten“ können (Admin), sonst ``ImageError`` 409."""
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise ImageError(MSG_EMPTY_PROMPT)
+    if len(prompt) > MAX_PROMPT:
+        raise ImageError(MSG_PROMPT_TOO_LONG)
+    if not sources or len(sources) > MAX_SOURCES:
+        raise ImageError(MSG_NO_SOURCE)
+    if not ai_model.can_edit_images:
+        raise ImageError(MSG_NO_EDIT_MODEL, 409)
+    if not can(user, Action.USE_MODEL, ai_model):
+        raise ImageError(usage.blocked_reason(user, ai_model) or MSG_NO_EDIT_MODEL, 403)
+    payload = []
+    for source in sources:
+        raw = chat_attachments.read(source)
+        if raw is None:
+            raise ImageError(MSG_SOURCE_UNREADABLE)
+        payload.append((source.display_name or "bild.png", source.mime_type or "image/png", raw))
+    size = FORMATS[fmt]
+    adapter = registry.get_adapter(ai_model.provider)
+    result = _provider_call(
+        message,
+        ai_model,
+        lambda: adapter.edit_image(
+            ai_model.model_id,
+            payload,
+            prompt,
+            size=size,
+            quality=quality,
+            background="transparent" if transparent else None,
+            n=1,
+        ),
+    )
     image = result.images[0]
-    attachment = _store(message, ai_model, image, prompt)
+    attachment = _store(message, ai_model, image, prompt, source=sources[0])
     _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
     attachment.refresh_from_db(fields=["cost"])
     logger.info(
-        "Bild %s erzeugt (Nachricht %s, Modell %s, %d Bytes)",
+        "Bild %s bearbeitet (Nachricht %s, Modell %s, %d Vorlagen)",
         attachment.pk,
         message.pk,
         ai_model.pk,
-        attachment.size,
+        len(sources),
     )
     return attachment, image.revised_prompt
 

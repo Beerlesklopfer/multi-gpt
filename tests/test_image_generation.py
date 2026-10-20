@@ -177,6 +177,42 @@ def test_openai_generate_image_success():
     assert (result.usage.tokens_in, result.usage.tokens_out) == (50, 50)
 
 
+def test_openai_edit_image_sends_multipart_with_the_source():
+    with respx.mock(assert_all_called=True) as router:
+        route = router.post(f"{OPENAI}/images/edits").respond(200, json=OPENAI_PAYLOAD)
+        result = openai_adapter().edit_image(
+            "gpt-image-1",
+            [("vorlage.png", "image/png", PNG)],
+            "Mach den Kreis blau",
+            size="1024x1024",
+            quality="high",
+            n=1,
+        )
+    request = route.calls.last.request
+    assert request.headers["content-type"].startswith("multipart/form-data")
+    body = request.content
+    assert b'name="image"; filename="vorlage.png"' in body and PNG in body
+    for field, value in (("model", "gpt-image-1"), ("prompt", "Mach den Kreis blau"), ("n", "1")):
+        assert f'name="{field}"'.encode() in body and value.encode() in body
+    assert b"response_format" not in body
+    assert request.headers["Authorization"] == f"Bearer {KEY}"
+    assert result.images[0].data == PNG
+
+
+def test_openai_edit_image_with_several_sources_uses_the_array_field():
+    with respx.mock(assert_all_called=True) as router:
+        route = router.post(f"{OPENAI}/images/edits").respond(200, json=OPENAI_PAYLOAD)
+        openai_adapter().edit_image(
+            "gpt-image-1", [("a.png", "image/png", PNG), ("b.png", "image/png", PNG)], "Mischen"
+        )
+    assert route.calls.last.request.content.count(b'name="image[]"') == 2
+
+
+def test_openai_edit_image_needs_a_source():
+    with pytest.raises(ProviderError):
+        openai_adapter().edit_image("gpt-image-1", [], "Blau")
+
+
 def test_openai_dalle3_uses_b64_and_own_sizes():
     with respx.mock() as router:
         route = router.post(f"{OPENAI}/images/generations").respond(
@@ -340,6 +376,15 @@ class FakeImageAdapter(ProviderAdapter):
         if self.error is not None:
             raise self.error
         return ImageResult([GeneratedImage(self.image, self.mime)], self.usage)
+
+    def edit_image(self, model_id, images, prompt, **params):
+        sizes = [(name, mime, len(raw)) for name, mime, raw in images]
+        self.log.append(
+            {"edit": True, "model": model_id, "prompt": prompt, "images": sizes, **params}
+        )
+        if self.error is not None:
+            raise self.error
+        return ImageResult([GeneratedImage(self.image, self.mime, "Ein blauer Kreis")], self.usage)
 
 
 class ScriptedChat(ProviderAdapter):
@@ -762,7 +807,9 @@ def test_image_mode_error_is_stored(client, conversation, image_model, fakes):
         ({"image": {"format": "rund"}}, 400),
         ({"image": "ja"}, 400),
         ({"image": {}, "regenerate": True}, 400),
-        ({"image": {}, "attachments": [1]}, 400),
+        ({"image": {}, "attachments": "x"}, 400),
+        ({"image": {}, "attachments": [True]}, 400),
+        ({"image": {}, "attachments": [1, 2, 3, 4, 5]}, 400),
         ({"image": {}, "content": "  "}, 400),
     ],
 )
@@ -1005,3 +1052,100 @@ def test_other_answers_are_not_refusals(text):
 def test_refusal_patterns_reach_the_page(client, adult, conversation, image_model):
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert "refusalImage" in page and "refusalHead" in page
+
+
+@pytest.fixture
+def editor_model(image_provider):
+    return AIModel.objects.create(
+        provider=image_provider,
+        model_id="gpt-image-1.5",
+        display_name="GPT Image Edit",
+        capability=AIModel.Capability.IMAGE,
+        can_edit_images=True,
+        sort_order=7,
+    )
+
+
+def make_draft(owner, kind="image", data=PNG, name="vorlage.png"):
+    from django.core.files.base import ContentFile
+
+    draft = Attachment(
+        owner=owner,
+        kind=kind,
+        mime_type="image/png" if kind == "image" else "application/pdf",
+        size=len(data),
+        original_name=name,
+    )
+    draft.file.save(name, ContentFile(data), save=False)
+    draft.save()
+    return draft
+
+
+@pytest.mark.django_db
+def test_image_mode_edits_uploaded_image(
+    client, adult, conversation, image_model, editor_model, fakes
+):
+    _, image_calls = fakes()
+    draft = make_draft(adult)
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Mach den Kreis blau",
+            attachments=[draft.pk],
+            image={"model": editor_model.pk},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    call = image_calls[0]
+    assert call["edit"] is True and call["model"] == "gpt-image-1.5"
+    assert call["images"] == [("vorlage.png", "image/png", len(PNG))]
+    reply = Message.objects.get(role="assistant")
+    assert reply.model == editor_model
+    assert reply.content.startswith("Bild bearbeitet mit GPT Image Edit")
+    assert "Ein blauer Kreis" in reply.content
+    assert reply.tool_state["image"]["edit"] is True
+    question = Message.objects.get(role="user")
+    draft.refresh_from_db()
+    assert draft.message == question  # die Vorlage hängt an der Frage
+    result = Attachment.objects.get(message=reply)
+    assert result.source_image == draft and result.generated_by_model == editor_model
+
+
+@pytest.mark.django_db
+def test_edit_needs_a_model_that_can_edit(client, adult, conversation, image_model, fakes):
+    fakes()
+    draft = make_draft(adult)
+    response = post(client, conversation, content="Blau", attachments=[draft.pk], image={})
+    assert response.status_code == 409
+    assert images.MSG_NO_EDIT_MODEL in response.json()["error"]
+    assert not Message.objects.filter(role="assistant").exists()
+
+
+@pytest.mark.django_db
+def test_edit_rejects_files_that_are_not_images(client, adult, conversation, editor_model, fakes):
+    fakes()
+    draft = make_draft(adult, kind="file", data=b"%PDF-1.4", name="x.pdf")
+    response = post(client, conversation, content="Blau", attachments=[draft.pk], image={})
+    assert response.status_code == 400
+    assert not Message.objects.filter(role="assistant").exists()
+
+
+@pytest.mark.django_db
+def test_edit_cannot_use_foreign_drafts(client, adult, conversation, editor_model, fakes):
+    fakes()
+    other = make_user("adult", "fremd")
+    draft = make_draft(other)
+    response = post(client, conversation, content="Blau", attachments=[draft.pk], image={})
+    assert response.status_code == 400
+    draft.refresh_from_db()
+    assert draft.message is None
+
+
+@pytest.mark.django_db
+def test_chat_page_marks_models_that_can_edit(
+    client, adult, conversation, image_model, editor_model
+):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert f'value="{editor_model.pk}" data-name="GPT Image Edit" data-edit="true"' in page
+    assert f'value="{image_model.pk}" data-name="GPT Image" data-edit="false"' in page
