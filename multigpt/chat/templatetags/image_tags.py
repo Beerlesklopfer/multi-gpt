@@ -25,5 +25,11 @@ def image_mode_config(context) -> dict:
         "models": [{"id": m.pk, "name": m.display_name} for m in models],
         "formats": list(images.FORMAT_LABELS.items()),
         "qualities": list(images.QUALITIES.items()),
-        "patterns": {"request": images.REQUEST_PATTERNS, "code": images.CODE_PATTERN},
+        "patterns": {
+            "request": images.REQUEST_PATTERNS,
+            "code": images.CODE_PATTERN,
+            "refusal": images.REFUSAL_PATTERN,
+            "refusalImage": images.REFUSAL_IMAGE_WORD,
+            "refusalHead": images.REFUSAL_HEAD,
+        },
     }

@@ -112,6 +112,16 @@ REQUEST_PATTERNS = [
     r"\b(generate|create|make|render)\s+(me\s+)?(an?\s+)?([a-z-]+\s+){0,2}"
     r"(image|picture|photo|illustration|drawing|logo|painting)\b",
 ]
+# Antwort eines Chatmodells, die einen Bildwunsch ablehnt („kann keine Bilder erzeugen“): Der
+# Knopf „Mit Bildmodell erzeugen“ unter der Antwort (image_mode.js) braucht eine Ablehnung und
+# ein Bildwort in den ersten 400 Zeichen. Wie die Muster oben in Python und JavaScript gleich.
+REFUSAL_PATTERN = (
+    r"(can(?:no|['\u2019])t|cannot|unable to|not able to|don't have the ability|"
+    r"kann\s+(?:leider\s+)?(?:keine?|kein)\s|nicht in der lage|"
+    r"kann\b[^.]{0,40}\bnicht\s+(?:erzeugen|erstellen|generieren))"
+)
+REFUSAL_IMAGE_WORD = r"(image|picture|photo|illustration|artwork|bild|grafik|foto|zeichnung)"
+REFUSAL_HEAD = 400
 # Ausdrücklich Code gewünscht: kein Hinweis.
 CODE_PATTERN = r"\b(svg|ascii|tikz|mermaid|plantuml|graphviz|html|css|canvas|python|code)\b"
 

@@ -966,3 +966,42 @@ def test_chat_page_offers_all_usable_image_models(
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert 'id="image-mode-model"' in page
     assert "Qwen Image" in page
+
+
+REFUSALS = [
+    "I can’t generate or display that image for you directly, but I can help",
+    "Ich bin leider nicht in der Lage, Bilder zu erstellen, aber ich kann Ihnen",
+    "I cannot create images.",
+    "Ich kann leider keine Bilder erzeugen.",
+    "Das Bild kann ich nicht erzeugen.",
+]
+NOT_REFUSALS = [
+    "Hier ist der Code für die Funktion.",
+    "I cannot find the file you mentioned.",
+    "Ich kann die Datei nicht öffnen.",
+    "Das Bild zeigt einen Hund.",
+]
+
+
+def refused(text):
+    head = text[: images.REFUSAL_HEAD]
+    return bool(
+        re.search(images.REFUSAL_PATTERN, head, re.I)
+        and re.search(images.REFUSAL_IMAGE_WORD, head, re.I)
+    )
+
+
+@pytest.mark.parametrize("text", REFUSALS)
+def test_refusal_of_image_request_is_recognized(text):
+    assert refused(text)
+
+
+@pytest.mark.parametrize("text", NOT_REFUSALS)
+def test_other_answers_are_not_refusals(text):
+    assert not refused(text)
+
+
+@pytest.mark.django_db
+def test_refusal_patterns_reach_the_page(client, adult, conversation, image_model):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert "refusalImage" in page and "refusalHead" in page

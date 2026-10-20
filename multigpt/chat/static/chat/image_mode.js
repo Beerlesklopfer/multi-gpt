@@ -47,7 +47,13 @@
       data = {};
     }
     const request = Array.isArray(data.request) ? data.request.map(compile).filter(Boolean) : [];
-    return { request, code: typeof data.code === "string" ? compile(data.code) : null };
+    return {
+      request,
+      code: typeof data.code === "string" ? compile(data.code) : null,
+      refusal: typeof data.refusal === "string" ? compile(data.refusal) : null,
+      refusalImage: typeof data.refusalImage === "string" ? compile(data.refusalImage) : null,
+      refusalHead: Number.isInteger(data.refusalHead) ? data.refusalHead : 400,
+    };
   }
 
   // Klingt der Text wie ein Bildauftrag (und nicht ausdrücklich nach Code)?
@@ -234,18 +240,15 @@
   // Knopf belegt nur vor (Modus „Bild“ an, die Frage im Eingabefeld); gesendet wird erst,
   // wenn der Nutzer sendet. Der Text der Frage kommt aus dem Verlauf und geht nur als Wert
   // ins Eingabefeld, nie als HTML. Muster müssen nur grob stimmen: Es bleibt ein Hinweis.
-  const REFUSAL = new RegExp(
-    "(can(?:no|['’])t|cannot|unable to|not able to|don't have the ability|" +
-      "kann\\s+(?:leider\\s+)?(?:keine?|kein)\\s|nicht in der lage|" +
-      "kann\\b[^.]{0,40}\\bnicht\\s+(?:erzeugen|erstellen|generieren))",
-    "i",
-  );
-  const IMAGE_WORD = /(image|picture|photo|illustration|artwork|bild|grafik|foto|zeichnung)/i;
   const MAX_PROMPT = 4000;
 
-  function refusedImage(text) {
-    const head = String(text || "").slice(0, 400);
-    return REFUSAL.test(head) && IMAGE_WORD.test(head);
+  // Muster kommen vom Server (images.REFUSAL_PATTERN, in Python getestet).
+  function refusedImage(text, patterns) {
+    if (!patterns.refusal || !patterns.refusalImage) {
+      return false;
+    }
+    const head = String(text || "").slice(0, patterns.refusalHead);
+    return patterns.refusal.test(head) && patterns.refusalImage.test(head);
   }
 
   function questionOf(article) {
@@ -257,7 +260,7 @@
     return "";
   }
 
-  function addRefusalHint(article, textarea) {
+  function addRefusalHint(article, textarea, patterns) {
     if (article.dataset.imageRefusal || article.dataset.role !== "assistant") {
       return;
     }
@@ -270,7 +273,7 @@
       return;
     }
     article.dataset.imageRefusal = "checked";
-    if (!refusedImage(content.textContent)) {
+    if (!refusedImage(content.textContent, patterns)) {
       return;
     }
     const box = document.createElement("p");
@@ -298,6 +301,7 @@
   }
 
   function watchRefusals(textarea) {
+    const patterns = loadPatterns();
     const log = document.getElementById("chat-log");
     if (!log) {
       return;
@@ -306,7 +310,7 @@
     const scan = () => {
       pending = 0;
       for (const article of log.querySelectorAll(".chat-message-assistant")) {
-        addRefusalHint(article, textarea);
+        addRefusalHint(article, textarea, patterns);
       }
     };
     scan();
