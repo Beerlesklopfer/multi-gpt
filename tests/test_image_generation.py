@@ -1237,3 +1237,155 @@ def test_chain_prompt_trims_the_old_description_when_too_long():
     chained = images.chain_prompt(long_prompt, "heller")
     assert len(chained) == images.MAX_PROMPT and chained.endswith(". Änderung: heller")
     assert images.chain_prompt("", "heller") == "heller"
+
+
+@pytest.mark.django_db
+def test_regenerate_of_an_image_reply_runs_the_image_model_again(
+    client, conversation, chat_model, image_model, fakes
+):
+    chat_calls, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis", format="portrait", quality="high")
+    reply = Message.objects.get(role="assistant")
+    events = events_of(
+        post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk)
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    assert chat_calls == []  # kein Chatmodell, das nur Text liefert
+    assert len(image_calls) == 2 and image_calls[1]["prompt"] == "Ein roter Kreis"
+    assert image_calls[1]["size"] == "1024x1536" and image_calls[1]["quality"] == "high"
+    new = Message.objects.filter(role="assistant").exclude(pk=reply.pk).get()
+    assert new.parent_id == reply.parent_id and new.model == image_model  # neue Version
+    assert new.content.startswith("Bild erzeugt mit GPT Image")
+    assert Attachment.objects.filter(message=new).exists()
+    conversation.refresh_from_db()
+    assert conversation.current_leaf_id == new.pk
+
+
+@pytest.mark.django_db
+def test_regenerate_of_an_edit_reply_edits_again(
+    client, adult, conversation, chat_model, editor_model, fakes
+):
+    _, image_calls = fakes()
+    draft = make_draft(adult)
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Mach den Kreis blau",
+            attachments=[draft.pk],
+            image={"model": editor_model.pk},
+        )
+    )
+    reply = Message.objects.get(role="assistant")
+    events_of(post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk))
+    assert [c.get("edit") for c in image_calls] == [True, True]
+    assert image_calls[1]["images"] == image_calls[0]["images"]
+
+
+@pytest.mark.django_db
+def test_editing_the_question_of_an_image_reply_creates_a_new_image(
+    client, conversation, chat_model, image_model, fakes
+):
+    chat_calls, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    question = Message.objects.get(role="user")
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Ein grünes Quadrat",
+            edit_of=question.pk,
+            model=chat_model.pk,
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    assert chat_calls == [] and image_calls[1]["prompt"] == "Ein grünes Quadrat"
+    questions = Message.objects.filter(role="user").order_by("pk")
+    assert questions.count() == 2 and questions[1].parent_id == question.parent_id
+    reply = Message.objects.filter(role="assistant").order_by("pk").last()
+    assert reply.parent_id == questions[1].pk and reply.model == image_model
+
+
+@pytest.mark.django_db
+def test_regenerate_of_a_chat_reply_is_unchanged(
+    client, conversation, chat_model, image_model, fakes
+):
+    chat_calls, image_calls = fakes(script=[[Delta("Hallo"), Usage(1, 1), Done("stop")]])
+    events_of(post(client, conversation, content="Hallo", model=chat_model.pk))
+    reply = Message.objects.get(role="assistant")
+    events_of(post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk))
+    assert len(chat_calls) == 2 and image_calls == []
+
+
+class EditMissingAdapter(FakeImageAdapter):
+    """Anbieter ohne Pfad zum Bearbeiten: ``/images/edits`` antwortet 404."""
+
+    def edit_image(self, model_id, images, prompt, **params):
+        from multigpt.chat.providers.base import ProviderHTTPError
+
+        self.log.append({"edit": True, "model": model_id, "prompt": prompt})
+        raise ProviderHTTPError("nicht gefunden", 404)
+
+
+@pytest.fixture
+def no_edit_provider(monkeypatch):
+    calls = []
+
+    def get_adapter(provider):
+        return EditMissingAdapter(provider, calls)
+
+    monkeypatch.setattr(registry, "get_adapter", get_adapter)
+    return calls
+
+
+@pytest.mark.django_db
+def test_continue_falls_back_to_the_description_when_the_provider_cannot_edit(
+    client, conversation, editor_model, no_edit_provider
+):
+    first_image(client, conversation, prompt="Ein roter Kreis", model=editor_model.pk)
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="mehr Schatten",
+            image={"model": editor_model.pk, "continue": True},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    generated = [c for c in no_edit_provider if "edit" not in c]
+    assert generated[-1]["prompt"] == "Ein roter Kreis. Änderung: mehr Schatten"
+    reply = Message.objects.filter(role="assistant").order_by("pk").last()
+    assert reply.status == Message.Status.COMPLETE
+    assert "Weitergearbeitet an der Beschreibung" in reply.content
+    assert reply.tool_state["image"]["edit"] is False
+    assert reply.tool_state["image"]["prompt"] == "Ein roter Kreis. Änderung: mehr Schatten"
+
+
+@pytest.mark.django_db
+def test_uploaded_source_is_not_replaced_when_the_provider_cannot_edit(
+    client, adult, conversation, editor_model, no_edit_provider
+):
+    draft = make_draft(adult)
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Blau",
+            attachments=[draft.pk],
+            image={"model": editor_model.pk},
+        )
+    )
+    assert any(name == "error" and "Bilder nicht bearbeiten" in d["message"] for name, d in events)
+    assert [c for c in no_edit_provider if "edit" not in c] == []  # kein stilles Neuerzeugen
+
+
+@pytest.mark.django_db
+def test_long_message_starts_a_new_image_even_with_continue(
+    client, conversation, image_model, fakes
+):
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    long_text = "Ein Hirsch im Nebel. " * 15  # > 200 Zeichen: eine eigene Beschreibung
+    assert len(long_text) > images.CONTINUE_MAX_CHARS
+    events_of(post(client, conversation, content=long_text, image={"continue": True}))
+    assert image_calls[1]["prompt"] == long_text.strip()

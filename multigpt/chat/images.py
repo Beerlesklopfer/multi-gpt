@@ -92,6 +92,12 @@ MSG_NO_IMAGE_MODEL = "Es ist kein Modell zur Bilderzeugung eingerichtet bzw. fre
 MSG_NO_EDIT_MODEL = (
     "Kein freigegebenes Bildmodell kann Bilder bearbeiten (Admin: „Bilder bearbeiten“ am Modell)."
 )
+MSG_EDIT_UNSUPPORTED = (
+    "Der Anbieter von {model} kann Bilder nicht bearbeiten (der Pfad zum Bearbeiten fehlt). "
+    "Anbieter aktualisieren oder „Bilder bearbeiten“ am Modell ausschalten."
+)
+# Längere Nachrichten sind eine eigene Bildbeschreibung, keine Änderung am letzten Bild.
+CONTINUE_MAX_CHARS = 200
 MSG_NO_SOURCE = "Zum Bearbeiten bitte ein Bild anhängen."
 MSG_SOURCE_UNREADABLE = "Das angehängte Bild lässt sich nicht lesen."
 MAX_SOURCES = 4
@@ -146,6 +152,10 @@ class ImageError(Exception):
         super().__init__(message)
         self.message = message
         self.status = status
+
+
+class EditUnsupported(ImageError):
+    """Der Anbieter kennt das Bearbeiten von Bildern nicht (Pfad ``/images/edits`` fehlt)."""
 
 
 # --- Auswahl des Bildmodells ---------------------------------------------------------
@@ -362,7 +372,7 @@ def generate(
     return attachment, image.revised_prompt
 
 
-def _provider_call(message, ai_model: AIModel, call):
+def _provider_call(message, ai_model: AIModel, call, *, editing: bool = False):
     """Anbieteraufruf mit den deutschen Fehlertexten (Erzeugen und Bearbeiten gleich)."""
     try:
         return call()
@@ -372,15 +382,26 @@ def _provider_call(message, ai_model: AIModel, call):
         logger.info("Bild für Nachricht %s: Inhaltsfilter (Modell %s)", message.pk, ai_model.pk)
         raise ImageError(str(exc), 422) from None
     except ProviderError as exc:
-        logger.info(
-            "Bild für Nachricht %s fehlgeschlagen (Modell %s, %s)",
-            message.pk,
-            ai_model.pk,
-            type(exc).__name__,
-        )
-        if getattr(exc, "retryable", False):
-            provider_status.invalidate(ai_model.provider_id)
-        raise ImageError(str(exc) or MSG_FAILED, 502) from None
+        # Fehlt dem Anbieter nur der Pfad zum Bearbeiten (HTTP 404/405/501), gibt es einen
+        # eigenen Fehler, auf den das Weiterarbeiten mit der Beschreibung ausweichen kann.
+        if editing and getattr(exc, "status", None) in (404, 405, 501):
+            raise EditUnsupported(
+                MSG_EDIT_UNSUPPORTED.format(model=ai_model.display_name), 409
+            ) from None
+        raise _translate(message, ai_model, exc) from None
+
+
+def _translate(message, ai_model: AIModel, exc: ProviderError) -> ImageError:
+    """``ProviderError`` als ``ImageError`` mit deutschem Text (ohne Rohtext des Anbieters)."""
+    logger.info(
+        "Bild für Nachricht %s fehlgeschlagen (Modell %s, %s)",
+        message.pk,
+        ai_model.pk,
+        type(exc).__name__,
+    )
+    if getattr(exc, "retryable", False):
+        provider_status.invalidate(ai_model.provider_id)
+    return ImageError(str(exc) or MSG_FAILED, 502)
 
 
 def edit(
@@ -429,6 +450,7 @@ def edit(
             background="transparent" if transparent else None,
             n=1,
         ),
+        editing=True,
     )
     image = result.images[0]
     attachment = _store(message, ai_model, image, prompt, source=sources[0])

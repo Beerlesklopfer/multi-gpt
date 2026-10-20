@@ -430,6 +430,12 @@ def _stream(request, conversation: Conversation):
     data = _json_body(request)
     if data is None:
         return _error("Ungültige Anfrage.", 400)
+    rerun = api_images.rerun_target(conversation, data)
+    if rerun is not None:
+        # Neu erzeugen bzw. Bearbeiten einer Bildantwort: wieder über das Bildmodell.
+        return api_images.rerun(
+            request, conversation, data, rerun, error=_error, event_stream=_event_stream
+        )
     if data.get("image") is not None:
         # Modus „Bild“ (M9-01): direkt an das Bildmodell, ohne Chatmodell.
         return api_images.stream(

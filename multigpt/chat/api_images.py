@@ -12,7 +12,10 @@ Bilder bearbeiten (M9-02): Hängen Bilder an der Nachricht (``"attachments"``), 
 Nachricht mit den Bildern als Vorlage an ein Bildmodell mit „Bilder bearbeiten“
 (``images.edit``); das Ergebnis verweist über ``source_image`` auf die Vorlage.
 
-Noch nicht im Modus „Bild“: Neu erzeugen und Bearbeiten einer gesendeten Nachricht.
+Neu erzeugen und Bearbeiten (``rerun``): Betrifft die Anfrage eine Bildantwort
+(``tool_state["image"]``), also „Neu erzeugen“ der Antwort bzw. „Bearbeiten“ der Frage davor,
+läuft sie wieder über das Bildmodell mit den gespeicherten Optionen statt über ein Chatmodell,
+das nur Text liefert.
 """
 
 from __future__ import annotations
@@ -22,6 +25,9 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+from multigpt.accounts.permissions import Action, can
+
+from . import attachments as chat_attachments
 from . import images, services, sharing
 from . import status as provider_status
 from .models import Attachment, Conversation, Message
@@ -111,7 +117,9 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             quality,
             transparent,
             sources,
-            continue_last=continue_last and not sources,
+            continue_last=continue_last
+            and not sources
+            and len(content) <= images.CONTINUE_MAX_CHARS,
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
@@ -185,8 +193,169 @@ def prepare(
             setattr(conversation, key, value)
     source_ids = [a.pk for a in drafts] + reuse
     options = {"image_sources": source_ids} if source_ids else {}
+    if reuse:
+        options["image_reuse"] = True
     return services.Turn(
         user, conversation, ai_model, user_message, assistant, options=options, query=prompt
+    )
+
+
+def rerun_target(conversation: Conversation, data: dict):
+    """``("regenerate", Antwort)`` bzw. ``("edit", Antwort der Frage)``, wenn die Anfrage eine
+    Bildantwort betrifft (Neu erzeugen / Bearbeiten im Chat), sonst ``None``."""
+    if data.get("image") is not None:
+        return None
+    pk = data.get("message_id") if data.get("regenerate") is True else data.get("edit_of")
+    if isinstance(pk, bool) or not isinstance(pk, int):
+        return None
+
+    def is_image_reply(message) -> bool:
+        state = message.tool_state if isinstance(message.tool_state, dict) else {}
+        return isinstance(state.get("image"), dict)
+
+    if data.get("regenerate") is True:
+        reply = conversation.messages.filter(pk=pk, role=Message.Role.ASSISTANT).first()
+        return ("regenerate", reply) if reply is not None and is_image_reply(reply) else None
+    original = conversation.messages.filter(pk=pk, role=Message.Role.USER).first()
+    if original is None:
+        return None
+    replies = conversation.messages.filter(parent_id=original.pk, role=Message.Role.ASSISTANT)
+    for reply in replies.order_by("-id"):
+        if is_image_reply(reply):
+            return "edit", reply
+    return None
+
+
+def rerun(request, conversation: Conversation, data: dict, target, *, error, event_stream):
+    """Bildantwort neu erzeugen bzw. die Frage dazu bearbeiten und neu senden: dasselbe
+    Bildmodell, Format und Qualität der alten Antwort; neue Version im Baum."""
+    user = request.user
+    kind, old = target
+    state = old.tool_state["image"]
+    if kind == "edit" and not can(user, Action.UPDATE, conversation):
+        return error("Du darfst in diesem Chat keine Nachrichten bearbeiten.", 403)
+    try:
+        fmt, quality, transparent = images.clean_options(
+            state.get("format"), state.get("quality"), state.get("transparent")
+        )
+    except images.ImageError as exc:
+        return error(exc.message, exc.status)
+    question = conversation.messages.filter(pk=old.parent_id, role=Message.Role.USER).first()
+    if question is None:
+        return error(MSG_INVALID, 400)
+    content = question.content
+    if kind == "edit":
+        content = data.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return error(images.MSG_EMPTY_PROMPT, 400)
+        content = content.strip()
+        if len(content) > images.MAX_PROMPT:
+            return error(images.MSG_PROMPT_TOO_LONG, 400)
+    ids = data.get("attachments") if kind == "edit" else None
+    if ids is not None and not (
+        isinstance(ids, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in ids)
+    ):
+        return error(MSG_INVALID, 400)
+    try:
+        turn, ai_model = prepare_rerun(
+            user,
+            conversation,
+            kind,
+            old,
+            question,
+            content,
+            state,
+            ids,
+            (fmt, quality, transparent),
+        )
+    except services.TurnError as exc:
+        return error(exc.message, exc.status)
+    return event_stream(run(turn, fmt, quality, transparent))
+
+
+def prepare_rerun(user, conversation, kind, old, question, content, state, ids, options):
+    """Neue Version anlegen (Antwort bzw. Frage mit Antwort) und das Bildmodell festlegen."""
+    fmt, quality, transparent = options
+    with transaction.atomic():
+        Conversation.objects.select_for_update().filter(pk=conversation.pk).first()
+        services.close_pending(conversation)
+        # Vorlagen: Anhänge der Frage (beim Bearbeiten die gewählten), sonst das Bild davor.
+        originals, drafts = [], []
+        if kind == "edit" and ids is not None:
+            drafts, originals = services._resolve_attachments(user, ids, question.pk)
+        else:
+            originals = list(
+                Attachment.objects.filter(
+                    message_id=question.pk, kind=Attachment.Kind.IMAGE, tool_call__isnull=True
+                ).order_by("created", "id")
+            )
+        if not all(a.kind == Attachment.Kind.IMAGE for a in [*drafts, *originals]):
+            raise services.TurnError(MSG_ONLY_IMAGES)
+        sources = [*drafts, *originals]
+        prompt, reuse = content, []
+        new_state = {"format": fmt, "quality": quality, "transparent": transparent}
+        if sources:
+            new_state["edit"] = True
+        elif state.get("continued"):
+            previous = images.previous_image(question.parent_id)
+            if previous is not None:
+                last_image, last_prompt = previous
+                if old.model is not None and old.model.can_edit_images:
+                    reuse = [last_image.pk]
+                    new_state["edit"] = True
+                else:
+                    prompt = images.chain_prompt(last_prompt, content)
+                new_state["continued"] = True
+        new_state["prompt"] = prompt[: images.MAX_PROMPT]
+        ai_model, reason = images.pick_image_model(
+            user, old.model_id, edit=bool(new_state.get("edit"))
+        )
+        if ai_model is None:
+            raise services.TurnError(reason, images.reason_status(reason))
+        user_message = None
+        if kind == "edit":
+            user_message = services.append_message(
+                conversation,
+                parent=question.parent_id,
+                role=Message.Role.USER,
+                content=content,
+                author=user,
+            )
+            for original in originals:
+                chat_attachments.copy_for_message(original, user_message)
+            if drafts:
+                Attachment.objects.filter(pk__in=[a.pk for a in drafts]).update(
+                    message=user_message, conversation=conversation
+                )
+        parent = user_message.pk if user_message is not None else question.pk
+        assistant = services.append_message(
+            conversation,
+            parent=parent,
+            role=Message.Role.ASSISTANT,
+            model=ai_model,
+            author=user,
+            status=Message.Status.ABORTED,
+            tool_state={"image": new_state},
+        )
+        Conversation.objects.filter(pk=conversation.pk).update(updated=timezone.now())
+    source_ids = [a.pk for a in sources] + reuse
+    options_out = {"image_sources": source_ids} if source_ids else {}
+    if reuse:
+        options_out["image_reuse"] = True
+    turn = services.Turn(
+        user, conversation, ai_model, user_message, assistant, options=options_out, query=prompt
+    )
+    return turn, ai_model
+
+
+def _question_parent(turn):
+    """Elternnachricht der Frage dieser Runde (dort sucht „weiterarbeiten“ das letzte Bild)."""
+    if turn.user_message is not None:
+        return turn.user_message.parent_id
+    return (
+        Message.objects.filter(pk=turn.assistant_message.parent_id)
+        .values_list("parent_id", flat=True)
+        .first()
     )
 
 
@@ -194,12 +363,13 @@ def run(turn, fmt: str, quality: str, transparent: bool):
     """SSE-Events (Name, Daten) der Bild-Antwort."""
     msg = turn.assistant_message
     status, error, text, cost = Message.Status.COMPLETE, "", "", None
+    question = turn.user_message
     yield (
         "start",
         {
-            "user_message_id": turn.user_message.pk,
+            "user_message_id": question.pk if question is not None else None,
             "assistant_message_id": msg.pk,
-            "parent_id": turn.user_message.parent_id,
+            "parent_id": question.parent_id if question is not None else msg.parent_id,
         },
     )
     verb = "bearbeitet" if turn.options.get("image_sources") else "erzeugt"
@@ -207,37 +377,39 @@ def run(turn, fmt: str, quality: str, transparent: bool):
     try:
         sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
         source_ids = turn.options.get("image_sources") or []
+        state = (msg.tool_state or {}).get("image") or {}
+        edited = bool(source_ids)
+        chained = bool(state.get("continued")) and not source_ids
+        common = {"ai_model": turn.ai_model, "fmt": fmt, "quality": quality}
+        common["transparent"] = transparent
         if source_ids:
             sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
-            attachment, revised = images.edit(
-                turn.user,
-                msg,
-                turn.query,
-                sources,
-                ai_model=turn.ai_model,
-                fmt=fmt,
-                quality=quality,
-                transparent=transparent,
-            )
+            try:
+                attachment, revised = images.edit(turn.user, msg, turn.query, sources, **common)
+            except images.EditUnsupported:
+                # Beim stillen Weiterarbeiten (nicht bei hochgeladenen Vorlagen) weicht der Server
+                # auf die Beschreibung aus, wenn dem Anbieter das Bearbeiten fehlt.
+                previous = (
+                    images.previous_image(_question_parent(turn))
+                    if turn.options.get("image_reuse")
+                    else None
+                )
+                if previous is None:
+                    raise
+                logger.warning(
+                    "Bildmodell %s kann nicht bearbeiten: Weiterarbeiten mit der Beschreibung",
+                    turn.ai_model.pk,
+                )
+                prompt = images.chain_prompt(previous[1], turn.query)
+                attachment, revised = images.generate(turn.user, msg, prompt, **common)
+                edited, chained = False, True
+                state = {**state, "edit": False, "prompt": prompt[: images.MAX_PROMPT]}
+                Message.objects.filter(pk=msg.pk).update(
+                    tool_state={**(msg.tool_state or {}), "image": state}
+                )
         else:
-            attachment, revised = images.generate(
-                turn.user,
-                msg,
-                turn.query,
-                ai_model=turn.ai_model,
-                fmt=fmt,
-                quality=quality,
-                transparent=transparent,
-            )
-        state = (msg.tool_state or {}).get("image") or {}
-        text = answer_text(
-            turn.ai_model,
-            fmt,
-            quality,
-            revised,
-            edited=bool(source_ids),
-            chained=bool(state.get("continued")) and not source_ids,
-        )
+            attachment, revised = images.generate(turn.user, msg, turn.query, **common)
+        text = answer_text(turn.ai_model, fmt, quality, revised, edited=edited, chained=chained)
         cost = attachment.cost
     except sharing.AccessRevoked:
         status, error = Message.Status.ABORTED, sharing.MSG_REVOKED
