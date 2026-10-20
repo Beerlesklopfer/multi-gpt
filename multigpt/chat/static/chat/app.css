@@ -3879,6 +3879,15 @@ span.message-source-link {
   color: var(--text-muted);
 }
 
+.image-refusal-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.9em;
+}
+
 .image-request-hint {
   display: flex;
   flex-wrap: wrap;

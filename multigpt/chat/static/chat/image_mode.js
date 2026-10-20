@@ -225,5 +225,95 @@
       activate: () => setActive(true),
     };
     setActive(false);
+    watchRefusals(textarea);
   });
+
+  // --- Knopf unter einer Antwort, die einen Bildwunsch abgelehnt hat --------------------
+  // Antwortet ein Chatmodell auf einen Bildauftrag mit „kann keine Bilder erzeugen“ (Prod-Chat
+  // 32: Qwen3-VL), bietet die Oberfläche unter der Antwort „Mit Bildmodell erzeugen“ an. Der
+  // Knopf belegt nur vor (Modus „Bild“ an, die Frage im Eingabefeld); gesendet wird erst,
+  // wenn der Nutzer sendet. Der Text der Frage kommt aus dem Verlauf und geht nur als Wert
+  // ins Eingabefeld, nie als HTML. Muster müssen nur grob stimmen: Es bleibt ein Hinweis.
+  const REFUSAL = new RegExp(
+    "(can(?:no|['’])t|cannot|unable to|not able to|don't have the ability|" +
+      "kann\\s+(?:leider\\s+)?(?:keine?|kein)\\s|nicht in der lage|" +
+      "kann\\b[^.]{0,40}\\bnicht\\s+(?:erzeugen|erstellen|generieren))",
+    "i",
+  );
+  const IMAGE_WORD = /(image|picture|photo|illustration|artwork|bild|grafik|foto|zeichnung)/i;
+  const MAX_PROMPT = 4000;
+
+  function refusedImage(text) {
+    const head = String(text || "").slice(0, 400);
+    return REFUSAL.test(head) && IMAGE_WORD.test(head);
+  }
+
+  function questionOf(article) {
+    for (let el = article.previousElementSibling; el; el = el.previousElementSibling) {
+      if (el.dataset?.role === "user") {
+        return el.querySelector(".chat-message-content")?.textContent?.trim() || "";
+      }
+    }
+    return "";
+  }
+
+  function addRefusalHint(article, textarea) {
+    if (article.dataset.imageRefusal || article.dataset.role !== "assistant") {
+      return;
+    }
+    if (article.dataset.status !== "complete" || article.querySelector(".message-attachments")) {
+      return; // läuft noch, oder die Antwort hat schon ein Bild
+    }
+    const content = article.querySelector(".chat-message-content");
+    const question = questionOf(article);
+    if (!content || !question || question.length > MAX_PROMPT) {
+      return;
+    }
+    article.dataset.imageRefusal = "checked";
+    if (!refusedImage(content.textContent)) {
+      return;
+    }
+    const box = document.createElement("p");
+    box.className = "image-refusal-hint";
+    const label = document.createElement("span");
+    label.textContent = "Dieses Modell erzeugt keine Bilder.";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button button-small button-primary";
+    button.textContent = "Mit Bildmodell erzeugen";
+    button.addEventListener("click", () => {
+      const setStatus = MultiGPT.chatView?.setStatus || (() => {});
+      if (textarea.value.trim() && textarea.value.trim() !== question) {
+        setStatus("Im Eingabefeld steht schon Text. Bitte zuerst leeren, dann erneut klicken.", true);
+        return;
+      }
+      MultiGPT.imageMode?.activate();
+      textarea.value = question;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.focus({ preventScroll: true });
+      setStatus("Modus „Bild“ ist an, deine Frage steht im Eingabefeld. Zum Erzeugen senden.");
+    });
+    box.append(label, " ", button);
+    content.after(box);
+  }
+
+  function watchRefusals(textarea) {
+    const log = document.getElementById("chat-log");
+    if (!log) {
+      return;
+    }
+    let pending = 0;
+    const scan = () => {
+      pending = 0;
+      for (const article of log.querySelectorAll(".chat-message-assistant")) {
+        addRefusalHint(article, textarea);
+      }
+    };
+    scan();
+    new MutationObserver(() => {
+      if (!pending) {
+        pending = window.setTimeout(scan, 300); // erst, wenn der Stream die Antwort abgeschlossen hat
+      }
+    }).observe(log, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-status"] });
+  }
 })();
