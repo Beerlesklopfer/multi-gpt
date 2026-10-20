@@ -90,6 +90,7 @@ def new_model(provider: Provider, model_id: str, detected: Detected, **fields) -
         "capability": detected.capability,
         "supports_tools": detected.tools,
         "supports_vision": detected.vision,
+        "can_edit_images": detected.edit,
         "mcp_access": default_mcp_access(provider),
         **fields,
     }

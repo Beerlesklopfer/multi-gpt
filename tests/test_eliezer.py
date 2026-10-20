@@ -319,6 +319,31 @@ def test_image_type_maps_to_image_capability(provider):
     assert detected[BIG].capability == capabilities.CHAT
 
 
+def test_image_edit_flag_presets_can_edit_images(provider):
+    """Meldet Eliezer ``capabilities.image_edit``, ist das Modell gleich bearbeitungsfähig."""
+    from multigpt.chat import capabilities, detect
+
+    editable = entry("flux2-klein-4b", 8.9)
+    editable["type"] = "image"
+    editable["capabilities"] = {"vision": False, "image_generation": True, "image_edit": True}
+    plain = entry("qwen-image-2.1", 14.6)
+    plain["type"] = "image"
+    plain["capabilities"] = {"vision": False, "image_generation": True}
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{ROOT}/api/v1/models").mock(
+            return_value=httpx.Response(200, json={"models": [editable, plain]}, headers=SERVER)
+        )
+        catalog = {m.key: m for m in lmstudio.list_models(provider)}
+    flux = detect.new_model(
+        provider, "flux2-klein-4b", capabilities.from_catalog(catalog["flux2-klein-4b"])
+    )
+    qwen = detect.new_model(
+        provider, "qwen-image-2.1", capabilities.from_catalog(catalog["qwen-image-2.1"])
+    )
+    assert flux.capability == "image" and flux.can_edit_images is True
+    assert qwen.capability == "image" and qwen.can_edit_images is False
+
+
 def test_select_models_dialog_preselects_image_for_eliezer(admin_client, provider):
     from django.urls import reverse
 

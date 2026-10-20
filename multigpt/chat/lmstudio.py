@@ -83,6 +83,8 @@ class CatalogModel:
     max_context_length: int | None = None
     bits_per_weight: float | None = None
     vision: bool = False
+    # ``capabilities.image_edit`` (Eliezer): Bildmodell, das Bilder bearbeiten kann.
+    image_edit: bool = False
     # ``capabilities.reasoning``: erlaubte Stufen (off, low, medium, high, xhigh, on) und Vorgabe.
     reasoning_options: tuple[str, ...] = ()
     reasoning_default: str = ""
@@ -169,6 +171,7 @@ def parse_models(data) -> list[CatalogModel]:
                 max_context_length=_int(item.get("max_context_length")),
                 bits_per_weight=float(bits) if isinstance(bits, int | float) and bits > 0 else None,
                 vision=bool(caps.get("vision")),
+                image_edit=caps.get("image_edit") is True,
                 reasoning_options=options,
                 reasoning_default=default[:20],
                 instances=instances,

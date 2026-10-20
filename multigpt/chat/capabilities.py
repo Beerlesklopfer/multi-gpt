@@ -120,6 +120,7 @@ class Detected:
     tools: bool
     vision: bool
     source: str
+    edit: bool = False  # Bildmodell kann Bilder bearbeiten (Eliezer: capabilities.image_edit)
 
 
 def guess(model_id: str) -> Detected:
@@ -169,7 +170,13 @@ def from_catalog(entry) -> Detected:
     if entry.type == "embedding":
         return Detected(capability=EMBEDDING, tools=False, vision=False, source="lmstudio")
     if entry.type == "image":
-        return Detected(capability=IMAGE, tools=False, vision=False, source="lmstudio")
+        return Detected(
+            capability=IMAGE,
+            tools=False,
+            vision=False,
+            source="lmstudio",
+            edit=bool(getattr(entry, "image_edit", False)),
+        )
     if guess_capability(entry.key) == OCR:
         return Detected(capability=OCR, tools=False, vision=True, source="lmstudio")
     return Detected(
