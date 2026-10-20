@@ -15,12 +15,14 @@ def image_mode_config(context) -> dict:
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return {"available": False}
-    ai_model, _ = images.pick_image_model(user)
-    if ai_model is None:
+    models = images.selectable_models(user)
+    if not models:
         return {"available": False}
     return {
         "available": True,
-        "model_name": ai_model.display_name,
+        "model_name": models[0].display_name,
+        # Mehrere Bildmodelle (z. B. OpenAI und ein lokales): im Chat wählbar, Standard zuerst.
+        "models": [{"id": m.pk, "name": m.display_name} for m in models],
         "formats": list(images.FORMAT_LABELS.items()),
         "qualities": list(images.QUALITIES.items()),
         "patterns": {"request": images.REQUEST_PATTERNS, "code": images.CODE_PATTERN},

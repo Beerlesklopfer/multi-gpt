@@ -69,12 +69,15 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
     expected_leaf, valid = parse_pk(data, "leaf")
     if not valid:
         return error("Ungültige Anfrage.", 400)
-    ai_model, reason = images.pick_image_model(user)
+    preferred = options.get("model")
+    if preferred is not None and (isinstance(preferred, bool) or not isinstance(preferred, int)):
+        return error(MSG_INVALID, 400)
+    ai_model, reason = images.pick_image_model(user, preferred)
     if ai_model is not None and ai_model.provider.check_status:
         # Lokaler bzw. geprüfter Anbieter: Status bei Bedarf auffrischen.
         provider_status.refresh(ai_model.provider)
         if images.blocked_reason(user, ai_model):
-            ai_model, reason = images.pick_image_model(user)
+            ai_model, reason = images.pick_image_model(user, preferred)
     if ai_model is None:
         return error(reason, images.reason_status(reason))
     try:

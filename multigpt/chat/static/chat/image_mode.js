@@ -75,7 +75,11 @@
     if (!box || !toggle || !format || !quality || !textarea || !field) {
       return; // kein Bildmodell nutzbar bzw. nur lesen
     }
-    const modelName = box.dataset.modelName || "";
+    // Mehrere Bildmodelle: Auswahl „Modell“; sonst fest das eine (data-model-name).
+    const imageModel = document.getElementById("image-mode-model");
+    const currentName = () =>
+      imageModel?.selectedOptions?.[0]?.textContent || box.dataset.modelName || "";
+    const modelName = currentName();
     const patterns = loadPatterns();
     const placeholder = textarea.placeholder;
     let dismissedFor = null; // Text, für den der Hinweis weggeklickt wurde
@@ -140,10 +144,17 @@
     }
 
     toggle.addEventListener("change", () => setActive(toggle.checked));
-    for (const select of [format, quality]) {
-      select.addEventListener("change", () =>
-        storageSet({ format: format.value, quality: quality.value }),
-      );
+    if (
+      imageModel &&
+      saved.model &&
+      imageModel.querySelector(`option[value="${CSS.escape(String(saved.model))}"]`)
+    ) {
+      imageModel.value = String(saved.model);
+    }
+    const remember = () =>
+      storageSet({ format: format.value, quality: quality.value, model: imageModel?.value });
+    for (const select of [format, quality, imageModel].filter(Boolean)) {
+      select.addEventListener("change", remember);
     }
     textarea.addEventListener("input", updateHint);
     modelSelect?.addEventListener("change", updateHint);
@@ -152,7 +163,7 @@
       setActive(true);
       textarea.focus();
       MultiGPT.chatView?.setStatus(
-        `Modus „Bild“ ist an: Die Nachricht geht an ${modelName}. Format und Qualität oben wählen.`,
+        `Modus „Bild“ ist an: Die Nachricht geht an ${currentName()}. Format und Qualität oben wählen.`,
       );
     });
     ignoreButton.addEventListener("click", () => {
@@ -195,9 +206,12 @@
           result.leaf = payload.leaf;
         }
         result.image = { format: format.value, quality: quality.value };
+        if (imageModel?.value) {
+          result.image.model = Number(imageModel.value);
+        }
         return result;
       },
-      label: () => (toggle.checked ? modelName : ""),
+      label: () => (toggle.checked ? currentName() : ""),
       // Modus einschalten, ohne zu senden (tool_text.js: Aufruf als Text).
       activate: () => setActive(true),
     };

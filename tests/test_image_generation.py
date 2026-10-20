@@ -909,3 +909,60 @@ def test_answer_text():
     assert api_images.answer_text(model, "landscape", "low") == (
         "Bild erzeugt mit GPT Image (quer, Qualität niedrig)."
     )
+
+
+@pytest.fixture
+def local_image_model(db):
+    provider = Provider.objects.create(name="Eliezer", kind=Provider.Kind.LMSTUDIO)
+    return AIModel.objects.create(
+        provider=provider,
+        model_id="qwen-image-2.1",
+        display_name="Qwen Image",
+        capability=AIModel.Capability.IMAGE,
+        sort_order=9,
+    )
+
+
+@pytest.mark.django_db
+def test_image_mode_uses_the_model_chosen_in_the_chat(
+    client, conversation, image_model, local_image_model, fakes
+):
+    fakes()
+    events = events_of(
+        post(client, conversation, content="Ein Kreis", image={"model": local_image_model.pk})
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    reply = Message.objects.get(role="assistant")
+    assert reply.model == local_image_model
+    assert reply.content.startswith("Bild erzeugt mit Qwen Image")
+
+
+@pytest.mark.django_db
+def test_image_mode_without_choice_keeps_the_default(
+    client, conversation, image_model, local_image_model, fakes
+):
+    fakes()
+    events_of(post(client, conversation, content="Ein Kreis", image={}))
+    assert Message.objects.get(role="assistant").model == image_model
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad", ["qwen", True, 999999])
+def test_image_mode_rejects_unknown_choice(client, conversation, image_model, fakes, bad):
+    fakes()
+    response = post(client, conversation, content="x", image={"model": bad})
+    assert response.status_code in (400, 409)
+    assert not Message.objects.filter(role="assistant").exists()
+
+
+@pytest.mark.django_db
+def test_chat_page_offers_all_usable_image_models(
+    client, adult, conversation, image_model, local_image_model
+):
+    from multigpt.chat import images
+
+    names = [m.display_name for m in images.selectable_models(adult)]
+    assert names == ["GPT Image", "Qwen Image"]
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'id="image-mode-model"' in page
+    assert "Qwen Image" in page

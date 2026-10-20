@@ -20,7 +20,15 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
           {% for value, label in image_mode.qualities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select>
       </label>
+      {% if image_mode.models|length > 1 %}
+      <label class="image-mode-field"><span>Modell</span>
+        <select id="image-mode-model">
+          {% for m in image_mode.models %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+        </select>
+      </label>
+      {% else %}
       <span class="image-mode-model">mit {{ image_mode.model_name }}</span>
+      {% endif %}
     </span>
   </div>
   {{ image_mode.patterns|json_script:"image-request-patterns" }}

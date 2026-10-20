@@ -153,10 +153,8 @@ def blocked_reason(user, ai_model: AIModel) -> str:
     return ""
 
 
-def pick_image_model(user) -> tuple[AIModel | None, str]:
-    """(Bildmodell, "") oder (None, Grund für Nutzer bzw. Modell)."""
-    if not can(user, Action.IMAGES):
-        return None, MSG_NOT_ALLOWED
+def ordered_models(user) -> list[AIModel]:
+    """Nutzbare Bildmodelle der Rolle, das Standardmodell der Einstellungen zuerst."""
     models = candidate_models(user)
     default_id = (
         ChatSettings.objects.filter(pk=ChatSettings.SINGLETON_PK)
@@ -164,6 +162,21 @@ def pick_image_model(user) -> tuple[AIModel | None, str]:
         .first()
     )
     models.sort(key=lambda m: m.pk != default_id)  # stabil: Standard zuerst
+    return models
+
+
+def pick_image_model(user, preferred_id: int | None = None) -> tuple[AIModel | None, str]:
+    """(Bildmodell, "") oder (None, Grund für Nutzer bzw. Modell).
+
+    ``preferred_id``: das im Chat gewählte Bildmodell; ist es nicht erlaubt oder gerade
+    nicht nutzbar, gibt es kein anderes (die Wahl ist ausdrücklich)."""
+    if not can(user, Action.IMAGES):
+        return None, MSG_NOT_ALLOWED
+    models = ordered_models(user)
+    if preferred_id is not None:
+        models = [m for m in models if m.pk == preferred_id]
+        if not models:
+            return None, MSG_NO_IMAGE_MODEL
     first_reason = ""
     for ai_model in models:
         reason = blocked_reason(user, ai_model)
@@ -171,6 +184,13 @@ def pick_image_model(user) -> tuple[AIModel | None, str]:
             return ai_model, ""
         first_reason = first_reason or reason
     return None, first_reason or MSG_NO_IMAGE_MODEL
+
+
+def selectable_models(user) -> list[AIModel]:
+    """Bildmodelle, die der Betrachter im Chat wählen kann (Rolle, Budget, online)."""
+    if not can(user, Action.IMAGES):
+        return []
+    return [m for m in ordered_models(user) if not blocked_reason(user, m)]
 
 
 def reason_status(reason: str) -> int:
