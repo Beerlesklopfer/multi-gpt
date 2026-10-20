@@ -293,3 +293,50 @@ def test_model_on_cpu_does_not_occupy_gpu_pool(provider):
     assert pool.name == "gpu"
     assert snap.slots == []
     assert ai.pk
+
+
+def test_image_type_maps_to_image_capability(provider):
+    """Eliezers Typ „image“ wird die Fähigkeit „Bild“, „embedding“ bleibt Embedding, Rest Chat."""
+    from multigpt.chat import capabilities
+    from multigpt.chat.providers import registry
+
+    image = entry("qwen-image-2.1", 14.6)
+    image["type"] = "image"
+    image.pop("max_context_length")  # bei Bildmodellen fehlt es absichtlich
+    embed = entry("text-embedding-nomic-embed-text-v1.5", 0.3)
+    embed["type"] = "embedding"
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{ROOT}/api/v0/models").mock(return_value=httpx.Response(404, headers=SERVER))
+        mock.get(f"{ROOT}/api/v1/models").mock(
+            return_value=httpx.Response(
+                200, json={"models": [image, embed, entry(BIG, 17)]}, headers=SERVER
+            )
+        )
+        detected = registry.get_adapter(provider).model_capabilities()
+    assert detected["qwen-image-2.1"].capability == capabilities.IMAGE
+    assert detected["qwen-image-2.1"].tools is False
+    assert detected[embed["key"]].capability == capabilities.EMBEDDING
+    assert detected[BIG].capability == capabilities.CHAT
+
+
+def test_select_models_dialog_preselects_image_for_eliezer(admin_client, provider):
+    from django.urls import reverse
+
+    image = entry("qwen-image-2.1", 14.6)
+    image["type"] = "image"
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{ROOT}/api/v0/models").mock(return_value=httpx.Response(404, headers=SERVER))
+        mock.get(f"{ROOT}/api/v1/models").mock(
+            return_value=httpx.Response(200, json={"models": [image]}, headers=SERVER)
+        )
+        mock.get(f"{ROOT}/v1/models").mock(
+            return_value=httpx.Response(
+                200, json={"object": "list", "data": [{"id": "qwen-image-2.1"}]}, headers=SERVER
+            )
+        )
+        response = admin_client.get(
+            reverse("admin:chat_provider_select_models", args=[provider.pk])
+        )
+    assert response.status_code == 200
+    row = next(r for r in response.context["rows"] if r["model_id"] == "qwen-image-2.1")
+    assert row["capability"] == "image"

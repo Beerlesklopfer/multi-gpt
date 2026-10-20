@@ -162,6 +162,21 @@ def from_lmstudio(item: dict) -> Detected | None:
     return Detected(capability=CHAT, tools=tools, vision=kind == "vlm", source="lmstudio")
 
 
+def from_catalog(entry) -> Detected:
+    """Ein Eintrag aus ``GET /api/v1/models`` (Eliezer, LM Studio 0.4): ``type`` ``llm``,
+    ``embedding`` oder ``image`` (Bildmodelle: ``/v1/images/generations``) und
+    ``capabilities.vision``. Werkzeugfähigkeit meldet Eliezer nicht: Heuristik nach Modell-ID."""
+    if entry.type == "embedding":
+        return Detected(capability=EMBEDDING, tools=False, vision=False, source="lmstudio")
+    if entry.type == "image":
+        return Detected(capability=IMAGE, tools=False, vision=False, source="lmstudio")
+    if guess_capability(entry.key) == OCR:
+        return Detected(capability=OCR, tools=False, vision=True, source="lmstudio")
+    return Detected(
+        capability=CHAT, tools=guess_tools(entry.key), vision=bool(entry.vision), source="lmstudio"
+    )
+
+
 # Temperatur (Kreativität, chat/creativity.py). Stand der Herstellerangaben,
 # geprüft 2026-10-10. Nicht senden, wenn der Anbieter sie ablehnt (HTTP 400),
 # ignoriert oder ausdrücklich davon abrät:

@@ -553,6 +553,8 @@ class ProviderAdmin(admin.ModelAdmin):
         existing = {m.model_id: m for m in provider.ai_models.all()}
         query = (request.GET.get("q") or "").strip()
         rows = []
+        # Vom Anbieter gemeldet (LM Studio, Eliezer: llm, embedding, image), sonst Heuristik.
+        reported = detect.reported(provider, SELECT_MODELS_TIMEOUT) if result.online else {}
         if result.online:
             for model_id in sorted(result.models, key=str.lower):
                 if query and query.lower() not in model_id.lower():
@@ -563,7 +565,13 @@ class ProviderAdmin(admin.ModelAdmin):
                         "model_id": model_id,
                         "existing": model is not None,
                         "display_name": model.display_name if model else model_id,
-                        "capability": model.capability if model else guess_capability(model_id),
+                        "capability": model.capability
+                        if model
+                        else (
+                            reported[model_id].capability
+                            if model_id in reported
+                            else guess_capability(model_id)
+                        ),
                         "active": model.active if model else True,
                         "too_long": len(model_id) > MODEL_ID_MAX_LENGTH,
                     }
@@ -606,7 +614,7 @@ class ProviderAdmin(admin.ModelAdmin):
             name = (request.POST.get(f"name:{model_id}") or "").strip()[:MODEL_ID_MAX_LENGTH]
             capability = request.POST.get(f"cap:{model_id}") or ""
             if capability not in valid_caps:
-                capability = guess_capability(model_id)
+                capability = (found.get(model_id) or capabilities.guess(model_id)).capability
             active = model_id in active_ids
             model = existing.get(model_id)
             if model is None:

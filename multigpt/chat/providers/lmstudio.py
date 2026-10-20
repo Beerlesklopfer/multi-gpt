@@ -12,6 +12,7 @@ Werkzeuge, Rückfragen und der von MultiGPT geführte Verlauf weg.
 
 from __future__ import annotations
 
+from multigpt.chat import capabilities, lmstudio
 from multigpt.chat.lmstudio import DEFAULT_ROOT, api_root
 
 from .openai_compat import OpenAICompatAdapter
@@ -23,3 +24,23 @@ class LMStudioAdapter(OpenAICompatAdapter):
     @property
     def base_url(self) -> str:
         return f"{api_root(self.provider)}/v1"
+
+    def local_report(self, timeout: float = 2):
+        """Fähigkeiten und Kontextlängen: bei LM Studio aus ``/api/v0/models``, bei Eliezer
+        (kennt ``/api/v0`` nicht) aus ``/api/v1/models`` mit Typ llm, embedding oder image."""
+        report = super().local_report(timeout)
+        if report[0]:
+            return report
+        try:
+            catalog = lmstudio.list_models(self.provider, timeout)
+        except Exception:
+            return report
+        if lmstudio.server_kind(self.provider) != "eliezer":
+            return report
+        detected, contexts = {}, {}
+        for entry in catalog:
+            detected[entry.key] = capabilities.from_catalog(entry)
+            for inst in entry.instances:
+                if inst.context_length:
+                    contexts[entry.key] = inst.context_length
+        return detected, contexts
