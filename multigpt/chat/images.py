@@ -38,9 +38,16 @@ Entscheidungen:
   (GPT Image rechnet nach Tokens ab). ``Attachment.cost`` setzt die Buchung.
 - **Datenschutz:** Die Beschreibung geht nur an den Anbieter des Bildmodells;
   Logs enthalten nur IDs und Fehlerarten.
-- **Bearbeiten (M9-02, vorbereitet):** ``source_image`` am Anhang und
-  ``ProviderAdapter.edit_image`` sind vorgesehen; ein Werkzeug ``edit_image``
-  folgt, wenn ein Bild an der Nachricht hängt.
+- **Bearbeiten (M9-02):** Hochgeladene Bilder gehen im Modus „Bild“ als Vorlage an ein Modell mit
+  „Bilder bearbeiten“ (``edit``, ``ProviderAdapter.edit_image``); das Ergebnis verweist über
+  ``source_image`` auf die erste Vorlage.
+- **Weiterarbeiten am letzten Bild:** Im Modus „Bild“ ist jede Nachricht sonst ein eigener Auftrag
+  ohne Verlauf (Prod-Chat 33: „mehr photorealistisch“ ergab ein ganz anderes Bild). Mit der Option
+  ``image.continue`` (Schalter „Am letzten Bild weiterarbeiten“, im Browser gemerkt, Standard an)
+  sucht der Server das letzte erzeugte Bild im angezeigten Zweig (``previous_image``): Kann das
+  gewählte Modell bearbeiten, wird dieses Bild verändert, sonst wird die vorige Beschreibung mit
+  der Änderung verkettet (``chain_prompt``). Gesendet wird die verkettete Beschreibung in
+  ``tool_state["image"]["prompt"]``, damit die nächste Runde darauf aufbaut.
 """
 
 from __future__ import annotations
@@ -59,7 +66,7 @@ from multigpt.accounts.permissions import Action, can, model_permitted
 from . import attachments as chat_attachments
 from . import status as provider_status
 from . import tooling
-from .models import AIModel, Attachment, ChatSettings, Provider
+from .models import AIModel, Attachment, ChatSettings, Message, Provider
 from .providers import registry
 from .providers.base import MSG_IMAGE_TOO_LARGE, ContentBlocked, ProviderError, ToolSpec
 
@@ -435,6 +442,51 @@ def edit(
         len(sources),
     )
     return attachment, image.revised_prompt
+
+
+def previous_image(parent_id) -> tuple[Attachment, str] | None:
+    """Letztes erzeugtes Bild im angezeigten Zweig oberhalb von ``parent_id``: (Bild, Beschreibung).
+
+    Beschreibung = die an das Bildmodell gesendete (``tool_state["image"]["prompt"]``), bei älteren
+    Antworten der Text der Nutzerfrage davor. ``None``, wenn es im Zweig noch kein Bild gibt."""
+    current = parent_id
+    for _ in range(200):
+        if not current:
+            return None
+        msg = Message.objects.filter(pk=current).first()
+        if msg is None:
+            return None
+        state = msg.tool_state if isinstance(msg.tool_state, dict) else {}
+        if msg.role == Message.Role.ASSISTANT and isinstance(state.get("image"), dict):
+            image = (
+                msg.attachments.filter(kind=Attachment.Kind.IMAGE, generated_by_model__isnull=False)
+                .order_by("-id")
+                .first()
+            )
+            if image is not None:
+                prompt = state["image"].get("prompt") or ""
+                if not prompt and msg.parent_id:
+                    prompt = (
+                        Message.objects.filter(pk=msg.parent_id)
+                        .values_list("content", flat=True)
+                        .first()
+                        or ""
+                    )
+                return image, str(prompt)
+        current = msg.parent_id
+    return None
+
+
+def chain_prompt(previous: str, change: str) -> str:
+    """Beschreibung für ein Modell, das nur erzeugen kann: die vorige mit der Änderung am Ende
+    (zu lang: der Anfang der vorigen wird gekürzt)."""
+    change = change.strip()
+    tail = f". Änderung: {change}"
+    room = MAX_PROMPT - len(tail)
+    previous = previous.strip()
+    if len(previous) > room:
+        previous = previous[len(previous) - max(room, 0) :]
+    return (previous + tail) if previous else change
 
 
 def generated_count(message) -> int:

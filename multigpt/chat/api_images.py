@@ -34,13 +34,20 @@ MSG_INVALID = "Ungültige Angaben für den Modus „Bild“."
 
 
 def answer_text(
-    ai_model, fmt: str, quality: str, revised_prompt: str = "", edited: bool = False
+    ai_model,
+    fmt: str,
+    quality: str,
+    revised_prompt: str = "",
+    edited: bool = False,
+    chained: bool = False,
 ) -> str:
     """Text der Antwort (geht wie jede Antwort später auch an Chatmodelle)."""
     text = (
         f"Bild {'bearbeitet' if edited else 'erzeugt'} mit {ai_model.display_name} "
         f"({images.FORMAT_LABELS[fmt]}, Qualität {images.QUALITIES[quality]})."
     )
+    if chained:
+        text += "\n\nWeitergearbeitet an der Beschreibung des vorigen Bildes."
     if revised_prompt.strip():
         text += f"\n\nVom Anbieter umformulierte Beschreibung: {revised_prompt.strip()}"
     return text
@@ -73,6 +80,9 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         fmt, quality, transparent = images.clean_options(
             options.get("format"), options.get("quality"), options.get("transparent")
         )
+        continue_last = options.get("continue", False)
+        if not isinstance(continue_last, bool):
+            return error(MSG_INVALID, 400)
     except images.ImageError as exc:
         return error(exc.message, exc.status)
     expected_leaf, valid = parse_pk(data, "leaf")
@@ -92,7 +102,16 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         return error(reason, images.reason_status(reason))
     try:
         turn = prepare(
-            user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent, sources
+            user,
+            conversation,
+            ai_model,
+            content,
+            expected_leaf,
+            fmt,
+            quality,
+            transparent,
+            sources,
+            continue_last=continue_last and not sources,
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
@@ -100,7 +119,16 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
 
 
 def prepare(
-    user, conversation, ai_model, content, expected_leaf, fmt, quality, transparent, sources=()
+    user,
+    conversation,
+    ai_model,
+    content,
+    expected_leaf,
+    fmt,
+    quality,
+    transparent,
+    sources=(),
+    continue_last=False,
 ):
     """Nutzernachricht und (leere) Antwort des Bildmodells anlegen."""
     with transaction.atomic():
@@ -123,8 +151,23 @@ def prepare(
                 message=user_message, conversation=conversation
             )
         image_state = {"format": fmt, "quality": quality, "transparent": transparent}
+        prompt = content  # was das Bildmodell bekommt
+        reuse = []
         if drafts:
             image_state["edit"] = True
+        elif continue_last:
+            # Am letzten Bild des Zweigs weiterarbeiten: bearbeiten, wenn das Modell es kann,
+            # sonst die vorige Beschreibung mit der Änderung verketten.
+            previous = images.previous_image(parent_id)
+            if previous is not None:
+                last_image, last_prompt = previous
+                if ai_model.can_edit_images:
+                    reuse = [last_image.pk]
+                    image_state["edit"] = True
+                else:
+                    prompt = images.chain_prompt(last_prompt, content)
+                image_state["continued"] = True
+        image_state["prompt"] = prompt[: images.MAX_PROMPT]
         assistant = services.append_message(
             conversation,
             parent=user_message.pk,
@@ -140,9 +183,10 @@ def prepare(
         Conversation.objects.filter(pk=conversation.pk).update(**fields)
         for key, value in fields.items():
             setattr(conversation, key, value)
-    options = {"image_sources": [a.pk for a in drafts]} if drafts else {}
+    source_ids = [a.pk for a in drafts] + reuse
+    options = {"image_sources": source_ids} if source_ids else {}
     return services.Turn(
-        user, conversation, ai_model, user_message, assistant, options=options, query=content
+        user, conversation, ai_model, user_message, assistant, options=options, query=prompt
     )
 
 
@@ -185,7 +229,15 @@ def run(turn, fmt: str, quality: str, transparent: bool):
                 quality=quality,
                 transparent=transparent,
             )
-        text = answer_text(turn.ai_model, fmt, quality, revised, edited=bool(source_ids))
+        state = (msg.tool_state or {}).get("image") or {}
+        text = answer_text(
+            turn.ai_model,
+            fmt,
+            quality,
+            revised,
+            edited=bool(source_ids),
+            chained=bool(state.get("continued")) and not source_ids,
+        )
         cost = attachment.cost
     except sharing.AccessRevoked:
         status, error = Message.Status.ABORTED, sharing.MSG_REVOKED

@@ -84,6 +84,7 @@
     }
     // Mehrere Bildmodelle: Auswahl „Modell“; sonst fest das eine (data-model-name).
     const imageModel = document.getElementById("image-mode-model");
+    const keepWorking = document.getElementById("image-mode-continue");
     const currentName = () =>
       imageModel?.selectedOptions?.[0]?.dataset.name || box.dataset.modelName || "";
     // Kann das gewählte Bildmodell Bilder bearbeiten (data-edit am Eintrag bzw. am Kasten)?
@@ -170,9 +171,17 @@
     ) {
       imageModel.value = String(saved.model);
     }
+    if (keepWorking && saved.continue === false) {
+      keepWorking.checked = false; // gemerkt: ausdrücklich ausgeschaltet
+    }
     const remember = () =>
-      storageSet({ format: format.value, quality: quality.value, model: imageModel?.value });
-    for (const select of [format, quality, imageModel].filter(Boolean)) {
+      storageSet({
+        format: format.value,
+        quality: quality.value,
+        model: imageModel?.value,
+        continue: keepWorking ? keepWorking.checked : true,
+      });
+    for (const select of [format, quality, imageModel, keepWorking].filter(Boolean)) {
       select.addEventListener("change", remember);
     }
     textarea.addEventListener("input", updateHint);
@@ -233,6 +242,9 @@
         result.image = { format: format.value, quality: quality.value };
         if (imageModel?.value) {
           result.image.model = Number(imageModel.value);
+        }
+        if (keepWorking) {
+          result.image.continue = keepWorking.checked;
         }
         return result;
       },

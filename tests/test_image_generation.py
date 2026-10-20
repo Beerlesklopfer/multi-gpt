@@ -779,7 +779,12 @@ def test_image_mode_via_api(client, adult, conversation, chat_model, image_model
     reply = Message.objects.get(role="assistant")
     assert reply.model == image_model and reply.author == adult
     assert reply.tool_state == {
-        "image": {"format": "portrait", "quality": "high", "transparent": False}
+        "image": {
+            "format": "portrait",
+            "quality": "high",
+            "transparent": False,
+            "prompt": "Deutschlandflagge",
+        }
     }
     assert reply.content.startswith("Bild erzeugt mit GPT Image")
     question = Message.objects.get(role="user")
@@ -1149,3 +1154,86 @@ def test_chat_page_marks_models_that_can_edit(
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert f'value="{editor_model.pk}" data-name="GPT Image Edit" data-edit="true"' in page
     assert f'value="{image_model.pk}" data-name="GPT Image" data-edit="false"' in page
+
+
+def first_image(client, conversation, prompt="Ein roter Kreis", **image):
+    events = events_of(post(client, conversation, content=prompt, image=image))
+    assert events[-1] == ("done", {"status": "complete"})
+
+
+@pytest.mark.django_db
+def test_continue_edits_the_last_image_with_a_model_that_can_edit(
+    client, conversation, image_model, editor_model, fakes
+):
+    _, image_calls = fakes()
+    first_image(client, conversation, model=image_model.pk)
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="mehr Rot",
+            image={"model": editor_model.pk, "continue": True},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    call = image_calls[1]
+    assert call["edit"] is True and call["prompt"] == "mehr Rot"
+    assert call["images"][0][2] > 0  # das erste Bild ging als Vorlage mit
+    first, second = Message.objects.filter(role="assistant").order_by("pk")
+    result = Attachment.objects.get(message=second)
+    assert result.source_image == Attachment.objects.get(message=first)
+    assert second.content.startswith("Bild bearbeitet mit GPT Image Edit")
+    assert second.tool_state["image"]["continued"] is True
+    # Die Frage trägt keine zusätzlichen Anhänge: die Vorlage bleibt am ersten Bild.
+    assert Attachment.objects.filter(message__role="user").count() == 0
+
+
+@pytest.mark.django_db
+def test_continue_chains_the_description_for_a_model_that_only_generates(
+    client, conversation, image_model, fakes
+):
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    events_of(post(client, conversation, content="mehr Schatten", image={"continue": True}))
+    assert image_calls[1]["prompt"] == "Ein roter Kreis. Änderung: mehr Schatten"
+    assert "edit" not in image_calls[1]
+    reply = Message.objects.filter(role="assistant").order_by("pk").last()
+    assert "Weitergearbeitet an der Beschreibung des vorigen Bildes." in reply.content
+    # Auch die dritte Runde baut auf der gesendeten Beschreibung auf.
+    events_of(post(client, conversation, content="und Nacht", image={"continue": True}))
+    assert image_calls[2]["prompt"] == (
+        "Ein roter Kreis. Änderung: mehr Schatten. Änderung: und Nacht"
+    )
+
+
+@pytest.mark.django_db
+def test_continue_without_earlier_image_is_a_plain_request(
+    client, conversation, image_model, fakes
+):
+    _, image_calls = fakes()
+    events_of(post(client, conversation, content="Eine Katze", image={"continue": True}))
+    assert image_calls[0]["prompt"] == "Eine Katze"
+    reply = Message.objects.get(role="assistant")
+    assert "continued" not in reply.tool_state["image"]
+
+
+@pytest.mark.django_db
+def test_without_continue_every_request_stands_alone(client, conversation, image_model, fakes):
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    events_of(post(client, conversation, content="mehr Schatten", image={"continue": False}))
+    assert image_calls[1]["prompt"] == "mehr Schatten"
+
+
+@pytest.mark.django_db
+def test_continue_must_be_a_boolean(client, conversation, image_model, fakes):
+    fakes()
+    response = post(client, conversation, content="x", image={"continue": "ja"})
+    assert response.status_code == 400
+
+
+def test_chain_prompt_trims_the_old_description_when_too_long():
+    long_prompt = "x" * (images.MAX_PROMPT + 500)
+    chained = images.chain_prompt(long_prompt, "heller")
+    assert len(chained) == images.MAX_PROMPT and chained.endswith(". Änderung: heller")
+    assert images.chain_prompt("", "heller") == "heller"

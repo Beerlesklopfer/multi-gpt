@@ -3870,6 +3870,12 @@ span.message-source-link {
   color: var(--text-muted);
 }
 
+.image-mode-continue {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .image-mode-field select {
   max-width: 9rem;
 }

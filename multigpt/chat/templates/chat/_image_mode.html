@@ -20,6 +20,10 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
           {% for value, label in image_mode.qualities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select>
       </label>
+      <label class="image-mode-field image-mode-continue" title="Ist im Chat schon ein Bild entstanden, bezieht sich die Nachricht darauf: mit Modellen, die Bilder bearbeiten, wird das letzte Bild verändert, sonst wird die vorige Beschreibung mit der Änderung fortgesetzt.">
+        <input type="checkbox" id="image-mode-continue" checked>
+        <span>Am letzten Bild weiterarbeiten</span>
+      </label>
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">
