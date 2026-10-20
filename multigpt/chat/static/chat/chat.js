@@ -1621,8 +1621,13 @@
         return;
       }
       const openDialog = window.MultiGPT.openDialog;
-      const heading = versionOnly ? "Diese Version löschen?" : "Antwort löschen?";
-      const text = versionOnly
+      const ofQuestion = article.dataset.role === "user";
+      const heading = versionOnly || ofQuestion ? "Diese Version löschen?" : "Antwort löschen?";
+      const text = ofQuestion
+        ? "Gelöscht werden diese Version der Frage, ihre Antworten und der Verlauf danach. " +
+          "Andere Versionen der Frage bleiben. Das lässt sich nicht rückgängig machen. " +
+          "Kosten bleiben gebucht."
+        : versionOnly
         ? "Gelöscht werden nur diese Version der Antwort und was nach ihr folgt. Die Frage und " +
           "andere Versionen bleiben. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht."
         : "Gelöscht werden die Frage dazu, alle Versionen dieser Antwort und der ganze Verlauf " +

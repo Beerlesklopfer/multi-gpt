@@ -236,3 +236,19 @@ def test_chat_page_offers_deleting_a_single_version(client, anna, chat):
     client.force_login(anna)
     page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
     assert "data-delete-version" in page and "Nur diese Version löschen" in page
+
+
+def test_user_message_has_a_delete_button_for_its_own_version(client, anna, chat):
+    client.force_login(anna)
+    page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
+    assert "Diese Version der Frage mit Antworten und Verlauf löschen" in page
+
+
+def test_deleting_a_question_version_keeps_the_other_versions(client, anna, chat, ai_model):
+    other = msg(chat["conv"], chat["a1"], Message.Role.USER, "Frage 2b")
+    client.force_login(anna)
+    response = client.delete(url(chat, chat["q2"]))
+    assert response.status_code == 200
+    assert "Frage 2b" in remaining(chat)  # die andere Version der Frage bleibt
+    assert not {"Frage 2", "Antwort 2", "Antwort 2b", "Frage 3", "Antwort 3"} & remaining(chat)
+    assert other.pk

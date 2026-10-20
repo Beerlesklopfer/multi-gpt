@@ -29,6 +29,13 @@ Neu erzeugen W, Löschen (Frage, Antwort und alles danach) D.{% endcomment %}
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg>
       </button>
     {% endif %}
+    {% if can_delete %}
+      {# Nur diese Version der Frage: ihre Antworten und der Verlauf danach gehen mit, andere Versionen der Frage bleiben. #}
+      <button type="button" class="icon-button" data-delete-message hidden
+              aria-label="Diese Version der Frage mit Antworten und Verlauf löschen" title="Diese Version löschen (mit Antworten und Verlauf danach; andere Versionen bleiben)">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+      </button>
+    {% endif %}
   {% elif msg.role == "assistant" %}
     {# Schriftgröße aller Nachrichten (app.js, im Browser gemerkt). #}
     <button type="button" class="icon-button font-size-button" data-font-size="-1"
