@@ -22,7 +22,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import BillingAccount, ExchangeRate, UsageEntry
-from .pricing import AMOUNT_STEP, Round, Tally, price_at, quote
+from .pricing import AMOUNT_STEP, Round, Tally, currency_of, price_at, quote
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def _fill(entry: UsageEntry, account, ai_model, price, tally: Tally, when):
     entry.rounds = [r.to_json() for r in tally.rounds]
     entry.units = dict(tally.units)
     entry.price = price
-    entry.currency = account.currency if account.is_monetary else ""
+    entry.currency = currency_of(account, price)
     entry.amount = quote(account, price, tally)
     entry.amount_eur, rate = to_eur(entry.amount, entry.currency, when)
     entry.rate = rate.usd_eur if rate else None
@@ -202,7 +202,8 @@ def estimate_eur(ai_model, tally: Tally, when=None) -> Decimal | None:
     if not account.is_monetary:
         return Decimal(0)
     when = when or timezone.now()
-    eur, _ = to_eur(quote(account, price_at(ai_model, when), tally), account.currency, when)
+    price = price_at(ai_model, when)
+    eur, _ = to_eur(quote(account, price, tally), currency_of(account, price), when)
     return eur
 
 

@@ -166,7 +166,7 @@ class ModelPriceInline(admin.StackedInline):
 
     model = ModelPrice
     extra = 0
-    fieldsets = [(None, {"fields": ["valid_from"]}), *PRICE_FIELDSETS]
+    fieldsets = [(None, {"fields": ["valid_from", "currency"]}), *PRICE_FIELDSETS]
     verbose_name = "Preisversion"
     verbose_name_plural = "Preise (neueste zuerst; Änderung = neue Version mit neuem „gültig ab“)"
 
@@ -177,6 +177,7 @@ class ModelPriceAdmin(admin.ModelAdmin):
         "ai_model",
         "account",
         "valid_from",
+        "currency",
         "input",
         "cached_input",
         "cache_write",
@@ -188,7 +189,7 @@ class ModelPriceAdmin(admin.ModelAdmin):
     search_fields = ["ai_model__display_name", "ai_model__model_id", "note"]
     list_select_related = ["ai_model__provider__billing_account"]
     date_hierarchy = "valid_from"
-    fieldsets = [(None, {"fields": ["ai_model", "valid_from"]}), *PRICE_FIELDSETS]
+    fieldsets = [(None, {"fields": ["ai_model", "valid_from", "currency"]}), *PRICE_FIELDSETS]
 
     @admin.display(description="Konto", ordering="ai_model__provider__billing_account__name")
     def account(self, obj):

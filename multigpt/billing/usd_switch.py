@@ -6,7 +6,10 @@ in USD ab. Umstellen heißt:
 
 - Kontowährung EUR -> USD.
 - Vorhandene Preisversionen bleiben als Historie unverändert (sie gelten bis
-  jetzt und sind in alten Buchungen referenziert).
+  jetzt und sind in alten Buchungen referenziert) und stehen weiter in EUR
+  (``ModelPrice.currency``); die neue Version steht in USD. Eine Antwort, die vor
+  der Umstellung begann und danach gebucht wird, rechnet mit der alten
+  EUR-Version und wird in EUR gebucht (``pricing.currency_of``, LOP C35).
 - Je Modell des Kontos mit gültigem Preis entsteht eine neue Preisversion
   „gültig ab jetzt“ in USD: EUR-Preis / Kurs (1 USD in EUR), auf 6 Stellen.
   Modelle ohne (oder mit leerem) Preis bleiben ohne Preis.
@@ -121,6 +124,7 @@ def plan(account: BillingAccount, now=None) -> Plan:
         new = ModelPrice(
             ai_model=model,
             valid_from=now,
+            currency=BillingAccount.Currency.USD,
             long_context_threshold=old.long_context_threshold,
             unit_prices={k: _unit_to_usd(v, rate) for k, v in (old.unit_prices or {}).items()},
             note=(
@@ -141,6 +145,11 @@ def apply(planned: Plan) -> int:
         if account.currency != "EUR":
             raise SwitchError(f"„{account}“ steht nicht mehr in EUR.")
         for change in planned.changes:
+            # Die bisherige Version ist ausdrücklich EUR (Bestand ohne Währung nachtragen).
+            if not change.old.currency:
+                ModelPrice.objects.filter(pk=change.old.pk).update(
+                    currency=BillingAccount.Currency.EUR
+                )
             change.new.save()
         # Ohne clean(): Die Sperre gegen Währungswechsel gilt für Änderungen von Hand.
         BillingAccount.objects.filter(pk=account.pk).update(currency=BillingAccount.Currency.USD)

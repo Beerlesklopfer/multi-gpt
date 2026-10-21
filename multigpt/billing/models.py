@@ -188,6 +188,15 @@ class ModelPrice(models.Model):
         "Langkontext: Cache schreiben (1 Std.)", **MONEY, null=True, blank=True
     )
     long_output = models.DecimalField("Langkontext: Ausgabe", **MONEY, null=True, blank=True)
+    currency = models.CharField(
+        "Währung",
+        max_length=3,
+        choices=BillingAccount.Currency.choices,
+        blank=True,
+        help_text="In dieser Währung stehen die Preise dieser Version. Leer = Währung des "
+        "Kontos (wird beim Speichern eingetragen). Weicht sie vom Konto ab (Umstellung "
+        "EUR -> USD), wird eine Antwort mit dieser Version in ihrer Währung gebucht.",
+    )
     unit_prices = models.JSONField(
         "Gebühren je Einheit",
         default=dict,
@@ -211,6 +220,15 @@ class ModelPrice(models.Model):
 
     def __str__(self):
         return f"{self.ai_model} ab {timezone.localtime(self.valid_from):%d.%m.%Y}"
+
+    def save(self, *args, **kwargs):
+        if not self.currency:
+            account = getattr(self.ai_model.provider, "billing_account", None)
+            if account is not None and account.is_monetary:
+                self.currency = account.currency
+                if kwargs.get("update_fields") is not None:
+                    kwargs["update_fields"] = {*kwargs["update_fields"], "currency"}
+        super().save(*args, **kwargs)
 
     TOKEN_FIELDS = ("input", "cached_input", "cache_write", "cache_write_1h", "output")
 

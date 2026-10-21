@@ -191,6 +191,17 @@ def amount(price: ModelPrice | None, tally: Tally) -> Decimal | None:
     return total.quantize(AMOUNT_STEP, rounding=ROUND_HALF_UP)
 
 
+def currency_of(account: BillingAccount | None, price: ModelPrice | None) -> str:
+    """Währung einer Buchung: die der Preisversion, sonst die des Kontos (C35).
+
+    Eine Antwort, die vor der USD-Umstellung begann und danach gebucht wird,
+    rechnet mit der alten EUR-Version und bleibt deshalb in EUR.
+    """
+    if account is None or not account.is_monetary:
+        return ""
+    return (price.currency if price is not None and price.currency else "") or account.currency
+
+
 def quote(account: BillingAccount, price: ModelPrice | None, tally: Tally) -> Decimal | None:
     """Betrag je Kontoart: monetär nach Preis, Token- und Pauschalkonten None."""
     if account is None or account.kind != BillingAccount.Kind.MONETARY:
@@ -207,14 +218,14 @@ def describe(price: ModelPrice | None, account: BillingAccount | None) -> str:
         return f"Konto {account.name} · nur Tokens gezählt"
     if account.kind == BillingAccount.Kind.FLAT:
         return f"Konto {account.name} · Pauschale"
-    head = f"Konto {account.name} ({account.currency})"
+    currency = currency_of(account, price)
+    head = f"Konto {account.name} ({currency})"
     if price is None or price.is_empty:
         return f"{head} · kein Preis hinterlegt"
     parts = []
     if price.input is not None or price.output is not None:
         parts.append(
-            f"Ein {_num(price.input)} / Aus {_num(price.output)} "
-            f"{account.currency} je 1 Mio. Tokens"
+            f"Ein {_num(price.input)} / Aus {_num(price.output)} {currency} je 1 Mio. Tokens"
         )
     if price.cached_input is not None:
         parts.append(f"Cache {_num(price.cached_input)}")

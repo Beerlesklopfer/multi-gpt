@@ -116,6 +116,7 @@ def test_auto_fetch_disabled_makes_no_request(settings):
 def test_auto_fetch_once_and_fills_missing_eur(settings, gpt, member):
     settings.BILLING_ECB_FETCH = True
     BillingAccount.objects.filter(pk=gpt.provider.billing_account_id).update(currency="USD")
+    ModelPrice.objects.filter(ai_model=gpt).update(currency="USD")  # Preis folgt dem Konto
     gpt.provider.billing_account.refresh_from_db()
     entry = book(member, gpt, berlin(2026, 10, 12, 11, 0))
     assert entry.amount is not None and entry.amount_eur is None  # noch kein Kurs
@@ -274,6 +275,25 @@ def test_plan_and_apply_switch(gpt, unpriced, member):
     assert entry.currency == "USD" and entry.amount == Decimal("3.488372")
     assert entry.amount_eur == Decimal("3.000000")
     assert entry.price_id == stored.pk
+    # LOP C35: Alte Version bleibt EUR, die neue ist USD.
+    old_price.refresh_from_db()
+    assert (old_price.currency, stored.currency) == ("EUR", "USD")
+    # Antwort, die vor der Umstellung begann und erst jetzt gebucht wird: alte
+    # EUR-Version, also auch als EUR gebucht (nicht als USD).
+    late = book(member, gpt, berlin(2026, 10, 12, 9, 59))
+    assert late.price_id == old_price.pk
+    assert (late.currency, late.amount, late.amount_eur) == ("EUR", Decimal("3"), Decimal("3"))
+    assert booking.estimate_eur(gpt, Tally(), berlin(2026, 10, 12, 9, 0)) is not None
+
+
+def test_price_currency_defaults_to_account(openai):
+    model = AIModel.objects.create(provider=openai, model_id="m1", display_name="m1")
+    assert set_price(model, "1", "2", currency="USD").currency == "USD"
+    local = Provider.objects.create(
+        name="Lokal", kind=Provider.Kind.OPENAI_COMPAT, base_url="http://localhost:1/v1"
+    )
+    other = AIModel.objects.create(provider=local, model_id="m2", display_name="m2")
+    assert set_price(other, "1", "2").currency == "EUR"
 
 
 def test_switch_refused_without_rate_or_for_usd_or_future_prices(gpt, openai):
@@ -358,3 +378,32 @@ def test_switch_command_preview_and_apply(gpt):
         call_command("switch_account_to_usd", account.name, stdout=io.StringIO())
     with pytest.raises(CommandError, match="nicht gefunden"):
         call_command("switch_account_to_usd", "gibt-es-nicht")
+
+
+def test_migration_fills_currency_of_existing_prices(openai):
+    """LOP C35, Datenmigration billing 0003: Währung des Kontos, vor einer
+    Umstellung EUR -> USD aber EUR."""
+    import importlib
+
+    from django.apps import apps
+
+    fill = importlib.import_module("multigpt.billing.migrations.0003_modelprice_currency")
+    switched = AIModel.objects.create(provider=openai, model_id="a", display_name="a")
+    plain = Provider.objects.create(name="Plain", kind=Provider.Kind.OPENAI_COMPAT)
+    straight = AIModel.objects.create(provider=plain, model_id="b", display_name="b")
+    BillingAccount.objects.filter(pk=booking.account_of(plain).pk).update(currency="USD")
+    old = set_price(switched, "3", "15", valid_from=berlin(2026, 1, 1))
+    set_price(switched, "3.5", "17", currency="USD", valid_from=berlin(2026, 10, 12))
+    ModelPrice.objects.filter(ai_model=switched, valid_from=berlin(2026, 10, 12)).update(
+        note="Umgestellt EUR -> USD mit Kurs 0.86"
+    )
+    keep = set_price(straight, "1", "2", currency="USD", valid_from=berlin(2026, 1, 1))
+    ModelPrice.objects.update(currency="")
+    fill.fill_currency(apps, None)
+    old.refresh_from_db()
+    keep.refresh_from_db()
+    assert old.currency == "EUR"  # vor der Umstellung
+    assert ModelPrice.objects.get(ai_model=switched, valid_from=berlin(2026, 10, 12)).currency == (
+        "USD"
+    )
+    assert keep.currency == "USD"

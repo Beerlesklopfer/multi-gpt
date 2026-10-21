@@ -446,6 +446,7 @@ def test_currency_locked_once_in_use(gpt):
 def eur(member, claude, gpt):
     """Alle Bezahlkonten in EUR, damit die Budgets ohne Kurse rechnen."""
     BillingAccount.objects.filter(kind="monetary").update(currency="EUR")
+    ModelPrice.objects.update(currency="EUR")  # Preise folgen dem Konto (LOP C35)
     for model in (claude, gpt):
         model.provider.billing_account.refresh_from_db()
     return member
