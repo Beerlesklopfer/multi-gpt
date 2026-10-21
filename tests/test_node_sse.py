@@ -9,8 +9,10 @@ LISTEN-Verbindung sieht nur Festgeschriebenes), deshalb ``transaction=True``.
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -19,8 +21,9 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from multigpt.node import keys, sse
+from multigpt.node import keys, protocol, sse
 from multigpt.node import scopes as S
+from multigpt.node import tools as node_tools
 from multigpt.node.models import ApiCall, SseMessage, SseSession
 from tests.node_support import make_key, make_user
 
@@ -383,3 +386,105 @@ def test_large_file_over_sse_becomes_link(client, anna, settings, tmp_path):
     assert [c["type"] for c in large["content"]] == ["text", "resource_link", "text"]
     assert "Streamable HTTP" in large["content"][0]["text"]
     assert len(json.dumps(large)) < 1024 * 1024
+
+
+def test_peer_gone_detects_closed_socket():
+    """LOP C20: EOF am Socket wird sofort erkannt, offene Verbindung und Daten nicht."""
+    left, right = socket.socketpair()
+    try:
+        assert sse.peer_gone(None) is False
+        assert sse.peer_gone(left) is False
+        right.sendall(b"x")  # Daten sind keine Trennung (und werden nicht verbraucht)
+        assert sse.peer_gone(left) is False
+        assert left.recv(1) == b"x"
+        right.close()
+        assert sse.peer_gone(left) is True
+    finally:
+        left.close()
+        right.close()
+    assert sse.peer_gone(left) is True  # geschlossen
+
+
+def test_stream_ends_quickly_when_client_socket_closes(client, key, settings):
+    """LOP C20: Trennung wird ohne Warten auf den Keepalive (hier 30 s) bemerkt."""
+    settings.MCP_SSE_KEEPALIVE_SECONDS = 30
+    _, secret = key
+    server_side, client_side = socket.socketpair()
+    response = client.get(
+        "/mcp/sse",
+        HTTP_ACCEPT="text/event-stream",
+        HTTP_AUTHORIZATION=f"Bearer {secret}",
+        **{"gunicorn.socket": server_side},
+    )
+    events = iter(response.streaming_content)
+    assert parse(next(events))[0] == "endpoint"
+    client_side.close()
+    started = time.monotonic()
+    assert list(events) == []
+    assert time.monotonic() - started < 4
+    assert not SseSession.objects.exists()
+    assert sse.open_streams() == 0
+    response.close()
+    server_side.close()
+
+
+def test_tools_call_is_cancelled_when_stream_disconnects(client, key, settings, monkeypatch):
+    """LOP C19: Ein laufender tools/call endet, sobald der Stream (die Sitzung) weg ist."""
+    settings.MCP_SSE_KEEPALIVE_SECONDS = 30
+    monkeypatch.setattr(sse, "SESSION_CHECK_SECONDS", 0.1)
+    state = {"steps": 0, "closed": False}
+
+    def slow(ctx, args):
+        try:
+            for _ in range(200):
+                time.sleep(0.05)
+                state["steps"] += 1
+                yield node_tools.Progress("läuft")
+        finally:
+            state["closed"] = True
+        return node_tools.ToolOutput("fertig")
+
+    fake = node_tools.NodeTool(
+        name="slow",
+        title="slow",
+        description="slow",
+        scopes=(S.USAGE_READ,),
+        input_schema=node_tools.schema(),
+        handler=slow,
+    )
+    real = protocol.resolve_tool
+    monkeypatch.setattr(
+        protocol,
+        "resolve_tool",
+        lambda ctx, params: (fake, {}) if params.get("name") == "slow" else real(ctx, params),
+    )
+    _, secret = key
+    response, events, endpoint = handshake(client, secret)
+    body = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {"name": "slow", "arguments": {}},
+    }
+    result = {}
+
+    def call():
+        from django.db import connection as conn
+        from django.test import Client
+
+        try:
+            result["response"] = post(Client(), secret, endpoint, body)
+        finally:
+            conn.close()
+
+    thread = threading.Thread(target=call)
+    thread.start()
+    time.sleep(0.5)
+    assert state["steps"] > 0 and thread.is_alive()
+    response.close()  # Client getrennt: Stream endet, Sitzung gelöscht
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert state["closed"] is True
+    assert state["steps"] < 100  # nicht bis zum Ende durchgelaufen
+    assert result["response"].status_code == 202
+    assert not SseMessage.objects.exists()

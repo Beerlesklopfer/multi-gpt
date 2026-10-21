@@ -41,6 +41,16 @@ den Request-Threads); ``MULTI_GPT_TIMEOUT`` gilt also nicht für Streams. Beim
 Neustart bzw. Reload von gunicorn enden offene Streams nach
 ``graceful_timeout`` (30 s).
 
+**Trennung des Clients (C19/C20):** Der Stream wartet höchstens
+``DISCONNECT_CHECK_SECONDS`` (1 s) am Stück und prüft dazwischen den Socket der
+Verbindung (``gunicorn.socket``, ``select`` + ``MSG_PEEK``): meldet er EOF oder
+einen Fehler, endet der Stream sofort und gibt Sitzung und Platz frei, ohne auf
+den nächsten Keepalive zu warten. Löschen der Sitzung ist zugleich das Signal für
+einen laufenden ``tools/call``: Der POST-Thread prüft bei jedem Fortschritt (höchstens
+einmal je Sekunde) per ``SseSession``-Abfrage, ob die Sitzung noch lebt, und bricht
+sonst das Werkzeug ab (Generator schließen, bei ``ask`` endet damit die Antwort).
+Ohne ``gunicorn.socket`` (Testclient, andere Server) bleibt es beim Keepalive.
+
 **Widerruf:** Bei jedem Keepalive prüft der Stream den Key frisch (aktiv, nicht
 abgelaufen, Konto aktiv, Rolle mit Recht) und endet sonst.
 
@@ -55,6 +65,8 @@ import json
 import logging
 import re
 import secrets
+import select
+import socket
 import threading
 import time
 from datetime import timedelta
@@ -88,6 +100,10 @@ logger = logging.getLogger(__name__)
 SESSION_RE = re.compile(r"^[0-9a-f]{32}$")
 # Audit-Log: ein Eintrag je Stream (beim Ende, mit Dauer und gesendeten Bytes).
 STREAM_METHOD = "sse"
+# Wie oft der Stream zwischen Keepalives nach einem getrennten Client schaut.
+DISCONNECT_CHECK_SECONDS = 1.0
+# Wie oft ein laufender tools/call prüft, ob seine Sitzung noch lebt.
+SESSION_CHECK_SECONDS = 1.0
 
 _slots_lock = threading.Lock()
 _open_streams = 0
@@ -223,6 +239,44 @@ def _event(name: str, data: str) -> bytes:
     return f"event: {name}\ndata: {data}\n\n".encode()
 
 
+def peer_gone(sock) -> bool:
+    """Hat die Gegenseite die Verbindung geschlossen? (Ohne Daten zu verbrauchen.)"""
+    if sock is None:
+        return False
+    try:
+        readable, _, _ = select.select([sock], [], [], 0)
+        if not readable:
+            return False
+        return sock.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b""
+    except BlockingIOError:
+        return False
+    except (OSError, ValueError):
+        # Socket geschlossen oder ungültig (Dateideskriptor < 0).
+        return True
+
+
+class SessionGone(Exception):
+    """Der Stream der Sitzung ist weg: laufende Anfrage abbrechen."""
+
+
+def session_watch(session_id: str):
+    """Prüffunktion für ``dispatch``: wirft ``SessionGone``, sobald die Sitzung fehlt.
+
+    Fragt höchstens alle ``SESSION_CHECK_SECONDS`` die Datenbank.
+    """
+    state = {"next": time.monotonic() + SESSION_CHECK_SECONDS}
+
+    def check() -> None:
+        now = time.monotonic()
+        if now < state["next"]:
+            return
+        state["next"] = now + SESSION_CHECK_SECONDS
+        if not SseSession.objects.filter(pk=session_id).exists():
+            raise SessionGone
+
+    return check
+
+
 def _key_usable(key_pk: int) -> bool:
     key = ApiKey.objects.select_related("owner", "owner__role").filter(pk=key_pk).first()
     return key is not None and key.owner.is_active and bool(keys.effective_scopes(key))
@@ -233,8 +287,11 @@ class Stream:
     immer auf (auch wenn der Inhalt nie gelesen wurde); es gibt Thread-Platz,
     LISTEN-Verbindung und Sitzung frei und schreibt das Audit-Log."""
 
-    def __init__(self, call: _Call, session: SseSession, listener: Listener, endpoint: str):
+    def __init__(
+        self, call: _Call, session: SseSession, listener: Listener, endpoint: str, sock=None
+    ):
         self.call = call
+        self.sock = sock
         self.session_id = session.pk
         self.key_pk = session.key_id
         self.listener = listener
@@ -271,10 +328,16 @@ class Stream:
                 if now >= deadline:
                     self.reason = "Höchstdauer erreicht"
                     break
-                self.listener.wait(min(next_check, deadline) - now)
-                for payload in self.listener.take():
-                    yield self._emit(_event("message", payload))
-                if time.monotonic() >= next_check:
+                limit = min(next_check, deadline) - now
+                notified = self.listener.wait(min(limit, DISCONNECT_CHECK_SECONDS))
+                if peer_gone(self.sock):
+                    self.reason = "Client getrennt (Socket)"
+                    break
+                due = time.monotonic() >= next_check
+                if notified or due:
+                    for payload in self.listener.take():
+                        yield self._emit(_event("message", payload))
+                if due:
                     if not self._alive():
                         break
                     yield self._emit(b": keepalive\n\n")
@@ -332,7 +395,7 @@ def sse_endpoint(request):
             SseSession.objects.filter(pk=session.pk).delete()
         raise
     endpoint = f"{reverse('mcp_messages')}?session_id={session.pk}"
-    stream = Stream(call, session, listener, endpoint)
+    stream = Stream(call, session, listener, endpoint, request.META.get("gunicorn.socket"))
     logger.info("MCP-SSE-Stream (Key %s) geöffnet", ctx.key.pk)
     response = StreamingHttpResponse(stream, content_type=SSE_TYPE)
     response["Cache-Control"] = "no-cache, no-transform"
@@ -385,9 +448,22 @@ def messages_endpoint(request):
             def progress(item):
                 deliver(session_id, protocol.progress_notification(token, next(steps), item))
 
-        payload, status, _http_status = dispatch(
-            call, ctx, env, request_id, params, progress, protocol.SSE_INLINE_BYTES
-        )
+        try:
+            payload, status, _http_status = dispatch(
+                call,
+                ctx,
+                env,
+                request_id,
+                params,
+                progress,
+                protocol.SSE_INLINE_BYTES,
+                cancelled=session_watch(session_id),
+            )
+        except SessionGone:
+            # Client getrennt: Werkzeug ist abgebrochen, niemand wartet auf die Antwort.
+            logger.info("MCP-SSE: tools/call abgebrochen, Stream getrennt (Key %s)", ctx.key.pk)
+            call.record(ApiCall.Status.ERROR, 202)
+            return _plain(202)
     size = deliver(session_id, payload)
     call.record(status if size else ApiCall.Status.ERROR, 202, size)
     return _plain(202)

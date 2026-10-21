@@ -188,19 +188,23 @@ def dispatch(
     params,
     progress=None,
     inline_bytes: int = protocol.JSON_INLINE_BYTES,
+    cancelled=None,
 ):
     """Methode ausführen -> ``(payload, Audit-Status, HTTP-Status)``.
 
     ``progress`` (optional) bekommt bei ``tools/call`` jeden ``Progress`` des
     Werkzeugs (Legacy-SSE: als ``notifications/progress`` in den Stream).
     ``inline_bytes``: Grenze für eingebettete Dateien (über SSE kleiner, C18).
+    ``cancelled`` (optional): wird nach jedem Schritt des Werkzeugs aufgerufen und
+    darf eine Ausnahme werfen; dann wird das Werkzeug geschlossen (Abbruch) und die
+    Ausnahme geht an den Aufrufer (Legacy-SSE: Client getrennt, C19).
     """
     method = call.method
     try:
         if method == "tools/call":
             tool, arguments = protocol.resolve_tool(ctx, params)
             call.tool = tool.name
-            output = _drain(protocol.run_tool(tool, ctx, arguments), progress)
+            output = _drain(protocol.run_tool(tool, ctx, arguments), progress, cancelled)
             payload = {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -290,14 +294,19 @@ def _tools_call_sse(request, call: _Call, ctx, env, request_id, params):
     return response
 
 
-def _drain(steps, progress=None):
-    while True:
-        try:
-            item = next(steps)
-        except StopIteration as stop:
-            return stop.value
-        if progress is not None and isinstance(item, Progress):
-            progress(item)
+def _drain(steps, progress=None, cancelled=None):
+    try:
+        while True:
+            try:
+                item = next(steps)
+            except StopIteration as stop:
+                return stop.value
+            if progress is not None and isinstance(item, Progress):
+                progress(item)
+            if cancelled is not None:
+                cancelled()
+    finally:
+        steps.close()
 
 
 def _event(payload: dict) -> bytes:
