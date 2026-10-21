@@ -32,7 +32,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | C5 | Arbeitsblätter: Vorlagen Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett, gleich kräftige Antwortlinien und der Link „Ansehen“ in der Live-Anzeige sind umgesetzt. Offen: Prüfung im Browser (`attachments.js` ohne node nicht ausgeführt) und Sichtprüfung der PDFs. |
 | C6 | Projekte lassen sich noch nicht als Ganzes teilen. |
 | C12 | Nicht im Browser geprüft: Denktiefe-Auswahl, MCP-Werkzeugtabelle, API-Key-Seite, Zitat kopieren. Chromium ungetestet (SVG-Vorschau, Layout-Fix). |
-| C13 | Sandbox: Speichergrenze nur je Prozess, kein Gesamtlimit (bräuchte cgroup). |
+| C13 | Sandbox: Speichergrenze nur je Prozess, kein Gesamtlimit. Bewusst offen: ein Gesamtlimit bräuchte cgroup und damit Root bzw. einen delegierten systemd-Scope; Alternative wäre ein Watchdog, der die Prozessgruppe nach Gesamtverbrauch beendet (Entscheidung des Nutzers). |
 | C14 | Docker-Image: bubblewrap ist im Dockerfile installiert und wird beim Bau geprüft. Offen (Entscheidung des Nutzers): Docker-Standardprofil (seccomp/AppArmor) verbietet die Namespaces für bwrap; ohne Lockerung in `compose.yaml` bleibt die Sandbox im Container abgeschaltet. Eine Lockerung ist bewusst nicht gesetzt, Hinweis steht in `compose.yaml`. |
 | C15 | Kontenrahmen: Batch-/Flex-Tarife, Gemini-Cache-Speicher und Freikontingente nicht abgebildet. |
 | C16 | Sandbox-Tests scheitern unter Last der vollen Suite gelegentlich an der CPU-Grenze (siehe A7). |
