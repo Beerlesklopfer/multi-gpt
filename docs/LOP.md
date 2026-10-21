@@ -31,7 +31,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 |---|---|
 | C5 | Arbeitsblätter: Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett fehlen; Antwortlinien ungleich kräftig; PDF-Link fehlt in der Live-Anzeige (`attachments.js`). |
 | C6 | Projekte lassen sich noch nicht als Ganzes teilen. |
-| C10 | Lokale Reasoning-Schalter außer gpt-oss (z. B. Qwen3 `enable_thinking`) nicht unterstützt. |
+| C10 | Lokale Reasoning-Schalter: Über LM Studio und Eliezer (Meldung `capabilities.reasoning`, z. B. Qwen3.8, Gemma 4, gpt-oss) gehen die Stufen mit. Offen: andere lokale Server (Ollama, vLLM) mit `chat_template_kwargs.enable_thinking`. |
 | C12 | Nicht im Browser geprüft: Denktiefe-Auswahl, MCP-Werkzeugtabelle, API-Key-Seite, Zitat kopieren. Chromium ungetestet (SVG-Vorschau, Layout-Fix). |
 | C13 | Sandbox: Speichergrenze nur je Prozess, kein Gesamtlimit (bräuchte cgroup). |
 | C14 | Docker-Image: Sandbox abgeschaltet, bubblewrap fehlt im Dockerfile. |
@@ -44,7 +44,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | C22 | Kontextmenü (M13-01): offen sind „Ins Scratchpad“ (M13-05), eigene Vorlagen (M13-02), Knopf „⋯“ je Nachricht für die ganze Nachricht, die Abschnittsansicht `collections/chunk.html` und „Nachfragen“ aus nur lesbaren Chats in einem neuen Chat (Frage 7c). |
 | C23 | Kontextmenü und Mitscrollen nur in headless Firefox geprüft (Auswahl per Skript, Mausrad, Bild auf, Touch nicht echt); langes Tippen am Handy und Chromium ungetestet. |
 | C24 | Token-Schätzung (M4a-12) nur an gpt-oss-20b in LM Studio kalibriert (n8n-Schemas 1,5-fach überschätzt); Cloud-Anbieter ungeprüft, deren Kontextlänge nur per Admin-Feld. |
-| C25 | find_tools: Stichwortliste deutsch → englisch klein; Zustandsfragen („Ist das Licht im Flur an?“) treffen eher HassTurnOn als GetLiveContext (HASS geht als kleiner Server ohnehin ganz mit). Beispiel Chat 21 (2026-10-12): „Zeichne die Funktion x²“ – gpt-oss behauptete, keine Grafik erzeugen zu können; erst „Nimm Python“ führte zu run_python (Stichworte Zeichnen/Plotten/Diagramm fehlen). |
+| C25 | find_tools: Die Stichwortliste ist deutsch → englisch und klein. Seit 2026-10-21 decken sie Funktionen/Plots (run_python) und einfache Zustandsfragen („brennt“, „eingeschaltet“, „offen“) ab. Offen: Zustandsfragen wie „Ist das Licht im Flur an?“ (ohne diese Stichworte) treffen eher HassTurnOn als GetLiveContext; HASS geht als kleiner Server ohnehin ganz mit. |
 | C26 | `![…](attachment:NAME)` bzw. `anhang:ID` im Antworttext: seit 0.3.5 im Browser geprüft (Firefox) – ein im Text gezeigtes Bild verschwindet aus der Anhangsliste (vorher doppelt), Klick öffnet die Großansicht. Offen: während des Streams ausgeblendet (sichtbar nach dem Nachladen); in PDFs (`create_pdf`) gilt weiter nur `anhang:ID`; Chromium ungetestet. |
 | C27 | Modellverwaltung: „wird geladen …“ steht nur in der Statuszeile des Chats und im Admin, nicht in der Modellauswahl bzw. der Statusanzeige oben. |
 | C28 | Modellverwaltung am echten LM Studio (0.4, 2026-10-12): Laden mit `context_length` und `parallel` wird angenommen und per `echo_load_config` bestätigt (olmOCR `parallel: 2`); Laden dauert 0,4 s (nomic) bzw. 1,8 s (olmOCR). **Embedding-Modelle lehnen `parallel` ab** (HTTP 400) – MultiGPT schickt es dort nicht mehr. Offen: Fehlermeldung bei zu wenig Grafikspeicher (nicht getestet, um ein laufendes gpt-oss nicht zu verdrängen). |

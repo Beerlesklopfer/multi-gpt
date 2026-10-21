@@ -810,3 +810,17 @@ def test_attachment_reference_page_and_tool_note(client, adult, model, settings,
     assert f'data-name="{attachment.display_name}"' in html
     assert "(anhang:11)" in html  # Rohtext; markdown.js löst nur eigene IDs auf
     assert "nicht verlinken" in tooling.NOTE_ATTACHMENT_SHOWN
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Zeichne die Funktion x²", {"python", "plot"}),
+        ("Plotte den Graphen von sin(x)", {"python", "plot"}),
+        ("Visualisiere die Verkaufszahlen", {"python", "chart"}),
+        ("Brennt das Licht im Flur noch?", {"state", "context"}),
+    ],
+)
+def test_query_terms_cover_plotting_and_state_questions(query, expected):
+    """LOP C25: Stichworte für Funktionen zeichnen (run_python) und Zustandsfragen."""
+    assert expected <= tool_select.query_terms(query)
