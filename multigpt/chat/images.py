@@ -77,6 +77,8 @@ logger = logging.getLogger(__name__)
 
 TOOL_NAME = "generate_image"
 TOOL_LABEL = "Bilderzeugung"
+EDIT_TOOL_NAME = "edit_image"
+EDIT_TOOL_LABEL = "Bilder bearbeiten"
 
 # Format -> Größe (OpenAI GPT Image; Google nimmt das Seitenverhältnis daraus).
 FORMATS = {"square": "1024x1024", "portrait": "1024x1536", "landscape": "1536x1024"}
@@ -698,9 +700,22 @@ def generated_count(message) -> int:
 # --- Werkzeug generate_image ---------------------------------------------------------
 
 
+EDIT_HINT = (
+    "Soll ein vorhandenes Bild verändert werden (ein angehängtes oder ein eben erzeugtes), "
+    "nutze edit_image mit der gewünschten Änderung im Argument „prompt“, statt ein neues Bild "
+    "zu erzeugen. Ohne attachment_ids nimmt das Werkzeug die Bilder der letzten Nutzerfrage, "
+    "sonst das letzte erzeugte Bild."
+)
+
+
 def system_hint(bindings) -> str:
-    """Satz für den System-Prompt, wenn ``generate_image`` angeboten wird."""
-    return HINT if TOOL_NAME in (bindings or {}) else ""
+    """Sätze für den System-Prompt, wenn ``generate_image`` bzw. ``edit_image`` angeboten wird."""
+    parts = []
+    if TOOL_NAME in (bindings or {}):
+        parts.append(HINT)
+    if EDIT_TOOL_NAME in (bindings or {}):
+        parts.append(EDIT_HINT)
+    return " ".join(parts)
 
 
 def _tool_available(user, ai_model) -> bool:
@@ -780,6 +795,115 @@ TOOL_SPEC = ToolSpec(
 )
 
 
+def _edit_tool_available(user, ai_model) -> bool:
+    model, _ = pick_image_model(user, edit=True)
+    return model is not None
+
+
+def _edit_sources(message, requested) -> list[Attachment]:
+    """Vorlagen für ``edit_image``: die vom Modell genannten Bilder dieses Chats, sonst die
+    Bilder der letzten Nutzerfrage, sonst das letzte erzeugte Bild im Zweig."""
+    conversation_id = message.conversation_id
+    if requested:
+        found = list(
+            Attachment.objects.filter(
+                pk__in=requested[:MAX_SOURCES],
+                kind=Attachment.Kind.IMAGE,
+                message__conversation_id=conversation_id,
+            ).order_by("created", "id")
+        )
+        return found
+    question_id = message.parent_id
+    if question_id:
+        own = list(
+            Attachment.objects.filter(
+                message_id=question_id, kind=Attachment.Kind.IMAGE, tool_call__isnull=True
+            ).order_by("created", "id")
+        )
+        if own:
+            return own[:MAX_SOURCES]
+        question = (
+            Message.objects.filter(pk=question_id).values_list("parent_id", flat=True).first()
+        )
+        previous = previous_image(question)
+        if previous is not None:
+            return [previous[0]]
+    return []
+
+
+def _edit_tool_run(user, arguments: dict, sources) -> tooling.BuiltinResult:
+    args = arguments if isinstance(arguments, dict) else {}
+    message = sources.message
+    image_model, reason = pick_image_model(user, edit=True)
+    if image_model is None:
+        return tooling.BuiltinResult(reason, True)
+    if generated_count(message) >= MAX_IMAGES_PER_ANSWER:
+        return tooling.BuiltinResult(MSG_TOO_MANY, True)
+    raw_ids = args.get("attachment_ids")
+    requested = (
+        [i for i in raw_ids if isinstance(i, int) and not isinstance(i, bool)]
+        if isinstance(raw_ids, list)
+        else []
+    )
+    originals = _edit_sources(message, requested)
+    if not originals:
+        return tooling.BuiltinResult(MSG_NO_SOURCE, True)
+    fmt = args.get("size") if args.get("size") in FORMATS else DEFAULT_FORMAT
+    quality = args.get("quality") if args.get("quality") in QUALITIES else DEFAULT_QUALITY
+    try:
+        attachment, _ = edit(
+            user,
+            message,
+            str(args.get("prompt") or ""),
+            originals,
+            ai_model=image_model,
+            fmt=fmt,
+            quality=quality,
+        )
+    except ImageError as exc:
+        return tooling.BuiltinResult(exc.message, True)
+    return tooling.BuiltinResult(
+        f"Bild bearbeitet und dem Nutzer in der Antwort angezeigt (Anhang #{attachment.pk}, "
+        f"{attachment.width}×{attachment.height} px, Modell {image_model.display_name}). "
+        "Das Bild nicht erneut als Code oder Text darstellen. "
+        f"{tooling.NOTE_ATTACHMENT_SHOWN}"
+    )
+
+
+EDIT_TOOL_SPEC = ToolSpec(
+    name=EDIT_TOOL_NAME,
+    description=(
+        "Verändert ein vorhandenes Bild (ein vom Nutzer angehängtes oder ein vorher erzeugtes) "
+        "nach der Anweisung und zeigt das Ergebnis direkt in der Antwort. Nutze es, wenn der "
+        "Nutzer ein Bild ändern will („Mach den Himmel blau“, „Entferne den Text“). Beschreibe "
+        "im Argument „prompt“ nur die Änderung. Kostet Geld: je Wunsch nur ein Bild."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "description": "Die gewünschte Änderung am Bild."},
+            "attachment_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Nummern der Bilder (Anhang #…); ohne Angabe die Bilder der "
+                "letzten Nutzerfrage, sonst das letzte erzeugte Bild.",
+            },
+            "size": {
+                "type": "string",
+                "enum": list(FORMATS),
+                "description": "Format: square, portrait, landscape. Standard square.",
+            },
+            "quality": {
+                "type": "string",
+                "enum": list(QUALITIES),
+                "description": "Qualität; höher kostet mehr. Standard auto.",
+            },
+        },
+        "required": ["prompt"],
+    },
+)
+
+
 def register() -> None:
     tooling.register_builtin(
         tooling.BuiltinTool(
@@ -788,6 +912,16 @@ def register() -> None:
             spec=TOOL_SPEC,
             available=_tool_available,
             run=_tool_run,
+            confirm=tool_needs_confirmation,
+        )
+    )
+    tooling.register_builtin(
+        tooling.BuiltinTool(
+            name=EDIT_TOOL_NAME,
+            label=EDIT_TOOL_LABEL,
+            spec=EDIT_TOOL_SPEC,
+            available=_edit_tool_available,
+            run=_edit_tool_run,
             confirm=tool_needs_confirmation,
         )
     )

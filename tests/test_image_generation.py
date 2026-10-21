@@ -1724,3 +1724,81 @@ def test_regenerate_keeps_the_number_of_variants(
 def test_chat_page_offers_the_number_of_variants(client, adult, conversation, image_model):
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert 'id="image-mode-count"' in page and 'data-variants="4"' in page
+
+
+def edit_call(call_id="e1", **args):
+    return ToolCallEvent(id=call_id, name="edit_image", arguments=args)
+
+
+@pytest.mark.django_db
+def test_edit_tool_is_offered_only_with_a_model_that_can_edit(
+    adult, chat_model, image_model, image_provider
+):
+    assert "edit_image" not in tooling.builtin_bindings(adult, chat_model)
+    AIModel.objects.create(
+        provider=image_provider,
+        model_id="gpt-image-1.5",
+        display_name="Edit",
+        capability="image",
+        can_edit_images=True,
+    )
+    bindings = tooling.builtin_bindings(adult, chat_model)
+    assert "edit_image" in bindings and "generate_image" in bindings
+    assert images.EDIT_HINT in images.system_hint(bindings)
+    chat_model.supports_tools = False
+    assert "edit_image" not in tooling.builtin_bindings(adult, chat_model)
+
+
+@pytest.mark.django_db
+def test_edit_tool_edits_the_last_generated_image(
+    client, conversation, chat_model, image_model, editor_model, fakes
+):
+    chat_calls, image_calls = fakes(
+        [tool_round(edit_call(prompt="mehr Rot")), answer("Hier die Änderung.")]
+    )
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Ein Kreis",
+            image={"model": image_model.pk},
+        )
+    )
+    first = Attachment.objects.get(message__role="assistant")
+    events = events_of(
+        post(client, conversation, content="Mach den Kreis roter", model=chat_model.pk)
+    )
+    assert [n for n, _ in events][:3] == ["start", "tool_call", "tool_result"]
+    assert events[1][1]["server"] == images.EDIT_TOOL_LABEL
+    assert events[2][1]["status"] == "ok"
+    call = image_calls[-1]
+    assert call["edit"] is True and call["prompt"] == "mehr Rot" and call["images"][0][2] > 0
+    result = Attachment.objects.exclude(pk=first.pk).get(generated_by_model=editor_model)
+    assert result.source_image == first
+    tool_result = chat_calls[0 if len(chat_calls) == 1 else 1]["messages"][-1]
+    assert tool_result.role == "tool" and "Bild bearbeitet" in tool_result.content
+    assert "edit_image" in [t.name for t in chat_calls[0]["tools"]]
+
+
+@pytest.mark.django_db
+def test_edit_tool_without_any_image_tells_the_model(
+    client, conversation, chat_model, editor_model, fakes
+):
+    chat_calls, image_calls = fakes([tool_round(edit_call(prompt="blau")), answer("Kein Bild da.")])
+    events = events_of(post(client, conversation, content="Mach es blau", model=chat_model.pk))
+    assert events[2][1]["status"] == "error"
+    assert image_calls == []
+    assert images.MSG_NO_SOURCE in chat_calls[1]["messages"][-1].content
+
+
+@pytest.mark.django_db
+def test_edit_tool_only_takes_images_of_this_chat(
+    client, adult, conversation, chat_model, image_model, editor_model, fakes
+):
+    other_chat = Conversation.objects.create(user=adult, default_model=chat_model)
+    fakes()
+    events_of(post(client, other_chat, content="Fremdes Bild", image={"model": image_model.pk}))
+    foreign = Attachment.objects.get(message__conversation=other_chat)
+    fakes([tool_round(edit_call(prompt="blau", attachment_ids=[foreign.pk])), answer()])
+    events = events_of(post(client, conversation, content="Ändere es", model=chat_model.pk))
+    assert events[2][1]["status"] == "error"  # das Bild gehört zu einem anderen Chat
