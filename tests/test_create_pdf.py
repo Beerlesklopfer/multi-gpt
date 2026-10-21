@@ -483,6 +483,11 @@ def test_worksheet_solutions_match_tasks():
         ),
         ({"layout": "uhr", "precision": "viertel", "mode": "einzeichnen"}, (210.0, 297.0), 2),
         ({"layout": "lineatur", "lineatur": "karo10", "page_size": "Letter"}, (215.9, 279.4), 1),
+        ({"layout": "hundertertafel", "gaps": 12, "seed": 3}, (210.0, 297.0), 2),
+        ({"layout": "hundertertafel", "with_solutions": False}, (210.0, 297.0), 1),
+        ({"layout": "zwanzigerfeld", "count": 3, "mode": "einzeichnen"}, (210.0, 297.0), 2),
+        ({"layout": "stellenwerttafel", "range": [0, 1000000], "count": 5}, (210.0, 297.0), 1),
+        ({"layout": "geobrett", "count": 4, "grid": 5}, (210.0, 297.0), 1),
     ],
 )
 def test_every_layout_renders(args, size, pages):
@@ -766,3 +771,28 @@ def test_lineatur_0_on_a4_stays_landscape():
         None, None, {"layout": "lineatur", "lineatur": "0", "page_size": "A4"}
     )
     assert "size: 297mm 210mm" in job.html
+
+
+def test_worksheet_templates_svg():
+    frame = documents_sheets.Frame(210.0, 297.0, font=5.0)
+    (plain,) = documents_sheets.hundred_chart_pages(frame, 5, 1, False)
+    (solved,) = documents_sheets.hundred_chart_pages(frame, 5, 1, True)
+    assert plain.count("<text") == 95 + 1 and solved.count("<text") == 100 + 2  # + Hinweis, Titel
+    (zf,) = documents_sheets.twenty_frame_pages(frame, 2, "ablesen", 4, False)
+    assert "<circle" in zf and "Zahl:" in zf
+    (sw,) = documents_sheets.place_value_pages(frame, 4, 3)
+    assert all(f">{k}</text>" in sw for k in ("E", "Z", "H", "T"))
+    (gb,) = documents_sheets.geoboard_pages(frame, 2, 5, 2)
+    assert gb.count("<circle") == 2 * 25
+    with pytest.raises(documents_sheets.SheetError):
+        documents_sheets.geoboard_pages(frame, 1, 20, 1)
+    with pytest.raises(documents_sheets.SheetError):
+        documents_sheets.place_value_pages(frame, 9, 1)
+
+
+def test_answer_lines_are_equally_strong():
+    for key in ("1", "2", "4"):
+        svg = documents_sheets.writing_lines_svg(100, 3, key)
+        assert len(set(re.findall(r'stroke-width="([\d.]+)"', svg))) == 1
+        assert len(set(re.findall(r'stroke="(#[0-9a-f]+)"', svg))) == 1
+        assert "<rect" not in svg  # keine Kontrastfläche

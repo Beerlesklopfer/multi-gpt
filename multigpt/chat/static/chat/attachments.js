@@ -237,6 +237,15 @@
           node("span", "sr-only", " (herunterladen)"),
         );
         item.append(link);
+        if (att.generated && att.mimeType === "application/pdf" && url) {
+          // Erzeugtes PDF: auch im Browser ansehen (wie chat/_attachment_item.html).
+          const view = node("a", "attachment-chip attachment-view", "Ansehen");
+          view.href = url;
+          view.target = "_blank";
+          view.rel = "noopener";
+          view.append(node("span", "sr-only", ` (${att.name})`));
+          item.append(view);
+        }
       }
       list.append(item);
     }
@@ -273,6 +282,7 @@
         width: att.width || null,
         height: att.height || null,
         mimeType: att.mime_type,
+        generated: true, // vom Werkzeug erzeugt (ohne Besitzer), nicht hochgeladen
       }));
     listEl.classList.add("message-attachments"); // damit die Großansicht (Lightbox) greift
     listEl.replaceChildren(...Array.from(buildMessageList(mapped).children));

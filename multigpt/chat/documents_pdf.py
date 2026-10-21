@@ -11,7 +11,8 @@ Bittet jemand um ein *Blatt*, soll ein druckfertiges PDF entstehen, kein Bild
   (Schrift nach ``grade``, nummerierte Aufgaben, Name/Datum).
 - ``lineatur``: Schreiblern-Lineaturen 0–4, liniert, Karo, blanko
   (``documents_sheets``, Maße und Quellen dort).
-- ``aufgaben``, ``rechenkaestchen``, ``einmaleins``, ``zahlenstrahl``, ``uhr``:
+- ``aufgaben``, ``rechenkaestchen``, ``einmaleins``, ``zahlenstrahl``, ``uhr``,
+  ``hundertertafel``, ``zwanzigerfeld``, ``stellenwerttafel``, ``geobrett``:
   Mathe-Blätter; Aufgaben und Lösungen erzeugt der Server per ``seed``.
 
 Entscheidungen:
@@ -94,6 +95,10 @@ LAYOUTS = (
     "einmaleins",
     "zahlenstrahl",
     "uhr",
+    "hundertertafel",
+    "zwanzigerfeld",
+    "stellenwerttafel",
+    "geobrett",
 )
 MARKDOWN_LAYOUTS = ("text", "arbeitsblatt")
 # Ränder des Markdown-Layouts (oben, rechts, unten, links) in mm.
@@ -128,7 +133,9 @@ DESCRIPTION = (
     "Lineatur 0–4 mit Häuschen, liniert, karo5, karo10, blanko_rand – bei „Schreibblatt“, "
     "„Lineatur“, „Schreibheft“, „Karopapier“, „Schreiben lernen“); aufgaben, "
     "rechenkaestchen, einmaleins (Rechenaufgaben mit Lösungsblatt), zahlenstrahl, uhr "
-    "(Uhrzeiten ablesen bzw. einzeichnen). Rechenaufgaben und Lösungen erzeugt der Server "
+    "(Uhrzeiten ablesen bzw. einzeichnen), hundertertafel (gaps = leere Felder), "
+    "zwanzigerfeld, stellenwerttafel (range bestimmt die Stellen), geobrett (grid = "
+    "Nägel je Seite). Rechenaufgaben und Lösungen erzeugt der Server "
     "(operations, range, count, seed) – keine Aufgaben oder Lösungen selbst ausdenken. "
     "Markdown-Bausteine: Tabellen, Listen, $Formel$, [ ] Ankreuzfeld, ___ Lücke bzw. "
     "Schreiblinie, eigene Zeile [linien:3] bzw. [linien:3 lineatur:1] für Schreiblinien, "
@@ -760,6 +767,27 @@ def build(user, message, args: dict) -> Job:
             pages = sheets.number_line_pages(frame, lo, hi, step, count, gaps, seed, False)
             if with_solutions and gaps:
                 pages += sheets.number_line_pages(frame, lo, hi, step, count, gaps, seed, True)
+        elif layout == "hundertertafel":
+            gaps = _int(args.get("gaps"), 0, 0, 100)
+            pages = sheets.hundred_chart_pages(frame, gaps, seed, False)
+            if with_solutions and gaps:
+                pages += sheets.hundred_chart_pages(frame, gaps, seed, True)
+        elif layout == "zwanzigerfeld":
+            mode = _choice(args.get("mode"), ("ablesen", "einzeichnen"), "ablesen")
+            count = _int(args.get("count"), 4, 1, 6)
+            pages = sheets.twenty_frame_pages(frame, count, mode, seed, False)
+            if with_solutions:
+                pages += sheets.twenty_frame_pages(frame, count, mode, seed, True)
+        elif layout == "stellenwerttafel":
+            _, top_value = _range(args.get("range"), (0, 1000))
+            pages = sheets.place_value_pages(
+                frame, max(3, len(str(abs(top_value)))), _int(args.get("count"), 6, 1, 15)
+            )
+        elif layout == "geobrett":
+            count = _int(args.get("count"), 4, 1, 12)
+            pages = sheets.geoboard_pages(
+                frame, count, _int(args.get("grid"), 5, 3, 11), _int(args.get("columns"), 2, 1, 4)
+            )
         else:  # uhr
             mode = _choice(args.get("mode"), ("ablesen", "einzeichnen"), "ablesen")
             precision = _choice(args.get("precision"), sheets.PRECISIONS, "halb")
@@ -777,6 +805,10 @@ def build(user, message, args: dict) -> Job:
             "einmaleins": "Einmaleins",
             "zahlenstrahl": "Zahlenstrahl",
             "uhr": "Uhrzeiten",
+            "hundertertafel": "Hundertertafel",
+            "zwanzigerfeld": "Zwanzigerfeld",
+            "stellenwerttafel": "Stellenwerttafel",
+            "geobrett": "Geobrett",
         }[layout]
     )
     return Job(
@@ -940,11 +972,16 @@ TOOL_SPEC = ToolSpec(
                 "description": "einmaleins: gemischt statt der Reihe nach.",
             },
             "step": {"type": "integer", "description": "zahlenstrahl: Schrittweite."},
-            "gaps": {"type": "integer", "description": "zahlenstrahl: Zahl der Lücken."},
+            "gaps": {
+                "type": "integer",
+                "description": "zahlenstrahl, hundertertafel: Zahl der Lücken.",
+            },
+            "grid": {"type": "integer", "description": "geobrett: Nägel je Seite (3–11)."},
             "mode": {
                 "type": "string",
                 "enum": ["ablesen", "einzeichnen"],
-                "description": "uhr: Zeit ablesen oder Zeiger einzeichnen.",
+                "description": "uhr: Zeit ablesen oder Zeiger einzeichnen; zwanzigerfeld: Zahl "
+                "ablesen oder Plättchen einzeichnen.",
             },
             "precision": {
                 "type": "string",

@@ -656,6 +656,137 @@ def clock_pages(frame: Frame, times, mode: str, solved: bool) -> list[str]:
     return [c.svg()]
 
 
+# --- Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett ---------------------------
+
+
+def hundred_chart_pages(frame: Frame, gaps: int, seed: int, solved: bool) -> list[str]:
+    """Hundertertafel 1–100; ``gaps`` Felder bleiben leer (Lösung: grün fett)."""
+    rng = random.Random(f"ht:{seed}:{gaps}")
+    hidden = set(rng.sample(range(1, 101), min(gaps, 100)))
+    c, top, bottom = frame.canvas("Lösungen" if solved else "")
+    cell = min((frame.width - 2 * MARGIN) / 10, (bottom - top) / 10, 20.0)
+    x0 = (frame.width - 10 * cell) / 2
+    for i in range(11):
+        width = BOLD_LINE if i in (0, 5, 10) else LINE
+        c.line(x0 + i * cell, top, x0 + i * cell, top + 10 * cell, width, INK)
+        c.line(x0, top + i * cell, x0 + 10 * cell, top + i * cell, width, INK)
+    size = cell * 0.5
+    for n in range(1, 101):
+        x = x0 + ((n - 1) % 10 + 0.5) * cell
+        y = top + ((n - 1) // 10) * cell + cell / 2 + size * CAP_HEIGHT / 2
+        if n in hidden and not solved:
+            continue
+        bold = solved and n in hidden
+        c.text(x, y, n, size, anchor="middle", bold=bold, color=SOLUTION if bold else INK)
+    return [c.svg()]
+
+
+def twenty_frame_pages(frame: Frame, count: int, mode: str, seed: int, solved: bool) -> list[str]:
+    """Zwanzigerfelder (2 × 10, Fünferstruktur). ``ablesen``: Plättchen gelegt, Zahl
+    schreiben; ``einzeichnen``: Zahl gegeben, Plättchen einzeichnen."""
+    rng = random.Random(f"zf:{seed}:{count}:{mode}")
+    numbers = [rng.randint(1, 20) for _ in range(count)]
+    c, top, bottom = frame.canvas("Lösungen" if solved else "")
+    cell = min((frame.width - 2 * MARGIN) / 10, 16.0)
+    x0 = (frame.width - 10 * cell) / 2
+    pitch = (bottom - top) / max(1, count)
+    size = frame.font * 0.9
+    for n, number in enumerate(numbers):
+        y0 = top + n * pitch + 2
+        for i in range(11):
+            width = BOLD_LINE if i in (0, 5, 10) else LINE
+            c.line(x0 + i * cell, y0, x0 + i * cell, y0 + 2 * cell, width, INK)
+        for j in range(3):
+            c.line(
+                x0, y0 + j * cell, x0 + 10 * cell, y0 + j * cell, BOLD_LINE if j != 1 else LINE, INK
+            )
+        show = mode == "ablesen" or solved
+        if show:
+            for k in range(number):
+                cx = x0 + (k % 10 + 0.5) * cell
+                cy = y0 + (k // 10 + 0.5) * cell
+                color = SOLUTION if solved and mode == "einzeichnen" else INK
+                c.circle(cx, cy, cell * 0.35, fill=color, stroke=color, width=0.2)
+        label_y = y0 + 2 * cell + size + 2
+        if mode == "ablesen":
+            if solved:
+                c.text(x0, label_y, f"Zahl: {number}", size, bold=True, color=SOLUTION)
+            else:
+                c.text(x0, label_y, "Zahl:", size)
+                c.line(x0 + size * 3, label_y + 0.6, x0 + size * 3 + 25, label_y + 0.6, 0.3, INK)
+        else:
+            c.text(x0, label_y, f"Zahl: {number}", size, bold=True)
+    return [c.svg()]
+
+
+PLACES = ("E", "Z", "H", "T", "ZT", "HT", "M")  # Einer … Millionen
+PLACE_NAMES = {
+    "E": "Einer",
+    "Z": "Zehner",
+    "H": "Hunderter",
+    "T": "Tausender",
+    "ZT": "Zehntausender",
+    "HT": "Hunderttausender",
+    "M": "Million",
+}
+
+
+def place_value_pages(frame: Frame, places: int, rows: int) -> list[str]:
+    """Stellenwerttafel mit ``places`` Stellen (3–7) und ``rows`` leeren Zeilen."""
+    if not 3 <= places <= 7:
+        raise SheetError("Stellenwerttafel: 3 bis 7 Stellen (Zahlenraum anpassen).")
+    c, top, bottom = frame.canvas()
+    columns = list(reversed(PLACES[:places]))
+    number_w = 40.0
+    cell = (frame.width - 2 * MARGIN - number_w) / places
+    head = 14.0
+    row_h = min(18.0, (bottom - top - head) / max(1, rows))
+    x0 = MARGIN
+    size = frame.font * 0.9
+    c.rect(x0, top, places * cell + number_w, head + rows * row_h, stroke=INK, width=BOLD_LINE)
+    c.line(x0, top + head, x0 + places * cell + number_w, top + head, BOLD_LINE, INK)
+    for i, key in enumerate(columns):
+        x = x0 + i * cell
+        if i:
+            # Klassengrenze (nach je drei Stellen von rechts) verstärkt.
+            heavy = (places - i) % 3 == 0
+            c.line(x, top, x, top + head + rows * row_h, BOLD_LINE if heavy else LINE, INK)
+        c.text(x + cell / 2, top + 6, key, size, anchor="middle", bold=True)
+        c.text(x + cell / 2, top + 11, PLACE_NAMES[key], 2.6, anchor="middle", color=HELPER)
+    xz = x0 + places * cell
+    c.line(xz, top, xz, top + head + rows * row_h, BOLD_LINE, INK)
+    c.text(xz + number_w / 2, top + 8, "Zahl", size, anchor="middle", bold=True)
+    for j in range(1, rows):
+        y = top + head + j * row_h
+        c.line(x0, y, x0 + places * cell + number_w, y, LINE, INK)
+    return [c.svg()]
+
+
+def geoboard_pages(frame: Frame, count: int, size: int, columns: int) -> list[str]:
+    """Geobrett-Vorlagen: ``size`` × ``size`` Nägel, ``count`` Bretter je Seite."""
+    if not 3 <= size <= 11:
+        raise SheetError("Geobrett: 3 bis 11 Nägel je Seite.")
+    c, top, bottom = frame.canvas()
+    columns = max(1, min(columns, count))
+    rows = math.ceil(count / columns)
+    slot_w = (frame.width - 2 * MARGIN) / columns
+    slot_h = (bottom - top) / rows
+    side = min(slot_w, slot_h) - 6
+    spacing = side / size
+    for n in range(count):
+        col, row = n % columns, n // columns
+        cx = MARGIN + (col + 0.5) * slot_w
+        cy = top + (row + 0.5) * slot_h
+        left, upper = cx - side / 2, cy - side / 2
+        c.rect(left, upper, side, side, stroke=INK, width=BOLD_LINE, radius=2)
+        for i in range(size):
+            for j in range(size):
+                px = left + (i + 0.5) * spacing
+                py = upper + (j + 0.5) * spacing
+                c.circle(px, py, max(0.6, spacing * 0.08), fill=INK, stroke=INK, width=0.2)
+    return [c.svg()]
+
+
 # --- Bausteine für Arbeitsblätter (Markdown-Layout) -------------------------------------------
 
 
@@ -669,5 +800,5 @@ def writing_lines_svg(width: float, rows: int, key: str = "1") -> str:
     height = rows * pitch - (pitch - lin.system_height) + 2
     c = Canvas(width, height)
     for i in range(rows):
-        draw_system(c, lin, 0, width, 1 + i * pitch)
+        draw_system(c, lin, 0, width, 1 + i * pitch, baseline_bold=False, contrast=False)
     return c.svg()
