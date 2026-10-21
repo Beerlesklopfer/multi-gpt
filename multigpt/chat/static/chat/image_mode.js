@@ -204,6 +204,7 @@
       options.hidden = !on;
       box.classList.toggle("is-active", on);
       textarea.placeholder = on ? "Bild beschreiben …" : placeholder;
+      document.dispatchEvent(new CustomEvent("multigpt:image-mode")); // Zusammenfassung (input_options.js)
       updateHint();
     }
 

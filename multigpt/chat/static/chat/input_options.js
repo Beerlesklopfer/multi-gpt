@@ -1,6 +1,6 @@
 // MultiGPT – Eingabeoptionen ein-/ausblenden. Die Optionszeilen über dem
 // Eingabefeld (Modell, Vergleichen samt Modellauswahl, Websuche, Werkzeuge,
-// Dokumente) lassen sich einklappen, damit z. B. drei Vergleichsspalten mehr
+// Dokumente, Modus „Bild“) lassen sich einklappen, damit z. B. drei Vergleichsspalten mehr
 // Höhe bekommen. Eingeklappt zeigt eine Zeile die aktive Auswahl. Der Zustand
 // gilt je Browser (localStorage, Fehler werden ignoriert).
 // Namen von Modellen und Sammlungen nur als Text. Kein Inline-JS.
@@ -57,7 +57,11 @@
     // z. B. „Vergleich: gpt-5.5, claude-sonnet-5-5 · Dokumente: CLV“
     function summaryText() {
       const parts = [];
-      if (comparing()) {
+      // Modus „Bild“ (image_mode.js): die Nachricht geht an das Bildmodell, nicht an das Chatmodell.
+      const imageMode = window.MultiGPT?.imageMode;
+      if (imageMode?.isActive?.()) {
+        parts.push(`Bild erzeugen: ${imageMode.label()}`);
+      } else if (comparing()) {
         const names = checkedNames("#compare-models-list input:checked");
         parts.push(`Vergleich: ${names.length ? names.join(", ") : "keine Modelle gewählt"}`);
       } else {
@@ -111,6 +115,7 @@
     // Auswahl geändert (auch Listen, die später gefüllt werden).
     form.addEventListener("change", updateSummary);
     document.addEventListener("multigpt:models-loaded", updateSummary);
+    document.addEventListener("multigpt:image-mode", updateSummary);
     const observer = new MutationObserver(updateSummary);
     for (const id of ["compare-models-list", "collection-picker-list", "tool-servers-list"]) {
       const el = document.getElementById(id);
