@@ -464,3 +464,30 @@ def test_saving_outside_transaction(client, monkeypatch, fake):
     answer = Message.objects.get(pk=events[0][1]["assistant_message_id"])
     assert (answer.content, answer.status) == ("ab", "complete")
     assert answer.cost is None  # keine Preise hinterlegt
+
+
+def test_expired_key_mid_chat_switches_the_provider_offline(
+    client, conversation, provider, ai_model, fake
+):
+    """LOP C8: Ein Key, der erst mitten im Chat als abgelaufen auffällt, schaltet den Anbieter
+    sofort offline (auch ohne Statusprüfung), mit der Ursache."""
+    from multigpt.chat import status as provider_status
+    from multigpt.chat.providers.base import MSG_KEY_EXPIRED
+
+    Provider.objects.filter(pk=provider.pk).update(check_status=False, online=True)
+    fake([Error(MSG_KEY_EXPIRED)])
+    events = parse_sse(post(client, conversation, content="Frage", model=ai_model.pk))
+    assert dict(events)["error"]["message"] == MSG_KEY_EXPIRED
+    provider.refresh_from_db()
+    assert provider.online is False and provider.last_error == MSG_KEY_EXPIRED
+    assert provider.last_checked is not None and provider_status.known_offline(provider)
+
+
+def test_other_errors_do_not_switch_the_provider_offline(
+    client, conversation, provider, ai_model, fake
+):
+    Provider.objects.filter(pk=provider.pk).update(check_status=False, online=True)
+    fake([Error("Der Anbieter hat den Zugang abgelehnt. Bitte den API-Key prüfen.")])
+    parse_sse(post(client, conversation, content="Frage", model=ai_model.pk))
+    provider.refresh_from_db()
+    assert provider.online is True

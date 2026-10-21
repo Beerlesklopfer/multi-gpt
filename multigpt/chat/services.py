@@ -109,7 +109,15 @@ from .models import (
     ToolCall,
 )
 from .providers import registry
-from .providers.base import ChatMessage, Delta, Done, Error, ToolCallEvent, Usage
+from .providers.base import (
+    MSG_KEY_EXPIRED,
+    ChatMessage,
+    Delta,
+    Done,
+    Error,
+    ToolCallEvent,
+    Usage,
+)
 from .rag import chat as rag_chat  # noqa: F401 - registriert Dokumentsuche (Kontext und Werkzeug)
 from .rag import doc_tools  # noqa: F401 - registriert list_documents, document_info, read_document
 from .titles import title_from
@@ -1723,6 +1731,9 @@ class _Loop:
                             status = Message.Status.ERROR
                         if event.retryable:
                             provider_status.invalidate(turn.ai_model.provider_id)
+                        elif event.message == MSG_KEY_EXPIRED:
+                            # Abgelaufener Key mitten im Chat: Anbieter gleich offline schalten.
+                            provider_status.mark_key_expired(turn.ai_model.provider_id)
                         logger.info(
                             "Anbieterfehler bei Antwort %s (Modell %s)", msg.pk, turn.ai_model.pk
                         )

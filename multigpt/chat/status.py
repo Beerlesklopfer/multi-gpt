@@ -41,7 +41,7 @@ from django.utils import timezone
 from . import detect
 from .models import AIModel, Provider
 from .providers import registry
-from .providers.base import CHECK_UNEXPECTED, CheckResult
+from .providers.base import CHECK_UNEXPECTED, MSG_KEY_EXPIRED, CheckResult
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,16 @@ def refresh_all() -> list[Provider]:
     # Dieselben Anbieter neu lesen: Ein wieder erreichbarer Cloud-Anbieter
     # erscheint so einmal als online, bevor er aus der Liste fällt.
     return list(Provider.objects.filter(pk__in=[p.pk for p in providers]).order_by("name", "pk"))
+
+
+def mark_key_expired(provider_id: int) -> None:
+    """Der Anbieter hat mitten im Chat einen abgelaufenen Key gemeldet: sofort offline schalten
+    (mit der Ursache), ohne auf die nächste Prüfung zu warten. Auch Anbieter ohne Statusprüfung
+    gelten danach als offline (``known_offline``) und werden in Abständen neu geprüft."""
+    Provider.objects.filter(pk=provider_id).update(
+        online=False, last_error=MSG_KEY_EXPIRED, last_checked=timezone.now()
+    )
+    logger.info("Anbieter %s: Key abgelaufen, jetzt offline", provider_id)
 
 
 def invalidate(provider_id: int) -> None:
