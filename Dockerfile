@@ -44,10 +44,19 @@ COPY --from=builder /build/multi-gpt_*.deb /tmp/
 # Site nicht aktivieren); gunicorn lauscht hier über MULTI_GPT_BIND auf 0.0.0.0.
 RUN apt-get update \
     && MULTI_GPT_SKIP_NGINX=1 apt-get install -y --no-install-recommends /tmp/multi-gpt_*.deb \
+        bubblewrap \
+    && bwrap --version \
     && rm -rf /var/lib/apt/lists/* /tmp/*.deb \
     && rm -f /etc/multi-gpt/.env \
     && install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt /var/lib/multi-gpt/media
 
+# Sandbox für run_python: bubblewrap (/usr/bin/bwrap) kommt als Abhängigkeit des
+# Pakets und steht oben noch einmal ausdrücklich, damit es nie fehlt. Ob die
+# Sandbox läuft, hängt von der Container-Laufzeit ab: bwrap legt User-Namespaces
+# und Mounts an. Rootless Podman erlaubt das; das Standardprofil von rootful
+# Docker (seccomp, AppArmor) sperrt es, dort bleibt das Werkzeug ausgeschaltet
+# (kein unsicherer Rückfall), siehe compose.yaml. Prüfen: Admin >
+# Chat-Einstellungen > „Sandbox testen“.
 ENV PATH="/usr/share/python/multi-gpt/bin:${PATH}"
 
 USER multi-gpt

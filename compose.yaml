@@ -61,6 +61,11 @@ services:
       STATIC_ROOT: /usr/share/python/multi-gpt/static
       MEDIA_ROOT: /var/lib/multi-gpt/media
       MULTI_GPT_BIND: 0.0.0.0:8000
+    # Sandbox für run_python (bubblewrap): rootless Podman braucht nichts. Unter
+    # rootful Docker sperrt das Standardprofil User-Namespaces; dann bleibt das
+    # Werkzeug aus. Wer es dort bewusst will, lockert die Profile selbst (das
+    # schwächt die Container-Isolation) und prüft mit „Sandbox testen“:
+    #   security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
     volumes:
       - multi-gpt-data:/var/lib/multi-gpt
 
