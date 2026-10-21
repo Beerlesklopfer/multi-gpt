@@ -48,10 +48,13 @@ def answer_text(
     chained: bool = False,
     size: str | None = None,
     show_quality: bool = True,
+    count: int = 1,
 ) -> str:
     """Text der Antwort (geht wie jede Antwort später auch an Chatmodelle)."""
+    noun = f"{count} Bilder" if count > 1 else "Bild"
+    done = "bearbeitet" if edited else "erzeugt"
     text = (
-        f"Bild {'bearbeitet' if edited else 'erzeugt'} mit {ai_model.display_name} "
+        f"{noun} {done} mit {ai_model.display_name} "
         f"({size.replace('x', '×') if size else images.FORMAT_LABELS[fmt]}"
         f"{', Qualität ' + images.QUALITIES[quality] if show_quality else ''})."
     )
@@ -93,6 +96,9 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         if not isinstance(continue_last, bool):
             return error(MSG_INVALID, 400)
         target = images.parse_size(options["size"]) if options.get("size") else None
+        count = options.get("n", 1)
+        if isinstance(count, bool) or not isinstance(count, int):
+            return error(images.MSG_BAD_COUNT, 400)
     except images.ImageError as exc:
         return error(exc.message, exc.status)
     expected_leaf, valid = parse_pk(data, "leaf")
@@ -125,6 +131,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             and not sources
             and len(content) <= images.CONTINUE_MAX_CHARS,
             target=target,
+            count=count,
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
@@ -143,6 +150,7 @@ def prepare(
     sources=(),
     continue_last=False,
     target=None,
+    count=1,
 ):
     """Nutzernachricht und (leere) Antwort des Bildmodells anlegen."""
     with transaction.atomic():
@@ -169,6 +177,10 @@ def prepare(
             if not images.supports_custom_size(ai_model):
                 raise services.TurnError(images.MSG_SIZE_UNSUPPORTED)
             image_state["size"] = f"{target[0]}x{target[1]}"
+        if count != 1:
+            if not 1 <= count <= images.max_variants(ai_model):
+                raise services.TurnError(images.MSG_BAD_COUNT)
+            image_state["count"] = count
         prompt = content  # was das Bildmodell bekommt
         reuse = []
         if drafts:
@@ -306,6 +318,8 @@ def prepare_rerun(user, conversation, kind, old, question, content, state, ids, 
         new_state = {"format": fmt, "quality": quality, "transparent": transparent}
         if state.get("size"):
             new_state["size"] = state["size"]
+        if state.get("count"):
+            new_state["count"] = state["count"]
         if sources:
             new_state["edit"] = True
         elif state.get("continued"):
@@ -396,10 +410,11 @@ def run(turn, fmt: str, quality: str, transparent: bool):
         common["transparent"] = transparent
         if state.get("size"):
             common["target"] = images.parse_size(state["size"])
+        common["count"] = int(state.get("count") or 1)
         if source_ids:
             sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
             try:
-                attachment, revised = images.edit(turn.user, msg, turn.query, sources, **common)
+                made, revised = images.edit_many(turn.user, msg, turn.query, sources, **common)
             except images.EditUnsupported:
                 # Beim stillen Weiterarbeiten (nicht bei hochgeladenen Vorlagen) weicht der Server
                 # auf die Beschreibung aus, wenn dem Anbieter das Bearbeiten fehlt.
@@ -415,14 +430,14 @@ def run(turn, fmt: str, quality: str, transparent: bool):
                     turn.ai_model.pk,
                 )
                 prompt = images.chain_prompt(previous[1], turn.query)
-                attachment, revised = images.generate(turn.user, msg, prompt, **common)
+                made, revised = images.generate_many(turn.user, msg, prompt, **common)
                 edited, chained = False, True
                 state = {**state, "edit": False, "prompt": prompt[: images.MAX_PROMPT]}
                 Message.objects.filter(pk=msg.pk).update(
                     tool_state={**(msg.tool_state or {}), "image": state}
                 )
         else:
-            attachment, revised = images.generate(turn.user, msg, turn.query, **common)
+            made, revised = images.generate_many(turn.user, msg, turn.query, **common)
         text = answer_text(
             turn.ai_model,
             fmt,
@@ -432,8 +447,10 @@ def run(turn, fmt: str, quality: str, transparent: bool):
             chained=chained,
             size=state.get("size"),
             show_quality=images.supports_quality(turn.ai_model),
+            count=len(made),
         )
-        cost = attachment.cost
+        costs = [a.cost for a in made if a.cost is not None]
+        cost = sum(costs) if costs else None
     except sharing.AccessRevoked:
         status, error = Message.Status.ABORTED, sharing.MSG_REVOKED
     except images.ImageError as exc:

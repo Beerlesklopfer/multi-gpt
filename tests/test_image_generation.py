@@ -375,7 +375,8 @@ class FakeImageAdapter(ProviderAdapter):
         self.log.append({"model": model_id, "prompt": prompt, **params})
         if self.error is not None:
             raise self.error
-        return ImageResult([GeneratedImage(self.image, self.mime)], self.usage)
+        count = int(params.get("n") or 1)
+        return ImageResult([GeneratedImage(self.image, self.mime)] * count, self.usage)
 
     def edit_image(self, model_id, images, prompt, **params):
         sizes = [(name, mime, len(raw)) for name, mime, raw in images]
@@ -384,7 +385,9 @@ class FakeImageAdapter(ProviderAdapter):
         )
         if self.error is not None:
             raise self.error
-        return ImageResult([GeneratedImage(self.image, self.mime, "Ein blauer Kreis")], self.usage)
+        count = int(params.get("n") or 1)
+        revised = "Ein blauer Kreis"
+        return ImageResult([GeneratedImage(self.image, self.mime, revised)] * count, self.usage)
 
 
 class ScriptedChat(ProviderAdapter):
@@ -1648,3 +1651,76 @@ def test_cost_falls_back_to_the_piece_price_without_reported_tokens(
     )
     entry = UsageEntry.objects.get(kind=UsageEntry.Kind.ATTACHMENT)
     assert entry.units == {"image:high:1024x1024": 1} and entry.amount == Decimal("0.25")
+
+
+@pytest.mark.django_db
+def test_variants_store_several_images_in_one_answer(client, conversation, image_model, fakes):
+    _, image_calls = fakes()
+    events = events_of(post(client, conversation, content="Berge", image={"n": 3}))
+    assert events[-1] == ("done", {"status": "complete"})
+    assert image_calls[0]["n"] == 3
+    reply = Message.objects.get(role="assistant")
+    attachments = Attachment.objects.filter(message=reply)
+    assert attachments.count() == 3 and all(
+        a.generated_by_model == image_model for a in attachments
+    )
+    assert reply.content.startswith("3 Bilder erzeugt mit GPT Image")
+    assert reply.tool_state["image"]["count"] == 3
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad", [0, 5, -1, "3", True, 2.5])
+def test_variants_count_is_validated(client, conversation, image_model, fakes, bad):
+    fakes()
+    response = post(client, conversation, content="x", image={"n": bad})
+    assert response.status_code == 400
+    assert images.MSG_BAD_COUNT in response.json()["error"]
+    assert not Message.objects.filter(role="assistant").exists()
+
+
+@pytest.mark.django_db
+def test_models_with_a_single_image_per_request_refuse_variants(client, conversation, fakes):
+    provider = Provider.objects.create(
+        name="OpenAI2", kind=Provider.Kind.OPENAI_COMPAT, api_key=KEY
+    )
+    dalle = AIModel.objects.create(
+        provider=provider,
+        model_id="dall-e-3",
+        display_name="DALL·E 3",
+        capability=AIModel.Capability.IMAGE,
+    )
+    fakes()
+    response = post(client, conversation, content="x", image={"model": dalle.pk, "n": 2})
+    assert response.status_code == 400 and images.MSG_BAD_COUNT in response.json()["error"]
+    assert images.max_variants(dalle) == 1
+
+
+@pytest.mark.django_db
+def test_variants_split_reported_tokens_evenly_and_keep_the_sum(
+    client, adult, conversation, image_model, fakes
+):
+    set_price(image_model, input="5", output="40")
+    fakes(usage=Usage(51, 4161))
+    events_of(post(client, conversation, content="Flagge", image={"n": 2}))
+    entries = UsageEntry.objects.filter(kind=UsageEntry.Kind.ATTACHMENT)
+    assert entries.count() == 2
+    assert sum(e.tokens_in for e in entries) == 51 and sum(e.tokens_out for e in entries) == 4161
+    total = sum(e.amount for e in entries)
+    assert total == Decimal("0.166695")  # 51·5/1e6 + 4161·40/1e6
+
+
+@pytest.mark.django_db
+def test_regenerate_keeps_the_number_of_variants(
+    client, conversation, chat_model, image_model, fakes
+):
+    _, image_calls = fakes()
+    events_of(post(client, conversation, content="Berge", image={"n": 2}))
+    reply = Message.objects.get(role="assistant")
+    events_of(post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk))
+    assert [c["n"] for c in image_calls] == [2, 2]
+
+
+@pytest.mark.django_db
+def test_chat_page_offers_the_number_of_variants(client, adult, conversation, image_model):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'id="image-mode-count"' in page and 'data-variants="4"' in page

@@ -56,6 +56,7 @@ import inspect
 import io
 import logging
 import re
+from dataclasses import replace
 
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -102,6 +103,8 @@ RESOLUTION_PRESETS = [
 SUPPORTED_KINDS = (Provider.Kind.OPENAI_COMPAT, Provider.Kind.LMSTUDIO, Provider.Kind.GOOGLE)
 # Beschreibung höchstens so lang (DALL·E 3: 4000 Zeichen; GPT Image mehr).
 MAX_PROMPT = 4000
+# Varianten je Anfrage im Modus „Bild“ (Obergrenze; DALL·E 3 und Google liefern eines).
+MAX_VARIANTS = 4
 # Höchstens so viele Bilder je Antwort (Schutz vor Werkzeugschleifen, Kosten).
 MAX_IMAGES_PER_ANSWER = 4
 
@@ -122,6 +125,7 @@ MSG_SIZE_UNSUPPORTED = (
     "Dieses Bildmodell kennt nur die festen Formate (quadratisch, hoch, quer), keine eigene "
     "Auflösung."
 )
+MSG_BAD_COUNT = f"Ungültige Anzahl: ein bis {MAX_VARIANTS} Bilder, je nach Bildmodell."
 MSG_NO_SOURCE = "Zum Bearbeiten bitte ein Bild anhängen."
 MSG_SOURCE_UNREADABLE = "Das angehängte Bild lässt sich nicht lesen."
 MAX_SOURCES = 4
@@ -413,7 +417,7 @@ def _store(message, ai_model: AIModel, image, prompt: str, source=None, target=N
     return attachment
 
 
-def generate(
+def generate_many(
     user,
     message,
     prompt: str,
@@ -423,14 +427,17 @@ def generate(
     quality: str = DEFAULT_QUALITY,
     transparent: bool = False,
     target: tuple[int, int] | None = None,
-) -> tuple[Attachment, str]:
-    """Ein Bild zu ``prompt`` mit ``ai_model`` erzeugen und an ``message`` hängen.
+    count: int = 1,
+) -> tuple[list[Attachment], str]:
+    """``count`` Bilder (Varianten) zu ``prompt`` mit ``ai_model`` erzeugen und an ``message``
+    hängen.
 
     Rechte und Modellwahl prüft der Aufrufer (``pick_image_model``); hier
     wird nur das Budget für genau dieses Modell erneut geprüft. Liefert
-    (Anhang, vom Anbieter umgeschriebene Beschreibung oder ""). Fehler als
+    (Anhänge, vom Anbieter umgeschriebene Beschreibung des ersten Bildes oder ""). Fehler als
     ``ImageError`` mit deutschem Text (ohne Key, ohne Rohtext des Anbieters).
     """
+    count = _clean_count(ai_model, count)
     prompt = (prompt or "").strip()
     if not prompt:
         raise ImageError(MSG_EMPTY_PROMPT)
@@ -449,21 +456,73 @@ def generate(
             size=size,
             quality=quality,
             background="transparent" if transparent else None,
-            n=1,
+            n=count,
         ),
     )
-    image = result.images[0]
-    attachment = _store(message, ai_model, image, prompt, target=target)
-    _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
-    attachment.refresh_from_db(fields=["cost"])
-    logger.info(
-        "Bild %s erzeugt (Nachricht %s, Modell %s, %d Bytes)",
-        attachment.pk,
-        message.pk,
-        ai_model.pk,
-        attachment.size,
+    attachments = _store_all(
+        message, ai_model, result, prompt, quality, size, user, count, target=target
     )
-    return attachment, image.revised_prompt
+    logger.info(
+        "%d Bild(er) erzeugt (Nachricht %s, Modell %s)", len(attachments), message.pk, ai_model.pk
+    )
+    return attachments, result.images[0].revised_prompt
+
+
+def generate(user, message, prompt: str, **options) -> tuple[Attachment, str]:
+    """Ein Bild erzeugen (wie ``generate_many`` mit ``count=1``): (Anhang, umgeschriebene
+    Beschreibung)."""
+    attachments, revised = generate_many(user, message, prompt, **options)
+    return attachments[0], revised
+
+
+def max_variants(ai_model: AIModel) -> int:
+    """Wie viele Bilder (Varianten) das Modell je Anfrage liefert: DALL·E 3 und Google eins,
+    GPT Image und Eliezer/LM Studio bis ``MAX_VARIANTS``."""
+    kind = ai_model.provider.kind
+    if kind == Provider.Kind.GOOGLE or ai_model.model_id.lower().startswith("dall-e-3"):
+        return 1
+    return MAX_VARIANTS
+
+
+def _clean_count(ai_model: AIModel, count) -> int:
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ImageError(MSG_BAD_COUNT)
+    if count > max_variants(ai_model):
+        raise ImageError(MSG_BAD_COUNT)
+    return count
+
+
+def _store_all(message, ai_model, result, prompt, quality, size, user, count, **store_kwargs):
+    """Ergebnisbilder speichern und buchen. Meldet der Anbieter Tokens für die ganze Anfrage,
+    werden sie gleichmäßig auf die Bilder verteilt (die Summe bleibt); sonst zählt jedes Bild
+    als Stück."""
+    images_out = result.images[:count]
+    attachments = []
+    usage_parts = _split_usage(result.usage, len(images_out))
+    for image, part in zip(images_out, usage_parts, strict=True):
+        attachment = _store(message, ai_model, image, prompt, **store_kwargs)
+        _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, part, user)
+        attachment.refresh_from_db(fields=["cost"])
+        attachments.append(attachment)
+    return attachments
+
+
+def _split_usage(usage, parts: int) -> list:
+    """Tokens gleichmäßig auf ``parts`` Bilder verteilen (Rest zum ersten); ohne Tokens ``None``."""
+    if usage is None or parts <= 1:
+        return [usage] * max(parts, 1)
+    out = []
+    for index in range(parts):
+        share_in, rest_in = divmod(usage.tokens_in, parts)
+        share_out, rest_out = divmod(usage.tokens_out, parts)
+        out.append(
+            replace(
+                usage,
+                tokens_in=share_in + (rest_in if index == 0 else 0),
+                tokens_out=share_out + (rest_out if index == 0 else 0),
+            )
+        )
+    return out
 
 
 def _request_size(fmt: str, target: tuple[int, int] | None) -> str:
@@ -506,7 +565,7 @@ def _translate(message, ai_model: AIModel, exc: ProviderError) -> ImageError:
     return ImageError(str(exc) or MSG_FAILED, 502)
 
 
-def edit(
+def edit_many(
     user,
     message,
     prompt: str,
@@ -517,11 +576,14 @@ def edit(
     quality: str = DEFAULT_QUALITY,
     transparent: bool = False,
     target: tuple[int, int] | None = None,
-) -> tuple[Attachment, str]:
-    """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern.
+    count: int = 1,
+) -> tuple[list[Attachment], str]:
+    """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern; ``count``
+    Varianten.
 
-    Wie ``generate``; das Ergebnis verweist über ``source_image`` auf das erste Ausgangsbild.
-    Das Modell muss „Bilder bearbeiten“ können (Admin), sonst ``ImageError`` 409."""
+    Wie ``generate_many``; die Ergebnisse verweisen über ``source_image`` auf das erste
+    Ausgangsbild. Das Modell muss „Bilder bearbeiten“ können (Admin), sonst ``ImageError`` 409."""
+    count = _clean_count(ai_model, count)
     prompt = (prompt or "").strip()
     if not prompt:
         raise ImageError(MSG_EMPTY_PROMPT)
@@ -551,22 +613,37 @@ def edit(
             size=size,
             quality=quality,
             background="transparent" if transparent else None,
-            n=1,
+            n=count,
         ),
         editing=True,
     )
-    image = result.images[0]
-    attachment = _store(message, ai_model, image, prompt, source=sources[0], target=target)
-    _book(attachment, ai_model, {f"image:{quality}:{size}": 1}, result.usage, user)
-    attachment.refresh_from_db(fields=["cost"])
+    attachments = _store_all(
+        message,
+        ai_model,
+        result,
+        prompt,
+        quality,
+        size,
+        user,
+        count,
+        source=sources[0],
+        target=target,
+    )
     logger.info(
-        "Bild %s bearbeitet (Nachricht %s, Modell %s, %d Vorlagen)",
-        attachment.pk,
+        "%d Bild(er) bearbeitet (Nachricht %s, Modell %s, %d Vorlagen)",
+        len(attachments),
         message.pk,
         ai_model.pk,
         len(sources),
     )
-    return attachment, image.revised_prompt
+    return attachments, result.images[0].revised_prompt
+
+
+def edit(user, message, prompt: str, sources: list[Attachment], **options):
+    """Bilder verändern (wie ``edit_many`` mit ``count=1``): (Anhang, umgeschriebene
+    Beschreibung)."""
+    attachments, revised = edit_many(user, message, prompt, sources, **options)
+    return attachments[0], revised
 
 
 def previous_image(parent_id) -> tuple[Attachment, str] | None:

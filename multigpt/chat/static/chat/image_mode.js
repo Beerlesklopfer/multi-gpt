@@ -118,6 +118,27 @@
         ? imageModel.selectedOptions?.[0]?.dataset.quality === "true"
         : box.dataset.quality !== "false";
     const qualityField = document.getElementById("image-mode-quality-field");
+    // Wie viele Bilder (Varianten) das gewählte Modell je Anfrage liefert (data-variants).
+    const countField = document.getElementById("image-mode-count-field");
+    const countSelect = document.getElementById("image-mode-count");
+    const maxVariants = () =>
+      Number(
+        (imageModel ? imageModel.selectedOptions?.[0]?.dataset.variants : box.dataset.variants) ||
+          1,
+      );
+    function updateCount() {
+      if (!countField || !countSelect) {
+        return;
+      }
+      const max = maxVariants();
+      countField.hidden = max <= 1;
+      for (const option of countSelect.options) {
+        option.disabled = Number(option.value) > max;
+      }
+      if (Number(countSelect.value) > max) {
+        countSelect.value = String(max);
+      }
+    }
     function updateQuality() {
       if (qualityField) {
         qualityField.hidden = !canQuality();
@@ -245,12 +266,14 @@
       select.addEventListener("change", remember);
       select.addEventListener("change", updateResolution);
       select.addEventListener("change", updateQuality);
+      select.addEventListener("change", updateCount);
     }
     for (const input of [widthInput, heightInput].filter(Boolean)) {
       input.addEventListener("change", remember);
     }
     updateResolution();
     updateQuality();
+    updateCount();
     textarea.addEventListener("input", updateHint);
     modelSelect?.addEventListener("change", updateHint);
     document.addEventListener("multigpt:models-loaded", updateHint);
@@ -320,6 +343,9 @@
         const size = chosenSize();
         if (size) {
           result.image.size = size;
+        }
+        if (countSelect && maxVariants() > 1 && Number(countSelect.value) > 1) {
+          result.image.n = Number(countSelect.value);
         }
         if (imageModel?.value) {
           result.image.model = Number(imageModel.value);
