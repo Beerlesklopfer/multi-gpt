@@ -1,8 +1,8 @@
 {# Eine Nachricht. Inhalt nur über Auto-Escaping; markdown.js rendert Antworten bereinigt. #}
 <article class="chat-message chat-message-{{ msg.role }}" data-message-id="{{ msg.pk }}"
          data-role="{{ msg.role }}" data-status="{{ msg.status }}">
-  {% load sharing_tags %}{# Geteilte Chats: Name statt „Du“ an fremden Nachrichten. #}
-  <h2 class="chat-message-author">{% if msg.role == "user" %}{% message_author msg %}{% else %}{{ msg.model.display_name|default:"Assistent" }}{% load chat_tags %}{% message_stats msg as stats %}{% if stats %} <span class="chat-message-stats" title="{{ stats.title }}">{{ stats.text }}</span>{% endif %}{% endif %}</h2>
+  {% load sharing_tags avatar_tags %}{# Geteilte Chats: Name statt „Du“ an fremden Nachrichten. #}
+  <h2 class="chat-message-author">{% if msg.role == "user" %}{% if show_authors and msg.author %}<span class="chat-message-avatar">{% avatar msg.author 24 %}</span> {% endif %}{% message_author msg %}{% else %}{{ msg.model.display_name|default:"Assistent" }}{% load chat_tags %}{% message_stats msg as stats %}{% if stats %} <span class="chat-message-stats" title="{{ stats.title }}">{{ stats.text }}</span>{% endif %}{% endif %}</h2>
   {% if msg.status == "awaiting_confirmation" %}
     {# Hinweis vor den Aufrufen, damit er vor den Knöpfen gelesen wird. #}
     {% include "chat/_tool_confirm.html" %}

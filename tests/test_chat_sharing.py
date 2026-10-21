@@ -12,6 +12,7 @@ Gleichzeitigkeit von current_leaf. Kein echter Anbieteraufruf.
 
 import io
 import json
+import re
 import threading
 from decimal import Decimal
 
@@ -707,6 +708,13 @@ def test_copy_not_for_supervision(client, ai_model):
 # --- Verfasser an Nachrichten --------------------------------------------------------------
 
 
+def author_heading(name, html) -> bool:
+    """Überschrift der Nachricht mit dem Namen; bei mehreren Personen steht das Profilbild davor."""
+    avatar = r'(<span class="chat-message-avatar">.*?</span> )?'
+    pattern = rf'<h2 class="chat-message-author">{avatar}{name}</h2>'
+    return re.search(pattern, html, re.S) is not None
+
+
 def test_author_names_when_several_people(client, chat, anna, ben, ai_model, fake):
     conv = chat["conv"]
     client.force_login(anna)
@@ -718,11 +726,10 @@ def test_author_names_when_several_people(client, chat, anna, ben, ai_model, fak
     start = parse_sse(stream(client, conv, content="Von Ben", model=ai_model.pk))[0][1]
     assert Message.objects.get(pk=start["user_message_id"]).author_id == ben.pk
     html = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
-    assert '<h2 class="chat-message-author">Anna</h2>' in html
-    assert '<h2 class="chat-message-author">Du</h2>' in html
+    assert author_heading("Anna", html) and author_heading("Du", html)
     client.force_login(anna)
     html = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
-    assert '<h2 class="chat-message-author">Ben</h2>' in html
+    assert author_heading("Ben", html)
     export = client.get(reverse("chat:conversation_export", args=[conv.pk])).content.decode()
     assert "## Ben" in export and "## Du" in export
 

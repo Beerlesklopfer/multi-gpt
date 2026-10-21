@@ -1,12 +1,12 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin, UserAdmin
 from django.contrib.auth.forms import AdminUserCreationForm
 from django.contrib.auth.models import Group
 
 from multigpt.node import scopes as api_scopes
 
-from .models import Role, User, UserGroup
+from .models import Avatar, Role, User, UserGroup
 
 admin.site.unregister(Group)
 
@@ -156,6 +156,17 @@ class AccountUserAdmin(UserAdmin):
             },
         ),
     )
+    actions = ["remove_avatars"]
+
+    @admin.action(description="Profilbilder der gewählten Konten entfernen")
+    def remove_avatars(self, request, queryset):
+        """Das Konto zeigt danach wieder Initialen (LOP C34). Nur das Bild, sonst nichts."""
+        ids = list(queryset.values_list("pk", flat=True))
+        Avatar.objects.filter(user_id__in=ids).delete()
+        count = User.objects.filter(pk__in=ids, avatar_updated__isnull=False).update(
+            avatar_updated=None
+        )
+        self.message_user(request, f"{count} Profilbild(er) entfernt.", messages.SUCCESS)
 
 
 @admin.register(UserGroup)

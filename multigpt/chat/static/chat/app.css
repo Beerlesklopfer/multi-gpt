@@ -163,6 +163,13 @@ input {
   text-decoration: none;
 }
 
+/* Profilbild an Nachrichten in geteilten Chats (chat/_message.html). */
+.chat-message-avatar {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.3rem;
+}
+
 /* Profilbild bzw. Initialen (accounts/_avatar.html). */
 .avatar {
   display: inline-block;
