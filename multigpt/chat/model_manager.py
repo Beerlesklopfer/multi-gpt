@@ -319,10 +319,10 @@ def fit_context(ai_model: AIModel, entry, context: int | None, usable: int) -> i
 def load_device(provider: Provider, ai_model: AIModel | None) -> str:
     """``device`` (``gpu``/``cpu``) fürs Laden bei Eliezer; sonst ``""`` (Eliezer wählt ``auto``).
 
-    Liest ``AIModel.load_device``, sobald es dieses Feld gibt (braucht eine Migration)."""
+    Liest ``AIModel.load_device`` (leer = automatisch)."""
     if ai_model is None or not eliezer(provider):
         return ""
-    return str(getattr(ai_model, "load_device", "") or "")
+    return ai_model.load_device or ""
 
 
 def eliezer_fit(

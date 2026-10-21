@@ -349,6 +349,21 @@ class AIModel(models.Model):
         "2 gleichzeitigen Anfragen und 16 384 Tokens bleiben je Anfrage 8 192. Mehr nur "
         "zusammen mit größerem Kontextfenster.",
     )
+
+    class LoadDevice(models.TextChoices):
+        AUTO = "", "automatisch"
+        GPU = "gpu", "GPU"
+        CPU = "cpu", "CPU"
+
+    load_device = models.CharField(
+        "Ladeort (Eliezer)",
+        max_length=3,
+        blank=True,
+        default="",
+        choices=LoadDevice.choices,
+        help_text="Nur bei Eliezer: Modell auf GPU oder CPU laden. Leer = Eliezer entscheidet "
+        "(auto).",
+    )
     pinned = models.BooleanField(
         "angeheftet",
         default=False,

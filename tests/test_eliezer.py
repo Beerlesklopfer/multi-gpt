@@ -436,7 +436,7 @@ def _bodies(mock, suffix):
 
 def test_device_is_sent_to_estimate_and_load_when_set(provider):
     ai = make(provider, BIG)
-    ai.load_device = "cpu"  # Feld folgt mit der Migration; load_device() liest es per getattr
+    ai.load_device = "cpu"
     with respx.mock(assert_all_called=False) as mock:
         FakeEliezer(mock, total_gb=20.0, budget_gb=22.0)
         assert model_manager.ensure_loaded(ai, interactive=True) is True
