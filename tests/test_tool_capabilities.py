@@ -162,6 +162,9 @@ def texts(response):
         ("google/gemma-3-12b", False),
         ("allenai/olmocr-7b-0725", False),
         ("qwen2.5-vl-7b-instruct", False),
+        ("qwen3-vl-8b", True),  # LOP C43: Qwen3-VL ruft Werkzeuge auf
+        ("qwen/qwen3-vl-30b-a3b-instruct", True),
+        ("qwen3-vl-embedding-2b", False),
         ("llava-v1.6-mistral-7b", False),
         ("llama-3.2-11b-vision-instruct", False),
         ("text-embedding-nomic-embed-text-v1.5", False),

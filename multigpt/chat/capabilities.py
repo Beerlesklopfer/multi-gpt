@@ -75,9 +75,16 @@ _NOT_TOOLS = re.compile(
 )
 
 
+# Qwen3-VL ruft Werkzeuge auf (Qwen-Dokumentation), anders als ältere Vision-Modelle (Qwen2.5-VL,
+# LLaVA): Die Ausnahme gilt vor der Ausschlussliste, nicht für OCR/Embedding-Varianten.
+_TOOLS_DESPITE_VISION = re.compile(r"qwen-?3(\.\d)?-?vl")
+
+
 def guess_tools(model_id: str) -> bool:
     """Kann das Modell vermutlich Werkzeuge aufrufen? Im Zweifel ``False``."""
     lowered = (model_id or "").lower()
+    if _TOOLS_DESPITE_VISION.search(lowered) and not re.search(r"embed|ocr", lowered):
+        return True
     if _NOT_TOOLS.search(lowered):
         return False
     return bool(_TOOLS.search(lowered))
