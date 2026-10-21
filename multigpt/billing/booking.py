@@ -141,15 +141,23 @@ def book_answer(message, ai_model, tally: Tally) -> UsageEntry:
     return entry
 
 
-def book_attachment(attachment, ai_model, units: dict, user=None) -> UsageEntry:
-    """Buchung für eine erzeugte Datei (z. B. Bild, M9): Gebühren je Einheit.
+def book_attachment(attachment, ai_model, units: dict, user=None, usage=None) -> UsageEntry:
+    """Buchung für eine erzeugte Datei (z. B. Bild, M9): Gebühren je Einheit oder nach Tokens.
 
-    ``units`` z. B. ``{"image:high:1024x1024": 1}``. Setzt ``Attachment.cost``.
+    ``units`` z. B. ``{"image:high:1024x1024": 1}``. ``usage``: Tokens, die der Anbieter für
+    das Bild meldet (GPT Image rechnet nach Tokens ab). Hat die Preisversion Tokenpreise, zählen
+    die Tokens und der Stückpreis entfällt (keine Doppelzählung); sonst gilt der Stückpreis, die
+    Tokens werden nur mitgeschrieben. Setzt ``Attachment.cost``.
     """
     account = account_of(ai_model.provider)
     when = attachment.created or timezone.now()
+    price = price_at(ai_model, when)
     tally = Tally()
     tally.units = dict(units or {})
+    if usage is not None and (getattr(usage, "tokens_in", 0) or getattr(usage, "tokens_out", 0)):
+        tally.rounds = [Round.from_usage(usage)]
+        if price is not None and (price.input is not None or price.output is not None):
+            tally.units = {}  # nach Tokens abgerechnet, kein Stückpreis daneben
     entry = UsageEntry.objects.filter(
         attachment=attachment, kind=UsageEntry.Kind.ATTACHMENT
     ).first() or UsageEntry(attachment=attachment, kind=UsageEntry.Kind.ATTACHMENT)
@@ -158,7 +166,7 @@ def book_attachment(attachment, ai_model, units: dict, user=None) -> UsageEntry:
     elif attachment.message_id:
         entry.user_id = payer_id(attachment.message)
     entry.message_id = attachment.message_id
-    _fill(entry, account, ai_model, price_at(ai_model, when), tally, when)
+    _fill(entry, account, ai_model, price, tally, when)
     entry.save()
     type(attachment).objects.filter(pk=attachment.pk).update(cost=compat_cost(entry))
     return entry

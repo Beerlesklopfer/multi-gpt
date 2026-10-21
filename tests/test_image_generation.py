@@ -1618,3 +1618,33 @@ def test_quality_is_only_offered_and_named_for_providers_that_use_it(
     )
     cloud_reply = Message.objects.get(role="assistant", model=image_model)
     assert "Qualität hoch" in cloud_reply.content
+
+
+@pytest.mark.django_db
+def test_cost_is_booked_by_tokens_when_the_price_has_token_rates(
+    client, adult, conversation, image_model, fakes
+):
+    """GPT Image rechnet nach Tokens: Tokenpreise zählen, der Stückpreis entfällt."""
+    set_price(image_model, input="5", output="40", unit_prices={"image:high": "0.25"})
+    fakes(usage=Usage(50, 4160))
+    events_of(
+        post(client, conversation, content="Flagge", image={"format": "square", "quality": "high"})
+    )
+    entry = UsageEntry.objects.get(kind=UsageEntry.Kind.ATTACHMENT)
+    assert (entry.tokens_in, entry.tokens_out) == (50, 4160)
+    assert entry.units == {}  # kein Stückpreis daneben
+    assert entry.amount == Decimal("0.166650")  # 50·5/1e6 + 4160·40/1e6
+    assert Attachment.objects.get().cost == Decimal("0.166650")
+
+
+@pytest.mark.django_db
+def test_cost_falls_back_to_the_piece_price_without_reported_tokens(
+    client, adult, conversation, image_model, fakes
+):
+    set_price(image_model, input="5", output="40", unit_prices={"image:high": "0.25"})
+    fakes()  # der Anbieter meldet keine Tokens
+    events_of(
+        post(client, conversation, content="Flagge", image={"format": "square", "quality": "high"})
+    )
+    entry = UsageEntry.objects.get(kind=UsageEntry.Kind.ATTACHMENT)
+    assert entry.units == {"image:high:1024x1024": 1} and entry.amount == Decimal("0.25")
