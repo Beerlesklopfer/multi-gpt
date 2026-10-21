@@ -85,6 +85,8 @@
     // Mehrere Bildmodelle: Auswahl „Modell“; sonst fest das eine (data-model-name).
     const imageModel = document.getElementById("image-mode-model");
     const keepWorking = document.getElementById("image-mode-continue");
+    // Schwelle (Zeichen) für „Weiterarbeiten“; 0 = nie. Je Chat in diesem Browser gemerkt (C41).
+    const continueMax = document.getElementById("image-mode-continue-max");
     const resolutionBox = document.getElementById("image-mode-resolution-box");
     const resolution = document.getElementById("image-mode-resolution");
     const customSize = document.getElementById("image-mode-custom-size");
@@ -254,11 +256,35 @@
     if (heightInput && saved.height) {
       heightInput.value = String(saved.height);
     }
-    if (keepWorking && saved.continue === false) {
+    // Weiterarbeiten gilt je Chat (Adresse der Seite); ohne Eintrag der zuletzt gewählte Wert.
+    const chatKey = window.location.pathname;
+    const chats = saved.chats && typeof saved.chats === "object" ? saved.chats : {};
+    const chatSaved = chats[chatKey] || {};
+    const wantsContinue = typeof chatSaved.continue === "boolean" ? chatSaved.continue : saved.continue;
+    if (keepWorking && wantsContinue === false) {
       keepWorking.checked = false; // gemerkt: ausdrücklich ausgeschaltet
     }
-    const remember = () =>
+    if (continueMax && Number.isInteger(chatSaved.continueMax) && chatSaved.continueMax >= 0) {
+      continueMax.value = String(chatSaved.continueMax);
+    }
+    // Leer oder ungültig: Vorgabe der Instanz (data-default) gilt, nichts wird gesendet.
+    const continueLimit = () => {
+      const value = continueMax ? continueMax.value.trim() : "";
+      if (!/^\d+$/.test(value) || Number(value) === Number(continueMax.dataset.default)) {
+        return null;
+      }
+      return Math.min(Number(value), 4000);
+    };
+    const remember = () => {
+      if (keepWorking || continueMax) {
+        chats[chatKey] = { continue: keepWorking ? keepWorking.checked : true };
+        const limit = continueLimit();
+        if (limit !== null) {
+          chats[chatKey].continueMax = limit;
+        }
+      }
       storageSet({
+        chats,
         format: format.value,
         quality: quality.value,
         model: imageModel?.value,
@@ -267,13 +293,14 @@
         width: widthInput?.value,
         height: heightInput?.value,
       });
+    };
     for (const select of [format, quality, imageModel, keepWorking, resolution].filter(Boolean)) {
       select.addEventListener("change", remember);
       select.addEventListener("change", updateResolution);
       select.addEventListener("change", updateQuality);
       select.addEventListener("change", updateCount);
     }
-    for (const input of [widthInput, heightInput].filter(Boolean)) {
+    for (const input of [widthInput, heightInput, continueMax].filter(Boolean)) {
       input.addEventListener("change", remember);
     }
     updateResolution();
@@ -362,6 +389,10 @@
         }
         if (keepWorking) {
           result.image.continue = keepWorking.checked;
+          const limit = continueLimit();
+          if (limit !== null) {
+            result.image.continue_max = limit;
+          }
         }
         return result;
       },

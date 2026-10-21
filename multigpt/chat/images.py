@@ -58,6 +58,7 @@ import logging
 import re
 from dataclasses import replace
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.text import slugify
@@ -119,7 +120,20 @@ MSG_EDIT_UNSUPPORTED = (
     "Anbieter aktualisieren oder „Bilder bearbeiten“ am Modell ausschalten."
 )
 # Längere Nachrichten sind eine eigene Bildbeschreibung, keine Änderung am letzten Bild.
-CONTINUE_MAX_CHARS = 200
+CONTINUE_MAX_CHARS = 200  # Vorgabe; Instanzeinstellung IMAGE_CONTINUE_MAX_CHARS (settings)
+
+
+def continue_max_chars(requested=None) -> int:
+    """Schwelle für „Am letzten Bild weiterarbeiten“ (LOP C41).
+
+    ``requested``: Wert des Chats (Browser, 0 bis ``MAX_PROMPT``); sonst die Instanzeinstellung
+    ``IMAGE_CONTINUE_MAX_CHARS``. 0 heißt: nie weiterarbeiten, jede Nachricht ist ein neues Bild.
+    """
+    if requested is None:
+        requested = getattr(settings, "IMAGE_CONTINUE_MAX_CHARS", CONTINUE_MAX_CHARS)
+    return max(0, min(int(requested), MAX_PROMPT))
+
+
 MSG_BAD_SIZE = (
     f"Ungültige Auflösung: Breite und Höhe von {MIN_SIDE} bis {MAX_SIDE} Pixel, z. B. 1920x1080."
 )

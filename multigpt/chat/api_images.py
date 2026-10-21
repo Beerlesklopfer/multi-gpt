@@ -95,6 +95,13 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         continue_last = options.get("continue", False)
         if not isinstance(continue_last, bool):
             return error(MSG_INVALID, 400)
+        continue_max = options.get("continue_max")
+        if continue_max is not None and (
+            isinstance(continue_max, bool)
+            or not isinstance(continue_max, int)
+            or not 0 <= continue_max <= images.MAX_PROMPT
+        ):
+            return error(MSG_INVALID, 400)
         target = images.parse_size(options["size"]) if options.get("size") else None
         count = options.get("n", 1)
         if isinstance(count, bool) or not isinstance(count, int):
@@ -132,7 +139,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             sources,
             continue_last=continue_last
             and not sources
-            and len(content) <= images.CONTINUE_MAX_CHARS,
+            and len(content) <= images.continue_max_chars(continue_max),
             target=target,
             count=count,
             mask_id=mask_id,

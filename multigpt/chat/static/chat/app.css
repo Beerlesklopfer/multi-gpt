@@ -3937,6 +3937,10 @@ span.message-source-link {
   gap: 0.35rem;
 }
 
+.image-mode-continue-max input {
+  width: 4.5rem;
+}
+
 .image-mode-field select {
   max-width: 9rem;
 }

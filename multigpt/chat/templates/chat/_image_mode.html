@@ -51,6 +51,10 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
         <input type="checkbox" id="image-mode-continue" checked>
         <span>Am letzten Bild weiterarbeiten</span>
       </label>
+      <label class="image-mode-field image-mode-continue-max" title="Nachrichten bis zu dieser Länge gelten als Änderung am letzten Bild, längere als neues Bild. 0 = jede Nachricht ist ein neues Bild. Gilt für diesen Chat in diesem Browser.">
+        <span>bis Zeichen</span>
+        <input type="number" id="image-mode-continue-max" min="0" max="4000" step="10" inputmode="numeric" value="{{ image_mode.continue_max }}" data-default="{{ image_mode.continue_max }}">
+      </label>
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">

@@ -1394,6 +1394,26 @@ def test_long_message_starts_a_new_image_even_with_continue(
     assert image_calls[1]["prompt"] == long_text.strip()
 
 
+@pytest.mark.django_db
+def test_continue_threshold_is_adjustable(client, conversation, image_model, fakes, settings):
+    """LOP C41: Schwelle aus der Instanzeinstellung bzw. vom Chat; 0 = nie weiterarbeiten."""
+    assert images.continue_max_chars() == 200
+    settings.IMAGE_CONTINUE_MAX_CHARS = 50
+    assert images.continue_max_chars() == 50
+    assert images.continue_max_chars(0) == 0
+    assert images.continue_max_chars(10**6) == images.MAX_PROMPT
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    text = "mehr Schatten bitte, und zwar deutlich mehr davon"  # 49 Zeichen
+    # Chat-Wert 0: auch eine kurze Nachricht ist ein neues Bild.
+    events_of(post(client, conversation, content=text, image={"continue": True, "continue_max": 0}))
+    assert image_calls[1]["prompt"] == text
+    # Ungültige Werte werden abgelehnt.
+    for bad in (-1, "5", True, images.MAX_PROMPT + 1):
+        response = post(client, conversation, content="x", image={"continue_max": bad})
+        assert response.status_code == 400
+
+
 def test_parse_size_accepts_the_usual_spellings_and_limits():
     assert images.parse_size("1920x1080") == (1920, 1080)
     assert images.parse_size(" 3840 × 2160 ") == (3840, 2160)

@@ -217,6 +217,9 @@ DOCUMENT_MAX_UPLOAD_MB = env.int("DOCUMENT_MAX_UPLOAD_MB", default=25)
 # DOCUMENT_MAX_UPLOAD_MB, höchstens ATTACHMENT_MAX_PER_MESSAGE je Nachricht.
 ATTACHMENT_MAX_IMAGE_MB = env.int("ATTACHMENT_MAX_IMAGE_MB", default=20)
 ATTACHMENT_MAX_PER_MESSAGE = env.int("ATTACHMENT_MAX_PER_MESSAGE", default=10)
+# Bildmodus „Am letzten Bild weiterarbeiten“: Nachrichten bis zu dieser Länge (Zeichen) gelten als
+# Änderung am letzten Bild, längere als neues Bild; 0 = nie. Im Chat je Browser überschreibbar.
+IMAGE_CONTINUE_MAX_CHARS = env.int("IMAGE_CONTINUE_MAX_CHARS", default=200)
 OCR_LANGUAGES = env("OCR_LANGUAGES", default="deu+eng")
 JOB_MAX_ATTEMPTS = env.int("JOB_MAX_ATTEMPTS", default=5)
 
