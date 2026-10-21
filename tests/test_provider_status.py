@@ -248,6 +248,24 @@ def test_models_offline_and_cloud_flags(client, adult, lmstudio):
     assert models["Llama"]["available"] is False
 
 
+def test_loading_flag_in_models_and_status(client, adult, lmstudio, mock):
+    """LOP C27: ein gerade ladendes Modell trägt ``loading`` und steht in der Statusliste."""
+    from multigpt.chat.models_lmstudio import ModelRuntime
+
+    mock.get(f"{BASE}/models").mock(return_value=models_response("llama-3", "qwen"))
+    get_status(client)
+    llama = AIModel.objects.get(provider=lmstudio, model_id="llama-3")
+    old = AIModel.objects.get(provider=lmstudio, model_id="qwen")
+    ModelRuntime.objects.create(ai_model=llama, loading_since=timezone.now())
+    # Eine abgelaufene Belegung (Absturz) zählt nicht mehr.
+    ModelRuntime.objects.create(ai_model=old, loading_since=timezone.now() - timedelta(hours=2))
+    models = {m["display_name"]: m for m in client.get(reverse("chat:api_models")).json()}
+    assert models["llama-3"]["loading"] is True
+    assert models["qwen"]["loading"] is False
+    (provider,) = get_status(client)
+    assert provider["loading"] == ["llama-3"]
+
+
 def test_new_local_models_only_for_roles_with_all_models(client, lmstudio, mock):
     mock.get(f"{BASE}/models").mock(return_value=models_response("llama-3"))
     status.refresh_all()

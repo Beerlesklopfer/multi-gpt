@@ -815,6 +815,8 @@
         } else if (model.is_local) {
           if (model.online === false) {
             label += " (lokal, offline)";
+          } else if (model.loading === true) {
+            label += " (lokal, wird geladen …)";
           } else if (!isAvailable(model)) {
             label += " (lokal, nicht geladen)";
           } else {

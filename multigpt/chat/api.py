@@ -19,6 +19,7 @@ from multigpt.accounts.permissions import Action, applicable_shares, can, model_
 
 from . import (
     api_images,
+    model_manager,
     notices,
     projects,
     reasoning,
@@ -142,7 +143,7 @@ def _serialize_message(message: Message, user=None) -> dict:
 # --- Endpunkte --------------------------------------------------------------------
 
 
-def _serialize_model(m: AIModel) -> dict:
+def _serialize_model(m: AIModel, loading: set[int] | frozenset = frozenset()) -> dict:
     online, available = status.model_state(m)
     return {
         "id": m.pk,
@@ -169,6 +170,8 @@ def _serialize_model(m: AIModel) -> dict:
         # Nach dem letzten gespeicherten Status (M4-03); nicht-lokale immer True.
         "online": online,
         "available": available,
+        # Wird gerade geladen (Modellverwaltung, LOP C27): „wird geladen …“ in der Auswahl.
+        "loading": m.pk in loading,
         # Monatsbudget ausgeschöpft und Modell kostenpflichtig (M6-03): ausgrauen.
         "blocked_by_budget": getattr(m, "blocked_by_budget", False),
         "budget_reason": getattr(m, "budget_reason", ""),
@@ -180,10 +183,9 @@ def _serialize_model(m: AIModel) -> dict:
 @require_GET
 @api_login_required
 def models_list(request):
-    return JsonResponse(
-        [_serialize_model(m) for m in services.chat_models_for(request.user)],
-        safe=False,
-    )
+    models = services.chat_models_for(request.user)
+    loading = model_manager.loading_ids({m.provider_id for m in models if m.provider.is_local})
+    return JsonResponse([_serialize_model(m, loading) for m in models], safe=False)
 
 
 @require_GET
@@ -251,7 +253,18 @@ def mcp_server_reconnect(request, pk: int):
 @api_login_required
 def provider_status(request):
     """Status aller aktiven Anbieter mit Statusprüfung (Plan 8a, 15 s Cache in der DB)."""
-    return JsonResponse([status.serialize(p) for p in status.refresh_all()], safe=False)
+    providers = status.refresh_all()
+    loading = model_manager.loading_ids({p.pk for p in providers if p.is_local})
+    by_provider: dict[int, list[str]] = {}
+    for provider_id, name in AIModel.objects.filter(pk__in=loading).values_list(
+        "provider_id", "display_name"
+    ):
+        by_provider.setdefault(provider_id, []).append(name)
+    data = [status.serialize(p) for p in providers]
+    for item, provider in zip(data, providers, strict=True):
+        # Namen der Modelle, die dieser Anbieter gerade lädt (LOP C27), sonst leer.
+        item["loading"] = sorted(by_provider.get(provider.pk, []))
+    return JsonResponse(data, safe=False)
 
 
 @require_GET

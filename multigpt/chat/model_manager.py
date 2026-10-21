@@ -139,6 +139,17 @@ def model_name(ai_model: AIModel) -> str:
     return ai_model.model_id
 
 
+def loading_ids(provider_ids=None) -> set[int]:
+    """Modelle, die gerade geladen werden (``loading_since`` jünger als ``LEASE_TTL``).
+
+    Nur lesend, ein Abruf; für Modellauswahl und Statusanzeige im Chat (LOP C27).
+    """
+    rows = ModelRuntime.objects.filter(loading_since__gt=timezone.now() - LEASE_TTL)
+    if provider_ids is not None:
+        rows = rows.filter(ai_model__provider_id__in=provider_ids)
+    return set(rows.values_list("ai_model_id", flat=True))
+
+
 def indexing_ids() -> set[int]:
     """Modelle, die die Indexierung nutzt (laut RAG-Einstellungen)."""
     cfg = RagSettings.load()

@@ -34,9 +34,11 @@
     return error ? String(error).split(": ")[0] : "";
   }
 
-  function statusText(name, online, lastOnline, error) {
+  function statusText(name, online, lastOnline, error, loading) {
     if (online) {
-      return `${name} online`;
+      // Modelle, die gerade geladen werden (Modellverwaltung, LOP C27).
+      const busy = Array.isArray(loading) && loading.length ? ` – lädt: ${loading.join(", ")} …` : "";
+      return `${name} online${busy}`;
     }
     const cause = shortError(error);
     let text = cause ? `${name} offline – ${cause}` : `${name} offline`;
@@ -86,11 +88,11 @@
         .join("\n");
     }
 
-    function show(li, name, online, lastOnline, error, contexts) {
+    function show(li, name, online, lastOnline, error, contexts, loading) {
       li.dataset.online = String(online);
       li.dataset.name = name;
       li.dataset.error = online ? "" : error || "";
-      const text = statusText(name, online, lastOnline, error);
+      const text = statusText(name, online, lastOnline, error, loading);
       li.querySelector(".provider-status-text").textContent = text;
       const context = online ? contextText(contexts) : "";
       li.title = !online && error ? `${name} offline – ${error}` : context ? `${text}\n${context}` : text;
@@ -149,6 +151,7 @@
           p.last_online,
           p.error ? String(p.error) : "",
           p.contexts,
+          p.loading,
         );
         if (previousOnline !== online) {
           changed = true;
