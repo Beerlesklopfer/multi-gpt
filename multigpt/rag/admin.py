@@ -155,6 +155,7 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
             # Modellverwaltung LM Studio (chat/admin_lmstudio.py).
             path("lmstudio/", view(self.lmstudio_view), name="rag_overview_lmstudio"),
             path("vram/", view(self.vram_view), name="rag_overview_vram"),
+            path("hub/", view(self.hub_view), name="rag_overview_hub"),
         ]
 
     def _require(self, request):
@@ -279,6 +280,13 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
         if not request.user.has_perm("chat.view_aimodel"):
             raise PermissionDenied
         return admin_lmstudio.vram_view(request)
+
+    def hub_view(self, request):
+        """Hub-Suche über Eliezer als JSON (nur lesend, nur für Verwalter mit Modellrecht)."""
+        self._require(request)
+        if not request.user.has_perm("chat.view_aimodel"):
+            raise PermissionDenied
+        return admin_lmstudio.hub_view(request)
 
 
 # --- Einstellungen ------------------------------------------------------------

@@ -36,7 +36,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
+from urllib.parse import urlencode
 
 import httpx
 
@@ -46,11 +48,15 @@ LIST_TIMEOUT = 5.0
 LOAD_TIMEOUT = 600.0  # große Modelle laden von der Platte (bis Minuten)
 UNLOAD_TIMEOUT = 60.0
 MAX_ERROR_CHARS = 200
+DEVICES = ("gpu", "cpu")  # Eliezer: ``device`` beim Laden/Schätzen (``auto`` = weglassen)
 
 MSG_UNREACHABLE = "LM Studio ist nicht erreichbar."
 MSG_OLD_VERSION = "LM Studio kennt die Modellverwaltung nicht (REST-API v1 ab Version 0.4 nötig)."
 MSG_INVALID = "LM Studio lieferte eine unerwartete Antwort."
 MSG_HTTP = "LM Studio meldet HTTP {status}"
+MSG_NO_HUB = "Die Hub-Suche kennt nur Eliezer."
+MSG_HUB_QUERY = "Suchtext oder Aufgabe angeben."
+MSG_HUB_REPO = "Ungültiger Modellname (erwartet Organisation/Name)."
 
 
 class LmsError(Exception):
@@ -258,10 +264,16 @@ def load(
     *,
     context_length: int | None = None,
     parallel: int | None = None,
+    device: str = "",
     timeout: float = LOAD_TIMEOUT,
 ) -> dict:
-    """Modell laden (``POST /api/v1/models/load``), ohne TTL. Rückgabe: Antwort-JSON."""
+    """Modell laden (``POST /api/v1/models/load``), ohne TTL. Rückgabe: Antwort-JSON.
+
+    ``device`` (nur Eliezer): ``gpu`` oder ``cpu`` für diesen Ladevorgang; leer/``auto`` =
+    nichts senden (Eliezer wählt selbst)."""
     body: dict = {"model": model_key, "echo_load_config": True}
+    if device in DEVICES:
+        body["device"] = device
     if context_length:
         body["context_length"] = int(context_length)
     if parallel:
@@ -364,10 +376,15 @@ def estimate(
     *,
     context_length: int | None = None,
     parallel: int | None = None,
+    device: str = "",
     timeout: float = LIST_TIMEOUT,
 ) -> Estimate:
-    """Speicherbedarf und Platz, wie Eliezer ihn rechnet (``POST /api/v1/models/estimate``)."""
+    """Speicherbedarf und Platz, wie Eliezer ihn rechnet (``POST /api/v1/models/estimate``).
+
+    ``device``: wie bei ``load``."""
     body: dict = {"model": model_key}
+    if device in DEVICES:
+        body["device"] = device
     if context_length:
         body["context_length"] = int(context_length)
     if parallel:
@@ -405,3 +422,103 @@ def instance_status(provider, timeout: float = LIST_TIMEOUT) -> dict[str, tuple[
 def instance_bytes(provider, timeout: float = LIST_TIMEOUT) -> dict[str, int]:
     """Belegter Speicher je geladenem Modell laut Eliezer (``vram_bytes``)."""
     return {key: size for key, (size, _) in instance_status(provider, timeout).items()}
+
+
+# --- Hub-Suche (nur Eliezer, lesend) ---------------------------------------------------
+
+HUB_TASKS = ("any", "llm", "vision", "embedding", "image")
+HUB_FORMATS = ("gguf", "safetensors")
+HUB_TIMEOUT = 15.0  # Anfrage geht von Eliezer weiter zum Hub
+_REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
+
+
+def _hub_get(provider, path: str, what: str, params: dict | None = None) -> dict:
+    query = ("?" + urlencode(params)) if params else ""
+    response = _request(provider, "GET", path + query, HUB_TIMEOUT)
+    if response.status_code == 404 and what == "Hub-Suche":
+        raise LmsError(MSG_NO_HUB, status=404)
+    _check(response, what, provider)
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise LmsError(MSG_INVALID) from exc
+    if not isinstance(data, dict):
+        raise LmsError(MSG_INVALID)
+    return data
+
+
+def hub_search(
+    provider,
+    query: str = "",
+    *,
+    task: str = "any",
+    fmt: str = "gguf",
+    license: str = "",
+    limit: int = 10,
+) -> dict:
+    """Modelle auf dem Hub suchen (``GET /api/v1/hub/search``).
+
+    Rückgabe: ``{"items": [{repo, downloads, likes, task, license, gguf}], "gpu_bytes",
+    "ram_bytes"}``. Eliezer verlangt ``q`` oder eine Aufgabe ungleich ``any``."""
+    query = (query or "").strip()[:100]
+    task = task if task in HUB_TASKS else "any"
+    if not query and task == "any":
+        raise LmsError(MSG_HUB_QUERY)
+    params: dict = {
+        "task": task,
+        "format": fmt if fmt in HUB_FORMATS else "gguf",
+        "limit": min(max(int(limit or 10), 1), 20),
+    }
+    if query:
+        params["q"] = query
+    if license:
+        params["license"] = license
+    data = _hub_get(provider, "/api/v1/hub/search", "Hub-Suche", params)
+    items = [
+        {
+            "repo": item["repo"],
+            "downloads": _count(item.get("downloads")),
+            "likes": _count(item.get("likes")),
+            "task": str(item.get("task") or ""),
+            "license": str(item.get("license") or ""),
+            "gguf": bool(item.get("gguf")),
+        }
+        for item in data.get("data") or []
+        if isinstance(item, dict) and isinstance(item.get("repo"), str)
+    ]
+    budgets = data.get("budgets") if isinstance(data.get("budgets"), dict) else {}
+    return {
+        "items": items,
+        "gpu_bytes": _count(budgets.get("gpu_bytes")),
+        "ram_bytes": _count(budgets.get("ram_bytes")),
+    }
+
+
+def hub_model(provider, repo: str) -> dict:
+    """Hub-Modell prüfen (``GET /api/v1/hub/models/{org}/{repo}``): Unterstützung und
+    Varianten samt Passform (``fit``: gpu, cpu, too_large)."""
+    if not _REPO.match(repo or ""):
+        raise LmsError(MSG_HUB_REPO)
+    data = _hub_get(provider, f"/api/v1/hub/models/{repo}", "Hub-Modell")
+    support = data.get("support") if isinstance(data.get("support"), dict) else {}
+    variants = [
+        {
+            "file": str(v.get("file") or ""),
+            "quantization": str(v.get("quantization") or ""),
+            "bytes": _count(v.get("bytes")),
+            "estimate_bytes": _count(v.get("estimate_bytes")),
+            "fit": str(v.get("fit") or ""),
+        }
+        for v in data.get("variants") or []
+        if isinstance(v, dict)
+    ]
+    return {
+        "repo": str(data.get("repo") or repo),
+        "task": str(data.get("task") or ""),
+        "license": str(data.get("license") or ""),
+        "gated": bool(data.get("gated")),
+        "downloads": _count(data.get("downloads")),
+        "architecture": str(data.get("architecture") or ""),
+        "support": str(support.get("level") or "unknown"),
+        "variants": variants,
+    }

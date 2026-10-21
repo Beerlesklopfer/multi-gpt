@@ -426,3 +426,109 @@ def test_insufficient_memory_is_german_and_keeps_the_numbers(provider):
         with pytest.raises(lmstudio.LmsError) as err:
             lmstudio.load(provider, "x")
     assert "Nicht genug Speicher" in err.value.message and "21.0 GB" in err.value.message
+
+
+def _bodies(mock, suffix):
+    return [
+        json.loads(c.request.content) for c in mock.calls if c.request.url.path.endswith(suffix)
+    ]
+
+
+def test_device_is_sent_to_estimate_and_load_when_set(provider):
+    ai = make(provider, BIG)
+    ai.load_device = "cpu"  # Feld folgt mit der Migration; load_device() liest es per getattr
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock, total_gb=20.0, budget_gb=22.0)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+        assert _bodies(mock, "/models/load")[0]["device"] == "cpu"
+        assert _bodies(mock, "/models/estimate")[0]["device"] == "cpu"
+
+
+def test_no_device_means_eliezer_chooses(provider):
+    ai = make(provider, BIG)
+    with respx.mock(assert_all_called=False) as mock:
+        FakeEliezer(mock, total_gb=20.0, budget_gb=22.0)
+        assert model_manager.ensure_loaded(ai, interactive=True) is True
+        assert "device" not in _bodies(mock, "/models/load")[0]
+        assert "device" not in _bodies(mock, "/models/estimate")[0]
+
+
+def test_hub_search_and_inspect(provider):
+    search = {
+        "object": "list",
+        "data": [
+            {
+                "repo": "unsloth/Qwen3-8B-GGUF",
+                "downloads": 5,
+                "likes": 2,
+                "task": "llm",
+                "license": "apache-2.0",
+                "gguf": True,
+            },
+            {"nonsense": 1},
+        ],
+        "budgets": {"gpu_bytes": 22 * GB, "ram_bytes": 0},
+    }
+    model = {
+        "repo": "unsloth/Qwen3-8B-GGUF",
+        "task": "llm",
+        "license": "apache-2.0",
+        "gated": False,
+        "downloads": 5,
+        "architecture": "qwen3",
+        "support": {"level": "verified", "backend": "llama.cpp"},
+        "variants": [
+            {
+                "file": "q4.gguf",
+                "quantization": "Q4_K_M",
+                "bytes": 5 * GB,
+                "estimate_bytes": 7 * GB,
+                "fit": "gpu",
+            }
+        ],
+    }
+    with respx.mock() as mock:
+        route = mock.get(f"{ROOT}/api/v1/hub/search").mock(
+            return_value=httpx.Response(200, json=search, headers=SERVER)
+        )
+        mock.get(f"{ROOT}/api/v1/hub/models/unsloth/Qwen3-8B-GGUF").mock(
+            return_value=httpx.Response(200, json=model, headers=SERVER)
+        )
+        found = lmstudio.hub_search(provider, "qwen3", task="llm", limit=99)
+        info = lmstudio.hub_model(provider, "unsloth/Qwen3-8B-GGUF")
+    params = route.calls[0].request.url.params
+    assert params["q"] == "qwen3" and params["task"] == "llm" and params["limit"] == "20"
+    assert [i["repo"] for i in found["items"]] == ["unsloth/Qwen3-8B-GGUF"]
+    assert found["gpu_bytes"] == 22 * GB
+    assert info["support"] == "verified"
+    assert info["variants"][0]["fit"] == "gpu"
+
+
+def test_hub_rejects_empty_search_and_bad_repo(provider):
+    with pytest.raises(lmstudio.LmsError):
+        lmstudio.hub_search(provider, "")
+    with pytest.raises(lmstudio.LmsError):
+        lmstudio.hub_model(provider, "../etc/passwd")
+
+
+def test_hub_unknown_to_plain_lm_studio(provider):
+    with respx.mock() as mock:
+        mock.get(f"{ROOT}/api/v1/hub/search").mock(return_value=httpx.Response(404))
+        with pytest.raises(lmstudio.LmsError) as err:
+            lmstudio.hub_search(provider, "x")
+    assert err.value.message == lmstudio.MSG_NO_HUB
+
+
+def test_admin_hub_view_is_json_and_admin_only(admin_client, client, provider):
+    from django.urls import reverse
+
+    url = reverse("admin:rag_overview_hub")
+    with respx.mock() as mock:
+        mock.get(f"{ROOT}/api/v1/hub/search").mock(
+            return_value=httpx.Response(200, json={"data": [], "budgets": {}}, headers=SERVER)
+        )
+        ok = admin_client.get(url, {"q": "qwen"})
+        bad = admin_client.get(url, {"q": ""})
+    assert ok.status_code == 200 and ok.json()["items"] == []
+    assert bad.status_code == 400
+    assert client.get(url, {"q": "qwen"}).status_code in (302, 403)

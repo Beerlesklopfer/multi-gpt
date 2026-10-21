@@ -224,11 +224,16 @@ def _entry(catalog, model_id: str):
     return None
 
 
-def _eliezer_estimate(provider: Provider, model_id: str, context, parallel):
+def _eliezer_estimate(provider: Provider, model_id: str, context, parallel, device: str = ""):
     """Eliezers Schätzung für das Laden, sonst ``None`` (ältere Version, nicht erreichbar)."""
     try:
         return lmstudio.estimate(
-            provider, model_id, context_length=context, parallel=parallel, timeout=ADMIN_TIMEOUT
+            provider,
+            model_id,
+            context_length=context,
+            parallel=parallel,
+            device=device,
+            timeout=ADMIN_TIMEOUT,
         )
     except lmstudio.LmsError:
         return None
@@ -241,6 +246,7 @@ def estimate_payload(
     context: int | None,
     capability: str = "",
     catalog=None,
+    device: str = "",
 ) -> dict:
     """Erwarteter Speicher, Budget und Warnung für Modell und Kontextfenster."""
     error = ""
@@ -261,7 +267,13 @@ def estimate_payload(
     parallel = model_manager.load_parallel(ai_model) if ai_model else None
     eliezer = None
     if entry is not None and model_manager.eliezer(provider):
-        eliezer = _eliezer_estimate(provider, entry.key, context, parallel)
+        eliezer = _eliezer_estimate(
+            provider,
+            entry.key,
+            context,
+            parallel,
+            device or model_manager.load_device(provider, ai_model),
+        )
     pool = eliezer.pool if eliezer is not None else None
     if eliezer is not None:
         est = vram.Estimate(
@@ -377,9 +389,44 @@ def vram_view(request):
     capability = request.GET.get("capability", "")
     if capability not in AIModel.Capability.values:
         capability = ""
-    payload = estimate_payload(provider, ai_model, model_id, context, capability)
+    device = request.GET.get("device", "")
+    payload = estimate_payload(
+        provider,
+        ai_model,
+        model_id,
+        context,
+        capability,
+        device=device if device in lmstudio.DEVICES else "",
+    )
     payload["local"] = True
     return JsonResponse(payload)
+
+
+def hub_view(request):
+    """GET ``?q=<Text>&task=<any|llm|vision|embedding|image>[&provider=<pk>][&repo=<org/name>]``
+    -> JSON: Hub-Suche bzw. Prüfung eines Modells über Eliezer (nur Verwalter, nur lesend;
+    geladen oder heruntergeladen wird nichts)."""
+    providers = [p for p in model_manager.local_providers() if p.active]
+    raw = request.GET.get("provider", "")
+    if raw.isdigit():
+        providers = [p for p in providers if p.pk == int(raw)]
+    if not providers:
+        return JsonResponse({"error": "Kein lokaler Anbieter."}, status=404)
+    provider = providers[0]
+    try:
+        repo = request.GET.get("repo", "")
+        if repo:
+            return JsonResponse(lmstudio.hub_model(provider, repo))
+        result = lmstudio.hub_search(
+            provider,
+            request.GET.get("q", ""),
+            task=request.GET.get("task", "any"),
+            fmt=request.GET.get("format", "gguf"),
+            license=request.GET.get("license", ""),
+        )
+    except lmstudio.LmsError as exc:
+        return JsonResponse({"error": exc.message}, status=502 if exc.unreachable else 400)
+    return JsonResponse(result)
 
 
 # --- Seite „LM Studio: geladene Modelle“ ---------------------------------------------

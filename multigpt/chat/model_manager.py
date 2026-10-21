@@ -316,6 +316,15 @@ def fit_context(ai_model: AIModel, entry, context: int | None, usable: int) -> i
     return context
 
 
+def load_device(provider: Provider, ai_model: AIModel | None) -> str:
+    """``device`` (``gpu``/``cpu``) fürs Laden bei Eliezer; sonst ``""`` (Eliezer wählt ``auto``).
+
+    Liest ``AIModel.load_device``, sobald es dieses Feld gibt (braucht eine Migration)."""
+    if ai_model is None or not eliezer(provider):
+        return ""
+    return str(getattr(ai_model, "load_device", "") or "")
+
+
 def eliezer_fit(
     provider: Provider, ai_model: AIModel, entry, context: int | None
 ) -> tuple[int | None, int, lmstudio.Pool | None] | None:
@@ -326,15 +335,20 @@ def eliezer_fit(
     (ältere Version): dann gilt die eigene Rechnung."""
     key = entry.key if entry else ai_model.model_id
     parallel = load_parallel(ai_model)
+    device = load_device(provider, ai_model)
     try:
-        est = lmstudio.estimate(provider, key, context_length=context, parallel=parallel)
+        est = lmstudio.estimate(
+            provider, key, context_length=context, parallel=parallel, device=device
+        )
         pool = est.pool
         limit = pool.max_context_length if pool else None
         if not ai_model.load_context_length and context and limit and limit < context:
             stages = [s for s in vram.CONTEXT_STAGES if MIN_FIT_CONTEXT <= s <= limit]
             if stages:
                 context = max(stages)
-                est = lmstudio.estimate(provider, key, context_length=context, parallel=parallel)
+                est = lmstudio.estimate(
+                    provider, key, context_length=context, parallel=parallel, device=device
+                )
                 pool = est.pool
                 logger.info(
                     "Eliezer: Modell %s mit %d Tokens Kontext (Platz im Pool)", ai_model.pk, context
@@ -731,6 +745,7 @@ def ensure_loaded(
                     entry.key if entry else ai_model.model_id,
                     context_length=context,
                     parallel=load_parallel(ai_model),
+                    device=load_device(provider, ai_model),
                 )
             except lmstudio.LmsError as exc:
                 message = MSG_LOAD_FAILED.format(name=name, error=exc.message)
