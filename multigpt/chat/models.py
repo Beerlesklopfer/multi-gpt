@@ -279,6 +279,14 @@ class AIModel(models.Model):
         default=False,
         help_text="Kann vorhandene Bilder bearbeiten bzw. Varianten erzeugen (M9-02).",
     )
+    rejected_params = models.JSONField(
+        "Abgelehnte Parameter",
+        default=list,
+        blank=True,
+        help_text="Parameter, die der Anbieter für dieses Modell abgelehnt hat (temperature, "
+        "reasoning): MultiGPT sendet sie nicht mehr. Wird beim ersten HTTP 400 gemerkt und "
+        "bleibt über Neustarts; zum Neuprobieren leeren (z. B. nach einem Update des Anbieters).",
+    )
     mcp_access = models.CharField(
         "MCP",
         max_length=10,

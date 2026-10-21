@@ -462,3 +462,29 @@ def test_project_form_saves_temperature(client, anna):
     assert client.post(url, data).status_code == 302
     project.refresh_from_db()
     assert project.temperature is None
+
+
+@pytest.mark.django_db
+def test_rejected_temperature_survives_a_restart():
+    """LOP C11: Die Ablehnung steht am Modell, nicht nur im Prozess."""
+    model = make_model()
+    assert creativity.params_for(model, Decimal("0.2")) == {"temperature": 0.2}
+    creativity.remember_rejected(model)
+    model.refresh_from_db()
+    assert model.rejected_params == ["temperature"]
+    creativity.forget_rejected()  # „Neustart“: der Prozessspeicher ist leer
+    fresh = AIModel.objects.get(pk=model.pk)
+    assert creativity.params_for(fresh, Decimal("0.2")) == {}
+    creativity.remember_rejected(fresh)  # nicht doppelt eintragen
+    assert AIModel.objects.get(pk=model.pk).rejected_params == ["temperature"]
+
+
+@pytest.mark.django_db
+def test_clearing_rejected_params_tries_the_parameter_again():
+    model = make_model()
+    creativity.remember_rejected(model)
+    creativity.forget_rejected()
+    AIModel.objects.filter(pk=model.pk).update(rejected_params=[])
+    assert creativity.params_for(AIModel.objects.get(pk=model.pk), Decimal("0.2")) == {
+        "temperature": 0.2
+    }

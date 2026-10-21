@@ -631,3 +631,19 @@ def test_shared_chat_recipient_sees_own_role_prompt(client):
     client.force_login(anna)
     html = client.get(reverse("chat:conversation", args=[conv.pk])).content.decode()
     assert "ANNA-REGEL" in html and "BEN-REGEL" not in html
+
+
+@pytest.mark.django_db
+def test_rejected_reasoning_survives_a_restart():
+    """LOP C11: Die Ablehnung der Denktiefe steht am Modell und überlebt einen Neustart."""
+    model = make_model(OPENAI, "gpt-5.5")
+    assert reasoning.params_for(model, "high") == {"reasoning_effort": "high"}
+    reasoning.remember_rejected(model)
+    assert AIModel.objects.get(pk=model.pk).rejected_params == ["reasoning"]
+    reasoning.forget_rejected()  # „Neustart“
+    fresh = AIModel.objects.get(pk=model.pk)
+    assert reasoning.params_for(fresh, "high") == {}
+    AIModel.objects.filter(pk=model.pk).update(rejected_params=[])  # im Admin geleert
+    assert reasoning.params_for(AIModel.objects.get(pk=model.pk), "high") == {
+        "reasoning_effort": "high"
+    }

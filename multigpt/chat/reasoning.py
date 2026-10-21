@@ -114,7 +114,7 @@ def levels_for(ai_model: AIModel) -> list[str] | None:
 
 def level_for(ai_model: AIModel, value: str) -> str | None:
     """Stufe, die für dieses Modell tatsächlich mitgeht, oder ``None``."""
-    if not value or (ai_model.provider_id, ai_model.model_id) in _rejected:
+    if not value or is_rejected(ai_model):
         return None
     return capabilities.reasoning_level(value, _levels(ai_model))
 
@@ -131,8 +131,21 @@ def params_for(ai_model: AIModel, value: str) -> dict:
 
 
 def remember_rejected(ai_model: AIModel) -> None:
+    """Denktiefe-Ablehnung merken: im Prozess und am Modell (``rejected_params``), damit sie
+    einen Neustart überlebt (LOP C11)."""
     _rejected.add((ai_model.provider_id, ai_model.model_id))
+    params = list(ai_model.rejected_params or [])
+    if "reasoning" not in params:
+        params.append("reasoning")
+        ai_model.rejected_params = params
+        AIModel.objects.filter(pk=ai_model.pk).update(rejected_params=params)
     logger.info("Modell %s: Denktiefe abgelehnt, künftig ohne", ai_model.pk)
+
+
+def is_rejected(ai_model: AIModel) -> bool:
+    return (ai_model.provider_id, ai_model.model_id) in _rejected or "reasoning" in (
+        ai_model.rejected_params or []
+    )
 
 
 def forget_rejected() -> None:

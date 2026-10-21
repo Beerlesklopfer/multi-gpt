@@ -105,8 +105,21 @@ def effective(conversation: Conversation) -> Decimal | None:
 
 
 def remember_rejected(ai_model: AIModel) -> None:
+    """Temperatur-Ablehnung merken: im Prozess und am Modell (``rejected_params``), damit sie
+    einen Neustart überlebt (LOP C11)."""
     _rejected.add((ai_model.provider_id, ai_model.model_id))
+    params = list(ai_model.rejected_params or [])
+    if "temperature" not in params:
+        params.append("temperature")
+        ai_model.rejected_params = params
+        AIModel.objects.filter(pk=ai_model.pk).update(rejected_params=params)
     logger.info("Modell %s: Temperatur abgelehnt, künftig ohne", ai_model.pk)
+
+
+def is_rejected(ai_model: AIModel) -> bool:
+    return (ai_model.provider_id, ai_model.model_id) in _rejected or "temperature" in (
+        ai_model.rejected_params or []
+    )
 
 
 def forget_rejected() -> None:
@@ -126,7 +139,7 @@ def params_for(
     (Claude) keine Temperatur, mit „Aus“ (gpt-5.1+: ``none``) wieder erlaubt."""
     if value is None:
         return {}
-    if (ai_model.provider_id, ai_model.model_id) in _rejected:
+    if is_rejected(ai_model):
         return {}
     kind = ai_model.provider.kind if ai_model.provider_id else ""
     if not capabilities.accepts_temperature(
