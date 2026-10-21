@@ -64,7 +64,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | C35 | USD-Umstellung (A10): Eine Antwort, die vor der Umstellung begann und danach gebucht wird, rechnet mit der alten EUR-Preisversion, wird aber als USD gebucht (`ModelPrice` hat kein eigenes Währungsfeld). Seltener Randfall; Abhilfe wäre `ModelPrice.currency` (Migration). |
 | C36 | erledigt: `read_chat`/`list_chats` sind seit 0.3.6 auf der Produktion, Key `multigpt-prod` mit `chat.read` eingetragen. |
 | C37 | Runner (Test 2026-10-13 auf WS-JOERG): Scheitert der Sitzungsstart, versucht das Modell es immer wieder (5× in einer Antwort, ~22 000 Tokens). Bremse: nach zwei gleichen Fehlern derselben Ursache keine weiteren Runner-Aufrufe in dieser Antwort, klare Meldung an den Nutzer. Außerdem: Python-Agent zieht fehlende Images nicht (nur Rust behoben) – entfällt mit dem Python-Agent. |
-| C38 | Bilder (M9-02, Rest): Maske auf einer Zeichenfläche, Varianten, Werkzeug `edit_image` für Chatmodelle. Am erzeugten Bild fehlt der Knopf „Weiter bearbeiten“ (Bild als Vorlage ins Eingabefeld legen; heute Herunterladen und Hochladen). |
+| C38 | Bilder (M9-02, Rest): Maske auf einer Zeichenfläche, Varianten, Werkzeug `edit_image` für Chatmodelle (Knopf „Weiter bearbeiten“ erledigt). Der Knopf „Weiter bearbeiten“ am erzeugten Bild ist da (kopiert das Bild als Entwurf in die Anhangsleiste, `POST /api/attachments/<id>/copy/`). |
 | C39 | Bildmodus nur per Tests und Lesen abgesichert, nie im Browser gesehen: Modellwahl, Auflösung, Weiterarbeiten, Knopf unter abgelehnten Bildwünschen, Löschknöpfe (Antwort-Version, Frage-Version). Sichtlauf nach dem Deploy (Firefox, Chromium, 375 px). Das JavaScript hat keine automatischen Tests. |
 | C40 | Eigene Auflösung: Bilder über 2 Megapixel sind hochgerechnet (mittig zugeschnitten, Lanczos), nicht neu berechnet; ein Upscaler-Modell (Real-ESRGAN o. ä.) als Dienst bei Eliezer wäre der nächste Schritt. Nur bei Anbietern mit beliebigen Größen (Eliezer/LM Studio). |
 | C41 | „Am letzten Bild weiterarbeiten“ ist standardmäßig an und gilt für Nachrichten bis 200 Zeichen (`images.CONTINUE_MAX_CHARS`); längere sind ein neues Bild. Offen: je Chat/Modell einstellbar? Bei Bildern sammeln sich Versionen: „alle Versionen außer dieser löschen“ fehlt. |
@@ -76,7 +76,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 
 | Meilenstein | Stand |
 |---|---|
-| M9-02 Bilder bearbeiten | teilweise: Bilder anhängen und verändern (`/images/edits`, OpenAI und Eliezer), Weiterarbeiten am letzten Bild, eigene Auflösung; offen: Maske, Varianten, Werkzeug `edit_image`, Knopf „Weiter bearbeiten“ (C38) |
+| M9-02 Bilder bearbeiten | teilweise: Bilder anhängen und verändern (`/images/edits`, OpenAI und Eliezer), Weiterarbeiten am letzten Bild, eigene Auflösung; offen: Maske, Varianten, Werkzeug `edit_image` (C38); Knopf „Weiter bearbeiten“ erledigt |
 | M9-03 `mcp_imagetools` (Pillow: Zuschneiden, Skalieren, Drehen, Text, Collage) | offen, Verzeichnis existiert nicht |
 | FLUX.1 über Rust-Runner | Planung 2026-10-17: GPU-Container auf WS-Joerg; Laufzeit im Image, Gewichte/Cache in Volumes, Ergebnisse als Chat-Versionen in MultiGPT. Bestandsaufnahme von `~/D/f/flux1-project` offen. [Plan und Umsetzungsschritte](plans/FLUX-Runner.md). |
 | M10 Sprache (Spracherkennung, Vorlesen) | offen |

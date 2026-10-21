@@ -47,6 +47,11 @@ urlpatterns = [
     # Anhänge im Chat (Bilder einfügen, Dateien hochladen)
     path("attachments/", api_attachments.upload, name="api_attachments"),
     path("attachments/<int:pk>/", api_attachments.detail, name="api_attachment_detail"),
+    path(
+        "attachments/<int:pk>/copy/",
+        api_attachments.copy_to_draft,
+        name="api_attachment_copy",
+    ),
     path("mcp-servers/", api.mcp_servers_list, name="api_mcp_servers"),
     path("mcp-servers/<int:pk>/reconnect/", api.mcp_server_reconnect, name="api_mcp_reconnect"),
     path(

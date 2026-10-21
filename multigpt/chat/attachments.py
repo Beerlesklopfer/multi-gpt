@@ -522,6 +522,43 @@ def resolve_for_message(user, ids, *, edit_of=None) -> tuple[list[Attachment], l
     return drafts, originals
 
 
+def copy_as_draft(source: Attachment, user, conversation) -> Attachment:
+    """Bild aus einem Chat (z. B. ein erzeugtes) als eigenen Entwurf kopieren, um es weiter zu
+    bearbeiten. Die Datei wird echt kopiert: Löscht jemand das Original, bleibt der Entwurf heil."""
+    data = _read(source)
+    if data is None:
+        raise UploadError("Das Bild lässt sich nicht lesen.", 404)
+    thumb = None
+    if source.thumbnail:
+        try:
+            with source.thumbnail.open("rb") as handle:
+                thumb = handle.read()
+        except (OSError, ValueError):
+            thumb = None
+    ext = {"image/jpeg": ".jpg", "image/webp": ".webp"}.get(source.mime_type, ".png")
+    draft = Attachment(
+        owner=user,
+        conversation=conversation,
+        kind=Attachment.Kind.IMAGE,
+        mime_type=source.mime_type,
+        size=len(data),
+        width=source.width,
+        height=source.height,
+        original_name=source.original_name,
+    )
+    cleanup_drafts(owner=user)
+    try:
+        with transaction.atomic():
+            draft.file.save("upload" + ext, ContentFile(data), save=False)
+            if thumb is not None:
+                draft.thumbnail.save("thumb.webp", ContentFile(thumb), save=False)
+            draft.save()
+    except Exception:
+        delete_files([draft], immediately=True)
+        raise
+    return draft
+
+
 def copy_for_message(original: Attachment, message) -> Attachment:
     """Anhang einer Originalnachricht für eine neue Version übernehmen (gleiche Datei)."""
     return Attachment.objects.create(

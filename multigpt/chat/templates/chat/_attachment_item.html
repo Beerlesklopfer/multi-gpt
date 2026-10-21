@@ -8,6 +8,9 @@
     <a class="attachment-thumb" href="{{ a.url }}" data-attachment-image
        aria-label="Bild {{ a.display_name }} vergrößern"><img src="{{ a.thumbnail_url|default:a.url }}"
        alt="{{ a.display_name }}" loading="lazy"{% if a.width and a.height %} width="{{ a.width }}" height="{{ a.height }}"{% endif %}></a>
+    {% if can_write and not a.owner_id and msg.role == "assistant" %}{# erzeugtes Bild: als Vorlage zum Verändern ins Eingabefeld (image_mode.js) #}
+    <button type="button" class="button button-small attachment-continue" data-attachment-continue="{{ a.pk }}">Weiter bearbeiten</button>
+    {% endif %}
   {% else %}
     <a class="attachment-chip" href="{{ a.url }}" download>
       <span class="attach-file-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>

@@ -69,6 +69,32 @@ def upload(request):
     return JsonResponse(attachments.serialize_upload(attachment, notice), status=201)
 
 
+@require_POST
+@api_login_required
+def copy_to_draft(request, pk: int):
+    """Bild aus einem lesbaren Chat als eigenen Entwurf kopieren („Weiter bearbeiten“).
+
+    Der Entwurf gehört dem Aufrufer und liegt im Chat des Bildes; dafür braucht er dort das
+    Schreibrecht. Antwort wie beim Upload (201)."""
+    user = request.user
+    if not can(user, Action.CHAT):
+        return _error("Chatten ist für dieses Konto nicht freigegeben.", 403)
+    try:
+        source = readable_attachment(user, pk)
+    except Http404:
+        return _error(attachments.MSG_NOT_FOUND, 404)
+    if source.message_id is None or source.kind != Attachment.Kind.IMAGE:
+        return _error("Nur Bilder aus dem Chat lassen sich weiter bearbeiten.", 400)
+    conversation = source.message.conversation
+    if not can(user, Action.WRITE, conversation):
+        return _error("Du darfst in diesem Chat nicht schreiben.", 403)
+    try:
+        draft = attachments.copy_as_draft(source, user, conversation)
+    except attachments.UploadError as exc:
+        return _error(exc.message, exc.status)
+    return JsonResponse(attachments.serialize_upload(draft), status=201)
+
+
 @require_http_methods(["DELETE"])
 @api_login_required
 def detail(request, pk: int):

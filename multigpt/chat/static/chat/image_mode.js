@@ -318,7 +318,45 @@
     };
     setActive(false);
     watchRefusals(textarea);
+    watchContinueButtons(textarea);
   });
+
+  // --- „Weiter bearbeiten“ an einem erzeugten Bild ---------------------------------------
+  // Kopiert das Bild als eigenen Entwurf (POST /api/attachments/<id>/copy/), legt es in die
+  // Anhangsleiste und schaltet den Modus „Bild“ ein. Gesendet wird erst, wenn der Nutzer sendet.
+  function watchContinueButtons(textarea) {
+    document.addEventListener("click", async (event) => {
+      const button = event.target instanceof Element && event.target.closest("[data-attachment-continue]");
+      if (!button || button.disabled) {
+        return;
+      }
+      const setStatus = MultiGPT.chatView?.setStatus || (() => {});
+      const base = document.getElementById("chat")?.dataset.apiAttachments;
+      if (!base || !MultiGPT.attachments?.addDraft) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        const response = await fetch(`${base}${encodeURIComponent(button.dataset.attachmentContinue)}/copy/`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": MultiGPT.csrfToken(), Accept: "application/json" },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Das Bild konnte nicht übernommen werden.");
+        }
+        MultiGPT.attachments.addDraft(data);
+        MultiGPT.imageMode?.activate();
+        textarea.focus({ preventScroll: true });
+        setStatus("Das Bild liegt als Vorlage im Eingabefeld, der Modus „Bild“ ist an. Beschreibe die Änderung und sende.");
+      } catch (error) {
+        setStatus(error.message || "Das Bild konnte nicht übernommen werden.", true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 
   // --- Knopf unter einer Antwort, die einen Bildwunsch abgelehnt hat --------------------
   // Antwortet ein Chatmodell auf einen Bildauftrag mit „kann keine Bilder erzeugen“ (Prod-Chat

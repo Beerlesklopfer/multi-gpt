@@ -1518,3 +1518,79 @@ def test_chat_page_offers_resolution_only_for_models_that_take_any_size(
         f'value="{image_model.pk}" data-name="GPT Image" data-edit="false" data-size="false"'
         in page
     )
+
+
+def generated_attachment(client, conversation, image_model, fakes):
+    fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    return Attachment.objects.get(message__role="assistant")
+
+
+@pytest.mark.django_db
+def test_copy_to_draft_makes_an_own_independent_draft(
+    client, adult, conversation, image_model, fakes
+):
+    source = generated_attachment(client, conversation, image_model, fakes)
+    response = client.post(reverse("chat:api_attachment_copy", args=[source.pk]))
+    assert response.status_code == 201
+    data = response.json()
+    draft = Attachment.objects.get(pk=data["id"])
+    assert draft.owner == adult and draft.message is None and draft.conversation == conversation
+    assert draft.kind == Attachment.Kind.IMAGE and draft.file.name != source.file.name
+    assert draft.file.read() == source.file.read()  # echte Kopie derselben Bytes
+    source.file.delete(save=False)  # das Original verschwindet: der Entwurf bleibt heil
+    draft.refresh_from_db()
+    assert draft.file.read()
+
+
+@pytest.mark.django_db
+def test_copied_draft_can_be_sent_as_the_source_of_an_edit(
+    client, adult, conversation, image_model, editor_model, fakes
+):
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis", model=image_model.pk)
+    source = Attachment.objects.get(message__role="assistant")
+    draft_id = client.post(reverse("chat:api_attachment_copy", args=[source.pk])).json()["id"]
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="mehr Rot",
+            attachments=[draft_id],
+            image={"model": editor_model.pk},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    assert image_calls[-1]["edit"] is True and image_calls[-1]["images"][0][2] > 0
+
+
+@pytest.mark.django_db
+def test_copy_to_draft_is_hidden_from_strangers(client, conversation, image_model, fakes):
+    source = generated_attachment(client, conversation, image_model, fakes)
+    client.force_login(make_user("adult", "fremd"))
+    response = client.post(reverse("chat:api_attachment_copy", args=[source.pk]))
+    assert response.status_code == 404
+    assert Attachment.objects.filter(owner__username="fremd").count() == 0
+
+
+@pytest.mark.django_db
+def test_copy_to_draft_needs_login_and_a_chat_image(
+    client, adult, conversation, image_model, fakes
+):
+    source = generated_attachment(client, conversation, image_model, fakes)
+    draft = make_draft(adult)  # Entwurf ohne Nachricht: kein Bild „im Chat“
+    assert client.post(reverse("chat:api_attachment_copy", args=[draft.pk])).status_code == 400
+    client.logout()
+    assert client.post(reverse("chat:api_attachment_copy", args=[source.pk])).status_code in (
+        401,
+        403,
+    )
+
+
+@pytest.mark.django_db
+def test_chat_page_shows_continue_button_on_generated_images(
+    client, adult, conversation, image_model, fakes
+):
+    generated_attachment(client, conversation, image_model, fakes)
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert "data-attachment-continue" in page and "Weiter bearbeiten" in page

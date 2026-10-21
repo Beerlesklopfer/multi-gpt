@@ -889,6 +889,10 @@
           form.classList.remove("is-waiting");
         }
       },
+      // Ein schon gespeichertes Bild (Entwurf, z. B. Kopie eines erzeugten Bildes) in die Leiste.
+      addDraft(att) {
+        tray.restore([{ att, existing: false }]);
+      },
       // Anhänge gehen mit dieser Nachricht raus: Leiste leeren, live anzeigen.
       commit(userEl) {
         outgoing = tray.detach();
