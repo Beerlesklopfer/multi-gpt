@@ -105,6 +105,13 @@ MSG_NO_PUBLIC_URL = (
     "Die Adresse von MultiGPT für das Zielsystem ist unbekannt (Einstellung RUNNER_PUBLIC_URL)."
 )
 MSG_NO_IMAGE = "Für den Runner ist kein Arbeits-Image mit Digest eingerichtet."
+# Bremse (LOP C37): Meldet der Runner in einer Antwort zweimal denselben Fehler (Sitzungsstart,
+# Verbindung, Laufzeit), ruft MultiGPT ihn in dieser Antwort nicht noch einmal auf.
+BRAKE_AFTER = 2
+MSG_BRAKE = (
+    "Der Runner meldet wiederholt denselben Fehler: {error} Weitere Runner-Aufrufe in dieser "
+    "Antwort sind gestoppt. Bitte dem Nutzer erklären, was schiefging, und nicht erneut versuchen."
+)
 MSG_ROUND_LIMIT = (
     "Höchstzahl von {rounds} Werkzeugrunden erreicht – weiterarbeiten? Bestätigen setzt "
     "die Arbeit für weitere {rounds} Runden fort, Ablehnen beendet die Antwort."
@@ -136,6 +143,15 @@ class RunnerContext:
     # freigegebene neue Dienste aus dem signierten Katalog (Name → RunnerTool).
     services: frozenset[str] | None = None
     extra: dict = field(default_factory=dict)
+    # Fehler des Runners in dieser Antwort: Text -> Anzahl (Bremse, ``BRAKE_AFTER``).
+    failures: dict = field(default_factory=dict)
+
+    def braked(self) -> str:
+        """Der Fehlertext, der schon ``BRAKE_AFTER``-mal kam, sonst ``""``."""
+        for text, count in self.failures.items():
+            if count >= BRAKE_AFTER:
+                return text
+        return ""
 
     @property
     def via_api_key(self) -> bool:
@@ -769,6 +785,21 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
         else:
             if ctx.services is not None and name not in ctx.services:
                 raise tools.ArgumentError(MSG_NOT_GRANTED.format(name=name))
+            if ctx.braked():
+                outcome = tooling.Outcome(
+                    ToolCall.Status.ERROR, MSG_BRAKE.format(error=ctx.braked()), True
+                )
+                outcome.events.append(
+                    (
+                        "status",
+                        {
+                            "text": "Der Runner meldet wiederholt denselben Fehler.",
+                            "level": "warning",
+                        },
+                    )
+                )
+                tooling.record(tool_call, outcome, started)
+                return outcome
             session = ensure_session(ctx)
             granted = set((session.runner.services if session.runner else None) or ())
             if name not in granted:
@@ -798,6 +829,7 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
         outcome = tooling.Outcome(ToolCall.Status.ERROR, str(exc), True)
     except RunnerUnavailable as exc:
         outcome = tooling.Outcome(ToolCall.Status.ERROR, str(exc), True)
+        ctx.failures[str(exc)] = ctx.failures.get(str(exc), 0) + 1
     except mcp.McpTimeout:
         seconds = int(_timeout(server, name, audit_args))
         outcome = tooling.Outcome(
@@ -805,6 +837,8 @@ def execute(ctx: RunnerContext, server: McpServer, tool_call: ToolCall, message)
         )
     except mcp.McpError as exc:
         outcome = tooling.Outcome(ToolCall.Status.ERROR, str(exc) or tooling.MSG_FAILED, True)
+        text = str(exc) or tooling.MSG_FAILED
+        ctx.failures[text] = ctx.failures.get(text, 0) + 1
     except Exception as exc:
         logger.error("Runner-Aufruf %s fehlgeschlagen: %s", tool_call.pk, type(exc).__name__)
         outcome = tooling.Outcome(ToolCall.Status.ERROR, tooling.MSG_FAILED, True)

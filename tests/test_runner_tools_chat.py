@@ -301,6 +301,41 @@ def test_offline_runner_message(client, conversation, runner, server, scripted, 
     assert ToolCall.objects.get().result_text == runner_chat.MSG_NO_RUNNER
 
 
+def test_brake_stops_runner_calls_after_the_same_error_twice(
+    client, conversation, runner, server, scripted, link
+):
+    """LOP C37: Scheitert der Sitzungsstart zweimal gleich, bleibt der Runner in der Antwort aus."""
+    Runner.objects.filter(pk=runner.pk).update(status=Runner.Status.OFFLINE)
+    bash = tname(server, "bash")
+    calls = scripted(
+        [
+            tool_round(call(bash, {"command": "ls"}, "c1")),
+            tool_round(call(bash, {"command": "ls"}, "c2")),
+            tool_round(call(bash, {"command": "ls"}, "c3")),
+            answer(),
+        ]
+    )
+    events = events_of(send(client, conversation, mcp_servers=[server.pk]))
+    texts = [t.result_text for t in ToolCall.objects.order_by("pk")]
+    assert texts[0] == texts[1] == runner_chat.MSG_NO_RUNNER
+    assert texts[2].startswith("Der Runner meldet wiederholt denselben Fehler")
+    assert runner_chat.MSG_NO_RUNNER in texts[2]
+    assert any(
+        name == "status" and "wiederholt" in data["text"] and data["level"] == "warning"
+        for name, data in events
+    )
+    assert len(calls) == 4  # die Antwort geht weiter, nur der Runner wird nicht noch einmal gefragt
+
+
+def test_brake_needs_the_same_error_twice():
+    from types import SimpleNamespace
+
+    braked = runner_chat.RunnerContext.braked
+    assert braked(SimpleNamespace(failures={})) == ""
+    assert braked(SimpleNamespace(failures={"A": 1, "B": 1})) == ""  # verschiedene Fehler
+    assert braked(SimpleNamespace(failures={"A": 1, "B": runner_chat.BRAKE_AFTER})) == "B"
+
+
 def test_session_is_reused(client, conversation, server, scripted, link):
     scripted(
         [
