@@ -663,7 +663,9 @@
             !form || !article.dataset.messageId || article.dataset.status === "awaiting_confirmation";
           button.disabled = busy || !modelsReady;
         }
-        for (const button of bar.querySelectorAll("[data-delete-message], [data-delete-version]")) {
+        for (const button of bar.querySelectorAll(
+          "[data-delete-message], [data-delete-version], [data-delete-others]",
+        )) {
           button.hidden = !article.dataset.messageId;
           button.disabled = busy;
         }
@@ -1614,16 +1616,26 @@
 
     // --- Löschen: Frage, Antwort (alle Versionen) und alles danach ---
 
-    // ``versionOnly``: nur diese Antwortversion (die Frage und andere Versionen bleiben).
-    async function deleteExchange(article, versionOnly = false) {
+    // ``scope``: "" Frage, Antwort und alles danach; "version" nur diese Antwortversion;
+    // "others" alle anderen Versionen dieser Nachricht (sie selbst bleibt).
+    async function deleteExchange(article, scope = "") {
+      const versionOnly = scope === "version" || scope === "others";
       const messageId = article.dataset.messageId;
       if (!messageId || !urls.messageDeleteTemplate || !conversationId) {
         return;
       }
       const openDialog = window.MultiGPT.openDialog;
       const ofQuestion = article.dataset.role === "user";
-      const heading = versionOnly || ofQuestion ? "Diese Version löschen?" : "Antwort löschen?";
-      const text = ofQuestion
+      const heading =
+        scope === "others"
+          ? "Andere Versionen löschen?"
+          : versionOnly || ofQuestion
+            ? "Diese Version löschen?"
+            : "Antwort löschen?";
+      const text = scope === "others"
+        ? "Gelöscht werden alle anderen Versionen dieser Nachricht samt ihrem Verlauf. Diese " +
+          "Version bleibt. Das lässt sich nicht rückgängig machen. Kosten bleiben gebucht."
+        : ofQuestion
         ? "Gelöscht werden diese Version der Frage, ihre Antworten und der Verlauf danach. " +
           "Andere Versionen der Frage bleiben. Das lässt sich nicht rückgängig machen. " +
           "Kosten bleiben gebucht."
@@ -1650,7 +1662,7 @@
           fillTemplate(urls.messageDeleteTemplate, conversationId).replace(
             "/999999999/",
             `/${encodeURIComponent(messageId)}/`,
-          ) + (versionOnly ? "?scope=version" : "");
+          ) + (scope ? `?scope=${scope}` : "");
         const response = await fetch(url, {
           method: "DELETE",
           credentials: "same-origin",
@@ -1836,7 +1848,7 @@
 
     log.addEventListener("click", (event) => {
       const button = event.target.closest(
-        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message], [data-delete-version]",
+        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message], [data-delete-version], [data-delete-others]",
       );
       const article = button?.closest(".chat-message");
       if (!button || !article || button.disabled) {
@@ -1855,7 +1867,9 @@
         const modelId = Number(button.dataset.swapMessage);
         regenerate(article, modelId ? { swap: true, model: modelId } : { swap: true });
       } else if (button.hasAttribute("data-delete-version")) {
-        deleteExchange(article, true);
+        deleteExchange(article, "version");
+      } else if (button.hasAttribute("data-delete-others")) {
+        deleteExchange(article, "others");
       } else if (button.hasAttribute("data-delete-message")) {
         deleteExchange(article);
       } else {

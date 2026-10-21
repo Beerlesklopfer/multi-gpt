@@ -277,3 +277,57 @@ def test_question_version_counters_shrink_after_deleting_a_question(client, anna
     counts = {m["content"]: m["sibling_count"] for m in response.json()}
     assert counts["Frage 2b"] == 1
     assert other.pk
+
+
+def others_url(chat_, message):
+    return url(chat_, message) + "?scope=others"
+
+
+def test_delete_other_versions_of_an_answer_keeps_only_this_one(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(others_url(chat, chat["a2b"]))
+    assert response.status_code == 200
+    # a2 (die andere Version) ist weg; a2b mit Frage 3 und Antwort 3 bleibt.
+    assert "Antwort 2" not in remaining(chat) and {
+        "Antwort 2b",
+        "Frage 3",
+        "Antwort 3",
+    } <= remaining(chat)
+    counts = {m["content"]: m["sibling_count"] for m in response.json()}
+    assert counts["Antwort 2b"] == 1  # Zähler steht auf 1/1
+    chat["conv"].refresh_from_db()
+    assert chat["conv"].current_leaf_id == chat["a3"].pk
+
+
+def test_delete_other_versions_removes_their_subtrees_and_files(
+    client, anna, chat, settings, tmp_path, django_capture_on_commit_callbacks
+):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    gone = Attachment(message=chat["a2"], kind=Attachment.Kind.IMAGE, mime_type="image/png")
+    gone.file.save("gone.png", ContentFile(b"png"), save=True)
+    path = gone.file.path
+    client.force_login(anna)
+    with django_capture_on_commit_callbacks(execute=True):
+        assert client.delete(others_url(chat, chat["a2b"])).status_code == 200
+    assert not Attachment.objects.filter(pk=gone.pk).exists() and not os.path.exists(path)
+
+
+def test_delete_other_versions_of_a_question(client, anna, chat):
+    other = msg(chat["conv"], chat["a1"], Message.Role.USER, "Frage 2b")
+    client.force_login(anna)
+    response = client.delete(others_url(chat, chat["q2"]))
+    assert response.status_code == 200
+    assert "Frage 2b" not in remaining(chat) and "Frage 2" in remaining(chat)
+    assert not Message.objects.filter(pk=other.pk).exists()
+
+
+def test_delete_other_versions_needs_other_versions(client, anna, chat):
+    client.force_login(anna)
+    response = client.delete(others_url(chat, chat["q3"]))
+    assert response.status_code == 400 and "Frage 3" in remaining(chat)
+
+
+def test_chat_page_offers_deleting_the_other_versions(client, anna, chat):
+    client.force_login(anna)
+    page = client.get(reverse("chat:conversation", args=[chat["conv"].pk])).content.decode()
+    assert "data-delete-others" in page and "Alle anderen Versionen löschen" in page

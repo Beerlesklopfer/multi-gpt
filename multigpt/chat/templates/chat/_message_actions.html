@@ -12,6 +12,12 @@ Neu erzeugen W, Löschen (Frage, Antwort und alles danach) D.{% endcomment %}
       {% endif %}
       <span class="message-versions-label" aria-hidden="true">{{ msg.sibling_position }}/{{ msg.sibling_count }}</span>
       <span class="sr-only">Version {{ msg.sibling_position }} von {{ msg.sibling_count }}</span>
+      {% if can_delete %}
+        <button type="button" class="icon-button" data-delete-others hidden
+                aria-label="Alle anderen Versionen löschen" title="Alle anderen Versionen löschen (diese bleibt)">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="12" height="12" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M6 13h6"/></svg>
+        </button>
+      {% endif %}
       {% if can_switch_versions %}
         <button type="button" class="icon-button" data-version-target="{{ msg.next_sibling_id|default_if_none:'' }}"
                 aria-label="Nächste Version" title="Nächste Version"{% if not msg.next_sibling_id %} disabled{% endif %}>

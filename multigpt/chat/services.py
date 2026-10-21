@@ -466,6 +466,50 @@ def delete_version(conversation: Conversation, message_id) -> int:
     return len(doomed)
 
 
+def delete_other_versions(conversation: Conversation, message_id) -> int:
+    """Alle anderen Versionen (Geschwister) von ``message_id`` samt ihrem Verlauf löschen.
+
+    ``message_id`` bleibt mit allem, was an ihr hängt; der Versionszähler steht danach auf 1/1.
+    Gilt für Fragen wie für Antworten (Nutzerwunsch 2026-10-21: bei Bildern sammeln sich Varianten).
+    Buchungen bleiben, Dateien gehen nach dem Commit. Rückgabe: Anzahl gelöschter Nachrichten.
+    """
+    with transaction.atomic():
+        Conversation.objects.select_for_update().filter(pk=conversation.pk).first()
+        tree = Tree(conversation)
+        if (
+            isinstance(message_id, bool)
+            or not isinstance(message_id, int)
+            or message_id not in tree
+        ):
+            raise TurnError("Diese Nachricht gibt es in diesem Chat nicht.")
+        others = [pk for pk in tree.siblings(message_id) if pk != message_id]
+        if not others:
+            raise TurnError("Es gibt keine anderen Versionen.")
+        children: dict[int | None, list[int]] = {}
+        for pk, parent_id in conversation.messages.values_list("pk", "parent_id"):
+            children.setdefault(parent_id, []).append(pk)
+        doomed, stack = set(), list(others)
+        while stack:
+            node = stack.pop()
+            doomed.add(node)
+            stack.extend(children.get(node, []))
+        new_leaf = tree.newest_leaf_below(message_id)
+        chat_attachments.delete_files(list(Attachment.objects.filter(message_id__in=doomed)))
+        close_pending(conversation)
+        main_leaf = (
+            Conversation.objects.filter(pk=conversation.pk)
+            .values_list("current_leaf_id", flat=True)
+            .first()
+        )
+        if main_leaf is None or main_leaf in doomed:
+            Conversation.objects.filter(pk=conversation.pk).update(current_leaf_id=new_leaf)
+            conversation.current_leaf_id = new_leaf
+        sharing.move_view_leaves(conversation, doomed, new_leaf)
+        Message.objects.filter(pk__in=others).delete()  # CASCADE über parent
+    logger.info("Chat %s: %d andere Version(en) gelöscht", conversation.pk, len(doomed))
+    return len(doomed)
+
+
 def build_system_prompt(user, conversation: Conversation, notes=()) -> str | None:
     """Reihenfolge: Grundregeln (``ChatSettings``, leer = keine), fester Prompt
     der Rolle, Hinweise von MultiGPT (``notes``: Quellmaterial, Websuche), dann
