@@ -31,7 +31,6 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 |---|---|
 | C5 | Arbeitsblätter: Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett fehlen; Antwortlinien ungleich kräftig; PDF-Link fehlt in der Live-Anzeige (`attachments.js`). |
 | C6 | Projekte lassen sich noch nicht als Ganzes teilen. |
-| C10 | Lokale Reasoning-Schalter: Über LM Studio und Eliezer (Meldung `capabilities.reasoning`, z. B. Qwen3.8, Gemma 4, gpt-oss) gehen die Stufen mit. Offen: andere lokale Server (Ollama, vLLM) mit `chat_template_kwargs.enable_thinking`. |
 | C12 | Nicht im Browser geprüft: Denktiefe-Auswahl, MCP-Werkzeugtabelle, API-Key-Seite, Zitat kopieren. Chromium ungetestet (SVG-Vorschau, Layout-Fix). |
 | C13 | Sandbox: Speichergrenze nur je Prozess, kein Gesamtlimit (bräuchte cgroup). |
 | C14 | Docker-Image: Sandbox abgeschaltet, bubblewrap fehlt im Dockerfile. |
