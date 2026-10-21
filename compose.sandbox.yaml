@@ -1,0 +1,21 @@
+# Zusatzdatei für rootful Docker: erlaubt die Sandbox für run_python (bubblewrap)
+# im Container, ohne die Profile ganz abzuschalten.
+#
+#   sudo apparmor_parser -r -W containers/apparmor/multi-gpt-sandbox
+#   docker compose -f compose.yaml -f compose.sandbox.yaml up -d
+#
+# AppArmor: eigenes Profil (containers/apparmor/multi-gpt-sandbox), nicht
+# "apparmor=unconfined". Rootless Podman braucht diese Datei nicht.
+#
+# seccomp: Das Standardprofil von Docker lässt unshare/mount nur mit CAP_SYS_ADMIN
+# zu. Wer die Sandbox unter rootful Docker will, setzt dafür ein eigenes
+# seccomp-Profil (Docker-Standard plus clone/unshare/mount/setns) oder lockert es
+# bewusst selbst; das schwächt die Isolation des Containers. Prüfen: Admin >
+# Chat-Einstellungen > „Sandbox testen“.
+services:
+  web:
+    security_opt:
+      - apparmor=multi-gpt-sandbox
+  worker:
+    security_opt:
+      - apparmor=multi-gpt-sandbox

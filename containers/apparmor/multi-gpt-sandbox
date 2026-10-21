@@ -1,0 +1,49 @@
+# AppArmor-Profil für den MultiGPT-Container unter Docker (rootful), damit die
+# Sandbox für run_python (bubblewrap) laufen darf, ohne "apparmor=unconfined".
+#
+# Es entspricht dem Docker-Standardprofil (docker-default) und erlaubt zusätzlich
+# User-Namespaces und Mounts im eigenen Namespace; die Schreibsperren auf /proc
+# und /sys bleiben. Rootless Podman braucht dieses Profil nicht.
+#
+# Laden (auf dem Docker-Host, einmal und nach jedem Neustart des Hosts):
+#   sudo apparmor_parser -r -W containers/apparmor/multi-gpt-sandbox
+# Verwenden:
+#   docker compose -f compose.yaml -f compose.sandbox.yaml up -d
+# Hinweis: Der seccomp-Filter von Docker sperrt unshare/mount zusätzlich; siehe
+# compose.sandbox.yaml.
+abi <abi/4.0>,
+#include <tunables/global>
+
+profile multi-gpt-sandbox flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  capability,
+  file,
+  umount,
+  mount,
+  remount,
+  pivot_root,
+  userns,
+
+  # Prozesse im Container dürfen sich gegenseitig signalisieren und verfolgen.
+  signal (receive) peer=unconfined,
+  signal (send,receive) peer=multi-gpt-sandbox,
+  ptrace (trace,read,tracedby,readby) peer=multi-gpt-sandbox,
+
+  # Wie docker-default: nichts am Kernel verstellen.
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9],[^1-9][^0-9],[^1-9s][^0-9y][^0-9s],[^1-9][^0-9][^0-9][^0-9]*}/** w,
+  deny @{PROC}/sys/[^k]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+}

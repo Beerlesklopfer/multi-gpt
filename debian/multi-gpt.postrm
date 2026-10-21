@@ -44,8 +44,16 @@ multi_gpt_remove_site() {
     multi_gpt_nginx_reload
 }
 
+# AppArmor-Profil entladen (das Paket entfernt die Datei selbst).
+multi_gpt_apparmor_unload() {
+    if [ -f /etc/apparmor.d/multi-gpt-bwrap ] && command -v apparmor_parser >/dev/null 2>&1; then
+        apparmor_parser -R /etc/apparmor.d/multi-gpt-bwrap >/dev/null 2>&1 || true
+    fi
+}
+
 case "$1" in
     remove)
+        multi_gpt_apparmor_unload
         multi_gpt_remove_site
         ;;
     purge)

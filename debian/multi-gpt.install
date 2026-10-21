@@ -1,3 +1,4 @@
 deploy/gunicorn.conf.py etc/multi-gpt/
 debian/mgpt-ctl usr/bin/
 deploy/nginx/multi-gpt etc/nginx/sites-available/
+debian/apparmor/multi-gpt-bwrap etc/apparmor.d/

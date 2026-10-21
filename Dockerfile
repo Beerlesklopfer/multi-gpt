@@ -55,7 +55,8 @@ RUN apt-get update \
 # Sandbox läuft, hängt von der Container-Laufzeit ab: bwrap legt User-Namespaces
 # und Mounts an. Rootless Podman erlaubt das; das Standardprofil von rootful
 # Docker (seccomp, AppArmor) sperrt es, dort bleibt das Werkzeug ausgeschaltet
-# (kein unsicherer Rückfall), siehe compose.yaml. Prüfen: Admin >
+# (kein unsicherer Rückfall); mit eigenem AppArmor-Profil siehe compose.sandbox.yaml
+# und containers/apparmor/. Prüfen: Admin >
 # Chat-Einstellungen > „Sandbox testen“.
 ENV PATH="/usr/share/python/multi-gpt/bin:${PATH}"
 

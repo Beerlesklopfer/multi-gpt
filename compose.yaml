@@ -63,9 +63,8 @@ services:
       MULTI_GPT_BIND: 0.0.0.0:8000
     # Sandbox für run_python (bubblewrap): rootless Podman braucht nichts. Unter
     # rootful Docker sperrt das Standardprofil User-Namespaces; dann bleibt das
-    # Werkzeug aus. Wer es dort bewusst will, lockert die Profile selbst (das
-    # schwächt die Container-Isolation) und prüft mit „Sandbox testen“:
-    #   security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
+    # Werkzeug aus. Mit eigenem AppArmor-Profil statt „unconfined“ siehe
+    # compose.sandbox.yaml (docker compose -f compose.yaml -f compose.sandbox.yaml up -d).
     volumes:
       - multi-gpt-data:/var/lib/multi-gpt
 

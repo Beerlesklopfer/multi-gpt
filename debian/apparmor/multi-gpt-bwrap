@@ -1,0 +1,19 @@
+# AppArmor-Profil für die Sandbox von MultiGPT (Werkzeug run_python, bubblewrap).
+#
+# bwrap legt für jeden Aufruf einen User-Namespace an. Hosts mit
+# kernel.apparmor_restrict_unprivileged_userns=1 (Ubuntu ab 23.10/24.04, auch
+# Debian mit entsprechender Einstellung) verbieten das ungebundenen Programmen;
+# dieses Profil erlaubt es genau /usr/bin/bwrap und sonst nichts. bwrap
+# selbst läuft ohne weitere Einschränkung des Profils (unconfined): die Sandbox
+# zieht ihre Grenzen selbst (Namespaces, leeres Dateisystem, seccomp-Filter).
+#
+# Wird vom Paket nach /etc/apparmor.d/ gelegt und im postinst geladen; eigene
+# Ergänzungen gehören nach /etc/apparmor.d/local/multi-gpt-bwrap.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile multi-gpt-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/multi-gpt-bwrap>
+}

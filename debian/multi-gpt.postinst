@@ -101,6 +101,21 @@ EOF
 # sofern DATABASE_URL kein eigenes connect_timeout setzt; runuser in mgpt-ctl
 # reicht sie durch); "timeout" ist das Sicherheitsnetz, falls trotzdem etwas
 # hängt. Die .env bleibt unverändert.
+# AppArmor-Profil für bwrap (Sandbox run_python): erlaubt User-Namespaces nur für
+# /usr/bin/bwrap. Hosts ohne AppArmor oder mit eigenem bwrap-Profil (Ubuntu:
+# bwrap-userns-restrict) bleiben unberührt; ein Fehler ist kein Abbruch.
+multi_gpt_apparmor() {
+    _profile=/etc/apparmor.d/multi-gpt-bwrap
+    [ -f "$_profile" ] || return 0
+    command -v apparmor_parser >/dev/null 2>&1 || return 0
+    [ -d /sys/kernel/security/apparmor ] || return 0
+    if [ -e /etc/apparmor.d/bwrap-userns-restrict ]; then
+        return 0
+    fi
+    apparmor_parser -r -W "$_profile" >/dev/null 2>&1 \
+        || echo "multi-gpt: AppArmor-Profil multi-gpt-bwrap nicht geladen; Sandbox ggf. mit 'sudo apparmor_parser -r $_profile' freigeben." >&2
+}
+
 multi_gpt_migrate() {
     if [ "${MULTI_GPT_SKIP_MIGRATE:-}" = "1" ]; then
         echo
@@ -707,6 +722,8 @@ PY
     multi_gpt_setup_nginx
 
     multi_gpt_runner_key
+
+    multi_gpt_apparmor
 
     multi_gpt_migrate "$@"
 fi
