@@ -258,6 +258,28 @@
     }
   }
 
+  // Anhänge aus einem tool_result-Ereignis (serialize: snake_case) in die Liste unter dem
+  // Werkzeugaufruf setzen: erzeugte Bilder und PDFs erscheinen sofort, nicht erst am Ende.
+  function showToolAttachments(listEl, serialized) {
+    const mapped = serialized
+      .filter((att) => att && Number.isInteger(att.id))
+      .map((att) => ({
+        id: att.id,
+        kind: att.kind === "image" ? "image" : "file",
+        name: String(att.name || ""),
+        size: Number(att.size) || 0,
+        url: att.url,
+        thumbnailUrl: att.thumbnail_url,
+        width: att.width || null,
+        height: att.height || null,
+        mimeType: att.mime_type,
+      }));
+    listEl.classList.add("message-attachments"); // damit die Großansicht (Lightbox) greift
+    listEl.replaceChildren(...Array.from(buildMessageList(mapped).children));
+    listEl.hidden = !mapped.length;
+    return mapped.length;
+  }
+
   function attachmentsOf(article) {
     return Array.from(
       article.querySelectorAll(":scope > .message-attachments > [data-attachment-id]"),
@@ -662,6 +684,7 @@
     extend: (payload) => payload,
     attachEditor: () => null,
     showInMessage,
+    showToolAttachments,
     attachmentsOf,
   };
 
@@ -869,6 +892,7 @@
     }
 
     MultiGPT.attachments = {
+      showToolAttachments,
       showInMessage,
       attachmentsOf,
       count: () => tray.count(),

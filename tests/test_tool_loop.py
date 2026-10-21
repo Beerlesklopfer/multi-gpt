@@ -332,6 +332,11 @@ def test_image_result_becomes_attachment(client, conversation, ai_model, server,
     assert attachment.file.read().startswith(b"\x89PNG")
     assert dict(events)["tool_result"]["attachment_ids"] == [attachment.pk]
     assert "Anhang" in calls[1]["messages"][-1].content
+    # Live-Anzeige (LOP C2): Das Ereignis trägt Name, Adresse und Vorschau gleich mit.
+    shown = dict(events)["tool_result"]["attachments"]
+    assert [x["id"] for x in shown] == [attachment.pk]
+    assert shown[0]["kind"] == "image" and shown[0]["url"]
+    assert shown[0]["name"]
 
 
 def test_model_without_tools_gets_none(

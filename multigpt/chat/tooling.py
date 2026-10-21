@@ -511,10 +511,17 @@ def call_event(tool_call: ToolCall, server_name: str = "") -> dict:
 def result_event(tool_call: ToolCall, attachment_ids=None) -> dict:
     if attachment_ids is None:
         attachment_ids = list(tool_call.attachments.values_list("pk", flat=True))
+    # Anhänge gleich mit Name, Adresse und Vorschau: Die Oberfläche zeigt erzeugte Bilder und
+    # PDFs sofort, nicht erst nach dem Ende der Antwort (LOP C2).
+    from . import attachments as chat_attachments
+    from .models import Attachment
+
+    shown = list(Attachment.objects.filter(pk__in=attachment_ids).order_by("created", "id"))
     return {
         "id": tool_call.pk,
         "status": tool_call.status,
         "result": _clip(tool_call.result_text, EVENT_RESULT_CHARS),
         "duration_ms": tool_call.duration_ms or 0,
         "attachment_ids": attachment_ids,
+        "attachments": [chat_attachments.serialize(a) for a in shown],
     }

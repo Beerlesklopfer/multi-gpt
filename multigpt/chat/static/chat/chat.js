@@ -431,10 +431,16 @@
       row.querySelector(".tool-call-truncated").hidden = text.length < RESULT_DISPLAY_CHARS;
       const ids = Array.isArray(data.attachment_ids) ? data.attachment_ids : [];
       const list = row.querySelector(".tool-call-attachments");
-      list.replaceChildren(
-        ...ids.map((id) => node("li", "", `Anhang #${Number(id)} (Anzeige folgt)`)),
-      );
-      list.hidden = !ids.length;
+      const shown = Array.isArray(data.attachments) ? data.attachments : [];
+      if (shown.length && window.MultiGPT.attachments?.showToolAttachments) {
+        // Erzeugte Bilder und PDFs sofort zeigen (Name, Vorschau, Großansicht).
+        window.MultiGPT.attachments.showToolAttachments(list, shown);
+      } else {
+        list.replaceChildren(
+          ...ids.map((id) => node("li", "", `Anhang #${Number(id)} (Anzeige folgt)`)),
+        );
+        list.hidden = !ids.length;
+      }
       output.hidden = !text && !ids.length && status === "rejected";
       const duration = formatDuration(data.duration_ms);
       setStatus(
