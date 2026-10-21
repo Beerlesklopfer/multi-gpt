@@ -28,7 +28,7 @@ from django.utils import timezone
 from multigpt.accounts.permissions import Action, can
 
 from . import attachments as chat_attachments
-from . import images, services, sharing
+from . import images, model_manager, services, sharing
 from . import status as provider_status
 from .models import Attachment, Conversation, Message
 
@@ -282,7 +282,10 @@ def rerun(request, conversation: Conversation, data: dict, target, *, error, eve
     user = request.user
     kind, old = target
     state = old.tool_state["image"]
-    if state.get("mask"):
+    # Die Maske bleibt verkleinert an der Antwort (LOP C45); beim Bearbeiten der Frage mit anderen
+    # Bildern passte sie nicht mehr, ohne gemerkte Maske war sie weg.
+    keep_mask = bool(state.get("mask_png"))
+    if state.get("mask") and not keep_mask:
         return error(images.MSG_MASK_GONE, 409)
     if kind == "edit" and not can(user, Action.UPDATE, conversation):
         return error("Du darfst in diesem Chat keine Nachrichten bearbeiten.", 403)
@@ -308,6 +311,8 @@ def rerun(request, conversation: Conversation, data: dict, target, *, error, eve
         isinstance(ids, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in ids)
     ):
         return error(MSG_INVALID, 400)
+    if state.get("mask") and ids is not None:
+        return error(images.MSG_MASK_GONE, 409)  # andere Bilder: die alte Maske passt nicht
     try:
         turn, ai_model = prepare_rerun(
             user,
@@ -368,6 +373,11 @@ def prepare_rerun(user, conversation, kind, old, question, content, state, ids, 
         )
         if ai_model is None:
             raise services.TurnError(reason, images.reason_status(reason))
+        if new_state.get("edit") and state.get("mask") and state.get("mask_png"):
+            if not images.supports_mask(ai_model):
+                raise services.TurnError(images.MSG_MASK_UNSUPPORTED)
+            new_state["mask"] = True
+            new_state["mask_png"] = state["mask_png"]
         user_message = None
         if kind == "edit":
             user_message = services.append_message(
@@ -398,6 +408,8 @@ def prepare_rerun(user, conversation, kind, old, question, content, state, ids, 
     options_out = {"image_sources": source_ids} if source_ids else {}
     if reuse:
         options_out["image_reuse"] = True
+    if new_state.get("mask_png"):
+        options_out["image_mask_png"] = new_state["mask_png"]
     turn = services.Turn(
         user, conversation, ai_model, user_message, assistant, options=options_out, query=prompt
     )
@@ -415,6 +427,18 @@ def _question_parent(turn):
     )
 
 
+WAIT_HINT = (
+    "Das Bildmodell belegt die GPU allein: geladene Chatmodelle werden dafür entladen und laden "
+    "bei der nächsten Antwort neu. Das kann einige Minuten dauern."
+)
+
+
+def wait_hint(ai_model) -> bool:
+    """Belegt das Bildmodell die GPU allein (lokaler Eliezer-Anbieter)? Dann Hinweis im Chat."""
+    provider = ai_model.provider
+    return bool(provider.is_local and model_manager.eliezer(provider))
+
+
 def run(turn, fmt: str, quality: str, transparent: bool):
     """SSE-Events (Name, Daten) der Bild-Antwort."""
     msg = turn.assistant_message
@@ -429,7 +453,11 @@ def run(turn, fmt: str, quality: str, transparent: bool):
         },
     )
     verb = "bearbeitet" if turn.options.get("image_sources") else "erzeugt"
-    yield "status", {"text": f"Bild wird mit {turn.ai_model.display_name} {verb} …"}
+    status_event = {"text": f"Bild wird mit {turn.ai_model.display_name} {verb} …"}
+    if wait_hint(turn.ai_model):
+        status_event["text"] += " " + WAIT_HINT
+        status_event["wait"] = True  # Browser zählt die Sekunden mit
+    yield "status", status_event
     try:
         sharing.check_turn(turn)  # Freigabe entzogen? (geteilte Chats)
         source_ids = turn.options.get("image_sources") or []
@@ -443,6 +471,15 @@ def run(turn, fmt: str, quality: str, transparent: bool):
         common["count"] = int(state.get("count") or 1)
         mask_pk = turn.options.get("image_mask")
         mask = Attachment.objects.filter(pk=mask_pk).first() if mask_pk else None
+        if mask is not None and not state.get("mask_png"):
+            # Maske für „Neu erzeugen“ aufbewahren, bevor sie als Entwurf gelöscht wird.
+            kept = images.compact_mask(mask)
+            if kept:
+                state = {**state, "mask_png": kept}
+                msg.tool_state = {**(msg.tool_state or {}), "image": state}
+                Message.objects.filter(pk=msg.pk).update(tool_state=msg.tool_state)
+        elif mask is None and turn.options.get("image_mask_png"):
+            mask = images.expand_mask(turn.options["image_mask_png"])
         if source_ids:
             sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
             try:

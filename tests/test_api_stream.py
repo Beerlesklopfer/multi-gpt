@@ -403,6 +403,7 @@ def test_models_list(client, adult, ai_model, local_model, provider):
         "mcp_server_ids": [],
         "online": True,
         "available": True,
+        "loading": False,
         "blocked_by_budget": False,
         "budget_reason": "",
         "billing_title": "Konto Lokale Modelle · nur Tokens gezählt",

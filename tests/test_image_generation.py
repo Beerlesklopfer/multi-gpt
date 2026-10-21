@@ -1942,8 +1942,90 @@ def test_foreign_or_invalid_masks_are_refused(client, adult, conversation, edito
 
 
 @pytest.mark.django_db
-def test_regenerate_of_a_masked_edit_asks_for_a_new_mask(
+def test_regenerate_of_a_masked_edit_keeps_the_mask(
     client, adult, conversation, chat_model, editor_model, fakes
+):
+    """LOP C45: „Neu erzeugen“ schickt die gemerkte (verkleinerte) Maske erneut mit."""
+    import io as _io
+
+    from PIL import Image
+
+    _, image_calls = fakes()
+    source = make_draft(adult)
+    mask = make_draft(adult, data=mask_png(), name="maske.png")
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Himmel blau",
+            attachments=[source.pk],
+            image={"model": editor_model.pk, "mask": mask.pk},
+        )
+    )
+    reply = Message.objects.get(role="assistant")
+    assert reply.tool_state["image"]["mask_png"]
+    events = events_of(
+        post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk)
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    sent = image_calls[1]["mask"]
+    assert sent[0] == "maske.png"
+    with Image.open(_io.BytesIO(sent[2])) as sent_image:
+        assert sent_image.getchannel("A").getextrema()[0] == 0  # der Bereich ist noch durchsichtig
+    new_reply = Message.objects.filter(role="assistant").order_by("-id").first()
+    assert new_reply.pk != reply.pk and new_reply.tool_state["image"]["mask"] is True
+    # Wieder neu erzeugen geht auch von der neuen Version aus.
+    events = events_of(
+        post(client, conversation, regenerate=True, message_id=new_reply.pk, model=chat_model.pk)
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    assert len(image_calls) == 3 and image_calls[2]["mask"]
+
+
+def test_compact_mask_roundtrip_and_limits():
+    import io as _io
+
+    from PIL import Image
+
+    kept = images.compact_mask(mask_png((3000, 2000)))
+    assert kept
+    restored = images.expand_mask(kept)
+    with Image.open(_io.BytesIO(restored)) as image:
+        assert max(image.size) == images.MASK_KEEP_EDGE and image.mode == "RGBA"
+        assert image.getchannel("A").getextrema()[0] == 0
+    assert images.compact_mask(b"kein Bild") == ""
+    assert images.expand_mask("%%%") is None
+
+
+@pytest.mark.django_db
+def test_exclusive_gpu_hint_for_local_eliezer_image_models(
+    client, conversation, local_image_model, image_model, fakes
+):
+    """LOP C45: Bei Eliezer steht im Status, dass das Bild die GPU allein belegt."""
+    from multigpt.chat import lmstudio
+
+    fakes()
+    Provider.objects.filter(pk=local_image_model.provider_id).update(is_local=True)
+    lmstudio._servers[local_image_model.provider_id] = "eliezer"
+    try:
+        events = events_of(
+            post(client, conversation, content="Ein Kreis", image={"model": local_image_model.pk})
+        )
+        (status_event,) = [d for name, d in events if name == "status"]
+        assert status_event["wait"] is True and "GPU allein" in status_event["text"]
+        lmstudio._servers.pop(local_image_model.provider_id)
+        events = events_of(
+            post(client, conversation, content="Noch ein Kreis", image={"model": image_model.pk})
+        )
+        (status_event,) = [d for name, d in events if name == "status"]
+        assert "wait" not in status_event and "GPU" not in status_event["text"]
+    finally:
+        lmstudio._servers.pop(local_image_model.provider_id, None)
+
+
+@pytest.mark.django_db
+def test_edit_with_other_images_cannot_reuse_the_old_mask(
+    client, adult, conversation, editor_model, fakes
 ):
     fakes()
     source = make_draft(adult)
@@ -1957,8 +2039,16 @@ def test_regenerate_of_a_masked_edit_asks_for_a_new_mask(
             image={"model": editor_model.pk, "mask": mask.pk},
         )
     )
-    reply = Message.objects.get(role="assistant")
-    response = post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk)
+    question = Message.objects.get(role="user")
+    other = make_draft(adult)
+    response = post(
+        client,
+        conversation,
+        edit_of=question.pk,
+        content="Wolken",
+        attachments=[other.pk],
+        model=editor_model.pk,
+    )
     assert response.status_code == 409 and images.MSG_MASK_GONE in response.json()["error"]
 
 

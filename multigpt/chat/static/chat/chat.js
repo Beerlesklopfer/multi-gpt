@@ -1240,6 +1240,8 @@
       // Statuszeile zeigt einen Text des Servers: "info" weicht beim ersten
       // delta, ein Hinweis ("warning", z. B. Websuche fehlgeschlagen) bleibt bis done.
       let serverStatus = null;
+      // Wartezeit bei langen Bildaufträgen (status mit wait: true): Sekunden hochzählen (C45).
+      let waitTimer = null;
       let status = null;
       let errorText = "";
 
@@ -1338,6 +1340,16 @@
             if (typeof data.text === "string" && data.text) {
               serverStatus = data.level === "warning" ? "warning" : "info";
               setStatus(data.text, serverStatus === "warning" ? "warning" : false);
+              clearInterval(waitTimer);
+              waitTimer = null;
+              if (data.wait === true) {
+                const waitStart = Date.now();
+                const waitText = data.text;
+                waitTimer = setInterval(() => {
+                  const seconds = Math.round((Date.now() - waitStart) / 1000);
+                  setStatus(`${waitText} (seit ${seconds} s)`);
+                }, 1000);
+              }
             }
           } else if (event === "sources") {
             renderSources(assistantEl, data.sources);
@@ -1385,6 +1397,7 @@
           errorText = "Die Verbindung wurde unterbrochen.";
         }
       } finally {
+        clearInterval(waitTimer);
         controller = null;
         if (!rejected) {
           if (!started) {

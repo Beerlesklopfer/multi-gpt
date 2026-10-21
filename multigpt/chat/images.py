@@ -52,6 +52,7 @@ Entscheidungen:
 
 from __future__ import annotations
 
+import base64
 import inspect
 import io
 import logging
@@ -516,10 +517,51 @@ def supports_mask(ai_model: AIModel) -> bool:
     return ai_model.provider.kind == Provider.Kind.OPENAI_COMPAT
 
 
-def _mask_payload(mask: Attachment, source: Attachment) -> tuple[str, str, bytes]:
+# „Neu erzeugen“ behält die Maske (LOP C45): verkleinert, als Alphakanal in der Antwort gemerkt.
+MASK_KEEP_EDGE = 1024
+MASK_KEEP_MAX_CHARS = 200_000
+
+
+def compact_mask(mask: Attachment | bytes) -> str:
+    """Maske zum Aufbewahren an der Bildantwort: nur der Alphakanal, höchstens
+    ``MASK_KEEP_EDGE`` Pixel lang, als PNG in Base64. Leer, wenn nicht lesbar oder zu groß."""
+    raw = mask if isinstance(mask, bytes) else chat_attachments.read(mask)
+    if raw is None:
+        return ""
+    try:
+        with Image.open(io.BytesIO(raw)) as opened:
+            alpha = opened.convert("RGBA").getchannel("A")
+        if max(alpha.size) > MASK_KEEP_EDGE:
+            scale = MASK_KEEP_EDGE / max(alpha.size)
+            alpha = alpha.resize(
+                (max(1, round(alpha.width * scale)), max(1, round(alpha.height * scale))),
+                Image.Resampling.NEAREST,
+            )
+        out = io.BytesIO()
+        alpha.save(out, "PNG", optimize=True)
+    except Exception:  # noqa: BLE001 - kein lesbares Bild: dann eben nicht aufbewahren
+        return ""
+    text = base64.b64encode(out.getvalue()).decode("ascii")
+    return text if len(text) <= MASK_KEEP_MAX_CHARS else ""
+
+
+def expand_mask(kept: str) -> bytes | None:
+    """Umkehrung von ``compact_mask``: PNG mit Alphakanal (RGBA), oder ``None``."""
+    try:
+        with Image.open(io.BytesIO(base64.b64decode(kept))) as opened:
+            alpha = opened.convert("L")
+        black = Image.new("L", alpha.size, 0)
+        out = io.BytesIO()
+        Image.merge("RGBA", (black, black, black, alpha)).save(out, "PNG")
+    except Exception:  # noqa: BLE001
+        return None
+    return out.getvalue()
+
+
+def _mask_payload(mask: Attachment | bytes, source: Attachment) -> tuple[str, str, bytes]:
     """Maske für den Anbieter: PNG mit Alphakanal in der Größe des ersten Ausgangsbilds;
     durchsichtige Pixel sind der Bereich, der geändert wird."""
-    raw = chat_attachments.read(mask)
+    raw = mask if isinstance(mask, bytes) else chat_attachments.read(mask)
     source_raw = chat_attachments.read(source)
     if raw is None or source_raw is None:
         raise ImageError(MSG_SOURCE_UNREADABLE)
@@ -632,7 +674,7 @@ def edit_many(
     transparent: bool = False,
     target: tuple[int, int] | None = None,
     count: int = 1,
-    mask: Attachment | None = None,
+    mask: Attachment | bytes | None = None,
 ) -> tuple[list[Attachment], str]:
     """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern; ``count``
     Varianten; ``mask``: Entwurf mit durchsichtigem Bereich, der geändert wird.
