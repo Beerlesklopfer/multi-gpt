@@ -299,7 +299,8 @@ REASONING_LEVELS = (OFF, LOW, MEDIUM, HIGH, XHIGH, MAX)
 # - Lokal bzw. OpenAI-kompatibel: gpt-oss kennt ``reasoning_effort`` low/medium/
 #   high über sein Chat-Template (Modellkarte developers.openai.com/api/docs/
 #   models/gpt-oss-120b; LM Studio ab 0.4.8 auf v1/chat/completions,
-#   lmstudio.ai/changelog/lmstudio-v0.4.8). Andere lokale Modelle: nicht senden.
+#   lmstudio.ai/changelog/lmstudio-v0.4.8). Qwen3 an Ollama/vLLM: Schalter
+#   ``chat_template_kwargs.enable_thinking`` (an/aus). Andere lokale Modelle: nicht senden.
 #
 # Nicht unterstützte Stufen werden je Modell abgebildet (``reasoning_level``):
 # „Aus“ auf die kleinste Stufe, sonst auf die nächstkleinere, notfalls die
@@ -307,6 +308,7 @@ REASONING_LEVELS = (OFF, LOW, MEDIUM, HIGH, XHIGH, MAX)
 # services.py ohne und merkt sich das Modell (reasoning.py).
 _OPENAI, _CLAUDE_EFFORT, _CLAUDE_BUDGET = "openai", "claude_effort", "claude_budget"
 _GEMINI_LEVEL, _GEMINI_BUDGET = "gemini_level", "gemini_budget"
+_TEMPLATE = "template_switch"
 
 
 @dataclass(frozen=True)
@@ -331,6 +333,13 @@ _OPENAI_RULES = [
     (r"(^|/)gpt-([6-9]|\d{2})(\.\d+)?-luna", _Reasoning(REASONING_LEVELS, _OPENAI, "none")),
     (r"(^|/)gpt-([6-9]|\d{2})([-_.]|$)", _Reasoning((*_E, XHIGH, MAX), _OPENAI)),
     (r"gpt-oss", _Reasoning(_E, _OPENAI)),
+    # Ollama/vLLM & Co. (nur „OpenAI-kompatibel“): Hybrid-Modelle, deren Chat-Template
+    # das Denken per ``chat_template_kwargs.enable_thinking`` schaltet (Qwen3/3.x; die
+    # 2507-Ausgaben, Instruct- und Thinking-Varianten kennen den Schalter nicht).
+    (
+        r"qwen-?3(\.\d+)?(?!.*(2507|instruct|thinking|coder|embed|rerank))",
+        _Reasoning((OFF, MEDIUM), _TEMPLATE),
+    ),
 ]
 _CLAUDE_ALL = (*_E, XHIGH, MAX)
 _V = r"([-_.@]|$)"  # Ende der Versionsangabe (auch Bedrock-IDs mit Datum bzw. @)
@@ -370,7 +379,7 @@ _GOOGLE_RULES = [
 ]
 _RULES = {
     "openai_compat": [(re.compile(p), r) for p, r in _OPENAI_RULES],
-    "lmstudio": [(re.compile(p), r) for p, r in _OPENAI_RULES],
+    "lmstudio": [(re.compile(p), r) for p, r in _OPENAI_RULES if r is None or r.style != _TEMPLATE],
     "anthropic": [(re.compile(p), r) for p, r in _ANTHROPIC_RULES],
     "google": [(re.compile(p), r) for p, r in _GOOGLE_RULES],
 }
@@ -443,7 +452,10 @@ def reasoning_level(level: str | None, supported) -> str | None:
     if level == OFF:
         return lowest
     below = [s for s in supported if s != OFF and order(s) < order(level)]
-    return max(below, key=order) if below else lowest
+    if below:
+        return max(below, key=order)
+    above = [s for s in supported if s != OFF]
+    return min(above, key=order) if above else lowest
 
 
 def reasoning_params(model_id: str, provider: str, level: str | None) -> dict:
@@ -456,6 +468,8 @@ def reasoning_params(model_id: str, provider: str, level: str | None) -> dict:
         return {}
     if rule.style == _OPENAI:
         return {"reasoning_effort": rule.off if level == OFF else level}
+    if rule.style == _TEMPLATE:
+        return {"chat_template_kwargs": {"enable_thinking": level != OFF}}
     if rule.style == _CLAUDE_EFFORT:
         if level == OFF:
             return {"thinking": {"type": rule.off}} if rule.off else {}

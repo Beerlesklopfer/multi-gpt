@@ -83,7 +83,11 @@ ALL = ("off", "low", "medium", "high", "xhigh", "max")
         ("gpt-6-astra", OPENAI, ("low", "medium", "high", "xhigh", "max")),
         ("gpt-6.1-sol", OPENAI, ("low", "medium", "high", "xhigh", "max")),
         ("openai/gpt-oss-20b", OPENAI, ("low", "medium", "high")),
-        ("qwen3-30b-a3b", OPENAI, None),
+        ("qwen3-30b-a3b", OPENAI, ("off", "medium")),
+        ("qwen3.5-35b-a3b", OPENAI, ("off", "medium")),
+        ("qwen3-30b-a3b-instruct-2507", OPENAI, None),
+        ("qwen3-coder-30b", OPENAI, None),
+        ("qwen3-30b-a3b", "lmstudio", None),  # LM Studio meldet seine Stufen selbst
         ("claude-sonnet-4-5", OPENAI, None),  # nur über die Anthropic-API
         ("claude-3-5-sonnet-latest", ANTHROPIC, None),
         ("claude-3-7-sonnet-latest", ANTHROPIC, ("off", "low", "medium", "high")),
@@ -184,6 +188,8 @@ def test_rejected_parameter_reasoning():
     assert rejected_parameter(400, json.dumps(gemini).encode()) == "reasoning"
     lmstudio = {"error": "Unrecognized key: reasoning_effort"}
     assert rejected_parameter(422, json.dumps(lmstudio).encode()) == "reasoning"
+    vllm = {"error": {"message": "Unknown field chat_template_kwargs"}}
+    assert rejected_parameter(400, json.dumps(vllm).encode()) == "reasoning"
     both = {"error": {"message": "temperature may only be set to 1 when thinking is enabled"}}
     assert rejected_parameter(400, json.dumps(both).encode()) == "temperature,reasoning"
     # Fehler zu zurückgegebenen Thinking-Blöcken sind keine Ablehnung des Parameters.
@@ -233,6 +239,16 @@ def _local_model(model_id):
         (OPENAI, "o3", "max", {"reasoning_effort": "high"}, None),
         (OPENAI, "gpt-6-astra", "off", {"reasoning_effort": "low"}, None),
         (OPENAI, "gpt-6-luna", "max", {"reasoning_effort": "max"}, None),
+        # Ollama/vLLM (Qwen3): Chat-Template-Schalter
+        (
+            OPENAI,
+            "qwen3-30b-a3b",
+            "off",
+            {"chat_template_kwargs": {"enable_thinking": False}},
+            0.3,
+        ),
+        (OPENAI, "qwen3-30b-a3b", "low", {"chat_template_kwargs": {"enable_thinking": True}}, 0.3),
+        (OPENAI, "qwen3-30b-a3b", "max", {"chat_template_kwargs": {"enable_thinking": True}}, 0.3),
         (OPENAI, "gpt-5.5", "", {}, None),  # Standard: nichts senden
         (OPENAI, "gpt-4o", "high", {}, 0.3),  # kein Reasoning-Modell
         # Anthropic: effort (adaptiv) bzw. budget_tokens; mit Thinking ohne Temperatur
@@ -286,7 +302,7 @@ def test_reasoning_in_request_body(client, anna, kind, model_id, level, expected
         assert "thinkingConfig" not in body
         assert generation.get("temperature") == temperature
         return
-    for key in ("reasoning_effort", "output_config", "thinking"):
+    for key in ("reasoning_effort", "output_config", "thinking", "chat_template_kwargs"):
         assert body.get(key) == expected.get(key), key
     if kind == ANTHROPIC:
         assert body["max_tokens"] == expected.get("max_tokens", 16000)

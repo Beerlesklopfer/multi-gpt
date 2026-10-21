@@ -463,7 +463,7 @@ def _error_strings(body: bytes) -> list[str]:
 _RETRY_WITHOUT = {
     "temperature": re.compile(r"temperature"),
     "reasoning": re.compile(
-        r"reasoning|effort|budget_tokens|between_tools"
+        r"reasoning|effort|budget_tokens|between_tools|chat_template_kwargs|enable_thinking"
         r"|thinking(?:\.type|_?config|_?level|_?budget|\b(?![`'\"]?\s+(?:or|block)))"
     ),
 }
