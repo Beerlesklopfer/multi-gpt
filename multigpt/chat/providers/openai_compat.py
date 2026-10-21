@@ -497,6 +497,7 @@ class OpenAICompatAdapter(ProviderAdapter):
         images = list(images)
         if not images:
             raise ProviderError(MSG_NO_IMAGE_SOURCE)
+        mask = params.pop("mask", None)  # (Name, Inhaltstyp, Bytes): PNG, durchsichtig = ändern
         fields = {
             k: v
             for k, v in _image_body(model_id, prompt, params).items()
@@ -505,6 +506,9 @@ class OpenAICompatAdapter(ProviderAdapter):
         data = {k: str(v) for k, v in fields.items()}
         name = "image" if len(images) == 1 else "image[]"
         files = [(name, (fname, raw, mime)) for fname, mime, raw in images]
+        if mask is not None:
+            mask_name, mask_mime, mask_raw = mask
+            files.append(("mask", (mask_name, mask_raw, mask_mime)))
         return self._image_request("images/edits", model_id, data=data, files=files)
 
     def _image_request(self, path: str, model_id: str, **request) -> ImageResult:

@@ -128,6 +128,17 @@ MSG_SIZE_UNSUPPORTED = (
     "Auflösung."
 )
 MSG_BAD_COUNT = f"Ungültige Anzahl: ein bis {MAX_VARIANTS} Bilder, je nach Bildmodell."
+MSG_MASK_UNSUPPORTED = (
+    "Dieses Bildmodell kennt keine Maske. Mit einem Modell wie GPT Image lässt sich ein Bereich "
+    "markieren, sonst die Änderung im Text beschreiben."
+)
+MSG_MASK_NEEDS_IMAGE = (
+    "Eine Maske gehört zu einem Bild, das bearbeitet wird: Bitte ein Bild anhängen."
+)
+MSG_MASK_GONE = (
+    "Die Maske wird nach dem Senden nicht gespeichert. Bitte neu senden (mit neuer Maske)."
+)
+MSG_MASK_EMPTY = "Die Maske markiert nichts: Bitte den Bereich zeichnen, der geändert werden soll."
 MSG_NO_SOURCE = "Zum Bearbeiten bitte ein Bild anhängen."
 MSG_SOURCE_UNREADABLE = "Das angehängte Bild lässt sich nicht lesen."
 MAX_SOURCES = 4
@@ -486,6 +497,34 @@ def max_variants(ai_model: AIModel) -> int:
     return MAX_VARIANTS
 
 
+def supports_mask(ai_model: AIModel) -> bool:
+    """Nimmt der Anbieter beim Bearbeiten eine Maske (GPT Image: ``mask``)? Eliezer lehnt sie ab."""
+    return ai_model.provider.kind == Provider.Kind.OPENAI_COMPAT
+
+
+def _mask_payload(mask: Attachment, source: Attachment) -> tuple[str, str, bytes]:
+    """Maske für den Anbieter: PNG mit Alphakanal in der Größe des ersten Ausgangsbilds;
+    durchsichtige Pixel sind der Bereich, der geändert wird."""
+    raw = chat_attachments.read(mask)
+    source_raw = chat_attachments.read(source)
+    if raw is None or source_raw is None:
+        raise ImageError(MSG_SOURCE_UNREADABLE)
+    try:
+        with Image.open(io.BytesIO(raw)) as opened:
+            image = opened.convert("RGBA")
+        with Image.open(io.BytesIO(source_raw)) as opened:
+            size = opened.size
+    except Exception as exc:  # noqa: BLE001 - kein lesbares Bild
+        raise ImageError(MSG_INVALID_IMAGE) from exc
+    if image.size != size:
+        image = image.resize(size, Image.Resampling.NEAREST)
+    if image.getchannel("A").getextrema()[0] >= 255:
+        raise ImageError(MSG_MASK_EMPTY)
+    out = io.BytesIO()
+    image.save(out, "PNG")
+    return "maske.png", "image/png", out.getvalue()
+
+
 def _clean_count(ai_model: AIModel, count) -> int:
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         raise ImageError(MSG_BAD_COUNT)
@@ -579,9 +618,10 @@ def edit_many(
     transparent: bool = False,
     target: tuple[int, int] | None = None,
     count: int = 1,
+    mask: Attachment | None = None,
 ) -> tuple[list[Attachment], str]:
     """Hochgeladene Bilder (``sources``) nach ``prompt`` mit ``ai_model`` verändern; ``count``
-    Varianten.
+    Varianten; ``mask``: Entwurf mit durchsichtigem Bereich, der geändert wird.
 
     Wie ``generate_many``; die Ergebnisse verweisen über ``source_image`` auf das erste
     Ausgangsbild. Das Modell muss „Bilder bearbeiten“ können (Admin), sonst ``ImageError`` 409."""
@@ -604,6 +644,11 @@ def edit_many(
             raise ImageError(MSG_SOURCE_UNREADABLE)
         payload.append((source.display_name or "bild.png", source.mime_type or "image/png", raw))
     size = _request_size(fmt, target)
+    extra = {}
+    if mask is not None:
+        if not supports_mask(ai_model):
+            raise ImageError(MSG_MASK_UNSUPPORTED, 409)
+        extra["mask"] = _mask_payload(mask, sources[0])
     adapter = registry.get_adapter(ai_model.provider)
     result = _provider_call(
         message,
@@ -616,6 +661,7 @@ def edit_many(
             quality=quality,
             background="transparent" if transparent else None,
             n=count,
+            **extra,
         ),
         editing=True,
     )

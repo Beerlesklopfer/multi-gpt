@@ -2,7 +2,7 @@
 {% comment %}Modus „Bild“ (M9-01, image_mode.js): Die Nachricht geht direkt an das Bildmodell.
 Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online).{% endcomment %}
 {% if image_mode.available %}
-  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}" data-edit="{{ image_mode.edit|yesno:'true,false' }}" data-size="{{ image_mode.size|yesno:'true,false' }}" data-quality="{{ image_mode.quality|yesno:'true,false' }}" data-variants="{{ image_mode.variants }}">
+  <div class="image-mode" id="image-mode" data-model-name="{{ image_mode.model_name }}" data-edit="{{ image_mode.edit|yesno:'true,false' }}" data-size="{{ image_mode.size|yesno:'true,false' }}" data-quality="{{ image_mode.quality|yesno:'true,false' }}" data-variants="{{ image_mode.variants }}" data-mask="{{ image_mode.mask|yesno:'true,false' }}">
     <label class="tool-switch image-mode-switch" for="image-mode-toggle">
       <input type="checkbox" id="image-mode-toggle" aria-describedby="image-mode-hint">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
@@ -15,6 +15,13 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
           {% for value, label in image_mode.formats %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select>
       </label>
+      {# Maske (nur Modelle mit mask, z. B. GPT Image, und ein angehängtes Bild): Bereich zum Ändern malen. #}
+      <span class="image-mode-field image-mode-mask" id="image-mode-mask-box" hidden>
+        <button type="button" class="button button-small" id="image-mode-mask-open">Bereich markieren</button>
+        <span id="image-mode-mask-state" hidden>Bereich markiert
+          <button type="button" class="button button-small" id="image-mode-mask-clear">Entfernen</button>
+        </span>
+      </span>
       <label class="image-mode-field" id="image-mode-count-field" hidden><span>Anzahl</span>
         <select id="image-mode-count">
           {% for n in image_mode.counts %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
@@ -47,7 +54,7 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">
-          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}" data-size="{{ m.size|yesno:'true,false' }}" data-quality="{{ m.quality|yesno:'true,false' }}" data-variants="{{ m.variants }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
+          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}" data-size="{{ m.size|yesno:'true,false' }}" data-quality="{{ m.quality|yesno:'true,false' }}" data-variants="{{ m.variants }}" data-mask="{{ m.mask|yesno:'true,false' }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
         </select>
       </label>
       {% else %}
@@ -56,4 +63,19 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
     </span>
   </div>
   {{ image_mode.patterns|json_script:"image-request-patterns" }}
+  <dialog class="mask-dialog" id="mask-dialog" aria-labelledby="mask-title">
+    <form method="dialog" class="mask-form">
+      <h2 id="mask-title">Bereich zum Ändern markieren</h2>
+      <p class="mask-help">Male über den Teil des Bildes, der verändert werden soll. Der Rest bleibt, wie er ist.</p>
+      <div class="mask-stage"><canvas id="mask-canvas" aria-label="Bild mit markiertem Bereich"></canvas></div>
+      <label class="mask-brush"><span>Pinselgröße</span>
+        <input type="range" id="mask-brush" min="5" max="200" value="50">
+      </label>
+      <div class="mask-actions">
+        <button type="button" class="button" id="mask-reset">Alles löschen</button>
+        <button type="button" class="button" id="mask-cancel">Abbrechen</button>
+        <button type="button" class="button button-primary" id="mask-apply">Übernehmen</button>
+      </div>
+    </form>
+  </dialog>
 {% endif %}

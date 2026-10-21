@@ -683,6 +683,7 @@
     restore: () => {},
     extend: (payload) => payload,
     attachEditor: () => null,
+    firstImage: () => null,
     showInMessage,
     showToolAttachments,
     attachmentsOf,
@@ -917,6 +918,8 @@
       addDraft(att) {
         tray.restore([{ att, existing: false }]);
       },
+      // Erstes fertig hochgeladene Bild der Leiste (für die Maske im Modus „Bild“) oder null.
+      firstImage: () => tray.done().find((att) => att.kind === "image") || null,
       // Anhänge gehen mit dieser Nachricht raus: Leiste leeren, live anzeigen.
       commit(userEl) {
         outgoing = tray.detach();

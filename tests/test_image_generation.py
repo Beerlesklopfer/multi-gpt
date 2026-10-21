@@ -1802,3 +1802,152 @@ def test_edit_tool_only_takes_images_of_this_chat(
     fakes([tool_round(edit_call(prompt="blau", attachment_ids=[foreign.pk])), answer()])
     events = events_of(post(client, conversation, content="Ändere es", model=chat_model.pk))
     assert events[2][1]["status"] == "error"  # das Bild gehört zu einem anderen Chat
+
+
+def mask_png(size=(64, 48), hole=True) -> bytes:
+    """Maske wie vom Zeichenfeld: deckend, dazu ein durchsichtiges Rechteck (zu ändern)."""
+    import io as _io
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGBA", size, (255, 255, 255, 255))
+    if hole:
+        ImageDraw.Draw(image).rectangle((4, 4, size[0] // 2, size[1] // 2), fill=(0, 0, 0, 0))
+    out = _io.BytesIO()
+    image.save(out, "PNG")
+    return out.getvalue()
+
+
+def test_openai_edit_image_sends_the_mask_as_a_file():
+    with respx.mock(assert_all_called=True) as router:
+        route = router.post(f"{OPENAI}/images/edits").respond(200, json=OPENAI_PAYLOAD)
+        openai_adapter().edit_image(
+            "gpt-image-1",
+            [("vorlage.png", "image/png", PNG)],
+            "Himmel blau",
+            mask=("maske.png", "image/png", mask_png()),
+        )
+    body = route.calls.last.request.content
+    assert b'name="mask"; filename="maske.png"' in body and b'name="image"' in body
+
+
+@pytest.mark.django_db
+def test_mask_goes_to_the_provider_in_the_size_of_the_source_and_is_then_deleted(
+    client, adult, conversation, editor_model, fakes
+):
+    import io as _io
+
+    from PIL import Image
+
+    _, image_calls = fakes()
+    source = make_draft(adult)
+    mask = make_draft(adult, data=mask_png((32, 24)), name="maske.png")  # kleiner als die Vorlage
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Himmel blau",
+            attachments=[source.pk],
+            image={"model": editor_model.pk, "mask": mask.pk},
+        )
+    )
+    assert events[-1] == ("done", {"status": "complete"})
+    sent = image_calls[0]["mask"]
+    assert sent[0] == "maske.png" and sent[1] == "image/png"
+    sent_size = Image.open(_io.BytesIO(sent[2])).size
+    assert sent_size == Image.open(_io.BytesIO(PNG)).size  # auf die Größe der Vorlage gebracht
+    assert not Attachment.objects.filter(pk=mask.pk).exists()  # nur für diese Anfrage
+    reply = Message.objects.get(role="assistant")
+    assert reply.tool_state["image"]["mask"] is True and reply.status == Message.Status.COMPLETE
+
+
+@pytest.mark.django_db
+def test_empty_mask_is_refused_with_a_clear_message(
+    client, adult, conversation, editor_model, fakes
+):
+    _, image_calls = fakes()
+    source = make_draft(adult)
+    mask = make_draft(adult, data=mask_png(hole=False), name="maske.png")
+    events = events_of(
+        post(
+            client,
+            conversation,
+            content="Himmel blau",
+            attachments=[source.pk],
+            image={"model": editor_model.pk, "mask": mask.pk},
+        )
+    )
+    assert ("error", {"message": images.MSG_MASK_EMPTY}) in events
+    assert image_calls == []
+
+
+@pytest.mark.django_db
+def test_mask_needs_an_image_to_edit_and_a_provider_that_takes_masks(
+    client, adult, conversation, editor_model, local_image_model, fakes
+):
+    fakes()
+    mask = make_draft(adult, data=mask_png(), name="maske.png")
+    response = post(
+        client, conversation, content="x", image={"model": editor_model.pk, "mask": mask.pk}
+    )
+    assert response.status_code == 400 and images.MSG_MASK_NEEDS_IMAGE in response.json()["error"]
+    AIModel.objects.filter(pk=local_image_model.pk).update(can_edit_images=True)
+    source = make_draft(adult)
+    response = post(
+        client,
+        conversation,
+        content="x",
+        attachments=[source.pk],
+        image={"model": local_image_model.pk, "mask": mask.pk},
+    )
+    assert response.status_code == 400 and images.MSG_MASK_UNSUPPORTED in response.json()["error"]
+    assert Attachment.objects.filter(pk=mask.pk).exists()  # nichts verbraucht
+
+
+@pytest.mark.django_db
+def test_foreign_or_invalid_masks_are_refused(client, adult, conversation, editor_model, fakes):
+    fakes()
+    source = make_draft(adult)
+    foreign = make_draft(make_user("adult", "fremd"), data=mask_png(), name="maske.png")
+    for bad in (foreign.pk, 999999):
+        response = post(
+            client,
+            conversation,
+            content="x",
+            attachments=[source.pk],
+            image={"model": editor_model.pk, "mask": bad},
+        )
+        assert response.status_code == 400
+    assert post(client, conversation, content="x", image={"mask": "abc"}).status_code == 400
+
+
+@pytest.mark.django_db
+def test_regenerate_of_a_masked_edit_asks_for_a_new_mask(
+    client, adult, conversation, chat_model, editor_model, fakes
+):
+    fakes()
+    source = make_draft(adult)
+    mask = make_draft(adult, data=mask_png(), name="maske.png")
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Himmel blau",
+            attachments=[source.pk],
+            image={"model": editor_model.pk, "mask": mask.pk},
+        )
+    )
+    reply = Message.objects.get(role="assistant")
+    response = post(client, conversation, regenerate=True, message_id=reply.pk, model=chat_model.pk)
+    assert response.status_code == 409 and images.MSG_MASK_GONE in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_chat_page_offers_the_mask_editor_for_models_with_masks(
+    client, adult, conversation, image_model, local_image_model
+):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'id="mask-dialog"' in page and 'id="image-mode-mask-open"' in page
+    assert 'data-name="GPT Image" data-edit="false" data-size="false"' in page
+    assert 'data-variants="4" data-mask="true"' in page  # OpenAI-Modell
+    assert 'data-variants="4" data-mask="false"' in page  # Eliezer: lehnt mask ab

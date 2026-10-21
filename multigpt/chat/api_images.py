@@ -99,6 +99,9 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
         count = options.get("n", 1)
         if isinstance(count, bool) or not isinstance(count, int):
             return error(images.MSG_BAD_COUNT, 400)
+        mask_id = options.get("mask")
+        if mask_id is not None and (isinstance(mask_id, bool) or not isinstance(mask_id, int)):
+            return error(MSG_INVALID, 400)
     except images.ImageError as exc:
         return error(exc.message, exc.status)
     expected_leaf, valid = parse_pk(data, "leaf")
@@ -132,6 +135,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             and len(content) <= images.CONTINUE_MAX_CHARS,
             target=target,
             count=count,
+            mask_id=mask_id,
         )
     except services.TurnError as exc:
         return error(exc.message, exc.status)
@@ -151,6 +155,7 @@ def prepare(
     continue_last=False,
     target=None,
     count=1,
+    mask_id=None,
 ):
     """Nutzernachricht und (leere) Antwort des Bildmodells anlegen."""
     with transaction.atomic():
@@ -197,6 +202,20 @@ def prepare(
                 else:
                     prompt = images.chain_prompt(last_prompt, content)
                 image_state["continued"] = True
+        mask_draft = None
+        if mask_id is not None:
+            if not image_state.get("edit"):
+                raise services.TurnError(images.MSG_MASK_NEEDS_IMAGE)
+            if not images.supports_mask(ai_model):
+                raise services.TurnError(images.MSG_MASK_UNSUPPORTED)
+            mask_draft = (
+                Attachment.objects.select_for_update()
+                .filter(pk=mask_id, owner=user, message__isnull=True, kind=Attachment.Kind.IMAGE)
+                .first()
+            )
+            if mask_draft is None:
+                raise services.TurnError(chat_attachments.MSG_NOT_FOUND)
+            image_state["mask"] = True
         image_state["prompt"] = prompt[: images.MAX_PROMPT]
         assistant = services.append_message(
             conversation,
@@ -217,6 +236,8 @@ def prepare(
     options = {"image_sources": source_ids} if source_ids else {}
     if reuse:
         options["image_reuse"] = True
+    if mask_draft is not None:
+        options["image_mask"] = mask_draft.pk
     return services.Turn(
         user, conversation, ai_model, user_message, assistant, options=options, query=prompt
     )
@@ -254,6 +275,8 @@ def rerun(request, conversation: Conversation, data: dict, target, *, error, eve
     user = request.user
     kind, old = target
     state = old.tool_state["image"]
+    if state.get("mask"):
+        return error(images.MSG_MASK_GONE, 409)
     if kind == "edit" and not can(user, Action.UPDATE, conversation):
         return error("Du darfst in diesem Chat keine Nachrichten bearbeiten.", 403)
     try:
@@ -411,10 +434,14 @@ def run(turn, fmt: str, quality: str, transparent: bool):
         if state.get("size"):
             common["target"] = images.parse_size(state["size"])
         common["count"] = int(state.get("count") or 1)
+        mask_pk = turn.options.get("image_mask")
+        mask = Attachment.objects.filter(pk=mask_pk).first() if mask_pk else None
         if source_ids:
             sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
             try:
-                made, revised = images.edit_many(turn.user, msg, turn.query, sources, **common)
+                made, revised = images.edit_many(
+                    turn.user, msg, turn.query, sources, mask=mask, **common
+                )
             except images.EditUnsupported:
                 # Beim stillen Weiterarbeiten (nicht bei hochgeladenen Vorlagen) weicht der Server
                 # auf die Beschreibung aus, wenn dem Anbieter das Bearbeiten fehlt.
@@ -458,6 +485,11 @@ def run(turn, fmt: str, quality: str, transparent: bool):
     except Exception as exc:
         logger.error("Bild-Antwort %s fehlgeschlagen: %s", msg.pk, type(exc).__name__)
         status, error = Message.Status.ERROR, images.MSG_FAILED
+    mask_pk = turn.options.get("image_mask")
+    if mask_pk:  # die Maske war nur für diese Anfrage gedacht
+        leftover = Attachment.objects.filter(pk=mask_pk, message__isnull=True).first()
+        if leftover is not None:
+            chat_attachments.delete_draft(leftover)
     Message.objects.filter(pk=msg.pk).update(content=text, status=status, error=error)
     Conversation.objects.filter(pk=turn.conversation.pk).update(updated=timezone.now())
     if error:

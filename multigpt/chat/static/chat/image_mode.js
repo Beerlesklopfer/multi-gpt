@@ -153,6 +153,11 @@
       format.disabled = canResize() && Boolean(resolution.value); // die Auflösung ersetzt das Format
     }
     // Kann das gewählte Bildmodell Bilder bearbeiten (data-edit am Eintrag bzw. am Kasten)?
+    // Maske (data-mask): Bereich zum Ändern malen, nur bei Modellen mit Maske und angehängtem Bild.
+    const canMask = () =>
+      imageModel
+        ? imageModel.selectedOptions?.[0]?.dataset.mask === "true"
+        : box.dataset.mask === "true";
     const canEdit = () =>
       imageModel
         ? imageModel.selectedOptions?.[0]?.dataset.edit === "true"
@@ -274,6 +279,7 @@
     updateResolution();
     updateQuality();
     updateCount();
+    const mask = setupMask({ canMask, imageModel });
     textarea.addEventListener("input", updateHint);
     modelSelect?.addEventListener("change", updateHint);
     document.addEventListener("multigpt:models-loaded", updateHint);
@@ -347,6 +353,10 @@
         if (countSelect && maxVariants() > 1 && Number(countSelect.value) > 1) {
           result.image.n = Number(countSelect.value);
         }
+        const maskId = mask.take();
+        if (maskId) {
+          result.image.mask = maskId;
+        }
         if (imageModel?.value) {
           result.image.model = Number(imageModel.value);
         }
@@ -363,6 +373,216 @@
     watchRefusals(textarea);
     watchContinueButtons(textarea);
   });
+
+  // --- Maske zeichnen (nur Modelle mit Maske, z. B. GPT Image) --------------------------------
+  // Auf dem ersten angehängten Bild den Bereich übermalen, der geändert werden soll. Daraus wird
+  // ein PNG in der Größe des Bildes: deckend, der bemalte Bereich durchsichtig (so erwartet es
+  // die API). Es geht als Entwurf an den Server (Upload) und mit der Nachricht als image.mask.
+  function setupMask({ canMask, imageModel }) {
+    const boxEl = document.getElementById("image-mode-mask-box");
+    const openButton = document.getElementById("image-mode-mask-open");
+    const stateEl = document.getElementById("image-mode-mask-state");
+    const clearButton = document.getElementById("image-mode-mask-clear");
+    const dialog = document.getElementById("mask-dialog");
+    const view = document.getElementById("mask-canvas");
+    const brush = document.getElementById("mask-brush");
+    const none = { take: () => 0 };
+    if (!boxEl || !openButton || !dialog || !view || typeof dialog.showModal !== "function") {
+      return none;
+    }
+    const chat = document.getElementById("chat");
+    const base = chat?.dataset.apiAttachments || "";
+    let maskId = 0; // hochgeladene Maske (Entwurf)
+    let maskFor = 0; // Bild, zu dem sie gehört
+    let source = null; // geladenes Bild im Dialog
+    let paint = null; // Strichebene in Bildgröße
+    let drawing = false;
+    let last = null;
+
+    const setStatus = (text, bad = false) => MultiGPT.chatView?.setStatus?.(text, bad);
+    const firstImage = () => MultiGPT.attachments?.firstImage?.() || null;
+
+    function discardUpload() {
+      if (maskId && base) {
+        fetch(`${base}${maskId}/`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": MultiGPT.csrfToken(), Accept: "application/json" },
+        }).catch(() => {});
+      }
+      maskId = 0;
+      maskFor = 0;
+    }
+
+    function update() {
+      const image = firstImage();
+      boxEl.hidden = !(canMask() && image);
+      if (maskFor && (!image || image.id !== maskFor)) {
+        discardUpload(); // anderes Bild: die Maske passt nicht mehr
+      }
+      stateEl.hidden = !maskId;
+      openButton.hidden = Boolean(maskId);
+    }
+
+    function redraw() {
+      const ctx = view.getContext("2d");
+      ctx.clearRect(0, 0, view.width, view.height);
+      ctx.drawImage(source, 0, 0);
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(paint, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+
+    function point(event) {
+      const rect = view.getBoundingClientRect();
+      return {
+        x: ((event.clientX - rect.left) / rect.width) * view.width,
+        y: ((event.clientY - rect.top) / rect.height) * view.height,
+      };
+    }
+
+    function stroke(from, to) {
+      const ctx = paint.getContext("2d");
+      const rect = view.getBoundingClientRect();
+      const scale = view.width / rect.width; // Pinselgröße gilt in Bildschirmpixeln
+      ctx.strokeStyle = "#e11d48";
+      ctx.fillStyle = "#e11d48";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = Number(brush.value) * scale;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(to.x, to.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+      ctx.fill();
+      redraw();
+    }
+
+    view.addEventListener("pointerdown", (event) => {
+      if (!source) {
+        return;
+      }
+      drawing = true;
+      view.setPointerCapture(event.pointerId);
+      last = point(event);
+      stroke(last, last);
+      event.preventDefault();
+    });
+    view.addEventListener("pointermove", (event) => {
+      if (!drawing) {
+        return;
+      }
+      const now = point(event);
+      stroke(last, now);
+      last = now;
+    });
+    for (const name of ["pointerup", "pointercancel"]) {
+      view.addEventListener(name, () => {
+        drawing = false;
+      });
+    }
+
+    document.getElementById("mask-reset")?.addEventListener("click", () => {
+      if (source) {
+        paint.getContext("2d").clearRect(0, 0, paint.width, paint.height);
+        redraw();
+      }
+    });
+    document.getElementById("mask-cancel")?.addEventListener("click", () => dialog.close());
+
+    openButton.addEventListener("click", () => {
+      const image = firstImage();
+      if (!image) {
+        return;
+      }
+      const picture = new Image();
+      picture.onload = () => {
+        source = picture;
+        view.width = picture.naturalWidth;
+        view.height = picture.naturalHeight;
+        paint = document.createElement("canvas");
+        paint.width = view.width;
+        paint.height = view.height;
+        redraw();
+        dialog.showModal();
+      };
+      picture.onerror = () => setStatus("Das Bild lässt sich nicht laden.", true);
+      picture.src = image.url;
+    });
+
+    document.getElementById("mask-apply")?.addEventListener("click", async () => {
+      const image = firstImage();
+      if (!source || !paint || !image) {
+        return;
+      }
+      // Maske: deckend weiß, bemalter Bereich ausgestanzt (durchsichtig).
+      const out = document.createElement("canvas");
+      out.width = paint.width;
+      out.height = paint.height;
+      const ctx = out.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.drawImage(paint, 0, 0);
+      const blob = await new Promise((resolve) => out.toBlob(resolve, "image/png"));
+      if (!blob) {
+        setStatus("Die Maske konnte nicht erzeugt werden.", true);
+        return;
+      }
+      const form = new FormData();
+      form.append("file", blob, "maske.png");
+      const conversation = chat?.dataset.conversationId;
+      if (conversation) {
+        form.append("conversation", conversation);
+      }
+      try {
+        const response = await fetch(base, {
+          method: "POST",
+          body: form,
+          credentials: "same-origin",
+          headers: { "X-CSRFToken": MultiGPT.csrfToken(), Accept: "application/json" },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Die Maske konnte nicht hochgeladen werden.");
+        }
+        discardUpload();
+        maskId = data.id;
+        maskFor = image.id;
+        dialog.close();
+        setStatus("Der markierte Bereich wird beim Senden geändert, der Rest bleibt.");
+      } catch (error) {
+        setStatus(error.message || "Die Maske konnte nicht hochgeladen werden.", true);
+      }
+      update();
+    });
+
+    clearButton?.addEventListener("click", () => {
+      discardUpload();
+      update();
+      setStatus("Markierung entfernt.");
+    });
+
+    document.addEventListener("multigpt:attachments-changed", update);
+    document.addEventListener("multigpt:image-mode", update);
+    imageModel?.addEventListener("change", update);
+    update();
+    return {
+      // Maske dieser Nachricht (der Server löscht den Entwurf nach dem Senden); danach leer.
+      take() {
+        if (!maskId || !canMask()) {
+          return 0;
+        }
+        const id = maskId;
+        maskId = 0;
+        maskFor = 0;
+        update();
+        return id;
+      },
+    };
+  }
 
   // --- „Weiter bearbeiten“ an einem erzeugten Bild ---------------------------------------
   // Kopiert das Bild als eigenen Entwurf (POST /api/attachments/<id>/copy/), legt es in die
