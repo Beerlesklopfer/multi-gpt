@@ -29,7 +29,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 
 | Nr. | Punkt |
 |---|---|
-| C5 | Arbeitsblätter: Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett fehlen; Antwortlinien ungleich kräftig; PDF-Link fehlt in der Live-Anzeige (`attachments.js`). |
+| C5 | Arbeitsblätter: Vorlagen Hundertertafel, Zwanzigerfeld, Stellenwerttafel, Geobrett, gleich kräftige Antwortlinien und der Link „Ansehen“ in der Live-Anzeige sind umgesetzt. Offen: Prüfung im Browser (`attachments.js` ohne node nicht ausgeführt) und Sichtprüfung der PDFs. |
 | C6 | Projekte lassen sich noch nicht als Ganzes teilen. |
 | C12 | Nicht im Browser geprüft: Denktiefe-Auswahl, MCP-Werkzeugtabelle, API-Key-Seite, Zitat kopieren. Chromium ungetestet (SVG-Vorschau, Layout-Fix). |
 | C13 | Sandbox: Speichergrenze nur je Prozess, kein Gesamtlimit (bräuchte cgroup). |
