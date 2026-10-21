@@ -824,3 +824,43 @@ def test_attachment_reference_page_and_tool_note(client, adult, model, settings,
 def test_query_terms_cover_plotting_and_state_questions(query, expected):
     """LOP C25: Stichworte für Funktionen zeichnen (run_python) und Zustandsfragen."""
     assert expected <= tool_select.query_terms(query)
+
+
+@pytest.mark.parametrize(
+    ("query", "state"),
+    [
+        ("Ist das Licht im Flur an?", True),
+        ("Ist die Heizung im Bad eingeschaltet", True),
+        ("Sind die Rollläden unten?", True),
+        ("Steht das Fenster offen?", True),
+        ("Läuft die Musik noch", True),
+        ("Mach das Licht im Flur an", False),
+        ("Kannst du das Licht anmachen?", False),
+        ("Schalte die Lampe aus", False),
+        ("Stell die Heizung auf 21 Grad", False),
+    ],
+)
+def test_is_state_question(query, state):
+    assert tool_select.is_state_question(query) is state
+
+
+def test_state_question_drops_on_off_terms():
+    terms = tool_select.query_terms("Ist das Licht im Flur an?")
+    assert {"state", "context", "light"} <= terms and not {"on", "off"} & terms
+    assert "on" in tool_select.query_terms("Mach das Licht im Flur an")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Ist das Licht im Flur an?",
+        "Ist die Heizung im Bad eingeschaltet",
+        "Steht das Fenster offen?",
+        "Sind die Lampen aus?",
+        "Wie warm ist es im Wohnzimmer?",
+    ],
+)
+def test_state_questions_find_get_live_context(adult, model, mcp_mock, query):
+    """LOP C25: Zustandsfragen ohne die Stichworte „brennt“ usw. treffen GetLiveContext."""
+    hits = top(candidates_for(adult, model), query, 2)
+    assert hits[0] == "homeassistant__GetLiveContext", (query, hits)

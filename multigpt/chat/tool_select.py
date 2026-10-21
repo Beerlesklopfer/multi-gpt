@@ -520,6 +520,33 @@ def words(text: str) -> list[str]:
     return [_stem(w) for w in _SPLIT.split(text.lower()) if w]
 
 
+# Fragewörter am Satzanfang und Schaltwörter: „Ist das Licht im Flur an?“ ist eine
+# Zustandsfrage (GetLiveContext), „Mach das Licht an“ ein Befehl (HassTurnOn).
+QUESTION_STARTS = frozenset(
+    "ist sind steht stehen läuft laufen hat haben war waren wie welche welcher welches "
+    "gibt wieviel brennt brennen".split()
+)
+ACTION_STEMS = (
+    "schalt", "mach", "dimm", "stell", "öffne", "schließ", "schliess", "starte", "setz",
+    "einschalt", "ausschalt", "anschalt", "abschalt", "anmach", "ausmach",
+)  # fmt: skip
+SWITCH_WORDS = frozenset({"an", "ein", "aus"})
+# Bei Zustandsfragen verweisen diese Wörter sonst auf Werkzeuge zum Einstellen
+# („Wie warm ist es?“ -> HassClimateSetTemperature statt GetLiveContext).
+SETTER_WORDS = frozenset(
+    "heizung heizen thermostat temperatur grad warm kalt klima helligkeit farbe".split()
+)
+
+
+def is_state_question(query: str) -> bool:
+    """Frage nach dem aktuellen Zustand (kein Schaltbefehl)."""
+    text = (query or "").lower().strip()
+    parts = [w for w in _SPLIT.split(text) if w]
+    if "?" not in text and (not parts or parts[0] not in QUESTION_STARTS):
+        return False
+    return not any(w.startswith(ACTION_STEMS) for w in parts)
+
+
 def query_terms(query: str) -> set[str]:
     """Suchbegriffe: Wörter der Anfrage ohne Füllwörter, plus Stichwortliste.
 
@@ -527,8 +554,15 @@ def query_terms(query: str) -> set[str]:
     mindestens 4 Buchstaben auch als Teil."""
     terms: set[str] = set()
     raw = _SPLIT.split((query or "").lower())
+    state = is_state_question(query)
+    if state:
+        terms.update(("state", "context"))
     for word in raw:
         if not word:
+            continue
+        if state and word in SWITCH_WORDS:
+            continue  # „… an?“ heißt hier „brennt es?“, nicht „on“/„off“
+        if state and word in SETTER_WORDS:
             continue
         if word in SYNONYMS:
             terms.update(_stem(v) for v in SYNONYMS[word])
