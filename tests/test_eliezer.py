@@ -391,3 +391,38 @@ def test_detect_action_updates_can_edit_images_from_the_report(provider):
     qwen_model.refresh_from_db()
     assert flux_model.can_edit_images is True
     assert qwen_model.can_edit_images is False  # Eliezer meldet kein image_edit
+
+
+def eliezer_error(kind, message, status=409):
+    return httpx.Response(
+        status, json={"error": {"type": kind, "message": message}}, headers=SERVER
+    )
+
+
+@pytest.mark.parametrize(
+    "kind,expect",
+    [
+        ("busy", "Das Modell ist gerade in Benutzung"),
+        ("overloaded", "überlastet"),
+        ("backend_error", "Laufzeit"),
+        ("model_file", "Modelldatei"),
+    ],
+)
+def test_eliezer_error_types_are_shown_in_german(provider, kind, expect):
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(f"{ROOT}/api/v1/models/unload").mock(
+            return_value=eliezer_error(kind, "An English message.")
+        )
+        with pytest.raises(lmstudio.LmsError) as err:
+            lmstudio.unload(provider, "x")
+    assert expect in err.value.message and "English" not in err.value.message
+
+
+def test_insufficient_memory_is_german_and_keeps_the_numbers(provider):
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(f"{ROOT}/api/v1/models/load").mock(
+            return_value=eliezer_error("insufficient_memory", "needs 21.0 GB, free 9.2 GB")
+        )
+        with pytest.raises(lmstudio.LmsError) as err:
+            lmstudio.load(provider, "x")
+    assert "Nicht genug Speicher" in err.value.message and "21.0 GB" in err.value.message

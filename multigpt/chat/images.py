@@ -178,6 +178,16 @@ class ImageError(Exception):
         self.status = status
 
 
+# Anbieterarten, die ``quality`` auswerten (GPT Image, DALL·E); Eliezer/LM Studio und Google
+# ignorieren sie, dort wird das Feld nicht angeboten und nicht in die Antwort geschrieben.
+QUALITY_KINDS = (Provider.Kind.OPENAI_COMPAT,)
+
+
+def supports_quality(ai_model: AIModel) -> bool:
+    """Wertet der Anbieter dieses Modells die Qualitätsstufe aus?"""
+    return ai_model.provider.kind in QUALITY_KINDS
+
+
 def supports_custom_size(ai_model: AIModel) -> bool:
     """Nimmt der Anbieter dieses Modells beliebige Bildgrößen?"""
     return ai_model.provider.kind in CUSTOM_SIZE_KINDS

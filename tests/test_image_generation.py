@@ -1594,3 +1594,27 @@ def test_chat_page_shows_continue_button_on_generated_images(
     generated_attachment(client, conversation, image_model, fakes)
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert "data-attachment-continue" in page and "Weiter bearbeiten" in page
+
+
+@pytest.mark.django_db
+def test_quality_is_only_offered_and_named_for_providers_that_use_it(
+    client, adult, conversation, image_model, local_image_model, fakes
+):
+    page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
+    assert 'id="image-mode-quality-field"' in page
+    assert 'data-name="GPT Image" data-edit="false" data-size="false" data-quality="true"' in page
+    assert 'data-name="Qwen Image" data-edit="false" data-size="true" data-quality="false"' in page
+    fakes()
+    events_of(post(client, conversation, content="Kreis", image={"model": local_image_model.pk}))
+    local_reply = Message.objects.get(role="assistant", model=local_image_model)
+    assert "Qualität" not in local_reply.content
+    events_of(
+        post(
+            client,
+            conversation,
+            content="Kreis",
+            image={"model": image_model.pk, "quality": "high"},
+        )
+    )
+    cloud_reply = Message.objects.get(role="assistant", model=image_model)
+    assert "Qualität hoch" in cloud_reply.content

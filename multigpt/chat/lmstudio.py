@@ -116,19 +116,46 @@ def _int(value) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
-def _error_text(response: httpx.Response) -> str:
-    """Kurzer Fehlertext aus der Antwort (``error.message`` bzw. ``error``)."""
+# Eliezers Fehlerarten (``error.type``) auf Deutsch; der englische Text des Servers (mit den
+# Zahlen) wird nur angehängt, wo er etwas beiträgt.
+EN_TYPES = {
+    "insufficient_memory": "Nicht genug Speicher auf dem Modellrechner",
+    "busy": "Das Modell ist gerade in Benutzung",
+    "overloaded": "Der Modellserver ist überlastet (Warteschlange voll oder zu lange gewartet)",
+    "backend_error": "Die Laufzeit auf dem Modellrechner fiel aus (nächste Anfrage lädt neu)",
+    "model_file": "Die Modelldatei auf dem Modellrechner ist nicht lesbar",
+    "not_found": "Modell oder Adresse beim Modellserver nicht gefunden",
+}
+
+
+def _error_type(response: httpx.Response) -> str:
     try:
         data = response.json()
     except (ValueError, json.JSONDecodeError):
         return ""
     error = data.get("error") if isinstance(data, dict) else None
+    return str(error.get("type") or "") if isinstance(error, dict) else ""
+
+
+def _error_text(response: httpx.Response) -> str:
+    """Kurzer Fehlertext aus der Antwort (``error.message`` bzw. ``error``); bei einer
+    bekannten Fehlerart von Eliezer deutsch (``EN_TYPES``), der Originaltext folgt in Klammern
+    nur bei ``insufficient_memory`` (dort stehen die Zahlen)."""
+    try:
+        data = response.json()
+    except (ValueError, json.JSONDecodeError):
+        return ""
+    error = data.get("error") if isinstance(data, dict) else None
+    known = EN_TYPES.get(_error_type(response))
+    if known and not (isinstance(error, dict) and error.get("type") == "insufficient_memory"):
+        return known
     if isinstance(error, dict):
         error = error.get("message")
     if not isinstance(error, str):
         return ""
     text = " ".join(error.split())
-    return text if len(text) <= MAX_ERROR_CHARS else text[: MAX_ERROR_CHARS - 1] + "…"
+    text = text if len(text) <= MAX_ERROR_CHARS else text[: MAX_ERROR_CHARS - 1] + "…"
+    return f"{known} ({text})" if known else text
 
 
 def parse_models(data) -> list[CatalogModel]:

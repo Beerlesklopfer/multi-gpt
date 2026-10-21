@@ -112,6 +112,17 @@
       const ok = (v) => Number.isInteger(v) && v >= lo && v <= hi;
       return ok(w) && ok(h) ? `${w}x${h}` : null;
     }
+    // Wertet der Anbieter des gewählten Modells die Qualität aus (data-quality)? Sonst kein Feld.
+    const canQuality = () =>
+      imageModel
+        ? imageModel.selectedOptions?.[0]?.dataset.quality === "true"
+        : box.dataset.quality !== "false";
+    const qualityField = document.getElementById("image-mode-quality-field");
+    function updateQuality() {
+      if (qualityField) {
+        qualityField.hidden = !canQuality();
+      }
+    }
     function updateResolution() {
       if (!resolutionBox) {
         return;
@@ -232,11 +243,13 @@
     for (const select of [format, quality, imageModel, keepWorking, resolution].filter(Boolean)) {
       select.addEventListener("change", remember);
       select.addEventListener("change", updateResolution);
+      select.addEventListener("change", updateQuality);
     }
     for (const input of [widthInput, heightInput].filter(Boolean)) {
       input.addEventListener("change", remember);
     }
     updateResolution();
+    updateQuality();
     textarea.addEventListener("input", updateHint);
     modelSelect?.addEventListener("change", updateHint);
     document.addEventListener("multigpt:models-loaded", updateHint);
@@ -299,7 +312,10 @@
         if (Array.isArray(payload.attachments) && payload.attachments.length) {
           result.attachments = payload.attachments;
         }
-        result.image = { format: format.value, quality: quality.value };
+        result.image = {
+          format: format.value,
+          quality: canQuality() ? quality.value : "auto",
+        };
         const size = chosenSize();
         if (size) {
           result.image.size = size;

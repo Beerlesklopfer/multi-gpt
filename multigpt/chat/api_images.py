@@ -47,12 +47,13 @@ def answer_text(
     edited: bool = False,
     chained: bool = False,
     size: str | None = None,
+    show_quality: bool = True,
 ) -> str:
     """Text der Antwort (geht wie jede Antwort später auch an Chatmodelle)."""
     text = (
         f"Bild {'bearbeitet' if edited else 'erzeugt'} mit {ai_model.display_name} "
-        f"({size.replace('x', '×') if size else images.FORMAT_LABELS[fmt]}, "
-        f"Qualität {images.QUALITIES[quality]})."
+        f"({size.replace('x', '×') if size else images.FORMAT_LABELS[fmt]}"
+        f"{', Qualität ' + images.QUALITIES[quality] if show_quality else ''})."
     )
     if chained:
         text += "\n\nWeitergearbeitet an der Beschreibung des vorigen Bildes."
@@ -430,6 +431,7 @@ def run(turn, fmt: str, quality: str, transparent: bool):
             edited=edited,
             chained=chained,
             size=state.get("size"),
+            show_quality=images.supports_quality(turn.ai_model),
         )
         cost = attachment.cost
     except sharing.AccessRevoked:

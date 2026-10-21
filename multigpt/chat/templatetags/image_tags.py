@@ -28,11 +28,13 @@ def image_mode_config(context) -> dict:
                 "name": m.display_name,
                 "edit": m.can_edit_images,
                 "size": images.supports_custom_size(m),
+                "quality": images.supports_quality(m),
             }
             for m in models
         ],
         "edit": models[0].can_edit_images,
         "size": images.supports_custom_size(models[0]),
+        "quality": images.supports_quality(models[0]),
         "resolutions": images.RESOLUTION_PRESETS,
         "side": {"min": images.MIN_SIDE, "max": images.MAX_SIDE},
         "formats": list(images.FORMAT_LABELS.items()),
