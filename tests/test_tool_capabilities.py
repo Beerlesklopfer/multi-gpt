@@ -112,6 +112,7 @@ def texts(response):
         # OpenAI
         ("gpt-5.5", True),
         ("gpt-5.1-chat-latest", True),
+        ("chat-latest", True),
         ("gpt-4o-mini", True),
         ("gpt-4.1-nano", True),
         ("o3", True),

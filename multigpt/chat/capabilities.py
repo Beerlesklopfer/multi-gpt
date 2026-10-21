@@ -10,6 +10,7 @@ from dataclasses import dataclass
 # Vision-Modelle (olmOCR, Qwen-VL, LLaVA, Pixtral, „vision“).
 _VISION = re.compile(
     r"(^|/)(gpt-4o|chatgpt-4o|gpt-4\.1|gpt-5|claude-|gemini-)"
+    r"|(^|/)chat-latest$"  # OpenAI-Alias auf gpt-5-chat: versteht Bilder
     r"|olmocr|llava|pixtral|vision|(^|[-_./])vl([-_./]|$)|-vl\d|qwen\d(\.\d)?-?vl"
 )
 # Varianten ohne Bild-Eingabe trotz passender Familie.
@@ -50,6 +51,7 @@ def guess_vision(model_id: str) -> bool:
 _TOOLS = re.compile(
     # Cloud
     r"(^|/)(gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-5|o1|o3|o4-mini)([-_.]|$)"
+    r"|(^|/)chat-latest$"
     r"|(^|/)claude-(3|opus|sonnet|haiku)"
     r"|(^|/)(models/)?gemini-(1\.5|2|3)"
     # Lokal

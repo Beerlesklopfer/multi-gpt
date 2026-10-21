@@ -599,6 +599,7 @@ def test_models_list_reports_vision(client, anna, vision_model, text_model):
         ("gpt-4o-mini", True),
         ("gpt-4.1", True),
         ("gpt-5.2", True),
+        ("chat-latest", True),  # LOP C21: Alias auf gpt-5-chat versteht Bilder
         ("claude-sonnet-4-5", True),
         ("gemini-2.5-flash", True),
         ("models/gemini-2.5-pro", True),
