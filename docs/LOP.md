@@ -2,6 +2,7 @@
 
 Stand: 2026-10-17, 0.4.0 wird veröffentlicht (Runner M14, Schnittstelle „LM Studio“, Scratchpad auf dem Server). Offen nach 0.4.0: Befehl `multigpt-runner images add` (Image-Freigabe beim Agent), inkrementelle Bundles, Container-Logs auf der Seite „Runner“, Docker (8h), Bremse bei wiederholtem Runner-Fehler (C37), Python-Agent `runner_agent/` entfernen (nur noch Referenz/Testorakel), Volumen `/data` je Benutzer (Stufe 3), `runner-rs` auf crates.io (Name `multigpt-runner` frei, nichts veröffentlichen ohne Nutzer).
 Erledigte Punkte werden gestrichen bzw. entfernt, neue unten in der passenden Gruppe ergänzt.
+Nachtrag 2026-10-21 (nach 0.4.0, Version offen, vom Nutzer festzulegen): Bilder über Eliezer (Bildmodelle, Bearbeiten, Weiterarbeiten, eigene Auflösung), Löschen einzelner Versionen, Anbindung an Eliezer (M16-01). Neue Punkte C38–C44 und Meilensteine unter D.
 Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja, A19 so lassen; umgesetzt für 0.3.6: A4 (`ask`-Chats im Projekt „API“), A10 (EUR-Konten auf USD umstellen, Admin-Aktion/Befehl), A11 (EZB-Kurs automatisch, Standard an), A15 (Mitteilungen an den Besitzer), A16 (scipy); A14 entschieden (ASGI-Dienst), Umsetzungsplan in Implementierung.md M14; A6 ja (Produktion hat die /mcp-Blöcke bereits), A13 Empfehlungen 7a–7l übernommen, A20 so lassen. Offen bleiben in A nur zurückgestellte Punkte (A12, A17, A24).
 
 ## A. Entscheidungen des Nutzers
@@ -28,7 +29,6 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 
 | Nr. | Punkt |
 |---|---|
-| C1 | „Neu erzeugen“ an einer Bild-Antwort nutzt das Chatmodell statt des Bildmodells. |
 | C2 | Bilder und PDFs aus Werkzeugen erscheinen erst nach Ende der Antwort (kein Live-Event). |
 | C3 | Eingeklappte Eingabeleiste zeigt den Modus „Bild“ nicht an. |
 | C4 | gpt-image wird je Stück abgerechnet, nicht nach Tokens (`book_attachment` ohne Token-Parameter). |
@@ -64,15 +64,24 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | C35 | USD-Umstellung (A10): Eine Antwort, die vor der Umstellung begann und danach gebucht wird, rechnet mit der alten EUR-Preisversion, wird aber als USD gebucht (`ModelPrice` hat kein eigenes Währungsfeld). Seltener Randfall; Abhilfe wäre `ModelPrice.currency` (Migration). |
 | C36 | erledigt: `read_chat`/`list_chats` sind seit 0.3.6 auf der Produktion, Key `multigpt-prod` mit `chat.read` eingetragen. |
 | C37 | Runner (Test 2026-10-13 auf WS-JOERG): Scheitert der Sitzungsstart, versucht das Modell es immer wieder (5× in einer Antwort, ~22 000 Tokens). Bremse: nach zwei gleichen Fehlern derselben Ursache keine weiteren Runner-Aufrufe in dieser Antwort, klare Meldung an den Nutzer. Außerdem: Python-Agent zieht fehlende Images nicht (nur Rust behoben) – entfällt mit dem Python-Agent. |
+| C38 | Bilder (M9-02, Rest): Maske auf einer Zeichenfläche, Varianten, Werkzeug `edit_image` für Chatmodelle. Am erzeugten Bild fehlt der Knopf „Weiter bearbeiten“ (Bild als Vorlage ins Eingabefeld legen; heute Herunterladen und Hochladen). |
+| C39 | Bildmodus nur per Tests und Lesen abgesichert, nie im Browser gesehen: Modellwahl, Auflösung, Weiterarbeiten, Knopf unter abgelehnten Bildwünschen, Löschknöpfe (Antwort-Version, Frage-Version). Sichtlauf nach dem Deploy (Firefox, Chromium, 375 px). Das JavaScript hat keine automatischen Tests. |
+| C40 | Eigene Auflösung: Bilder über 2 Megapixel sind hochgerechnet (mittig zugeschnitten, Lanczos), nicht neu berechnet; ein Upscaler-Modell (Real-ESRGAN o. ä.) als Dienst bei Eliezer wäre der nächste Schritt. Nur bei Anbietern mit beliebigen Größen (Eliezer/LM Studio). |
+| C41 | „Am letzten Bild weiterarbeiten“ ist standardmäßig an und gilt für Nachrichten bis 200 Zeichen (`images.CONTINUE_MAX_CHARS`); längere sind ein neues Bild. Offen: je Chat/Modell einstellbar? Bei Bildern sammeln sich Versionen: „alle Versionen außer dieser löschen“ fehlt. |
+| C42 | Feld „Qualität“ und „Qualität automatisch“ in der Antwort sind bei lokalen Bildmodellen wirkungslos (Eliezer ignoriert sie): ausblenden bzw. erklären. Fehlertexte von Eliezer (`insufficient_memory`, `busy`, `overloaded`) erscheinen englisch. |
+| C43 | Eliezer-Abgleich: `device` (GPU/CPU je Modell) wird bei `load`/`estimate` nicht mitgeschickt (Eliezer wählt `auto`); die Hub-Suche (`/api/v1/hub/search`, `/api/v1/hub/models/…`) ist ungenutzt; die Seite „geladene Modelle“ rechnet bei LM Studio weiter mit `vram.py`. Fähigkeiten (Werkzeuge) meldet Eliezer nicht: Namensregel (`guess_tools`), z. B. Qwen3-VL und Gemma 4 stehen auf „nein“. |
+| C44 | Prod-Chat 31 (2026-10-20): Mistral 7B antwortete mit einer Hugo-/nginx-Anleitung statt auf die Frage; vermutlich ein Systemtext, den Eliezer bei Vorlagen ohne System-Rolle in die erste Nutzernachricht schiebt. Ungeklärt, welcher Text es war. Modell `qwen3-vl-8b-abliterated` (Eliezer, ohne Sicherheitsfilter): nur den Rollen freigeben, für die es gedacht ist. |
 
 ## D. Geplante Meilensteine
 
 | Meilenstein | Stand |
 |---|---|
-| M9-02 Bilder bearbeiten (Maske) | skizziert |
+| M9-02 Bilder bearbeiten | teilweise: Bilder anhängen und verändern (`/images/edits`, OpenAI und Eliezer), Weiterarbeiten am letzten Bild, eigene Auflösung; offen: Maske, Varianten, Werkzeug `edit_image`, Knopf „Weiter bearbeiten“ (C38) |
+| M9-03 `mcp_imagetools` (Pillow: Zuschneiden, Skalieren, Drehen, Text, Collage) | offen, Verzeichnis existiert nicht |
 | FLUX.1 über Rust-Runner | Planung 2026-10-17: GPU-Container auf WS-Joerg; Laufzeit im Image, Gewichte/Cache in Volumes, Ergebnisse als Chat-Versionen in MultiGPT. Bestandsaufnahme von `~/D/f/flux1-project` offen. [Plan und Umsetzungsschritte](plans/FLUX-Runner.md). |
 | M10 Sprache (Spracherkennung, Vorlesen) | offen |
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
 | M13 Scratchpad | M13-01 Kontextmenü umgesetzt (0.3.2); Fragen 7a–7l entschieden (Empfehlungen), Umsetzung offen |
 | M14 Runner | **Alle Fragen entschieden (2026-10-13)**, nächster Schritt: Umsetzung. Runner = Coding-Werkzeug wie Claude Code im Container; git-Bundle in der DB, tmpfs; ein Vorschau-Port nur an 127.0.0.1 mit Token; ssh/telnet nur zu freigegebenen Hosts mit Rückfrage; Agententeam über M15-Keys (`runner.use`, ohne Netz). Einzelheiten Implementierung.md M14 |
+| M16 Eliezer (Ersatz für LM Studio) | Eliezer ist ein eigenes Projekt ([Beerlesklopfer/eliezer](https://github.com/Beerlesklopfer/eliezer), Roadmap dort). Angebunden: Schnittstelle „LM Studio“ mit `estimate`/`status`, Modellliste mit Denkoptionen, Embeddings, Bildmodelle, Bearbeiten. Offen: Ablösung von LM Studio je Anbieter, Betrieb über den Runner (`GpuLease`), Fähigkeiten-Meldung (Werkzeuge). [Plan](plans/Eliezer.md). |
