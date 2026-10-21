@@ -144,6 +144,50 @@ def test_memory_bomb_is_stopped():
     assert "MemoryError" in result.stderr or result.aborted
 
 
+@needs_sandbox
+def test_watchdog_stops_total_memory_over_limit():
+    """Zwei Kindprozesse mit je ~150 MB bleiben einzeln unter 256 MB, zusammen über 200 MB."""
+    code = (
+        "import os, time\n"
+        "for _ in range(2):\n"
+        "    if os.fork() == 0:\n"
+        "        b = bytearray(150 * 1024**2)\n"
+        "        for i in range(0, len(b), 4096):\n"
+        "            b[i] = 1\n"
+        "        time.sleep(30)\n"
+        "        os._exit(0)\n"
+        "time.sleep(30)\n"
+    )
+    started = time.monotonic()
+    result = run(code, memory_mb=256, total_memory_mb=200, processes=8, wall_seconds=30)
+    assert result.aborted == "memory" and not result.ok
+    assert time.monotonic() - started < 15
+    assert _sandbox_processes() == 0
+
+
+@needs_sandbox
+def test_watchdog_leaves_normal_run_alone():
+    result = run("print(sum(range(1000)))\n", memory_mb=256, total_memory_mb=256)
+    assert result.ok and "499500" in result.stdout
+
+
+def test_total_memory_limit_defaults_to_multiple_of_process_limit():
+    limits = sandbox.Limits(memory_mb=300).clamped()
+    assert limits.total_memory_bytes == 2 * 300 * 1024 * 1024
+    assert sandbox.Limits(total_memory_mb=100).clamped().total_memory_bytes == 100 * 1024 * 1024
+
+
+def test_tree_memory_counts_children():
+    child = subprocess.Popen(["sleep", "5"])
+    try:
+        assert sandbox.tree_memory(os.getpid()) >= 0
+        assert sandbox.tree_memory(child.pid) >= 0
+        assert sandbox.tree_memory(2**22 + 5) == 0
+    finally:
+        child.kill()
+        child.wait()
+
+
 def _sandbox_processes() -> int:
     out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True).stdout
     return sum("/sandbox/runner.py" in line for line in out.splitlines())
@@ -699,6 +743,7 @@ def test_run_result_text_for_model(answer, monkeypatch):
         ("cpu", "CPU-Zeit-Grenze von 30 s"),
         ("output", "viel zu viel Ausgabe"),
         ("file_size", "Datei größer als 10 MB"),
+        ("memory", "Gesamtspeicher aller Prozesse über der Grenze von 1024 MB"),
     ],
 )
 def test_aborts_are_errors(answer, monkeypatch, aborted, text):
@@ -1029,6 +1074,7 @@ def test_admin_rejects_limits_above_maximum(admin_client, monkeypatch):
         "python_cpu_seconds": 10,
         "python_wall_seconds": 20,
         "python_memory_mb": 100_000,
+        "python_total_memory_mb": 0,
         "python_processes": 4,
         "python_file_mb": 10,
         "python_output_kb": 64,

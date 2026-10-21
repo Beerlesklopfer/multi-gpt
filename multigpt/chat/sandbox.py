@@ -45,6 +45,19 @@ Dateien, keine Core-Dateien. Die Wanduhr überwacht der Server und beendet bei
 PID-Namespace. Ausgabe wird beim Lesen begrenzt; läuft sie weit über, wird
 abgebrochen.
 
+**Gesamtspeicher (Watchdog, nur Best Effort):** RLIMIT_AS gilt je Prozess; mehrere
+Prozesse (``processes``) dürften zusammen ein Vielfaches davon belegen. Eine cgroup
+als Gesamtgrenze geht nicht (Dienst ohne Root, ``ProtectControlGroups=yes``). Deshalb
+summiert ``_collect`` während des Laufs etwa alle 200 ms den anonymen Speicher
+(``/proc/<pid>/statm``: resident minus gemeinsam, ohne eingeblendete Bibliotheken) aller
+Nachfahren des bwrap-Prozesses und beendet bei Überschreitung von
+``Limits.total_memory_mb`` die ganze Prozessgruppe (SIGKILL, Grund ``memory``).
+Das ist **racy und kein Schutz**: Ein Prozess kann zwischen zwei Messungen
+beliebig viel belegen (nur die Grenze je Prozess hält sofort), kurze Spitzen werden
+übersehen, Prozesse, die sich zwischen Baumabfrage und Lesen beenden, fehlen in der
+Summe, und tmpfs-Dateien (``/tmp``, ``/work``) zählen nicht (die haben feste Größen).
+Ohne lesbares /proc des Servers (fremde Umgebung) bleibt der Watchdog still.
+
 Code, Startskript und seccomp-Programm gehen über memfd (``--ro-bind-data``,
 ``--seccomp``) hinein, Dateien (Diagramme) kommen über einen eigenen Pipe-
 Deskriptor zurück (JSON-Zeilen, base64) – der Server liest dabei keine Pfade
@@ -131,6 +144,9 @@ class Limits:
     output_kb: int = 64
     max_files: int = 6
     max_file_bytes: int = 5 * 1024 * 1024
+    # Gesamtspeicher aller Prozesse des Laufs (Watchdog, Best Effort); 0 = automatisch
+    # (``AUTO_TOTAL_FACTOR`` mal ``memory_mb``).
+    total_memory_mb: int = 0
     # Nur SVG gespeichert: offene matplotlib-Figuren zusätzlich als PNG ablegen
     # (Vorschau für MCP-Clients, die SVG nicht anzeigen; ``tools_python``).
     png_preview: bool = False
@@ -141,6 +157,12 @@ class Limits:
         for name, (low, high) in LIMIT_RANGES.items():
             values[name] = max(low, min(high, int(getattr(self, name))))
         return Limits(**values, png_preview=bool(self.png_preview))
+
+    @property
+    def total_memory_bytes(self) -> int:
+        """Gesamtgrenze des Watchdogs in Bytes (Automatik: Vielfaches der Prozessgrenze)."""
+        megabytes = self.total_memory_mb or self.memory_mb * AUTO_TOTAL_FACTOR
+        return megabytes * 1024 * 1024
 
 
 # Mindest- und Höchstwerte (die Admin-Felder nutzen dieselben Grenzen).
@@ -154,7 +176,12 @@ LIMIT_RANGES = {
     "output_kb": (4, 1024),
     "max_files": (0, 20),
     "max_file_bytes": (64 * 1024, 20 * 1024 * 1024),
+    "total_memory_mb": (0, 16384),
 }
+# Standard der Gesamtgrenze: so viele Prozessgrenzen (kleiner als ``processes`` erlaubt).
+AUTO_TOTAL_FACTOR = 2
+# Abstand der Speichermessungen des Watchdogs.
+WATCHDOG_INTERVAL = 0.2
 
 
 @dataclass
@@ -168,7 +195,8 @@ class RunResult:
     stdout: str = ""
     stderr: str = ""
     exit_code: int | None = None
-    # Abbruchgrund: "" (normal beendet), "timeout", "output", "cpu", "file_size", "signal"
+    # Abbruchgrund: "" (normal beendet), "timeout", "output", "cpu", "file_size", "memory",
+    # "signal"
     aborted: str = ""
     signal: int | None = None
     truncated: bool = False
@@ -550,6 +578,47 @@ def _kill(proc: subprocess.Popen) -> None:
         pass
 
 
+def _read_children(pid: int) -> list[int]:
+    children: list[int] = []
+    try:
+        for tid in os.listdir(f"/proc/{pid}/task"):
+            with open(f"/proc/{pid}/task/{tid}/children") as fh:
+                children += [int(x) for x in fh.read().split()]
+    except (OSError, ValueError):
+        pass
+    return children
+
+
+def _anon_bytes(pid: int, page: int) -> int:
+    """Anonymer Speicher eines Prozesses (resident minus gemeinsam), 0 bei Fehler."""
+    try:
+        with open(f"/proc/{pid}/statm") as fh:
+            fields = fh.read().split()
+        return max(0, int(fields[1]) - int(fields[2])) * page
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def tree_memory(root: int) -> int:
+    """Summe des anonymen Speichers von ``root`` und allen Nachfahren (Best Effort, racy).
+
+    Der Baum kommt aus ``/proc/<pid>/task/<tid>/children``; Prozesse, die während der
+    Messung verschwinden, fehlen einfach. Siehe Modulkopf zu den Grenzen.
+    """
+    page = os.sysconf("SC_PAGE_SIZE")
+    seen: set[int] = set()
+    todo = [root]
+    total = 0
+    while todo and len(seen) < 4096:
+        pid = todo.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        total += _anon_bytes(pid, page)
+        todo += _read_children(pid)
+    return total
+
+
 def _decode(data: bytes, limit: int) -> tuple[str, bool]:
     truncated = len(data) > limit
     return data[:limit].decode("utf-8", errors="replace"), truncated
@@ -666,13 +735,21 @@ def _collect(proc: subprocess.Popen, read_end: int, limits: Limits, started: flo
     sel.register(read_end, selectors.EVENT_READ, "files")
     deadline = started + limits.wall_seconds
     aborted = ""
+    memory_limit = limits.total_memory_bytes
+    next_check = started + WATCHDOG_INTERVAL
     try:
         while sel.get_map():
-            remaining = deadline - time.monotonic()
+            now = time.monotonic()
+            remaining = deadline - now
             if remaining <= 0:
                 aborted = "timeout"
                 break
-            for key, _ in sel.select(timeout=min(remaining, 0.5)):
+            if now >= next_check:
+                next_check = now + WATCHDOG_INTERVAL
+                if tree_memory(proc.pid) > memory_limit:
+                    aborted = "memory"
+                    break
+            for key, _ in sel.select(timeout=min(remaining, WATCHDOG_INTERVAL)):
                 name = key.data
                 chunk = os.read(key.fd, 65536)
                 if not chunk:

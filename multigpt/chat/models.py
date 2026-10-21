@@ -679,6 +679,14 @@ class ChatSettings(models.Model):
         default=512,
         validators=[MinValueValidator(128), MaxValueValidator(4096)],
     )
+    python_total_memory_mb = models.PositiveIntegerField(
+        "Gesamtspeicher aller Prozesse (MB)",
+        default=0,
+        validators=[MaxValueValidator(16384)],
+        help_text="0 = automatisch (doppelte Grenze je Prozess). Best-Effort-Wächter: prüft "
+        "ungefähr alle 0,2 s und beendet dann alle Prozesse des Laufs; kurze Spitzen "
+        "dazwischen sind möglich, hart wirkt nur die Grenze je Prozess.",
+    )
     python_processes = models.PositiveSmallIntegerField(
         "Prozesse und Threads",
         default=4,

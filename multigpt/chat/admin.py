@@ -1300,6 +1300,7 @@ class ChatSettingsAdmin(admin.ModelAdmin):
                     "python_cpu_seconds",
                     "python_wall_seconds",
                     "python_memory_mb",
+                    "python_total_memory_mb",
                     "python_processes",
                     "python_file_mb",
                     "python_output_kb",

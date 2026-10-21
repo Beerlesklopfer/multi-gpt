@@ -87,6 +87,9 @@ ABORT_TEXTS = {
     "cpu": "Abgebrochen: CPU-Zeit-Grenze von {cpu} s erreicht.",
     "file_size": "Abgebrochen: Datei größer als {file_mb} MB.",
     "output": "Abgebrochen: viel zu viel Ausgabe (Grenze {output_kb} KB).",
+    "memory": "Abgebrochen: Gesamtspeicher aller Prozesse über der Grenze von {total_mb} MB "
+    "(Prüfung ungefähr alle 0,2 s). Weniger Speicher belegen, z. B. kleinere Arrays "
+    "oder weniger Prozesse.",
     "signal": "Abgebrochen durch Signal {signal} (z. B. Speicher des Rechners knapp).",
 }
 
@@ -117,6 +120,7 @@ def limits_from(cfg: ChatSettings) -> sandbox.Limits:
         cpu_seconds=cfg.python_cpu_seconds,
         wall_seconds=cfg.python_wall_seconds,
         memory_mb=cfg.python_memory_mb,
+        total_memory_mb=cfg.python_total_memory_mb,
         processes=cfg.python_processes,
         file_mb=cfg.python_file_mb,
         output_kb=cfg.python_output_kb,
@@ -256,6 +260,7 @@ def format_result(result: sandbox.RunResult, limits: sandbox.Limits, stored=(), 
             file_mb=limits.file_mb,
             output_kb=limits.output_kb,
             signal=result.signal,
+            total_mb=limits.total_memory_bytes // (1024 * 1024),
         )
         lines = [f"{head} Laufzeit {seconds} s."]
     else:
