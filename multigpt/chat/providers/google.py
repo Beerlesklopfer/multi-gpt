@@ -98,6 +98,7 @@ from .base import (
     Usage,
     exception_to_error,
     group_turns,
+    http_error_detail,
     http_error_message,
     is_key_expired,
     is_unreachable,
@@ -106,6 +107,7 @@ from .base import (
     orientation,
     provider_error_code,
     rejected_parameter,
+    safe_error_code,
     sse_data,
     tool_schema,
 )
@@ -249,6 +251,7 @@ class GoogleAdapter(ProviderAdapter):
                         status,
                         code=provider_error_code(response.content),
                         expired=is_key_expired(response.status_code, response.content),
+                        body=response.content,
                     )
                 try:
                     page = response.json()
@@ -303,6 +306,7 @@ class GoogleAdapter(ProviderAdapter):
                 response.status_code,
                 retryable=retryable or status in _RETRYABLE_STATUSES,
                 expired=is_key_expired(response.status_code, response.content),
+                body=response.content,
             )
         if len(response.content) > IMAGE_MAX_RESPONSE_BYTES:
             raise ProviderError(MSG_IMAGE_TOO_LARGE)
@@ -391,7 +395,17 @@ class GoogleAdapter(ProviderAdapter):
                     self._log(f"HTTP {response.status_code}", f"{status}/{reason}")
                     message, retryable = _http_error(response.status_code, reason, error_body)
                     rejected = rejected_parameter(response.status_code, error_body)
-                    yield Error(message, retryable=retryable, rejected_param=rejected)
+                    yield Error(
+                        message,
+                        retryable=retryable,
+                        rejected_param=rejected,
+                        detail=http_error_detail(
+                            response.status_code,
+                            error_body,
+                            retryable=retryable,
+                            secrets=[self.provider.api_key],
+                        ),
+                    )
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():
@@ -582,7 +596,10 @@ class _ChunkParser:
         if err:
             self.error_status = str(err.get("status") or "-") if isinstance(err, dict) else "-"
             self.finished = True
-            yield Error(MSG_STREAM_ERROR, retryable=self.error_status in _RETRYABLE_STATUSES)
+            retryable = self.error_status in _RETRYABLE_STATUSES
+            kind = self.error_status if safe_error_code(self.error_status) else "stream_error"
+            detail = {"status": None, "type": kind, "excerpt": "", "retryable": retryable}
+            yield Error(MSG_STREAM_ERROR, retryable=retryable, detail=detail)
             return
         self._update_usage(chunk.get("usageMetadata"))
         feedback = chunk.get("promptFeedback") or {}

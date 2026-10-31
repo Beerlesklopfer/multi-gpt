@@ -1,0 +1,10 @@
+{# Technische Details zu einem Fehler; nur für den Besitzer des Chats (Aufrufer prüft). #}
+{% load chat_tags %}{% error_detail_rows msg.error_detail as rows %}{% if rows %}
+<details class="chat-error-detail">
+  <summary>Technische Details</summary>
+  <dl class="chat-error-detail-list">
+    {% for label, value in rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  <button type="button" class="button" data-copy-error-detail>Details kopieren</button>
+</details>
+{% endif %}

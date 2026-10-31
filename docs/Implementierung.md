@@ -109,6 +109,7 @@ Konvention: `Mx-nn` ist ein Arbeitspaket. Ein Paket ist fertig, wenn Code, Tests
 - **M3-04** Abbrechen: Bricht der Client die Verbindung ab, stoppt der Server den Anbieterstream. Der bisherige Text bleibt mit `status=aborted` gespeichert.
 - **M3-05** Chatansicht: Nachrichten senden, Modellauswahl pro Nachricht, Antwort neu erzeugen. Der Verlauf bleibt nach Neuladen erhalten.
 - **M3-06** Tests mit gemocktem HTTP (z. B. `respx`): Reihenfolge der Events, Fehlerfall, Abbruch. Außerdem: Nutzer A kann Chats von Nutzer B weder lesen noch ändern.
+- **Fehlerdetail** (Chat-Fehlerbehandlung): `providers.base.Error.detail` (nicht in `compare`) trägt `status`, `type` (`error.type`/`code`, bei Netzfehlern `timeout`/`connect`/`interrupted`), `excerpt` (Anbietertext, Zeilen zusammengefasst, Keys/Tokens/Bearer geschwärzt, auf 300 Zeichen gekürzt, nie Prompt) und `retryable`. `services._Loop` ergänzt Kontext (Anbieter, Modell, Schätzung vs. Kontextlänge, Versuche, Zeit, Werkzeuge, Websuche) und speichert es in `Message.error_detail` (Migration 0050); dazu eine Logzeile ohne Inhalte. Anzeige als „Technische Details“ (`_error_detail.html`, `chat.js`), SSE-Event `error.detail` und `error_detail` der Message-API **nur für den Besitzer** des Chats – nicht für Empfänger, Mitschreibende oder Verwalter (auch nicht im Admin).
 
 ### M4 – Weitere Adapter und LM Studio
 *Abhängig von: M3, Frage 1a (LM-Studio-Rechner).*

@@ -4534,3 +4534,30 @@ span.message-source-link {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+/* Technische Details unter einer Fehlermeldung (nur für den Besitzer des Chats) */
+.chat-error-detail {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chat-error-detail summary {
+  cursor: pointer;
+}
+
+.chat-error-detail-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0.4rem 0;
+}
+
+.chat-error-detail-list dt {
+  font-weight: 600;
+}
+
+.chat-error-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

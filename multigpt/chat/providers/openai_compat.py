@@ -90,7 +90,9 @@ from .base import (
     ToolCallEvent,
     ToolSpec,
     Usage,
+    clean_excerpt,
     exception_to_error,
+    http_error_detail,
     http_error_message,
     is_key_expired,
     is_unreachable,
@@ -101,6 +103,7 @@ from .base import (
     parse_tool_arguments,
     provider_error_code,
     rejected_parameter,
+    safe_error_code,
     tool_schema,
 )
 
@@ -165,6 +168,14 @@ def _error_code(body: bytes) -> str:
     if not isinstance(err, dict):
         return "-"
     return f"{err.get('type') or '-'}/{err.get('code') or '-'}"
+
+
+def _stream_type(code: str, default: str) -> str:
+    """Fehlerart aus ``_error_code`` („type/code“, ``-`` = fehlt)."""
+    for part in code.split("/"):
+        if part and part != "-" and safe_error_code(part):
+            return part
+    return default
 
 
 def _provider_text(body: bytes, limit: int | None = 200) -> str:
@@ -235,11 +246,26 @@ class OpenAICompatAdapter(ProviderAdapter):
         keyless = not (self.provider.api_key or "").strip()
         context = _is_context_error(parser.error_code)
         if context or (keyless and _is_context_error(parser.error_raw)):
-            return Error(context_error_message(parser.error_raw, keyless), retryable=False)
+            return Error(
+                context_error_message(parser.error_raw, keyless),
+                retryable=False,
+                detail={
+                    "status": None,
+                    "type": _stream_type(parser.error_code, "context_length"),
+                    "excerpt": clean_excerpt(parser.error_raw, [self.provider.api_key]),
+                    "retryable": False,
+                },
+            )
         text = parser.error_text
+        detail = {
+            "status": None,
+            "type": _stream_type(parser.error_code, "stream_error"),
+            "excerpt": clean_excerpt(parser.error_raw, [self.provider.api_key]),
+            "retryable": True,
+        }
         if not keyless or not text:
-            return Error(MSG_STREAM_ERROR, retryable=True)
-        return Error(f"{MSG_STREAM_ERROR} LM Studio meldet: {text}", retryable=True)
+            return Error(MSG_STREAM_ERROR, retryable=True, detail=detail)
+        return Error(f"{MSG_STREAM_ERROR} LM Studio meldet: {text}", retryable=True, detail=detail)
 
     # --- Modellliste ---------------------------------------------------------
 
@@ -253,6 +279,7 @@ class OpenAICompatAdapter(ProviderAdapter):
                 response.status_code,
                 code=provider_error_code(response.content),
                 expired=is_key_expired(response.status_code, response.content),
+                body=response.content,
             )
         try:
             data = response.json().get("data") or []
@@ -375,6 +402,7 @@ class OpenAICompatAdapter(ProviderAdapter):
                             response.status_code,
                             retryable=retryable,
                             expired=is_key_expired(response.status_code, response.content),
+                            body=response.content,
                         )
                     try:
                         payload = response.json()
@@ -458,7 +486,11 @@ class OpenAICompatAdapter(ProviderAdapter):
                     message = f"{message} LM Studio meldet: {text}"
                     retryable = retryable or "load" in text.lower()
             raise ProviderHTTPError(
-                message, response.status_code, retryable=retryable, expired=expired
+                message,
+                response.status_code,
+                retryable=retryable,
+                expired=expired,
+                body=response.content,
             )
         try:
             choice = response.json()["choices"][0]
@@ -537,6 +569,7 @@ class OpenAICompatAdapter(ProviderAdapter):
                 response.status_code,
                 retryable=retryable,
                 expired=is_key_expired(response.status_code, response.content),
+                body=response.content,
             )
         if len(response.content) > IMAGE_MAX_RESPONSE_BYTES:
             raise ProviderError(MSG_IMAGE_TOO_LARGE)
@@ -631,7 +664,17 @@ class OpenAICompatAdapter(ProviderAdapter):
                     ):
                         message, retryable = context_error_message(raw, keyless), False
                     rejected = rejected_parameter(response.status_code, error_body)
-                    yield Error(message, retryable=retryable, rejected_param=rejected)
+                    yield Error(
+                        message,
+                        retryable=retryable,
+                        rejected_param=rejected,
+                        detail=http_error_detail(
+                            response.status_code,
+                            error_body,
+                            retryable=retryable,
+                            secrets=[self.provider.api_key],
+                        ),
+                    )
                     return
                 parser = _ChunkParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():

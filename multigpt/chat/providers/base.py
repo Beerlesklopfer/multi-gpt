@@ -83,6 +83,9 @@ class Error:
     # Namen abgelehnter Parameter, kommagetrennt (``temperature``, ``reasoning``,
     # siehe ``rejected_parameter``); services.py wiederholt dann ohne.
     rejected_param: str = field(default="", compare=False)
+    # Auswertbares Fehlerdetail (``http_error_detail``/``exception_detail``): status,
+    # type, excerpt, retryable. Nie Prompt-Inhalte, URLs oder Keys.
+    detail: dict = field(default_factory=dict, compare=False)
 
 
 # Vereinheitlichter ``finish_reason``, wenn das Modell Werkzeuge aufrufen will.
@@ -564,18 +567,112 @@ def http_error_message(status: int, body: bytes = b"") -> tuple[str, bool]:
     return f"Der Anbieter hat die Anfrage abgelehnt (HTTP {status}).", False
 
 
+# Zugangsdaten, die in Fehlertexten von Anbietern vorkommen können (Bearer-Header,
+# sk-/AIza-Keys auch gekürzt wie „sk-proj-****abcd“, ``api_key=…``, lange Tokens).
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)\bbearer\s+[^\s,;\"']+"),
+    re.compile(
+        r"(?i)\b(api[_ -]?key|access[_ -]?token|auth(?:orization)?|token|secret|password)"
+        r"(\s*[:=]\s*|\s+provided:?\s+)[\"']?[^\s,;\"']{6,}"
+    ),
+    re.compile(r"\b(?:sk|pk|rk|xai|gsk|ghp|hf)[-_][A-Za-z0-9_*.\-]{4,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_\-]{10,}"),
+    re.compile(r"\b[A-Za-z0-9_\-]{32,}\b"),
+)
+EXCERPT_LIMIT = 300
+
+
+def redact(text: str, secrets: Iterable[str] = ()) -> str:
+    """Zugangsdaten in ``text`` schwärzen (``***``); ``secrets``: bekannte Keys."""
+    for secret in secrets:
+        if secret and len(secret) >= 6:
+            text = text.replace(secret, "***")
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(
+            lambda m: f"{m.group(1)}{m.group(2)}***" if m.lastindex == 2 else "***", text
+        )
+    return text
+
+
+def clean_excerpt(text: str, secrets: Iterable[str] = (), limit: int = EXCERPT_LIMIT) -> str:
+    """Anbietertext für die Fehleranzeige: Zeilen zusammengefasst, geschwärzt, gekürzt."""
+    text = redact(" ".join(str(text or "").split()), secrets)
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
+def _error_message_text(body: bytes) -> str:
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return ""
+    err = data.get("error") if isinstance(data, dict) else None
+    if isinstance(err, dict):
+        err = err.get("message")
+    elif err is None and isinstance(data, dict):
+        err = data.get("message")
+    return err if isinstance(err, str) else ""
+
+
+def error_type(body: bytes) -> str:
+    """``error.type``, sonst ``error.code``/``status``/``details[].reason`` der Antwort."""
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return ""
+    err = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(err, dict):
+        return ""
+    candidates = [err.get("type"), err.get("code"), err.get("status")]
+    candidates += [d.get("reason") for d in err.get("details") or [] if isinstance(d, dict)]
+    for value in candidates:
+        code = safe_error_code(value)
+        if code:
+            return code
+    return ""
+
+
+def http_error_detail(
+    status: int, body: bytes = b"", *, retryable: bool = False, secrets: Iterable[str] = ()
+) -> dict:
+    """Fehlerdetail zu einer HTTP-Fehlerantwort (siehe ``Error.detail``)."""
+    return {
+        "status": status,
+        "type": error_type(body),
+        "excerpt": clean_excerpt(_error_message_text(body), secrets),
+        "retryable": retryable,
+    }
+
+
+def exception_detail(exc: Exception, *, started: bool, retryable: bool) -> dict:
+    """Fehlerdetail zu einer Ausnahme: ``type`` ist die Art (``timeout``, ``connect`` …)."""
+    if isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout):
+        kind = "connect"
+    elif isinstance(exc, httpx.TimeoutException):
+        kind = "timeout"
+    elif isinstance(exc, httpx.TransportError):
+        kind = "interrupted" if started else "connect"
+    elif isinstance(exc, ProviderError):
+        kind = "provider"
+    else:
+        kind = "unexpected"
+    return {"status": None, "type": kind, "excerpt": "", "retryable": retryable}
+
+
 def exception_to_error(exc: Exception, *, started: bool) -> Error:
     """Netz- und sonstige Ausnahmen in ein ``Error``-Event übersetzen."""
     if isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout):
-        return Error(MSG_UNREACHABLE, retryable=True)
-    if isinstance(exc, httpx.TimeoutException):
-        return Error(MSG_TIMEOUT, retryable=True)
-    if isinstance(exc, httpx.TransportError):
+        message, retryable = MSG_UNREACHABLE, True
+    elif isinstance(exc, httpx.TimeoutException):
+        message, retryable = MSG_TIMEOUT, True
+    elif isinstance(exc, httpx.TransportError):
         # RemoteProtocolError, ReadError, ... – meist ein abgerissener Stream.
-        return Error(MSG_INTERRUPTED if started else MSG_UNREACHABLE, retryable=True)
-    if isinstance(exc, ProviderError):
-        return Error(str(exc), retryable=False)
-    return Error(MSG_UNEXPECTED, retryable=False)
+        message, retryable = (MSG_INTERRUPTED if started else MSG_UNREACHABLE), True
+    elif isinstance(exc, ProviderError):
+        message, retryable = str(exc), False
+    else:
+        message, retryable = MSG_UNEXPECTED, False
+    detail = exception_detail(exc, started=started, retryable=retryable)
+    return Error(message, retryable=retryable, detail=detail)
 
 
 # --- Fehler und Basisklasse --------------------------------------------------
@@ -628,9 +725,11 @@ class ProviderHTTPError(ProviderError):
         retryable: bool = False,
         code: str = "",
         expired: bool = False,
+        body: bytes = b"",
     ):
         super().__init__(message, retryable=retryable)
         self.status = status
+        self.detail = http_error_detail(status, body, retryable=retryable)
         self.expired = expired  # API-Key abgelaufen (siehe ``is_key_expired``)
         # Maschinenlesbarer Fehlercode des Anbieters (z. B. ``insufficient_permissions``),
         # nur für die Anzeige im Admin; nie der Fehlertext (kann Key-Teile enthalten).

@@ -123,6 +123,11 @@ def _serialize_message(message: Message, user=None) -> dict:
         "model_id": message.model_id,
         "status": message.status,
         "error": message.error,
+        # Technische Details nur für den Besitzer des Chats (nicht für Empfänger
+        # geteilter Chats, nicht für Verwalter).
+        "error_detail": message.error_detail
+        if user is not None and message.conversation.user_id == user.pk
+        else {},
         "created": message.created.isoformat(),
         "parent_id": message.parent_id,
         "sibling_ids": message.sibling_ids,

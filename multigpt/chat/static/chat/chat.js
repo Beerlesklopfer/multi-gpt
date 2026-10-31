@@ -281,9 +281,94 @@
       return article;
     }
 
-    function setMessageStatus(article, status, errorText) {
+    // Technische Details unter der Fehlerzeile (wie chat/_error_detail.html; der Server
+    // liefert sie nur dem Besitzer des Chats, sonst fehlt "detail").
+    const DETAIL_LABELS = [
+      ["status", "Status"],
+      ["type", "Art"],
+      ["provider", "Anbieter"],
+      ["model", "Modell"],
+      ["size", "Anfrage"],
+      ["attempts", "Versuche"],
+      ["tools", "Werkzeuge"],
+      ["web_search", "Websuche"],
+      ["at", "Zeit"],
+      ["excerpt", "Meldung des Anbieters"],
+    ];
+
+    function detailRows(detail) {
+      const values = {};
+      for (const key of ["status", "type", "provider", "model", "excerpt"]) {
+        if (detail[key]) {
+          values[key] = String(detail[key]);
+        }
+      }
+      const estimate = detail.prompt_tokens_est;
+      const context = detail.context_length;
+      if (estimate && context) {
+        values.size = `ca. ${estimate.toLocaleString("de-DE")} von ${context.toLocaleString("de-DE")} Tokens Kontext`;
+      } else if (estimate) {
+        values.size = `ca. ${estimate.toLocaleString("de-DE")} Tokens`;
+      }
+      if (detail.attempt) {
+        values.attempts = `${detail.attempt}${detail.retries ? ` (${detail.retries} Wiederholung)` : ""}`;
+      }
+      if (detail.tools) {
+        values.tools = String(detail.tools);
+      }
+      if ("web_search" in detail) {
+        values.web_search = detail.web_search ? "an" : "aus";
+      }
+      if (detail.at) {
+        values.at = String(detail.at).replace("T", " ").slice(0, 19);
+      }
+      return DETAIL_LABELS.filter(([key]) => key in values).map(([key, label]) => [label, values[key]]);
+    }
+
+    function appendErrorDetail(article, detail) {
+      if (!detail || typeof detail !== "object") {
+        return;
+      }
+      const rows = detailRows(detail);
+      if (!rows.length) {
+        return;
+      }
+      const box = document.createElement("details");
+      box.className = "chat-error-detail";
+      box.append(node("summary", "", "Technische Details"));
+      const list = node("dl", "chat-error-detail-list");
+      for (const [label, value] of rows) {
+        list.append(node("dt", "", label), node("dd", "", value));
+      }
+      const copy = node("button", "button", "Details kopieren");
+      copy.type = "button";
+      copy.setAttribute("data-copy-error-detail", "");
+      box.append(list, copy);
+      article.append(box);
+    }
+
+    async function copyErrorDetail(article, button) {
+      const rows = [...article.querySelectorAll(".chat-error-detail-list dt")].map(
+        (dt) => `${dt.textContent}: ${dt.nextElementSibling?.textContent ?? ""}`,
+      );
+      const errorLine = article.querySelector(".chat-message-status")?.textContent ?? "";
+      try {
+        if (!markdown?.copyText) {
+          throw new Error("unavailable");
+        }
+        await markdown.copyText([errorLine, ...rows].join("\n"));
+        button.classList.add("is-done");
+        window.setTimeout(() => button.classList.remove("is-done"), 2000);
+        setStatus("Details kopiert.");
+      } catch {
+        setStatus("Kopieren ist fehlgeschlagen.", true);
+      }
+    }
+
+    function setMessageStatus(article, status, errorText, detail) {
       article.dataset.status = status;
       article.querySelector(".chat-message-status")?.remove();
+      article.querySelector(".chat-error-detail")?.remove();
       if (status !== "aborted" && status !== "error") {
         return;
       }
@@ -292,6 +377,9 @@
       const label = status === "aborted" ? "Abgebrochen" : "Fehler";
       note.textContent = `${label}${errorText ? `: ${errorText}` : ""}`;
       article.append(note);
+      if (status === "error") {
+        appendErrorDetail(article, detail);
+      }
     }
 
     // --- Quellen unter der laufenden Antwort (M8) ---
@@ -1244,6 +1332,7 @@
       let waitTimer = null;
       let status = null;
       let errorText = "";
+      let errorDetail = null;
 
       const undo = (message) => {
         // Server hat nichts gespeichert: Anzeige zurücksetzen.
@@ -1373,6 +1462,7 @@
             }
           } else if (event === "error") {
             errorText = typeof data.message === "string" ? data.message : "";
+            errorDetail = data.detail && typeof data.detail === "object" ? data.detail : null;
           } else if (event === "done") {
             status = typeof data.status === "string" ? data.status : "complete";
           }
@@ -1412,7 +1502,7 @@
           if (status === "error" && !errorText) {
             errorText = "Unbekannter Fehler.";
           }
-          setMessageStatus(assistantEl, status, errorText);
+          setMessageStatus(assistantEl, status, errorText, errorDetail);
           if (status !== "awaiting_confirmation") {
             interruptRunningTools(assistantEl);
             assistantEl.querySelector(".tool-confirm")?.remove();
@@ -1869,7 +1959,7 @@
 
     log.addEventListener("click", (event) => {
       const button = event.target.closest(
-        "[data-copy-message], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message], [data-delete-version], [data-delete-others]",
+        "[data-copy-message], [data-copy-error-detail], [data-edit-message], [data-regenerate-message], [data-swap-message], [data-version-target], [data-delete-message], [data-delete-version], [data-delete-others]",
       );
       const article = button?.closest(".chat-message");
       if (!button || !article || button.disabled) {
@@ -1877,6 +1967,8 @@
       }
       if (button.hasAttribute("data-copy-message")) {
         copyMessage(article, button);
+      } else if (button.hasAttribute("data-copy-error-detail")) {
+        copyErrorDetail(article, button);
       } else if (isBusy()) {
         setStatus("Bitte warte, bis die laufende Antwort fertig ist.", true);
       } else if (button.hasAttribute("data-edit-message")) {

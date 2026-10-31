@@ -1009,6 +1009,12 @@ class Message(models.Model):
         "Status", max_length=30, choices=Status.choices, default=Status.COMPLETE
     )
     error = models.TextField("Fehlertext", blank=True)
+    # Auswertbares Fehlerdetail (services._Loop._error_detail): status, type, excerpt,
+    # provider, model, prompt_tokens_est, context_length, attempt, retries, at,
+    # tools, web_search. Keine Inhalte, URLs oder Keys; nur der Besitzer sieht es.
+    error_detail = models.JSONField(
+        "Fehlerdetail", default=dict, blank=True, editable=False, encoder=UnicodeJSONEncoder
+    )
     # Zustand der Werkzeugschleife (M4a-04, siehe services/tool_loop.py): Runden
     # mit Werkzeugaufrufen, Ergebnissen und provider_state, damit der Verlauf
     # wörtlich an das Modell zurückgeht – auch über eine Rückfrage hinweg.

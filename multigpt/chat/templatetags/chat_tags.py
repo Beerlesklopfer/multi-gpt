@@ -98,3 +98,46 @@ def message_stats(msg):
     from ..stats import summary
 
     return summary(msg.tool_state)
+
+
+_DETAIL_LABELS = (
+    ("status", "Status"),
+    ("type", "Art"),
+    ("provider", "Anbieter"),
+    ("model", "Modell"),
+    ("size", "Anfrage"),
+    ("attempts", "Versuche"),
+    ("tools", "Werkzeuge"),
+    ("web_search", "Websuche"),
+    ("at", "Zeit"),
+    ("excerpt", "Meldung des Anbieters"),
+)
+
+
+@register.simple_tag
+def error_detail_rows(detail) -> list[tuple[str, str]]:
+    """Zeilen (Bezeichnung, Wert) für „Technische Details“ unter einer Fehlermeldung
+    (``Message.error_detail``); leere Angaben entfallen."""
+    if not isinstance(detail, dict):
+        return []
+    values: dict[str, str] = {}
+    if detail.get("status"):
+        values["status"] = str(detail["status"])
+    for key in ("type", "provider", "model", "excerpt"):
+        if detail.get(key):
+            values[key] = str(detail[key])
+    estimate, context = detail.get("prompt_tokens_est"), detail.get("context_length")
+    if estimate and context:
+        values["size"] = f"ca. {estimate:,} von {context:,} Tokens Kontext".replace(",", ".")
+    elif estimate:
+        values["size"] = f"ca. {estimate:,} Tokens".replace(",", ".")
+    attempt, retries = detail.get("attempt"), detail.get("retries")
+    if attempt:
+        values["attempts"] = f"{attempt}" + (f" ({retries} Wiederholung)" if retries else "")
+    if detail.get("tools"):
+        values["tools"] = str(detail["tools"])
+    if "web_search" in detail:
+        values["web_search"] = "an" if detail["web_search"] else "aus"
+    if detail.get("at"):
+        values["at"] = str(detail["at"]).replace("T", " ")[:19]
+    return [(label, values[key]) for key, label in _DETAIL_LABELS if key in values]

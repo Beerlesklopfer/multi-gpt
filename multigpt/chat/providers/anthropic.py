@@ -75,12 +75,14 @@ from .base import (
     Usage,
     exception_to_error,
     group_turns,
+    http_error_detail,
     http_error_message,
     is_key_expired,
     normalize_tools,
     parse_tool_arguments,
     provider_error_code,
     rejected_parameter,
+    safe_error_code,
     sse_data,
     tool_schema,
 )
@@ -169,6 +171,7 @@ class AnthropicAdapter(ProviderAdapter):
                         response.status_code,
                         code=provider_error_code(response.content),
                         expired=is_key_expired(response.status_code, response.content),
+                        body=response.content,
                     )
                 try:
                     page = response.json()
@@ -266,7 +269,17 @@ class AnthropicAdapter(ProviderAdapter):
                     self._log(f"HTTP {response.status_code}", detail)
                     message, retryable = _http_error(response.status_code, error_body)
                     rejected = rejected_parameter(response.status_code, error_body)
-                    yield Error(message, retryable=retryable, rejected_param=rejected)
+                    yield Error(
+                        message,
+                        retryable=retryable,
+                        rejected_param=rejected,
+                        detail=http_error_detail(
+                            response.status_code,
+                            error_body,
+                            retryable=retryable,
+                            secrets=[self.provider.api_key],
+                        ),
+                    )
                     return
                 parser = _EventParser(emit_tool_calls=bool(specs))
                 for line in response.iter_lines():
@@ -371,6 +384,10 @@ class _EventParser:
         # index -> Block im API-Format, ``tool_use`` mit ``_json`` (Rohtext).
         self.blocks: dict[int, dict] = {}
 
+    def _detail(self, retryable: bool) -> dict:
+        kind = self.error_type if safe_error_code(self.error_type) else "stream_error"
+        return {"status": None, "type": kind, "excerpt": "", "retryable": retryable}
+
     def feed(self, line: str) -> Iterator[Event]:
         data = sse_data(line)
         if data is None:
@@ -410,9 +427,10 @@ class _EventParser:
             self.error_type = str(err.get("type") or "-") if isinstance(err, dict) else "-"
             self.finished = True
             if self.error_type == "overloaded_error":
-                yield Error(MSG_OVERLOADED, retryable=True)
+                yield Error(MSG_OVERLOADED, retryable=True, detail=self._detail(True))
             else:
-                yield Error(MSG_STREAM_ERROR, retryable=self.error_type in _RETRYABLE_STREAM_ERRORS)
+                retryable = self.error_type in _RETRYABLE_STREAM_ERRORS
+                yield Error(MSG_STREAM_ERROR, retryable=retryable, detail=self._detail(retryable))
         # ping und unbekannte Event-Typen: ignorieren (Doku: Versionierung).
 
     @staticmethod

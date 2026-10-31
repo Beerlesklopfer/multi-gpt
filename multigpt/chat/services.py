@@ -1045,11 +1045,13 @@ def _finish(
     tokens_in: int,
     tokens_out: int,
     tally: Tally | None = None,
+    error_detail: dict | None = None,
 ):
     msg = turn.assistant_message
     msg.content = text
     msg.status = status
     msg.error = error
+    msg.error_detail = (error_detail or {}) if error else {}
     msg.tokens_in = tokens_in
     msg.tokens_out = tokens_out
     if tally is None:
@@ -1062,6 +1064,7 @@ def _finish(
             content=text,
             status=status,
             error=error,
+            error_detail=msg.error_detail,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost=msg.cost,
@@ -1070,6 +1073,35 @@ def _finish(
         Conversation.objects.filter(pk=turn.conversation.pk).update(updated=timezone.now())
     except Exception as exc:
         logger.error("Antwort %s konnte nicht gespeichert werden: %s", msg.pk, type(exc).__name__)
+
+
+def error_detail_of(
+    event_detail: dict | None, *, kind: str, context: dict, model_calls: int, retries: int
+) -> dict:
+    """Fehlerdetail für ``Message.error_detail``: Angaben des Anbieters
+    (``Error.detail``) plus Kontext der Anfrage. ``kind``: Art, wenn der Anbieter
+    keine nennt (z. B. ``prompt_too_large``). Keine Inhalte, URLs oder Keys."""
+    detail = {"status": None, "type": kind, "excerpt": "", "retryable": False}
+    detail.update({k: v for k, v in (event_detail or {}).items() if v not in (None, "")})
+    detail.update(context)
+    detail["attempt"] = max(model_calls, 1)
+    detail["retries"] = retries
+    detail["at"] = timezone.now().isoformat(timespec="seconds")
+    return detail
+
+
+def log_error_detail(message_id: int, detail: dict) -> None:
+    """Eine strukturierte Logzeile; nur Kurzcodes, keine Inhalte, URLs oder Keys."""
+    logger.error(
+        "Antwortfehler: message=%s status=%s type=%s provider=%s model=%s attempt=%s retryable=%s",
+        message_id,
+        detail.get("status"),
+        detail.get("type"),
+        detail.get("provider"),
+        detail.get("model"),
+        detail.get("attempt"),
+        detail.get("retryable"),
+    )
 
 
 class _Loop:
@@ -1106,6 +1138,9 @@ class _Loop:
         self.tally = billing.tally_of(self.msg) if turn.resume else Tally()
         self.stream = None
         self.paused = False
+        self.event_detail: dict = {}  # Error.detail des Anbieters (letzter Fehler)
+        self.retries = 0  # Wiederholungen ohne abgelehnte Parameter
+        self.error_kind = "internal"  # Art des Fehlers, wenn der Anbieter keine nennt
         # Angebotene Werkzeuge; im Modus nach Bedarf nur ein Teil der erlaubten
         # (``selection.candidates``), siehe tool_select.
         self.bindings: dict[str, tooling.Binding] = {}
@@ -1522,12 +1557,36 @@ class _Loop:
                 estimate,
                 context,
             )
+            self.error_kind = "prompt_too_large"
             return system, MSG_PROMPT_TOO_LARGE.format(
                 estimate=context_budget.format_tokens(estimate),
                 context=context_budget.format_tokens(context),
                 tools=context_budget.format_tokens(context_budget.specs_tokens(specs)),
             )
         return system, ""
+
+    def _error_detail(self, error: str) -> dict:
+        """``Message.error_detail`` dieser Antwort (siehe ``error_detail_of``)."""
+        ai_model = self.turn.ai_model
+        try:
+            context_length = context_budget.context_length(ai_model)
+        except Exception:
+            context_length = None
+        context = {
+            "provider": ai_model.provider.name,
+            "model": ai_model.model_id,
+            "prompt_tokens_est": self.state.get("prompt_estimate"),
+            "context_length": context_length,
+            "tools": len(self.bindings),
+            "web_search": "web_search" in self.bindings,
+        }
+        return error_detail_of(
+            self.event_detail,
+            kind=self.error_kind,
+            context={k: v for k, v in context.items() if v is not None},
+            model_calls=int(self.state.get("model_calls", 0)),
+            retries=self.retries,
+        )
 
     def _empty_answer(self, done: Done | None, round_in: int) -> str:
         """Fehlertext, wenn die Antwort leer blieb (kein Text, kein Aufruf), sonst "".
@@ -1641,6 +1700,7 @@ class _Loop:
             unavailable = yield from model_manager.chat_ready(turn.ai_model, swap=turn.swap)
             error = unavailable.message if unavailable else ""
             if error:
+                self.error_kind = "model_unavailable"
                 status = Message.Status.ERROR
             if isinstance(unavailable, model_manager.SwapPossible):
                 # Angebot unter der Fehlermeldung: diese Modelle entladen und neu versuchen.
@@ -1723,8 +1783,10 @@ class _Loop:
                             for name in rejected:
                                 _REMEMBER_REJECTED[name](turn.ai_model)
                             retry_plain = True
+                            self.retries += 1
                             break
                         error = event.message or GENERIC_ERROR
+                        self.event_detail = event.detail
                         if event.retryable and self.content.strip():
                             status = Message.Status.ABORTED  # Teiltext bleibt
                         else:
@@ -1768,6 +1830,7 @@ class _Loop:
                 self.state["final_provider_state"] = done.provider_state if done else None
                 error = self._empty_answer(done, round_in)
                 if error:
+                    self.error_kind = "empty_answer"
                     status = Message.Status.ERROR
                     logger.info("Antwort %s ist leer geblieben", msg.pk)
                 break
@@ -1791,11 +1854,13 @@ class _Loop:
             # Widerruf greift sofort: Teiltext bleibt, Antwort gilt als abgebrochen.
             logger.info("Antwort %s: Freigabe entzogen", msg.pk)
             status, error = Message.Status.ABORTED, sharing.MSG_REVOKED
+            self.error_kind = "access_revoked"
             _close(self.stream)
             self._abort_open_calls()
         except Exception as exc:
             logger.error("Stream für Antwort %s fehlgeschlagen: %s", msg.pk, type(exc).__name__)
             status, error = Message.Status.ERROR, GENERIC_ERROR
+            self.error_kind = "internal"
             _close(self.stream)
             try:
                 self._abort_open_calls()
@@ -1804,9 +1869,25 @@ class _Loop:
 
         if self.paused:
             return
-        _finish(turn, self.content, status, error, self.tokens_in, self.tokens_out, self.tally)
+        detail = self._error_detail(error) if error and self.error_kind != "access_revoked" else {}
+        if detail:
+            log_error_detail(msg.pk, detail)
+        _finish(
+            turn,
+            self.content,
+            status,
+            error,
+            self.tokens_in,
+            self.tokens_out,
+            self.tally,
+            detail,
+        )
         if error:
-            yield "error", {"message": error}
+            payload = {"message": error}
+            # Technische Details nur für den Besitzer des Chats (nicht für Mitschreibende).
+            if detail and turn.user.pk == turn.conversation.user_id:
+                payload["detail"] = detail
+            yield "error", payload
         cost = msg.cost
         usage = {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out}
         usage["cost"] = None if cost is None else str(cost)

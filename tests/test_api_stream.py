@@ -192,7 +192,8 @@ def test_error_keeps_partial_text(client, conversation, ai_model, fake):
     fake([Delta("Teil"), Error("Der Anbieter ist nicht erreichbar.")])
     events = parse_sse(post(client, conversation, content="Frage", model=ai_model.pk))
     assert [n for n, _ in events] == ["start", "delta", "error", "usage", "done"]
-    assert events[2][1] == {"message": "Der Anbieter ist nicht erreichbar."}
+    assert events[2][1]["message"] == "Der Anbieter ist nicht erreichbar."
+    assert events[2][1]["detail"]["provider"] == "Cloud"
     assert events[-1][1] == {"status": "error"}
     answer = Message.objects.get(pk=events[0][1]["assistant_message_id"])
     assert answer.status == Message.Status.ERROR
