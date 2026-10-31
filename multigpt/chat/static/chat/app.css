@@ -3285,6 +3285,9 @@ span.message-source-link {
 }
 
 .chat-input-field {
+  /* Im Formular (Spalte, Höhe automatisch) zählt der Inhalt, nicht flex: 1: Chrome rechnet
+     sonst mit Basis 0, und die Knopfleiste ragt unten aus dem Rahmen. */
+  flex: 0 0 auto;
   flex-direction: column;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 1.5);
