@@ -1289,6 +1289,23 @@ class ChatSettingsAdmin(admin.ModelAdmin):
         ),
         # Bilderzeugung (M9-01, chat/images.py)
         ("Bilder", {"fields": ["default_image_model", "image_tool_confirm"]}),
+        # Sprache (M10, chat/speech.py)
+        (
+            "Sprache",
+            {
+                "fields": [
+                    "default_stt_model",
+                    "default_tts_model",
+                    "speech_max_seconds",
+                    "speech_max_upload_mb",
+                    "speech_max_chars",
+                ],
+                "description": "Mikrofon (Spracherkennung) und Vorlesen im Chat; das Recht dazu "
+                "steht in der Rolle („Sprache“). Die Modelle (Fähigkeit „Spracherkennung“ bzw. "
+                "„Sprachausgabe“) legt man unter „KI-Modelle“ an; die Konten wählen Modell und "
+                "Stimme selbst unter „Einstellungen“. Die Grenzen prüft der Server.",
+            },
+        ),
         # Berechnungen (M4a-10, chat/tools_python.py, chat/sandbox.py)
         (
             "Berechnungen (run_python)",
