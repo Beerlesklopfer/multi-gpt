@@ -18,6 +18,24 @@
       <div>{{ form.mark_unverified_links.as_field_group }}</div>
       <h2 class="section-title">Chat</h2>
       <div>{{ form.context_menu.as_field_group }}</div>
+      {% if speech_form %}
+        <h2 class="section-title" id="sprache">Sprache</h2>
+        <p class="page-intro">
+          Das Mikrofon im Eingabefeld wandelt Gesprochenes in Text um, der zum Korrigieren im Feld
+          landet; unter jeder Antwort liest der Lautsprecherknopf sie vor. Aufnahmen werden nicht
+          gespeichert, vorgelesene Antworten bleiben als Audiodatei an der Antwort.
+        </p>
+        {% for field in speech_form %}
+          <div>
+            {{ field.as_field_group }}
+            {% if field.name == "voice" and voice_suggestions %}
+              {# Vorschläge des Modells (Eliezer: GET /v1/audio/voices); freie Eingabe bleibt möglich. #}
+              <datalist id="voice-suggestions">{% for name in voice_suggestions %}<option value="{{ name }}">{% endfor %}</datalist>
+              <p class="help-text">Verfügbare Stimmen: {{ voice_suggestions|join:", " }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
       <button type="submit" class="button button-primary">Speichern</button>
       <a href="{% url 'chat:index' %}" class="button">Zurück zum Chat</a>
     </form>

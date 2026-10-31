@@ -5,8 +5,8 @@
 - ``DELETE /api/attachments/<id>/``: nur eigener, noch nicht gesendeter Entwurf.
 - ``GET /anhang/<id>/`` und ``/anhang/<id>/vorschau/``: nur mit READ-Recht auf
   den Chat der Nachricht bzw. als Besitzer des Entwurfs; sonst 404 (Existenz
-  fremder Anhänge bleibt verborgen). Bilder ``inline``, alles andere als
-  Download; ``nosniff``, ``private, no-store`` und eine CSP ohne Skripte.
+  fremder Anhänge bleibt verborgen). Bilder und erzeugte Sprachausgabe (Audio) ``inline``, alles
+  andere als Download; ``nosniff``, ``private, no-store`` und eine CSP ohne Skripte.
 - **Erzeugte PDFs** (``owner`` leer: ``create_pdf``, ``run_python``, MCP) werden
   ``inline`` ausgeliefert („Ansehen“), ohne CSP – wie „Dokument ansehen“ in
   ``views_collections``: Die PDF-Betrachter von Firefox und Chrome zeigen
@@ -36,7 +36,9 @@ from .models import Attachment, Conversation
 from .views_collections import x_accel_path
 
 # Nur diese Typen werden im Browser angezeigt; alles andere ist ein Download.
-INLINE_TYPES = set(attachments.IMAGE_FORMATS.values())
+# Erzeugte Sprachausgabe (M10-02) spielt der Browser im Chat ab (<audio>); feste Typen mit nosniff.
+AUDIO_TYPES = {"audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/aac"}
+INLINE_TYPES = set(attachments.IMAGE_FORMATS.values()) | AUDIO_TYPES
 CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
 PDF_TYPE = "application/pdf"
 

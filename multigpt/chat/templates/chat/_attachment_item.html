@@ -11,6 +11,11 @@
     {% if can_write and not a.owner_id and msg.role == "assistant" %}{# erzeugtes Bild: als Vorlage zum Verändern ins Eingabefeld (image_mode.js) #}
     <button type="button" class="button button-small attachment-continue" data-attachment-continue="{{ a.pk }}">Weiter bearbeiten</button>
     {% endif %}
+  {% elif a.kind == "audio" %}
+    {# Vorgelesene Antwort (M10-02, speech.js): Abspielen mit Bedienelementen des Browsers. #}
+    <audio class="attachment-audio" controls preload="none" src="{{ a.url }}"
+           aria-label="Vorgelesene Antwort"></audio>
+    <a class="attachment-chip attachment-audio-download" href="{{ a.url }}" download>Audio laden<span class="sr-only"> ({{ a.display_name }}, {{ a.size_label }})</span></a>
   {% else %}
     <a class="attachment-chip" href="{{ a.url }}" download>
       <span class="attach-file-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
