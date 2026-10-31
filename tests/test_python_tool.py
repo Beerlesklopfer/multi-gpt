@@ -1078,6 +1078,10 @@ def test_admin_rejects_limits_above_maximum(admin_client, monkeypatch):
         "python_processes": 4,
         "python_file_mb": 10,
         "python_output_kb": 64,
+        # Sprache (M10-03): Pflichtfelder des Formulars
+        "speech_max_seconds": 120,
+        "speech_max_upload_mb": 25,
+        "speech_max_chars": 4000,
     }
     response = admin_client.post(url, data)
     assert response.status_code == 200  # Formular mit Fehler
