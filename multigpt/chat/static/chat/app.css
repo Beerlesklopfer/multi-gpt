@@ -3288,7 +3288,9 @@ span.message-source-link {
   /* Im Formular (Spalte, Höhe automatisch) zählt der Inhalt, nicht flex: 1: Chrome rechnet
      sonst mit Basis 0, und die Knopfleiste ragt unten aus dem Rahmen. */
   flex: 0 0 auto;
-  flex-direction: column;
+  /* Block statt Flex: Textarea und Knopfleiste stapeln sich nach Inhalt, unabhängig von der
+     Flex-Berechnung des Browsers; so bleibt die Leiste immer im Rahmen. */
+  display: block;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 1.5);
   background: var(--bg);
@@ -3302,6 +3304,7 @@ span.message-source-link {
 .chat-input .chat-input-field textarea {
   flex: none;
   width: 100%;
+  display: block;
   min-height: 2.75rem;
   padding: 0.6rem 2.75rem 0.2rem 0.85rem;
   border: none;
