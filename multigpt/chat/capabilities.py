@@ -174,10 +174,18 @@ def from_lmstudio(item: dict) -> Detected | None:
 
 def from_catalog(entry) -> Detected:
     """Ein Eintrag aus ``GET /api/v1/models`` (Eliezer, LM Studio 0.4): ``type`` ``llm``,
-    ``embedding`` oder ``image`` (Bildmodelle: ``/v1/images/generations``) und
+    ``embedding``, ``image`` (Bildmodelle: ``/v1/images/generations``), ``stt`` und ``tts``
+    (``/v1/audio/transcriptions`` bzw. ``/v1/audio/speech``, M10) und
     ``capabilities.vision``. Werkzeugfähigkeit meldet Eliezer nicht: Heuristik nach Modell-ID."""
     if entry.type == "embedding":
         return Detected(capability=EMBEDDING, tools=False, vision=False, source="lmstudio")
+    if entry.type in ("stt", "tts"):  # Eliezer: Whisper bzw. Chatterbox/CosyVoice (M10)
+        return Detected(
+            capability=STT if entry.type == "stt" else TTS,
+            tools=False,
+            vision=False,
+            source="lmstudio",
+        )
     if entry.type == "image":
         return Detected(
             capability=IMAGE,

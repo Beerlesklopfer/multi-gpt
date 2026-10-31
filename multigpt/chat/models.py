@@ -648,6 +648,50 @@ class ChatSettings(models.Model):
         help_text="Chatmodelle fragen vor jedem Bild über das Werkzeug nach (Bilder kosten "
         "Geld). Aus: ohne Rückfrage, das Budget wird trotzdem vor jedem Bild geprüft.",
     )
+    # Sprache (M10, chat/speech.py). Grenzen serverseitig; der Browser liest sie nur zur Vorprüfung.
+    default_stt_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        limit_choices_to={"capability": "stt"},
+        verbose_name="Standard-Spracherkennung",
+        help_text="Für das Mikrofon im Chat, wenn das Konto kein eigenes Modell gewählt hat. "
+        "Leer bzw. nicht nutzbar (Rolle, Budget, offline) = das erste freigegebene Modell.",
+    )
+    default_tts_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        limit_choices_to={"capability": "tts"},
+        verbose_name="Standard-Sprachausgabe",
+        help_text="Für „Vorlesen“ unter den Antworten, wenn das Konto kein eigenes Modell "
+        "gewählt hat. Leer bzw. nicht nutzbar = das erste freigegebene Modell.",
+    )
+    speech_max_seconds = models.PositiveSmallIntegerField(
+        "Aufnahmelänge (Sekunden)",
+        default=120,
+        validators=[MinValueValidator(5), MaxValueValidator(900)],
+        help_text="Längste Sprachaufnahme im Chat. Der Browser beendet die Aufnahme dann selbst; "
+        "der Server lehnt längere ab.",
+    )
+    speech_max_upload_mb = models.PositiveSmallIntegerField(
+        "Größe der Aufnahme (MB)",
+        default=25,
+        validators=[MinValueValidator(1), MaxValueValidator(200)],
+        help_text="Größte Audiodatei, die zur Spracherkennung angenommen wird (OpenAI: 25 MB; "
+        "Eliezer: Grenze des Modells).",
+    )
+    speech_max_chars = models.PositiveIntegerField(
+        "Vorlesen: Zeichen je Antwort",
+        default=4000,
+        validators=[MinValueValidator(100), MaxValueValidator(50000)],
+        help_text="Längere Antworten werden beim Vorlesen am Satzende gekürzt (OpenAI: 4096 "
+        "Zeichen je Aufruf). Die Sprachausgabe wird je Zeichen abgerechnet.",
+    )
     # Berechnungen (M4a-10, chat/tools_python.py, chat/sandbox.py). Grenzen wie
     # sandbox.LIMIT_RANGES; die Sandbox begrenzt zusätzlich selbst.
     python_enabled = models.BooleanField(
@@ -2179,6 +2223,59 @@ class Project(models.Model):
     def __str__(self):
         # Wie bei Chats ohne Namen: __str__ erscheint in Logs und Auswahllisten.
         return f"Projekt {self.pk}"
+
+
+class SpeechPreference(models.Model):
+    """Persönliche Spracheinstellungen (M10, Seite „Einstellungen“): Modelle und Stimme.
+
+    „Antworten automatisch vorlesen“ steht als ``User.auto_read_aloud`` am Konto. Leere Modelle
+    bedeuten: Standard aus den Chat-Einstellungen bzw. das erste freigegebene Modell.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="speech_preference",
+        verbose_name="Konto",
+    )
+    stt_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        limit_choices_to={"capability": "stt"},
+        verbose_name="Spracherkennung",
+    )
+    stt_language = models.CharField(
+        "Sprache der Aufnahme",
+        max_length=10,
+        blank=True,
+        default="de",
+        help_text="Sprachcode wie de oder en; leer = das Modell erkennt die Sprache selbst.",
+    )
+    tts_model = models.ForeignKey(
+        AIModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        limit_choices_to={"capability": "tts"},
+        verbose_name="Sprachausgabe",
+    )
+    voice = models.CharField(
+        "Stimme",
+        max_length=64,
+        blank=True,
+        help_text="Name der Stimme beim Anbieter; leer = Standard des Modells.",
+    )
+
+    class Meta:
+        verbose_name = "Spracheinstellung"
+        verbose_name_plural = "Spracheinstellungen"
+
+    def __str__(self):
+        return f"Spracheinstellung {self.user_id}"
 
 
 # Modellverwaltung (LM Studio): Laufzeitzustand und Belegung, eigenes Modul.

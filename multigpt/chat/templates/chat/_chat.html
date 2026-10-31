@@ -18,6 +18,7 @@
   <script src="{% static 'chat/collections_picker.js' %}" defer></script>
   <script src="{% static 'chat/attachments.js' %}" defer></script>
   <script src="{% static 'chat/scroll_follow.js' %}" defer></script>
+  <script src="{% static 'chat/speech.js' %}" defer></script>
   <script src="{% static 'chat/chat.js' %}" defer></script>
   <script src="{% static 'chat/tool_code.js' %}" defer></script>
   <script src="{% static 'chat/image_mode.js' %}" defer></script>
@@ -42,6 +43,13 @@
            data-project-collections="{{ project_collection_ids }}"
            data-mark-links="{{ request.user.mark_unverified_links|yesno:'true,false' }}"
            data-context-menu="{{ request.user.context_menu|yesno:'true,false' }}"
+           data-speech-stt="{{ speech.stt|yesno:'true,false' }}"
+           data-speech-tts="{{ speech.tts|yesno:'true,false' }}"
+           data-speech-auto="{{ request.user.auto_read_aloud|yesno:'true,false' }}"
+           data-speech-max-seconds="{{ speech.limits.max_seconds }}"
+           data-speech-max-bytes="{{ speech.limits.max_upload_bytes }}"
+           data-api-speech-transcribe="{% url 'chat:api_speech_transcribe' %}"
+           data-api-speak-template="{% url 'chat:api_message_speak' 0 %}"
            data-conversation-url-template="{% url 'chat:conversation' 0 %}"
            data-api-conversations="{% url 'chat:api_conversations' %}"
            data-api-models="{% url 'chat:api_models' %}"
@@ -196,12 +204,24 @@
           </button>
           {# Knopfleiste im Feld: links Anhänge (attachments.js), rechts Senden bzw. Stopp (chat.js). #}
           <div class="chat-input-toolbar">
+            <div class="chat-input-toolbar-left">
             <button type="button" class="icon-button attach-button" id="attach-button"
                     aria-label="Datei oder Bild anhängen" aria-describedby="attach-button-hint"
                     title="Datei oder Bild anhängen">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-2.8-2.8l7.9-7.9"/></svg>
             </button>
             <span class="sr-only" id="attach-button-hint">Bilder lassen sich auch mit Strg+V einfügen oder in den Chat ziehen.</span>
+            {% if speech.stt %}
+              {# Spracheingabe (M10-01, speech.js): Aufnahme per MediaRecorder, Text landet im Feld. #}
+              <button type="button" class="icon-button mic-button" id="mic-button"
+                      aria-label="Spracheingabe starten" aria-pressed="false" aria-describedby="mic-hint"
+                      title="Spracheingabe" hidden>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+              </button>
+              <span class="mic-timer" id="mic-timer" aria-hidden="true" hidden></span>
+              <span class="sr-only" id="mic-hint">Nimmt auf, bis du den Knopf noch einmal drückst oder Escape; der erkannte Text erscheint zum Korrigieren im Eingabefeld.</span>
+            {% endif %}
+            </div>
             <button type="submit" class="send-button" id="send-button" data-state="send"
                     aria-label="Senden" title="Senden" disabled>
               <svg class="icon send-icon-send" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>

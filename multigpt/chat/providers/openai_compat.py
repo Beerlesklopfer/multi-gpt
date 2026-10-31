@@ -87,8 +87,10 @@ from .base import (
     ProviderAdapter,
     ProviderError,
     ProviderHTTPError,
+    SpeechResult,
     ToolCallEvent,
     ToolSpec,
+    Transcription,
     Usage,
     clean_excerpt,
     exception_to_error,
@@ -154,6 +156,29 @@ IMAGE_MAX_RESPONSE_BYTES = 80 * 1024 * 1024
 IMAGE_QUALITIES = ("low", "medium", "high", "auto")
 _DALLE3_SIZES = {"square": "1024x1024", "landscape": "1792x1024", "portrait": "1024x1792"}
 MSG_EMPTY_IMAGE_PROMPT = "Bitte beschreiben, welches Bild erzeugt werden soll."
+
+# Sprache (M10): Erkennung (Aufnahmen bis Stunden) und Sprachausgabe (Modell lädt, liest Absatz
+# für Absatz) brauchen lange Lesezeiten. Antworten der Sprachausgabe sind Audiodateien.
+AUDIO_TIMEOUT = httpx.Timeout(connect=10.0, read=900.0, write=120.0, pool=10.0)
+SPEECH_MAX_RESPONSE_BYTES = 80 * 1024 * 1024
+MSG_EMPTY_AUDIO = "Es wurde keine Aufnahme übergeben."
+MSG_EMPTY_SPEECH_TEXT = "Es gibt keinen Text zum Vorlesen."
+MSG_INVALID_AUDIO_ANSWER = "Der Anbieter hat eine unerwartete Antwort der Sprachfunktion geliefert."
+MSG_AUDIO_TOO_LARGE = "Die Aufnahme ist für den Anbieter zu groß oder zu lang."
+MSG_TEXT_TOO_LONG = "Der Text ist für die Sprachausgabe des Anbieters zu lang."
+MSG_VOICE_REQUIRED = (
+    "Dieses Sprachmodell braucht eine Stimme. Bitte in den Einstellungen eine Stimme wählen."
+)
+MSG_BAD_AUDIO = "Der Anbieter kann die Aufnahme nicht lesen (kein Audio oder unbekanntes Format)."
+# Modelle, die ``verbose_json`` (Dauer, Segmente) kennen; GPT-4o-Transcribe nur ``json``.
+_VERBOSE_TRANSCRIPTION = re.compile(r"(^|/)whisper")
+_SPEECH_TYPES = {
+    "mp3": ("audio/mpeg", ".mp3"),
+    "wav": ("audio/wav", ".wav"),
+    "opus": ("audio/ogg", ".ogg"),
+    "flac": ("audio/flac", ".flac"),
+    "aac": ("audio/aac", ".aac"),
+}
 
 # Diese Felder setzt der Adapter selbst; ``params`` darf sie nicht überschreiben.
 _RESERVED_PARAMS = {"model", "messages", "stream", "stream_options", "tools", "tool_choice"}
@@ -579,6 +604,124 @@ class OpenAICompatAdapter(ProviderAdapter):
             raise ProviderError(MSG_INVALID_IMAGE_ANSWER) from exc
         return _parse_images(payload)
 
+    # --- Sprache (M10) --------------------------------------------------------
+
+    #: Format der Sprachausgabe: OpenAI mp3 (klein), Eliezer wav (mehr kann der Dienst nicht).
+    speech_format = "mp3"
+    #: Stimme ohne Wahl: OpenAI verlangt eine; Eliezer nimmt die des Modells (``default_voice``).
+    default_voice: str | None = "alloy"
+    #: Eliezer und LM Studio liefern bei der Erkennung auch ohne Wunsch Dauer und Segmente.
+    verbose_transcription = False
+
+    def _audio_request(self, path: str, what: str, model_id: str, **request) -> httpx.Response:
+        """Anfrage der Sprachfunktionen: senden, Fehler übersetzen (``http_error_message``)."""
+        try:
+            with httpx.Client(timeout=AUDIO_TIMEOUT) as client:
+                response = client.post(
+                    f"{self.base_url}/{path}", headers=self._headers(), **request
+                )
+        except Exception as exc:
+            self._log(what, type(exc).__name__)
+            error = exception_to_error(exc, started=False)
+            raise ProviderError(
+                error.message, retryable=error.retryable, unreachable=is_unreachable(exc)
+            ) from None
+        if response.status_code != 200:
+            detail = _error_code(response.content)
+            self._log(f"{what} HTTP {response.status_code}", detail)
+            message, retryable = http_error_message(response.status_code, response.content)
+            status = response.status_code
+            if status == 404 and detail.endswith("/model_not_found"):
+                message = _model_not_found(model_id)
+            elif status == 413:
+                message = MSG_AUDIO_TOO_LARGE if "transcriptions" in path else MSG_TEXT_TOO_LONG
+            elif status == 400:
+                message = MSG_BAD_AUDIO if "transcriptions" in path else message
+                if "speech" in path and "voice" in _provider_text(response.content, 300).lower():
+                    message = MSG_VOICE_REQUIRED
+            raise ProviderHTTPError(
+                message,
+                status,
+                retryable=retryable,
+                expired=is_key_expired(status, response.content),
+            )
+        return response
+
+    def transcribe(
+        self,
+        model_id: str,
+        audio: tuple[str, str, bytes],
+        *,
+        language: str | None = None,
+        prompt: str | None = None,
+    ) -> Transcription:
+        """``POST /audio/transcriptions`` (multipart ``file``, ``model``, ``language``).
+
+        Whisper und Eliezer: ``verbose_json`` mit Dauer und Segmenten; GPT-4o-Transcribe nur
+        ``json`` (dort kommen Tokens bzw. Sekunden unter ``usage``)."""
+        name, mime_type, data = audio
+        if not data:
+            raise ProviderError(MSG_EMPTY_AUDIO)
+        verbose = self.verbose_transcription or bool(
+            _VERBOSE_TRANSCRIPTION.search(model_id.lower())
+        )
+        fields = {"model": model_id, "response_format": "verbose_json" if verbose else "json"}
+        if language and language.lower() != "auto":
+            fields["language"] = language.lower()
+        if prompt:
+            fields["prompt"] = prompt
+        response = self._audio_request(
+            "audio/transcriptions",
+            "Spracherkennung",
+            model_id,
+            data=fields,
+            files={"file": (name, data, mime_type)},
+        )
+        try:
+            payload = response.json()
+            text = payload["text"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ProviderError(MSG_INVALID_AUDIO_ANSWER) from exc
+        if not isinstance(text, str):
+            raise ProviderError(MSG_INVALID_AUDIO_ANSWER)
+        return _parse_transcription(text, payload)
+
+    def speak(self, model_id: str, text: str, voice: str | None = None) -> SpeechResult:
+        """``POST /audio/speech`` (JSON ``model``, ``input``, ``voice``, ``response_format``);
+        die Antwort ist die Audiodatei selbst."""
+        if not (text or "").strip():
+            raise ProviderError(MSG_EMPTY_SPEECH_TEXT)
+        fmt = self.speech_format
+        body = {"model": model_id, "input": text, "response_format": fmt}
+        if voice:
+            body["voice"] = voice
+        elif self.default_voice:
+            body["voice"] = self.default_voice
+        response = self._audio_request("audio/speech", "Sprachausgabe", model_id, json=body)
+        data = response.content
+        if not data:
+            raise ProviderError(MSG_INVALID_AUDIO_ANSWER)
+        if len(data) > SPEECH_MAX_RESPONSE_BYTES:
+            raise ProviderError(MSG_AUDIO_TOO_LARGE)
+        mime_type, extension = _SPEECH_TYPES[fmt]
+        return SpeechResult(data, mime_type, extension)
+
+    def list_voices(self, timeout: float = 5) -> list[str]:
+        """``GET /audio/voices`` (Eliezer: ``{"voices": [...]}``); OpenAI kennt keine Liste."""
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.get(f"{self.base_url}/audio/voices", headers=self._headers())
+            if response.status_code != 200:
+                return []
+            voices = response.json().get("voices")
+        except Exception as exc:  # noqa: BLE001 - nie eine Ausnahme
+            self._log("Stimmenliste", type(exc).__name__)
+            return []
+        if not isinstance(voices, list):
+            return []
+        names = [v if isinstance(v, str) else (v or {}).get("name") for v in voices]
+        return [n for n in names if isinstance(n, str) and n][:500]
+
     # --- Streaming -----------------------------------------------------------
 
     def _build_body(
@@ -867,6 +1010,38 @@ def _parse_images(payload) -> ImageResult:
             tokens_out=_count(raw_usage, "output_tokens"),
         )
     return ImageResult(images, usage)
+
+
+def _parse_transcription(text: str, payload: dict) -> Transcription:
+    """``text`` plus – falls vorhanden – ``language``, ``duration``, ``segments[]`` (verbose_json)
+    und ``usage`` (``tokens`` oder ``duration``)."""
+
+    def number(value) -> float:
+        ok = isinstance(value, int | float) and not isinstance(value, bool) and value > 0
+        return float(value) if ok else 0.0
+
+    segments = []
+    for item in payload.get("segments") or []:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            segments.append((number(item.get("start")), number(item.get("end")), item["text"]))
+    duration = number(payload.get("duration"))
+    usage = None
+    raw = payload.get("usage")
+    if isinstance(raw, dict):
+        if raw.get("type") == "duration" and not duration:
+            duration = number(raw.get("seconds"))
+        elif _count(raw, "input_tokens") or _count(raw, "output_tokens"):
+            usage = Usage(
+                tokens_in=_count(raw, "input_tokens"), tokens_out=_count(raw, "output_tokens")
+            )
+    language = payload.get("language")
+    return Transcription(
+        text.strip(),
+        language if isinstance(language, str) else "",
+        duration,
+        tuple(segments),
+        usage,
+    )
 
 
 def _embed_batches(texts: list[str]) -> Iterator[list[str]]:

@@ -171,6 +171,29 @@ class ImageResult:
     usage: Usage | None = None
 
 
+@dataclass(frozen=True)
+class Transcription:
+    """Ergebnis von ``transcribe`` (M10-01): Text, erkannte Sprache, Länge der Aufnahme in Sekunden
+    (0 = der Anbieter meldet sie nicht), Segmente ``(Beginn, Ende, Text)`` und – falls gemeldet –
+    Tokens (GPT-4o-Transcribe rechnet nach Tokens ab)."""
+
+    text: str
+    language: str = ""
+    duration: float = 0.0
+    segments: tuple = ()
+    usage: Usage | None = None
+
+
+@dataclass(frozen=True)
+class SpeechResult:
+    """Ergebnis von ``speak`` (M10-02): die Audiodatei wie vom Anbieter geliefert."""
+
+    data: bytes
+    mime_type: str = "audio/mpeg"
+    extension: str = ".mp3"
+    usage: Usage | None = None
+
+
 def orientation(size: str) -> str:
     """``square``, ``landscape`` oder ``portrait`` zu einer Größe ``WxH``
     (ungültig bzw. ``auto``: ``square``)."""
@@ -1038,11 +1061,29 @@ class ProviderAdapter:
         """
         raise NotImplementedError
 
-    def transcribe(self, model_id: str, audio):
+    def transcribe(
+        self,
+        model_id: str,
+        audio: tuple[str, str, bytes],
+        *,
+        language: str | None = None,
+        prompt: str | None = None,
+    ) -> Transcription:
+        """Aufnahme in Text umwandeln (M10-01), nicht streamend.
+
+        ``audio``: ``(Dateiname, Inhaltstyp, Bytes)``. ``language``: Sprachcode oder ``None``
+        (automatisch). Fehler als ``ProviderError`` (deutscher Text ohne Key und ohne Rohtext)."""
         raise NotImplementedError
 
-    def speak(self, model_id: str, text: str, voice: str | None = None):
+    def speak(self, model_id: str, text: str, voice: str | None = None) -> SpeechResult:
+        """Text vorlesen (M10-02): Audiodatei zu ``text``, nicht streamend. ``voice``: Name der
+        Stimme oder ``None`` (Standard). Fehler als ``ProviderError``."""
         raise NotImplementedError
+
+    def list_voices(self, timeout: float = 5) -> list[str]:
+        """Namen der Stimmen, die der Anbieter anbietet (Eliezer: ``GET /v1/audio/voices``);
+        ``[]``, wenn er keine Liste kennt. Nie eine Ausnahme."""
+        return []
 
     def generate_image(self, model_id: str, prompt: str, **params) -> ImageResult:
         """Bild erzeugen (M9-01), nicht streamend.

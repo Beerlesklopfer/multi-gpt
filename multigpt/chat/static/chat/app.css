@@ -4563,4 +4563,78 @@ span.message-source-link {
 .chat-error-detail-list dd {
   margin: 0;
   overflow-wrap: anywhere;
+
+/* Sprache (M10, speech.js) */
+
+.chat-input-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chat-input-toolbar .mic-button {
+  align-self: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+}
+
+.mic-button.is-recording {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--bg-surface);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+.mic-button.is-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.mic-timer {
+  min-width: 3.2rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.icon-button.is-speaking {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.attachment-audio {
+  display: block;
+  width: min(22rem, 100%);
+  max-width: 100%;
+}
+
+.message-attachment-file:has(> .attachment-audio) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@keyframes mic-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(192, 57, 43, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-button.is-recording {
+    animation: none;
+  }
+}
+
+@media (max-width: 48rem), (pointer: coarse) {
+  .chat-input-toolbar .mic-button {
+    min-width: 2.6rem;
+    height: 2.6rem;
+  }
 }

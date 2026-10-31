@@ -172,6 +172,25 @@ def book_attachment(attachment, ai_model, units: dict, user=None, usage=None) ->
     return entry
 
 
+def book_service(user, ai_model, units: dict, usage=None, when=None) -> UsageEntry:
+    """Buchung einer Leistung ohne Nachricht und ohne Datei (Art „Werkzeuggebühr“), z. B. die
+    Spracherkennung (M10-01, ``{"audio_minute": 0.5}``): die Aufnahme wird nicht gespeichert.
+    Preis und Tokens wie bei ``book_attachment``; der Betrag geht auf das Konto des Anbieters."""
+    account = account_of(ai_model.provider)
+    when = when or timezone.now()
+    price = price_at(ai_model, when)
+    tally = Tally()
+    tally.units = dict(units or {})
+    if usage is not None and (getattr(usage, "tokens_in", 0) or getattr(usage, "tokens_out", 0)):
+        tally.rounds = [Round.from_usage(usage)]
+        if price is not None and (price.input is not None or price.output is not None):
+            tally.units = {}
+    entry = UsageEntry(kind=UsageEntry.Kind.TOOL, user=user)
+    _fill(entry, account, ai_model, price, tally, when)
+    entry.save()
+    return entry
+
+
 def tally_of(message) -> Tally:
     """Bisheriger Verbrauch einer Antwort (Fortsetzung nach einer Rückfrage)."""
     entry = UsageEntry.objects.filter(message=message, kind=UsageEntry.Kind.ANSWER).first()

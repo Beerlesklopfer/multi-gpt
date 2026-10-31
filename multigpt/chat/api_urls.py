@@ -10,6 +10,7 @@ from . import (
     api_manage,
     api_projects,
     api_sharing,
+    api_speech,
 )
 
 urlpatterns = [
@@ -52,6 +53,10 @@ urlpatterns = [
         api_attachments.copy_to_draft,
         name="api_attachment_copy",
     ),
+    # Sprache (M10, api_speech.py)
+    path("speech/transcribe/", api_speech.transcribe, name="api_speech_transcribe"),
+    path("speech/voices/", api_speech.voices, name="api_speech_voices"),
+    path("messages/<int:pk>/speak/", api_speech.speak, name="api_message_speak"),
     path("mcp-servers/", api.mcp_servers_list, name="api_mcp_servers"),
     path("mcp-servers/<int:pk>/reconnect/", api.mcp_server_reconnect, name="api_mcp_reconnect"),
     path(

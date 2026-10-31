@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET
 
 from multigpt.accounts.permissions import Action, can, supervised_conversation_owner
 
-from . import attachments, creativity, projects, reasoning, services, sharing
+from . import attachments, creativity, projects, reasoning, services, sharing, speech
 from .models import ChatSettings, Conversation, Message, ReasoningEffort
 from .websearch import web_search_available
 
@@ -100,6 +100,8 @@ def _page_context(request, conversation=None):
         "web_search_available": web_search_available(request.user),
         # Anhänge: Dateiauswahl und Vorprüfung im Browser (maßgeblich prüft der Server).
         "attachment_limits": attachments.limits(),
+        # Sprache (M10): Mikrofon und Vorlesen, Grenzen für die Vorprüfung im Browser.
+        "speech": {**speech.availability(request.user), "limits": speech.limits()},
         # Projekt (M5-07): Kopfzeile, Vorauswahl Modell und Sammlungen, „Neuer Chat im Projekt“.
         **project_context,
         **_prompt_context(request, conversation, project_context["chat_project"]),

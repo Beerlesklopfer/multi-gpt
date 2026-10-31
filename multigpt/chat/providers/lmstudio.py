@@ -21,6 +21,11 @@ DEFAULT_BASE_URL = DEFAULT_ROOT
 
 
 class LMStudioAdapter(OpenAICompatAdapter):
+    # Eliezer (M10): Sprachausgabe nur als WAV oder PCM, Erkennung liefert Dauer und Segmente.
+    speech_format = "wav"
+    default_voice = None
+    verbose_transcription = True
+
     @property
     def base_url(self) -> str:
         return f"{api_root(self.provider)}/v1"
