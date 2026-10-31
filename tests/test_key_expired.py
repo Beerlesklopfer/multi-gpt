@@ -216,3 +216,16 @@ def test_embed_expired(mock):
     with pytest.raises(ProviderHTTPError) as info:
         adapter(OpenAICompatAdapter, Provider.Kind.OPENAI_COMPAT, base).embed("m", ["a"])
     assert str(info.value) == MSG_KEY_EXPIRED
+
+
+def test_model_server_error_types_are_named():
+    """Eliezer meldet bei 5xx die Fehlerart; der Chat nennt sie statt „Serverfehler“."""
+    from multigpt.chat.providers.base import http_error_message
+
+    body = b'{"error": {"type": "insufficient_memory", "message": "need 9 GB"}}'
+    text, retryable = http_error_message(500, body)
+    assert "Speicher" in text and not retryable
+    text, retryable = http_error_message(503, b'{"error": {"type": "overloaded"}}')
+    assert "überlastet" in text and retryable
+    text, retryable = http_error_message(500, b"<html>boom</html>")
+    assert "Serverfehler" in text and retryable

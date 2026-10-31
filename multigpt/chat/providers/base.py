@@ -511,6 +511,32 @@ def is_key_expired(status: int, body: bytes) -> bool:
     return False
 
 
+# Fehlerarten (``error.type``) von Eliezer bei Chat-Anfragen: deutscher Text, wiederholbar?
+_MODEL_SERVER_ERRORS = {
+    "insufficient_memory": (
+        "Auf dem Modellrechner reicht der Speicher nicht für dieses Modell; ein kleineres "
+        "Modell oder weniger Kontext wählen",
+        False,
+    ),
+    "busy": ("Das Modell ist auf dem Modellrechner gerade in Benutzung", True),
+    "overloaded": ("Der Modellserver ist überlastet (Warteschlange voll)", True),
+    "backend_error": (
+        "Die Laufzeit auf dem Modellrechner ist ausgefallen; die nächste Anfrage lädt das "
+        "Modell neu",
+        True,
+    ),
+    "model_file": ("Die Modelldatei auf dem Modellrechner ist nicht lesbar", False),
+}
+
+
+def _model_server_error(body: bytes) -> tuple[str, bool] | None:
+    for value in _error_strings(body):
+        known = _MODEL_SERVER_ERRORS.get(value)
+        if known:
+            return f"{known[0]}.", known[1]
+    return None
+
+
 def http_error_message(status: int, body: bytes = b"") -> tuple[str, bool]:
     """Deutscher Text und ``retryable`` zu einem HTTP-Status des Anbieters.
 
@@ -531,6 +557,9 @@ def http_error_message(status: int, body: bytes = b"") -> tuple[str, bool]:
             True,
         )
     if status >= 500:
+        known = _model_server_error(body)
+        if known:
+            return known
         return "Der Anbieter hat einen Serverfehler gemeldet. Bitte später erneut versuchen.", True
     return f"Der Anbieter hat die Anfrage abgelehnt (HTTP {status}).", False
 
