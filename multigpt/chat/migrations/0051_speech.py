@@ -8,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("chat", "0047_aimodel_rejected_params"),
+        ("chat", "0050_message_error_detail"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
