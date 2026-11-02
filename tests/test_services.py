@@ -1,6 +1,8 @@
 """Hilfsfunktionen des Chat-Ablaufs (services.py)."""
 
+import datetime as dt
 from decimal import Decimal
+from unittest import mock
 
 import pytest
 
@@ -156,3 +158,10 @@ def test_missing_current_leaf_falls_back_to_newest():
     conv, q, a_old, a_new, f = tree_conv()
     Conversation.objects.filter(pk=conv.pk).update(current_leaf=None)
     assert [m.content for m in services.visible_messages(conv)] == ["q", "neu", "f"]
+
+
+def test_date_note_is_german_and_uses_the_local_day(settings):
+    # 23:30 UTC ist in Berlin schon der nächste Tag.
+    moment = dt.datetime(2026, 11, 1, 23, 30, tzinfo=dt.UTC)
+    with mock.patch("django.utils.timezone.now", return_value=moment):
+        assert services.date_note() == "Heute ist Montag, 02. November 2026."

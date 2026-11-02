@@ -283,7 +283,9 @@ def test_without_switch_no_search(client, conversation, ai_model, search_setting
     assert calls[0]["messages"][-1].content == QUESTION
     assert calls[0]["tools"] is None
     # Modell ohne Werkzeuge, Schalter aus: Grundregeln und Hinweis auf den Schalter.
-    assert calls[0]["system"] == f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{websearch.HINT_SWITCH}"
+    assert calls[0]["system"] == (
+        f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{services.date_note()}\n\n{websearch.HINT_SWITCH}"
+    )
 
 
 def test_regenerate_with_web_search_uses_question(

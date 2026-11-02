@@ -71,7 +71,7 @@ from decimal import Decimal
 
 from django.db import close_old_connections, connection, transaction
 from django.db.models import Q
-from django.utils import timezone
+from django.utils import formats, timezone, translation
 
 from multigpt.accounts import usage
 from multigpt.accounts.permissions import model_permitted
@@ -516,6 +516,12 @@ def delete_other_versions(conversation: Conversation, message_id) -> int:
         Message.objects.filter(pk__in=others).delete()  # CASCADE über parent
     logger.info("Chat %s: %d andere Version(en) gelöscht", conversation.pk, len(doomed))
     return len(doomed)
+
+
+def date_note() -> str:
+    """Heutiges Datum (Europe/Berlin) für die Modelle, die es sonst nicht kennen."""
+    with translation.override("de"):
+        return f"Heute ist {formats.date_format(timezone.localdate(), 'l, d. F Y')}."
 
 
 def build_system_prompt(user, conversation: Conversation, notes=()) -> str | None:
@@ -1482,7 +1488,7 @@ class _Loop:
     def _system_prompt(self, history: list[ChatMessage]) -> str | None:
         """System-Prompt samt Hinweisen zu den gerade angebotenen Werkzeugen."""
         turn = self.turn
-        notes = []
+        notes = [date_note()]
         documents = chat_attachments.has_documents(history)
         if self.context or documents or any(b.builtin for b in self.bindings.values()):
             notes.append(source_refs.SYSTEM_NOTE)

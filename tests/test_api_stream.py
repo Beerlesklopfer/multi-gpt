@@ -256,7 +256,9 @@ def test_fixed_role_prompt_comes_first(client, ai_model, fake):
     fixed = teen.role.fixed_system_prompt.strip()
     assert fixed
     # Grundregeln (ChatSettings) stehen davor.
-    assert system == f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{fixed}\n\nChat-Prompt"
+    assert system == (
+        f"{DEFAULT_BASE_INSTRUCTIONS}\n\n{fixed}\n\n{services.date_note()}\n\nChat-Prompt"
+    )
     # Für das Mitglied unsichtbar: nicht im Verlauf
     assert all(fixed not in m["content"] for m in client.get(url(conv)).json())
 
