@@ -5,7 +5,7 @@
 // zweiter Druck, Escape oder die Höchstlänge beenden die Aufnahme. Die Datei geht
 // an POST /api/speech/transcribe/, der erkannte Text landet zum Korrigieren im Feld – er
 // wird nie automatisch gesendet. Das Mikrofon braucht eine sichere Verbindung (https oder
-// localhost); sonst bleibt der Knopf mit einem Hinweis stehen.
+// localhost); sonst bleibt der Knopf mit einem Hinweis stehen. Hochgeladen wird WAV (toWav).
 //
 // Vorlesen (M10-02): Der Lautsprecherknopf unter einer Frage oder Antwort fordert die Audiodatei an
 // (POST /api/messages/<id>/speak/) und spielt sie ab; gibt es sie schon, wird sie nur abgespielt.
@@ -34,6 +34,7 @@
   const MSG_INSECURE =
     "Das Mikrofon ist nur über eine sichere Verbindung (https) oder auf localhost verfügbar.";
   const MSG_NO_RECORDER = "Dieser Browser kann keine Aufnahmen machen.";
+  const WAV_RATE = 16000;
   const RECORDER_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
 
   function say(text, isError = false) {
@@ -192,12 +193,53 @@
       say("Die Aufnahme ist leer. Bitte noch einmal versuchen.", true);
       return;
     }
-    if (blob.size > maxBytes) {
+    const audio = await toWav(blob);
+    if (audio.size > maxBytes) {
       finishMic();
       say(`Die Aufnahme ist zu groß (höchstens ${Math.round(maxBytes / 1048576)} MB).`, true);
       return;
     }
-    await upload(blob, seconds);
+    await upload(audio, seconds);
+  }
+
+  // Browser nehmen webm oder ogg auf, Eliezer liest nur WAV. 16 kHz mono reichen für Sprache
+  // (rund 2 MB je Minute) und jeder Anbieter versteht es. Scheitert das, geht das Original raus.
+  async function toWav(blob) {
+    try {
+      const decoder = new OfflineAudioContext(1, 1, WAV_RATE);
+      const decoded = await decoder.decodeAudioData(await blob.arrayBuffer());
+      const mixer = new OfflineAudioContext(1, Math.ceil(decoded.duration * WAV_RATE), WAV_RATE);
+      const source = mixer.createBufferSource();
+      source.buffer = decoded;
+      source.connect(mixer.destination);
+      source.start();
+      const samples = (await mixer.startRendering()).getChannelData(0);
+      const view = new DataView(new ArrayBuffer(44 + samples.length * 2));
+      const text = (offset, value) => {
+        for (let i = 0; i < value.length; i += 1) {
+          view.setUint8(offset + i, value.charCodeAt(i));
+        }
+      };
+      text(0, "RIFF");
+      view.setUint32(4, 36 + samples.length * 2, true);
+      text(8, "WAVEfmt ");
+      view.setUint32(16, 16, true); // Größe des fmt-Blocks
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // mono
+      view.setUint32(24, WAV_RATE, true);
+      view.setUint32(28, WAV_RATE * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      text(36, "data");
+      view.setUint32(40, samples.length * 2, true);
+      samples.forEach((sample, index) => {
+        const value = Math.max(-1, Math.min(1, sample));
+        view.setInt16(44 + index * 2, value * 0x7fff, true);
+      });
+      return new Blob([view], { type: "audio/wav" });
+    } catch {
+      return blob;
+    }
   }
 
   function finishMic() {
@@ -208,6 +250,9 @@
   }
 
   function extensionFor(type) {
+    if (type.includes("wav")) {
+      return "wav";
+    }
     if (type.includes("ogg")) {
       return "ogg";
     }
