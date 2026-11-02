@@ -2058,6 +2058,12 @@ def test_chat_page_offers_the_mask_editor_for_models_with_masks(
 ):
     page = client.get(reverse("chat:conversation", args=[conversation.pk])).content.decode()
     assert 'id="mask-dialog"' in page and 'id="image-mode-mask-open"' in page
+    # Kein <form> im Chat-Formular: ein verschachteltes <form> schließt im Browser das äußere,
+    # und Eingabefeld samt Knopfleiste verlieren ihren Stil.
+    chat_form = page[page.index('<form class="chat-input"') :]
+    chat_form = chat_form[: chat_form.index("</form>")]
+    assert "<form" not in chat_form[1:]
+    assert 'class="chat-input-field"' in chat_form
     assert 'data-name="GPT Image" data-edit="false" data-size="false"' in page
     assert 'data-variants="4" data-mask="true"' in page  # OpenAI-Modell
     assert 'data-variants="4" data-mask="false"' in page  # Eliezer: lehnt mask ab

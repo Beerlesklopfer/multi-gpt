@@ -68,7 +68,9 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
   </div>
   {{ image_mode.patterns|json_script:"image-request-patterns" }}
   <dialog class="mask-dialog" id="mask-dialog" aria-labelledby="mask-title">
-    <form method="dialog" class="mask-form">
+    {# Kein form-Element hier: der Dialog liegt im Chat-Formular, und ein verschachteltes form #}
+    {# lässt den Browser das äußere vorzeitig schließen (Eingabefeld und Knopfleiste ohne Stil). #}
+    <div class="mask-form">
       <h2 id="mask-title">Bereich zum Ändern markieren</h2>
       <p class="mask-help">Male über den Teil des Bildes, der verändert werden soll. Der Rest bleibt, wie er ist.</p>
       <div class="mask-stage"><canvas id="mask-canvas" aria-label="Bild mit markiertem Bereich"></canvas></div>
@@ -80,6 +82,6 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
         <button type="button" class="button" id="mask-cancel">Abbrechen</button>
         <button type="button" class="button button-primary" id="mask-apply">Übernehmen</button>
       </div>
-    </form>
+    </div>
   </dialog>
 {% endif %}
