@@ -10,7 +10,7 @@
 // Vorlesen (M10-02): Der Lautsprecherknopf unter einer Frage oder Antwort fordert die Audiodatei an
 // (POST /api/messages/<id>/speak/) und spielt sie ab; gibt es sie schon, wird sie nur abgespielt.
 // Mit „Antworten automatisch vorlesen“ (Einstellungen) geschieht das nach jeder neuen Antwort.
-// Beides lässt sich allein mit der Tastatur bedienen (echte Buttons, Statusmeldungen über
+// Escape unterbricht das Vorlesen. Beides lässt sich allein mit der Tastatur bedienen (echte Buttons, Statusmeldungen über
 // MultiGPT.announce). Kein Inline-JS; Namen und Texte nur über textContent.
 "use strict";
 
@@ -465,6 +465,13 @@
       const article = button?.closest(".chat-message");
       if (button && article && !button.disabled) {
         speak(article, button);
+      }
+    });
+    // Escape unterbricht das Vorlesen; der Knopf setzt es an derselben Stelle fort.
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented && current && !current.paused) {
+        event.preventDefault();
+        current.pause();
       }
     });
     revealSpeakButtons();
