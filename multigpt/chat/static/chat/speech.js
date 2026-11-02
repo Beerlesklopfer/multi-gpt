@@ -2,7 +2,7 @@
 //
 // Spracheingabe (M10-01): Der Knopf neben der Büroklammer (und einer im Editor, siehe
 // MultiGPT.speech.attachMic) nimmt mit MediaRecorder auf, ein
-// zweiter Druck (oder die Höchstlänge) beendet die Aufnahme, Escape verwirft sie. Die Datei geht
+// zweiter Druck, Escape oder die Höchstlänge beenden die Aufnahme. Die Datei geht
 // an POST /api/speech/transcribe/, der erkannte Text landet zum Korrigieren im Feld – er
 // wird nie automatisch gesendet. Das Mikrofon braucht eine sichere Verbindung (https oder
 // localhost); sonst bleibt der Knopf mit einem Hinweis stehen.
@@ -95,7 +95,7 @@
         ? "Text wird erkannt …"
         : "Spracheingabe starten";
     micButton.setAttribute("aria-label", label);
-    micButton.title = recording ? "Aufnahme beenden (Escape verwirft sie)" : "Spracheingabe";
+    micButton.title = recording ? "Aufnahme beenden (Escape)" : "Spracheingabe";
     micTimer.hidden = !recording;
   }
 
@@ -161,7 +161,7 @@
     setMic(mic, "recording");
     updateTimer();
     tick = window.setInterval(updateTimer, 250);
-    say("Aufnahme läuft. Zum Beenden den Knopf noch einmal drücken, Escape verwirft sie.");
+    say("Aufnahme läuft. Zum Beenden den Knopf noch einmal drücken oder Escape.");
   }
 
   function stopRecording() {
@@ -291,14 +291,14 @@
 
   if (micButton && hasStt) {
     setupMic({ field: textarea, button: micButton, timer: micTimer });
-    // In der Fangphase: Im Editor schlösse Escape sonst das Feld statt nur die Aufnahme.
+    // Escape wie der Knopf. In der Fangphase: Im Editor schlösse es sonst das Feld.
     document.addEventListener(
       "keydown",
       (event) => {
         if (event.key === "Escape" && recorder) {
           event.preventDefault();
           event.stopPropagation();
-          cancelRecording();
+          stopRecording();
         }
       },
       true,

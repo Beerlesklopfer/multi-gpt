@@ -2149,6 +2149,19 @@
       }
     });
 
+    // Escape wirkt wie der Stop-Knopf; offene Dialoge und der Editor gehen vor.
+    document.addEventListener("keydown", (event) => {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        sendButton.dataset.state === "stop" &&
+        !document.querySelector("dialog[open]")
+      ) {
+        event.preventDefault();
+        sendButton.click();
+      }
+    });
+
     // Eingabe-Historie wie in der Shell: Pfeil hoch/runter holt frühere Nachrichten
     // dieses Chats (angezeigter Verlauf, nichts im Browser gespeichert). Nur in der
     // ersten bzw. letzten Zeile, damit mehrzeiliges Bearbeiten wie gewohnt geht.
