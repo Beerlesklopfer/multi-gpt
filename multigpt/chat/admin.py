@@ -32,7 +32,7 @@ from django.utils.text import Truncator
 from multigpt.billing.admin import ModelPriceInline
 from multigpt.core.fields import mask_secret
 
-from . import admin_lmstudio, capabilities, detect, sandbox, status, websearch
+from . import admin_lmstudio, capabilities, detect, model_cards, sandbox, status, websearch
 from . import mcp as mcp_client
 from .management.commands.sync_models import guess_capability
 from .mcp import importer as mcp_importer
@@ -703,7 +703,7 @@ class AIModelAdmin(admin.ModelAdmin):
     list_select_related = ["provider"]
     filter_horizontal = ["mcp_servers"]
     inlines = [ModelPriceInline]  # Preise mit Historie (multigpt/billing)
-    actions = ["detect_capabilities_action"]
+    actions = ["detect_capabilities_action", "fetch_intro_action"]
     # Lade-Profil (Modellverwaltung LM Studio): Kontextfenster als Auswahl mit
     # erwartetem Speicher (admin_lmstudio.py, rag/vram_estimate.js).
     form = admin_lmstudio.AIModelForm
@@ -740,6 +740,21 @@ class AIModelAdmin(admin.ModelAdmin):
         if not change and "mcp_access" not in form.changed_data:
             obj.mcp_access = detect.default_mcp_access(obj.provider)
         super().save_model(request, obj, form, change)
+
+    @admin.action(description="Vorstellung von Hugging Face holen")
+    def fetch_intro_action(self, request, queryset):
+        """Modellkarte holen und vom Modell selbst übersetzen; ersetzt vorhandene Texte."""
+        for ai_model in queryset.select_related("provider"):
+            try:
+                model_cards.refresh(ai_model)
+            except model_cards.CardError as exc:
+                self.message_user(request, f"„{ai_model.display_name}“: {exc}", messages.WARNING)
+            else:
+                self.message_user(
+                    request,
+                    f"„{ai_model.display_name}“: Vorstellung gespeichert.",
+                    messages.SUCCESS,
+                )
 
     @admin.action(description="Fähigkeiten automatisch erkennen (Werkzeuge, Bilder)")
     def detect_capabilities_action(self, request, queryset):

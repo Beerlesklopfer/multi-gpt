@@ -934,6 +934,10 @@
         option.disabled = !isAvailable(model);
         // Abrechnungskonto und Preis bzw. Sperrgrund je Konto (billing), dezent.
         option.title = [model.budget_reason, model.billing_title].filter(Boolean).join(" – ");
+        option.dataset.local = String(Boolean(model.is_local));
+        option.dataset.provider = model.provider || "";
+        option.dataset.billing = model.billing_title || "";
+        option.dataset.intro = model.intro || "";
         return option;
       };
       const nodes = [];
@@ -2252,12 +2256,34 @@
       }
     });
 
-    modelSelect.addEventListener("change", () => {
+    // Nur beim Wechsel durch den Nutzer: compare.js löst „change“ auch selbst aus.
+    function announceModel() {
+      const data = modelSelect.selectedOptions[0]?.dataset;
+      if (!data) {
+        return;
+      }
+      if (data.local === "false") {
+        const provider = data.provider ? ` (${data.provider})` : "";
+        const billing = data.billing ? ` ${data.billing}.` : "";
+        window.MultiGPT.toast(
+          `Externes Modell${provider}: Es können Kosten beim Anbieter entstehen.${billing}`,
+          true,
+        );
+      } else {
+        // Ohne Vorstellung leert das auch einen Kostenhinweis des vorigen Modells.
+        window.MultiGPT.toast(data.intro || "");
+      }
+    }
+
+    modelSelect.addEventListener("change", (event) => {
       if (modelSelect.value) {
         storageSet(STORAGE_KEY, modelSelect.value);
       }
       updateToolSwitches();
       updateReasoningUi();
+      if (event.isTrusted) {
+        announceModel();
+      }
     });
 
     setStreaming(false);

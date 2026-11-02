@@ -82,7 +82,24 @@ window.MultiGPT = (() => {
     }
   }
 
-  return { csrfToken, errorMessage, requestJson, fillTemplate, announce };
+  // Kurzer Hinweis oben rechts, auch im Chat (die Statuszeile dort gehört dem Senden).
+  let toastTimer = null;
+  function toast(text, isWarning = false) {
+    const line = document.getElementById("app-status");
+    if (!line) {
+      return;
+    }
+    window.clearTimeout(toastTimer);
+    line.textContent = text;
+    line.classList.add("is-toast");
+    line.classList.toggle("is-warning", isWarning);
+    toastTimer = window.setTimeout(() => {
+      line.textContent = "";
+      line.classList.remove("is-toast", "is-warning");
+    }, 10000);
+  }
+
+  return { csrfToken, errorMessage, requestJson, fillTemplate, announce, toast };
 })();
 
 // Schriftgröße der Nachrichten: Knöpfe „A−“/„A+“ unter den Antworten

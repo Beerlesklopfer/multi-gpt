@@ -182,6 +182,8 @@ def _serialize_model(m: AIModel, loading: set[int] | frozenset = frozenset()) ->
         "budget_reason": getattr(m, "budget_reason", ""),
         # Abrechnungskonto und Preis, dezent als title in der Auswahl.
         "billing_title": getattr(m, "billing_title", ""),
+        # Kurzvorstellung beim Wechsel auf ein lokales Modell (chat/model_cards.py).
+        "intro": m.intro,
     }
 
 

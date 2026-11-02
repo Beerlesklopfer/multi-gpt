@@ -1320,6 +1320,16 @@ input {
   color: var(--error);
 }
 
+/* Oben rechts, damit der Hinweis nicht über dem Senden-Knopf liegt. */
+.app-status.is-toast {
+  top: 4.5rem;
+  bottom: auto;
+}
+
+.app-status.is-warning {
+  border-color: var(--warning);
+}
+
 /* Online-Anzeige lokaler Anbieter (M4-04) */
 
 .provider-status {

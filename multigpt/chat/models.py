@@ -364,6 +364,12 @@ class AIModel(models.Model):
         help_text="Nur bei Eliezer: Modell auf GPU oder CPU laden. Leer = Eliezer entscheidet "
         "(auto).",
     )
+    intro = models.TextField(
+        "Kurzvorstellung",
+        blank=True,
+        help_text="Erscheint beim Wechsel auf ein lokales Modell im Chat. Von Hand oder per "
+        "Aktion „Vorstellung von Hugging Face holen“.",
+    )
     pinned = models.BooleanField(
         "angeheftet",
         default=False,
