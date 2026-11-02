@@ -573,7 +573,7 @@ def test_system_hint_rules(search_on):
     adult = make_user("adult", "erwachsen")
     assert websearch.system_hint(adult, {}, True) == websearch.HINT_TOOL
     assert websearch.system_hint(adult, {}, False) == websearch.HINT_SWITCH
-    assert websearch.system_hint(adult, {"web_search": True}, False) == ""
+    assert websearch.system_hint(adult, {"web_search": True}, False) == websearch.HINT_PRESEARCHED
     search_on.enabled = False
     search_on.save()
     assert websearch.system_hint(adult, {}, False) == ""
