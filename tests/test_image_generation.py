@@ -2064,6 +2064,8 @@ def test_chat_page_offers_the_mask_editor_for_models_with_masks(
     chat_form = chat_form[: chat_form.index("</form>")]
     assert "<form" not in chat_form[1:]
     assert 'class="chat-input-field"' in chat_form
+    # Prüfung in image_mode.js und im Server; die native blockiert sonst nur den Senden-Knopf.
+    assert "novalidate" in chat_form[: chat_form.index(">")]
     assert 'data-name="GPT Image" data-edit="false" data-size="false"' in page
     assert 'data-variants="4" data-mask="true"' in page  # OpenAI-Modell
     assert 'data-variants="4" data-mask="false"' in page  # Eliezer: lehnt mask ab

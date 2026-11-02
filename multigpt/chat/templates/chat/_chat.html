@@ -139,7 +139,7 @@
     {% elif active_conversation and not can_write %}
       <p class="chat-notice">Du kannst diesen Chat nur lesen.</p>
     {% else %}
-      <form class="chat-input" id="chat-form" aria-label="Nachricht senden"
+      <form class="chat-input" id="chat-form" aria-label="Nachricht senden" novalidate
             data-max-image-bytes="{{ attachment_limits.max_image_bytes }}"
             data-max-document-bytes="{{ attachment_limits.max_document_bytes }}"
             data-max-attachments="{{ attachment_limits.max_per_message }}">
