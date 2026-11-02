@@ -291,10 +291,12 @@
   }
 
   function attachmentsOf(article) {
+    // Ohne Vorlesen (speech.js): Das Audio gehört zur Fassung, nicht zur nächsten Version.
     return Array.from(
       article.querySelectorAll(":scope > .message-attachments > [data-attachment-id]"),
-      fromElement,
-    );
+    )
+      .filter((el) => !el.querySelector("audio"))
+      .map((el) => fromElement(el));
   }
 
   // --- Vorschauleiste (Eingabe und Editor) ---------------------------------------

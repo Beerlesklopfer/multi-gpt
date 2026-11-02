@@ -4586,6 +4586,14 @@ span.message-source-link {
   gap: 0.25rem;
 }
 
+.message-editor-mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: auto;
+}
+
+.message-editor-mic .mic-button,
 .chat-input-toolbar .mic-button {
   align-self: center;
   min-width: 2.25rem;
@@ -4647,6 +4655,7 @@ span.message-source-link {
 }
 
 @media (max-width: 48rem), (pointer: coarse) {
+  .message-editor-mic .mic-button,
   .chat-input-toolbar .mic-button {
     min-width: 2.6rem;
     height: 2.6rem;

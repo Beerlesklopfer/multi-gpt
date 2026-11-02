@@ -663,6 +663,8 @@ def apply_to_history(history_messages, *, vision: bool) -> bool:
         images = []
         documents = []
         for att in message.chat_attachments:
+            if att.kind == Attachment.Kind.AUDIO:
+                continue  # Vorgelesene Fassung der Nachricht, für das Modell nichts Neues
             if att.is_image:
                 data = _read(att) if message.pk in image_ids else None
                 if data is not None:

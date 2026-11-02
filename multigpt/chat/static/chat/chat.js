@@ -1833,9 +1833,10 @@
       if (!editing) {
         return;
       }
-      const { article, box, attachTray } = editing;
+      const { article, box, attachTray, area } = editing;
       editing = null;
       attachTray?.close();
+      window.MultiGPT.speech?.detachMic(area);
       box.remove();
       article.classList.remove("is-editing");
       article.querySelector(".chat-message-content").hidden = false;
@@ -1870,6 +1871,10 @@
       const submit = node("button", "button button-small button-primary", "Senden");
       submit.type = "submit";
       actions.append(cancel, submit);
+      const mic = window.MultiGPT.speech?.attachMic(area);
+      if (mic) {
+        actions.prepend(mic);
+      }
       box.append(label, area, hint, actions);
       content.hidden = true;
       content.after(box);
@@ -1877,7 +1882,7 @@
       // Anhänge der Nachricht: sichtbar, entfernbar, neue hinzufügbar (attachments.js).
       const attachTray =
         window.MultiGPT.attachments?.attachEditor(article, box, area, restoredAttachments) || null;
-      editing = { article, box, attachTray };
+      editing = { article, box, attachTray, area };
       updateMessageActions();
 
       const resize = () => {

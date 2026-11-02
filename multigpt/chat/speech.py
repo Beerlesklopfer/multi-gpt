@@ -93,9 +93,9 @@ MSG_BAD_DURATION = "Ungültige Angabe zur Länge der Aufnahme."
 MSG_BAD_LANGUAGE = "Ungültiger Sprachcode."
 MSG_NOTHING_HEARD = "Es wurde keine Sprache erkannt. Bitte noch einmal aufnehmen."
 MSG_UNSUPPORTED = "Dieser Anbieter kann das nicht."
-MSG_NOT_ANSWER = "Vorlesen gibt es nur für Antworten."
-MSG_NO_TEXT = "Diese Antwort enthält keinen Text zum Vorlesen."
-MSG_NOT_READY = "Die Antwort ist noch nicht fertig."
+MSG_NOT_SPOKEN = "Vorlesen gibt es nur für Fragen und Antworten."
+MSG_NO_TEXT = "Diese Nachricht enthält keinen Text zum Vorlesen."
+MSG_NOT_READY = "Die Nachricht ist noch nicht fertig."
 MSG_FAILED = "Die Sprachfunktion ist fehlgeschlagen. Bitte später erneut versuchen."
 MSG_NOT_FOUND = "Modell nicht gefunden."
 
@@ -394,14 +394,14 @@ def voice_for(user, ai_model: AIModel) -> str:
 
 
 def speak(user, message: Message, *, force: bool = False) -> tuple[Attachment, bool, bool]:
-    """Antwort ``message`` vorlesen. Liefert (Audio-Anhang, neu erzeugt, gekürzt).
+    """Frage oder Antwort ``message`` vorlesen. Liefert (Audio-Anhang, neu erzeugt, gekürzt).
 
     Leserecht auf den Chat prüft der Aufrufer. Gibt es schon eine Audiodatei, wird sie
     zurückgegeben (``force`` erzeugt neu, z. B. mit anderer Stimme)."""
     if not can(user, Action.VOICE):
         raise SpeechError(MSG_NOT_ALLOWED, 403)
-    if message.role != Message.Role.ASSISTANT:
-        raise SpeechError(MSG_NOT_ANSWER)
+    if message.role not in (Message.Role.USER, Message.Role.ASSISTANT):
+        raise SpeechError(MSG_NOT_SPOKEN)
     if message.status not in (Message.Status.COMPLETE, Message.Status.ABORTED):
         raise SpeechError(MSG_NOT_READY, 409)
     if not force:

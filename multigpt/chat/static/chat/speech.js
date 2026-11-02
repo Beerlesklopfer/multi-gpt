@@ -1,12 +1,13 @@
-// MultiGPT – Sprache (M10): Mikrofon im Eingabefeld und Vorlesen unter den Antworten.
+// MultiGPT – Sprache (M10): Mikrofon in Eingabefeld und Editor, Vorlesen unter den Nachrichten.
 //
-// Spracheingabe (M10-01): Der Knopf neben der Büroklammer nimmt mit MediaRecorder auf, ein
+// Spracheingabe (M10-01): Der Knopf neben der Büroklammer (und einer im Editor, siehe
+// MultiGPT.speech.attachMic) nimmt mit MediaRecorder auf, ein
 // zweiter Druck (oder die Höchstlänge) beendet die Aufnahme, Escape verwirft sie. Die Datei geht
-// an POST /api/speech/transcribe/, der erkannte Text landet zum Korrigieren im Eingabefeld – er
+// an POST /api/speech/transcribe/, der erkannte Text landet zum Korrigieren im Feld – er
 // wird nie automatisch gesendet. Das Mikrofon braucht eine sichere Verbindung (https oder
 // localhost); sonst bleibt der Knopf mit einem Hinweis stehen.
 //
-// Vorlesen (M10-02): Der Lautsprecherknopf unter einer Antwort fordert die Audiodatei an
+// Vorlesen (M10-02): Der Lautsprecherknopf unter einer Frage oder Antwort fordert die Audiodatei an
 // (POST /api/messages/<id>/speak/) und spielt sie ab; gibt es sie schon, wird sie nur abgespielt.
 // Mit „Antworten automatisch vorlesen“ (Einstellungen) geschieht das nach jeder neuen Antwort.
 // Beides lässt sich allein mit der Tastatur bedienen (echte Buttons, Statusmeldungen über
@@ -49,6 +50,8 @@
 
   // --- Spracheingabe ---
 
+  // Das Mikrofon in Arbeit: {field, button, timer}. Immer nur eine Aufnahme zugleich.
+  let active = null;
   let recorder = null;
   let stream = null;
   let chunks = [];
@@ -79,7 +82,8 @@
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
   }
 
-  function setMic(state) {
+  function setMic(mic, state) {
+    const { button: micButton, timer: micTimer } = mic;
     const recording = state === "recording";
     micButton.classList.toggle("is-recording", recording);
     micButton.classList.toggle("is-busy", state === "busy");
@@ -108,14 +112,14 @@
 
   function updateTimer() {
     const seconds = (performance.now() - startedAt) / 1000;
-    micTimer.textContent = `${clock(seconds)} / ${clock(maxSeconds)}`;
+    active.timer.textContent = `${clock(seconds)} / ${clock(maxSeconds)}`;
     if (seconds >= maxSeconds) {
       say(`Höchstlänge von ${maxSeconds} Sekunden erreicht – die Aufnahme wird ausgewertet.`);
       stopRecording();
     }
   }
 
-  async function startRecording() {
+  async function startRecording(mic) {
     const reason = unsupportedReason();
     if (reason) {
       say(reason, true);
@@ -145,6 +149,7 @@
     }
     chunks = [];
     cancelled = false;
+    active = mic;
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data && event.data.size > 0) {
         chunks.push(event.data);
@@ -153,7 +158,7 @@
     recorder.addEventListener("stop", onRecorderStop);
     recorder.start();
     startedAt = performance.now();
-    setMic("recording");
+    setMic(mic, "recording");
     updateTimer();
     tick = window.setInterval(updateTimer, 250);
     say("Aufnahme läuft. Zum Beenden den Knopf noch einmal drücken, Escape verwirft sie.");
@@ -176,23 +181,30 @@
     recorder = null;
     releaseStream();
     if (cancelled) {
-      setMic("idle");
+      finishMic();
       say("Aufnahme verworfen.");
       return;
     }
     const blob = new Blob(chunks, { type });
     chunks = [];
     if (blob.size === 0 || seconds < 0.3) {
-      setMic("idle");
+      finishMic();
       say("Die Aufnahme ist leer. Bitte noch einmal versuchen.", true);
       return;
     }
     if (blob.size > maxBytes) {
-      setMic("idle");
+      finishMic();
       say(`Die Aufnahme ist zu groß (höchstens ${Math.round(maxBytes / 1048576)} MB).`, true);
       return;
     }
     await upload(blob, seconds);
+  }
+
+  function finishMic() {
+    if (active) {
+      setMic(active, "idle");
+    }
+    active = null;
   }
 
   function extensionFor(type) {
@@ -207,7 +219,7 @@
 
   async function upload(blob, seconds) {
     busy = true;
-    setMic("busy");
+    setMic(active, "busy");
     say("Text wird erkannt …");
     const body = new FormData();
     body.append("file", blob, `aufnahme.${extensionFor(blob.type)}`);
@@ -223,18 +235,21 @@
         throw new Error(await failure(response));
       }
       const data = await response.json();
-      insertText(String(data.text || ""));
-      say("Text erkannt. Bitte prüfen, bei Bedarf korrigieren und senden.");
+      // Editor inzwischen geschlossen: Der Text hätte kein Ziel mehr.
+      if (active.field.isConnected) {
+        insertText(active.field, String(data.text || ""));
+        say("Text erkannt. Bitte prüfen, bei Bedarf korrigieren und senden.");
+      }
     } catch (error) {
       say(error instanceof TypeError ? "Der Server ist nicht erreichbar." : error.message, true);
     } finally {
       busy = false;
-      setMic("idle");
+      finishMic();
     }
   }
 
   // Text an der Schreibmarke einfügen (ohne Markierung: ans Ende) und das Feld wie nach Eingabe melden.
-  function insertText(text) {
+  function insertText(textarea, text) {
     if (!text || !textarea) {
       return;
     }
@@ -252,36 +267,70 @@
     textarea.focus();
   }
 
-  if (micButton && hasStt) {
-    micButton.hidden = false;
+  function setupMic(mic) {
+    const { button } = mic;
+    button.hidden = false;
     const reason = unsupportedReason();
     if (reason) {
-      micButton.setAttribute("aria-disabled", "true");
-      micButton.title = reason;
+      button.setAttribute("aria-disabled", "true");
+      button.title = reason;
     }
-    micButton.addEventListener("click", () => {
+    button.addEventListener("click", () => {
       if (busy) {
         return;
       }
-      if (micButton.getAttribute("aria-disabled") === "true") {
+      if (button.getAttribute("aria-disabled") === "true") {
         say(unsupportedReason(), true);
       } else if (recorder) {
         stopRecording();
       } else {
-        startRecording();
+        startRecording(mic);
       }
     });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && recorder) {
-        event.preventDefault();
-        cancelRecording();
-      }
-    });
+  }
+
+  if (micButton && hasStt) {
+    setupMic({ field: textarea, button: micButton, timer: micTimer });
+    // In der Fangphase: Im Editor schlösse Escape sonst das Feld statt nur die Aufnahme.
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Escape" && recorder) {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelRecording();
+        }
+      },
+      true,
+    );
     window.addEventListener("pagehide", () => {
       if (recorder) {
         cancelRecording();
       }
     });
+    // Mikrofon für den Editor (chat.js): Kopie des Knopfs aus der Eingabeleiste.
+    window.MultiGPT.speech = {
+      attachMic(field) {
+        const button = micButton.cloneNode(true);
+        button.removeAttribute("id");
+        const timer = document.createElement("span");
+        timer.className = "mic-timer";
+        timer.setAttribute("aria-hidden", "true");
+        const mic = { field, button, timer };
+        setMic(mic, "idle");
+        setupMic(mic);
+        const wrap = document.createElement("span");
+        wrap.className = "message-editor-mic";
+        wrap.append(button, timer);
+        return wrap;
+      },
+      // Editor geschlossen: eine Aufnahme für ihn läuft nicht unsichtbar weiter.
+      detachMic(field) {
+        if (active?.field === field && recorder) {
+          cancelRecording();
+        }
+      },
+    };
   }
 
   // --- Vorlesen ---
@@ -292,7 +341,7 @@
     return ["complete", "aborted"].includes(article.dataset.status);
   }
 
-  // Knöpfe einblenden: nur mit Sprachausgabe-Modell und bei fertigen Antworten mit Nummer.
+  // Knöpfe einblenden: nur mit Sprachausgabe-Modell und bei fertigen Nachrichten mit Nummer.
   function revealSpeakButtons() {
     for (const button of log.querySelectorAll("[data-speak-message]")) {
       const article = button.closest(".chat-message");
@@ -317,7 +366,7 @@
     audio.addEventListener("ended", stopped);
   }
 
-  // Audio-Zeile an die Antwort hängen (wie chat/_attachment_item.html, nur mit DOM-Aufrufen).
+  // Audio-Zeile an die Nachricht hängen (wie chat/_attachment_item.html, nur mit DOM-Aufrufen).
   function appendAudio(article, attachment, button) {
     let list = article.querySelector(":scope > .message-attachments");
     if (!list) {
@@ -336,7 +385,7 @@
     audio.controls = true;
     audio.preload = "none";
     audio.src = attachment.url;
-    audio.setAttribute("aria-label", "Vorgelesene Antwort");
+    audio.setAttribute("aria-label", "Vorgelesene Nachricht");
     const link = document.createElement("a");
     link.className = "attachment-chip attachment-audio-download";
     link.href = attachment.url;
@@ -378,7 +427,7 @@
     }
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    say("Antwort wird vorbereitet …");
+    say("Vorlesen wird vorbereitet …");
     try {
       const response = await fetch(window.MultiGPT.fillTemplate(speakTemplate, id), {
         method: "POST",
@@ -398,8 +447,8 @@
       audio.dataset.wired = "1";
       say(
         data.truncated
-          ? "Die Antwort war lang und wird gekürzt vorgelesen."
-          : "Die Antwort wird vorgelesen.",
+          ? "Die Nachricht war lang und wird gekürzt vorgelesen."
+          : "Die Nachricht wird vorgelesen.",
       );
       await play(audio);
     } catch (error) {

@@ -18,7 +18,7 @@ from django.urls import reverse
 from multigpt.accounts.models import Role, User
 from multigpt.billing import booking
 from multigpt.billing.models import UsageEntry
-from multigpt.chat import capabilities, speech
+from multigpt.chat import capabilities, services, speech
 from multigpt.chat.lmstudio import CatalogModel
 from multigpt.chat.models import (
     AIModel,
@@ -645,10 +645,24 @@ def test_speak_ignores_a_voice_that_belongs_to_another_model(
 
 
 @pytest.mark.django_db
-def test_speak_refuses_non_answers_unfinished_and_empty(client, adult, tts_model, answer, fake):
+def test_speak_reads_prompts_too_but_keeps_them_out_of_the_history(
+    client, adult, tts_model, answer, fake
+):
+    fake()
+    prompt = Message.objects.get(role="user")
+    assert speak(client, prompt).status_code == 200
+    assert prompt.attachments.get().kind == "audio"
+    history = services.build_history(prompt.conversation, leaf=prompt)
+    assert [m.content for m in history] == ["Frage"]
+
+
+@pytest.mark.django_db
+def test_speak_refuses_other_roles_unfinished_and_empty(client, adult, tts_model, answer, fake):
     calls = fake()
-    user_message = Message.objects.get(role="user")
-    assert speak(client, user_message).status_code == 400
+    other = Message.objects.create(
+        conversation=answer.conversation, role="system", content="Regel", parent=answer
+    )
+    assert speak(client, other).status_code == 400
     Message.objects.filter(pk=answer.pk).update(status=Message.Status.ERROR)
     assert speak(client, answer).status_code == 409
     Message.objects.filter(pk=answer.pk).update(
