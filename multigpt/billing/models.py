@@ -32,6 +32,8 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from multigpt.core.fields import EncryptedTextField
+
 # Preise und Beträge mit Bruchteilen von Cent (wie chat.models.MONEY).
 MONEY = {"max_digits": 12, "decimal_places": 6}
 PRICE_HELP = "je 1 Mio. Tokens in der Währung des Kontos; leer = wie Eingabe"
@@ -82,6 +84,21 @@ class BillingAccount(models.Model):
         "Lässt sich nicht mehr ändern, sobald Preise oder Buchungen existieren.",
     )
     note = models.TextField("Notiz", blank=True, help_text="z. B. Vertragsnummer, Abo-Preis.")
+    cost_key = EncryptedTextField(
+        "Admin-Schlüssel für Istkosten",
+        blank=True,
+        default="",
+        help_text="Nur für den Abgleich mit den Istkosten: OpenAI sk-admin-…, Anthropic "
+        "sk-ant-admin…. Nicht der API-Key des Anbieters. Wird verschlüsselt gespeichert.",
+    )
+    balance = models.DecimalField("Guthaben", **MONEY, null=True, blank=True, editable=False)
+    balance_currency = models.CharField(
+        "Währung des Guthabens", max_length=3, blank=True, editable=False
+    )
+    balance_available = models.BooleanField(
+        "Guthaben reicht für Anfragen", null=True, blank=True, editable=False
+    )
+    balance_checked = models.DateTimeField("Guthaben geprüft", null=True, editable=False)
     active = models.BooleanField(
         "aktiv",
         default=True,
@@ -415,6 +432,36 @@ class UsageEntry(models.Model):
     def eur_missing(self) -> bool:
         """Betrag bekannt, aber kein EUR-Betrag (Kurs fehlt)."""
         return self.amount is not None and self.amount_eur is None
+
+
+class CostReport(models.Model):
+    """Istkosten eines Tages (UTC) laut Anbieter neben den eigenen Buchungen, nur Anzeige."""
+
+    account = models.ForeignKey(
+        BillingAccount, on_delete=models.CASCADE, related_name="cost_reports", verbose_name="Konto"
+    )
+    date = models.DateField("Tag (UTC)")
+    amount = models.DecimalField("Istkosten (USD)", **MONEY)
+    booked = models.DecimalField("Gebucht (USD)", **MONEY)
+    unpriced = models.PositiveIntegerField(
+        "Buchungen ohne Preis", default=0, help_text="Erklären eine Differenz nach oben."
+    )
+    fetched = models.DateTimeField("abgerufen", auto_now=True)
+
+    class Meta:
+        ordering = ["-date", "account"]
+        verbose_name = "Istkosten"
+        verbose_name_plural = "Istkosten"
+        constraints = [
+            models.UniqueConstraint(fields=["account", "date"], name="billing_cost_report_day"),
+        ]
+
+    def __str__(self):
+        return f"{self.account} {self.date}"
+
+    @property
+    def difference(self) -> Decimal:
+        return self.amount - self.booked
 
 
 class AccountBudget(models.Model):

@@ -113,6 +113,7 @@ AUTH_USER_MODEL = "accounts.User"
 # täglich, Knopf im Admin)? Standard an (A11); ohne Internet auf false stellen.
 # Kurse lassen sich immer auch von Hand im Admin pflegen.
 BILLING_ECB_FETCH = env.bool("BILLING_ECB_FETCH", default=True)
+BILLING_COST_SYNC = env.bool("BILLING_COST_SYNC", default=True)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

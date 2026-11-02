@@ -29,6 +29,7 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.text import Truncator
 
+from multigpt.billing import provider_costs
 from multigpt.billing.admin import ModelPriceInline
 from multigpt.core.fields import mask_secret
 
@@ -703,7 +704,7 @@ class AIModelAdmin(admin.ModelAdmin):
     list_select_related = ["provider"]
     filter_horizontal = ["mcp_servers"]
     inlines = [ModelPriceInline]  # Preise mit Historie (multigpt/billing)
-    actions = ["detect_capabilities_action", "fetch_intro_action"]
+    actions = ["detect_capabilities_action", "fetch_intro_action", "suggest_prices_action"]
     # Lade-Profil (Modellverwaltung LM Studio): Kontextfenster als Auswahl mit
     # erwartetem Speicher (admin_lmstudio.py, rag/vram_estimate.js).
     form = admin_lmstudio.AIModelForm
@@ -740,6 +741,48 @@ class AIModelAdmin(admin.ModelAdmin):
         if not change and "mcp_access" not in form.changed_data:
             obj.mcp_access = detect.default_mcp_access(obj.provider)
         super().save_model(request, obj, form, change)
+
+    @admin.action(description="Preise aus der Preisliste vorschlagen")
+    def suggest_prices_action(self, request, queryset):
+        """Vorschau; neue Preisversionen entstehen erst nach Bestätigung."""
+        try:
+            catalog = provider_costs.fetch_catalog()
+        except provider_costs.CostError as exc:
+            self.message_user(request, str(exc), messages.ERROR)
+            return None
+        found = [
+            (ai_model, provider_costs.suggest(ai_model, catalog))
+            for ai_model in queryset.select_related("provider__billing_account")
+        ]
+        changes = [s for _, s in found if s is not None and s.changed]
+        unknown = [m.display_name for m, s in found if s is None]
+        if request.POST.get("apply") == "1":
+            note = f"LiteLLM-Preisliste, {timezone.localdate():%d.%m.%Y}"
+            for suggestion in changes:
+                suggestion.apply(note)
+            self.message_user(
+                request, f"{_models(len(changes))}: neue Preisversion.", messages.SUCCESS
+            )
+            return None
+        if not changes:
+            self.message_user(
+                request,
+                "Keine Änderungen."
+                + (f" Nicht in der Preisliste: {', '.join(unknown)}." if unknown else ""),
+                messages.INFO,
+            )
+            return None
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": "Preise vorschlagen",
+            "subtitle": None,
+            "changes": changes,
+            "unknown": unknown,
+            "selected": request.POST.getlist(ACTION_CHECKBOX_NAME),
+            "action": "suggest_prices_action",
+        }
+        return TemplateResponse(request, "admin/chat/aimodel/suggest_prices.html", context)
 
     @admin.action(description="Vorstellung von Hugging Face holen")
     def fetch_intro_action(self, request, queryset):

@@ -18,6 +18,7 @@ import datetime as dt
 import json
 from decimal import Decimal
 
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.http import HttpResponse, HttpResponseRedirect
@@ -26,8 +27,15 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html_join
 
-from . import booking, ecb, usd_switch
-from .models import AccountBudget, BillingAccount, ExchangeRate, ModelPrice, UsageEntry
+from . import booking, ecb, provider_costs, usd_switch
+from .models import (
+    AccountBudget,
+    BillingAccount,
+    CostReport,
+    ExchangeRate,
+    ModelPrice,
+    UsageEntry,
+)
 
 MISSING_RATE_WARNING = (
     "{count} Buchung(en) in USD haben noch keinen EUR-Betrag, weil für ihren Tag kein "
@@ -53,15 +61,72 @@ class AccountBudgetInline(admin.TabularInline):
     )
 
 
+class BillingAccountForm(forms.ModelForm):
+    """Admin-Schlüssel wie der API-Key: nie vorbelegt, leer lassen behält ihn."""
+
+    cost_key = forms.CharField(
+        label=BillingAccount._meta.get_field("cost_key").verbose_name,
+        help_text=BillingAccount._meta.get_field("cost_key").help_text,
+        required=False,
+        strip=True,
+        widget=forms.PasswordInput(render_value=False, attrs={"autocomplete": "new-password"}),
+    )
+    clear_cost_key = forms.BooleanField(label="Admin-Schlüssel entfernen", required=False)
+
+    class Meta:
+        model = BillingAccount
+        fields = "__all__"  # noqa: DJ007
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("clear_cost_key"):
+            cleaned["cost_key"] = ""
+        elif not cleaned.get("cost_key") and self.instance.pk:
+            cleaned["cost_key"] = self.instance.cost_key
+        return cleaned
+
+
 @admin.register(BillingAccount)
 class BillingAccountAdmin(admin.ModelAdmin):
-    list_display = ["name", "kind", "currency", "active", "provider_list"]
+    form = BillingAccountForm
+    list_display = ["name", "kind", "currency", "active", "provider_list", "balance_text"]
     list_filter = ["kind", "currency", "active"]
     search_fields = ["name", "note"]
-    fields = ["name", "kind", "currency", "active", "note", "provider_list"]
-    readonly_fields = ["provider_list"]
+    fields = [
+        "name",
+        "kind",
+        "currency",
+        "active",
+        "note",
+        "provider_list",
+        "balance_text",
+        "cost_key_hint",
+        "cost_key",
+        "clear_cost_key",
+    ]
+    readonly_fields = ["provider_list", "balance_text", "cost_key_hint"]
     inlines = [AccountBudgetInline]
-    actions = ["switch_to_usd_action"]
+    actions = ["switch_to_usd_action", "sync_costs_action"]
+
+    @admin.display(description="Guthaben")
+    def balance_text(self, obj):
+        if obj is None or obj.balance is None:
+            return "–"
+        state = "" if obj.balance_available else " – reicht nicht für Anfragen"
+        return f"{obj.balance} {obj.balance_currency}{state}"
+
+    @admin.display(description="Admin-Schlüssel gespeichert")
+    def cost_key_hint(self, obj):
+        return "ja" if obj is not None and obj.cost_key else "nein"
+
+    @admin.action(description="Guthaben und Istkosten jetzt abrufen")
+    def sync_costs_action(self, request, queryset):
+        for account in queryset:
+            errors = provider_costs.sync_account(account)
+            for error in errors:
+                self.message_user(request, f"{account.name}: {error}", messages.WARNING)
+            if not errors:
+                self.message_user(request, f"{account.name}: abgerufen.", messages.SUCCESS)
 
     @admin.display(description="Anbieter")
     def provider_list(self, obj):
@@ -201,6 +266,28 @@ class ModelPriceAdmin(admin.ModelAdmin):
     @admin.display(description="Einheiten")
     def units_short(self, obj):
         return ", ".join(f"{k}={v}" for k, v in (obj.unit_prices or {}).items()) or "–"
+
+
+@admin.register(CostReport)
+class CostReportAdmin(admin.ModelAdmin):
+    """Nur lesend: füllt der tägliche Abgleich (billing/provider_costs.py)."""
+
+    list_display = ["date", "account", "amount", "booked", "difference_text", "unpriced"]
+    list_filter = ["account"]
+    date_hierarchy = "date"
+
+    @admin.display(description="Differenz (USD)")
+    def difference_text(self, obj):
+        return obj.difference
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ExchangeRate)

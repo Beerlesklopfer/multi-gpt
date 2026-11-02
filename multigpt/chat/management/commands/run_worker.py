@@ -40,6 +40,7 @@ from django.core.management.base import BaseCommand
 from django.db import DatabaseError, close_old_connections, connection
 
 from multigpt.billing import ecb as billing_ecb
+from multigpt.billing import provider_costs
 from multigpt.chat import attachments as chat_attachments
 from multigpt.chat import model_manager, notices
 from multigpt.chat.mcp import status as mcp_status
@@ -227,6 +228,8 @@ class Command(BaseCommand):
                         notices.cleanup()
                         # EZB-Kurs USD (A11): einmal täglich, Fehler nur als Warnung.
                         billing_ecb.auto_fetch()
+                        # Guthaben und Istkosten der Anbieter: einmal täglich.
+                        provider_costs.auto_sync()
                         last_stale_check = time.monotonic()
                     job = jobs.work_once(stop.is_set)
                 except DatabaseError as exc:
