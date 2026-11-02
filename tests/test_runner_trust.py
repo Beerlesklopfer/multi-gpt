@@ -375,7 +375,7 @@ def test_pairing_page_shows_native_setup(client, dist):
     assert "systemd/user/multigpt-runner.service" in page
     assert "Persönliche Konfiguration anlegen" in page
     assert "MGPT_CONFIG_EOF" in page
-    assert "MGPT_EXPOSE_HOST=192.168.24.127" in page
+    assert "MGPT_EXPOSE_HOST=192.168.xxx.yyy" in page
     assert "MGPT_SERVER_KEY_FILE=%h/.config/multigpt-runner/server.pub" in page
     assert "mgpt_runner_server_key" in page  # Ausweg Quadlet: Schlüssel als Secret
     # Der private Schlüssel erscheint nirgends.

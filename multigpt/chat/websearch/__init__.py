@@ -7,6 +7,8 @@ Seitenabruf mit SSRF-Schutz, Aufbereitung als nummeriertes Quellmaterial.
 - ``search(query, cfg)`` -> ``[SearchHit]`` (Plan 8d: ``search(query) -> [Treffer]``)
 - ``fetch_text(url, ...)`` -> ``Page`` (SSRF-geschützt, siehe ``fetch.py``)
 - ``gather(query, cfg)`` -> ``[Material]``: Suche plus Seitentext der besten Treffer
+- ``gather_many(queries, cfg)``: mehrere Suchen zusammengeführt, nur Treffer mit Bezug
+- ``queries``: Suchanfragen aus dem Gespräch ableiten (Vorabsuche)
 - ``fixed_search`` (fester Ablauf, ``tooling.register_context_provider``) und das
   eingebaute Werkzeug ``web_search`` (``tooling.register_builtin``) – beide
   registrieren sich beim Import dieses Pakets
@@ -40,6 +42,7 @@ from multigpt.accounts.permissions import Action, can
 
 from ..providers.base import short_error
 from . import pages
+from . import queries as search_queries
 from .base import FetchError, SearchBackend, SearchError, SearchHit
 from .fetch import Page, fetch_text
 from .searxng import SearxngBackend
@@ -152,7 +155,35 @@ def gather(query: str, cfg=None, *, fetch: bool = True) -> list[Material]:
     cfg = cfg or get_settings()
     if not cfg.is_ready:
         raise SearchError(MSG_DISABLED)
-    hits = search(query, cfg)
+    return _materials(search(query, cfg), cfg, fetch)
+
+
+def gather_many(queries: list[str], cfg=None) -> list[Material]:
+    """Abgeleitete Suchen, abwechselnd zusammengeführt und ohne Doppelte, dann wie ``gather``.
+
+    Treffer ohne Bezug zu den Suchbegriffen fallen weg (``queries.relevant``): lieber keine
+    Quelle als eine falsche. ``SearchError`` nur, wenn alle Suchen scheitern."""
+    cfg = cfg or get_settings()
+    if not cfg.is_ready:
+        raise SearchError(MSG_DISABLED)
+    results, errors = [], []
+    for query in queries:
+        try:
+            results.append(search(query, cfg))
+        except SearchError as exc:
+            errors.append(exc)
+    if errors and not results:
+        raise errors[0]
+    merged: dict[str, SearchHit] = {}
+    for rank in range(max((len(hits) for hits in results), default=0)):
+        for hits in results:
+            if rank < len(hits):
+                merged.setdefault(hits[rank].url, hits[rank])
+    hits = search_queries.relevant(list(merged.values()), queries)
+    return _materials(hits[: cfg.max_results], cfg, True)
+
+
+def _materials(hits: list[SearchHit], cfg, fetch: bool) -> list[Material]:
     count = min(cfg.fetch_pages, len(hits)) if fetch else 0
     fetched: list[Material] = []
     if count:
@@ -204,7 +235,15 @@ def failure_note(reason: str) -> str:
 # oft, sie könnten grundsätzlich nicht im Internet suchen.
 HINT_TOOL = (
     "Dir steht das Werkzeug web_search für aktuelle Informationen zur Verfügung; nutze es, "
-    "wenn die Frage aktuelle oder überprüfbare Fakten braucht."
+    "wenn die Frage aktuelle oder überprüfbare Fakten braucht. Recherchiere gründlich: Rufe "
+    "es mehrfach auf, leite aus den Treffern neue, gezieltere Suchbegriffe ab, verfolge "
+    "Spuren aus den Quellen und suche nach, bis die Lücken geschlossen sind. Melde eine "
+    "Lücke erst, wenn das nichts ergeben hat."
+)
+HINT_PRESEARCHED = (
+    "MultiGPT hat vor dieser Antwort einmal im Web gesucht, das Ergebnis steht im "
+    "Quellmaterial. Du kannst selbst nicht weitersuchen. Reicht das Material nicht, sage das "
+    "offen und nenne die Suchbegriffe, die weiterhelfen würden."
 )
 HINT_SWITCH = (
     "Für diese Antwort ist keine Websuche aktiv. Wenn aktuelle Informationen nötig sind, "
@@ -219,12 +258,12 @@ def system_hint(user, options, tool_offered: bool) -> str:
     - Werkzeug ``web_search`` angeboten: ``HINT_TOOL``.
     - Websuche für ``user`` verfügbar, aber weder Schalter an noch Werkzeug
       (Modell ohne Werkzeuge, Vergleich): ``HINT_SWITCH``.
-    - Schalter an: nichts (das Quellmaterial hat eigene Hinweise).
+    - Schalter an, kein Werkzeug: ``HINT_PRESEARCHED``.
     """
     if tool_offered:
         return HINT_TOOL
     if (options or {}).get("web_search"):
-        return ""
+        return HINT_PRESEARCHED
     return HINT_SWITCH if web_search_available(user) else ""
 
 
@@ -247,7 +286,8 @@ def fixed_search(turn, sources):
         page_entries, page_notes = pages.fixed_entries(turn.query, sources)
     yield "status", {"text": "Suche im Web …", "level": "info"}
     try:
-        materials = gather(turn.query)
+        derived = search_queries.for_turn(turn)
+        materials = gather_many(derived) if derived else gather(turn.query)
     except SearchError as exc:
         reason = short_error(str(exc)).rstrip(".")
         logger.info("Websuche für Antwort %s fehlgeschlagen", sources.message.pk)

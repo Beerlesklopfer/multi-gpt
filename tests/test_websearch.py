@@ -28,6 +28,8 @@ from multigpt.chat.models import (
 from multigpt.chat.providers import registry
 from multigpt.chat.providers.base import Delta, Done, ProviderAdapter, ToolCallEvent, Usage
 from multigpt.chat.websearch import fetch as fetch_mod
+from multigpt.chat.websearch import queries
+from multigpt.chat.websearch.base import SearchHit
 
 pytestmark = pytest.mark.django_db
 
@@ -709,3 +711,86 @@ def test_services_prepare_turn_sets_query(adult, ai_model):
     conversation = Conversation.objects.create(user=adult)
     turn = services.prepare_turn(adult, conversation, ai_model, content=" Frage ")
     assert turn.query == "Frage" and turn.options == {}
+
+
+# --- Abgeleitete Suchanfragen (websearch/queries.py, Chat 59) -------------------------------
+
+
+def _results(*titles):
+    return {
+        "results": [
+            {"title": t, "url": f"https://x.example/{i}", "content": t, "engine": "e"}
+            for i, t in enumerate(titles)
+        ]
+    }
+
+
+def test_follow_up_searches_the_topic_not_the_wording(
+    client, conversation, ai_model, search_settings, scripted
+):
+    """Nachfrage ohne Thema: Das Modell nennt die Suchanfragen, Fremdes fällt weg."""
+    calls = scripted(
+        [
+            answer("Ein Essay über Narzissmus."),
+            answer('["Narzissmus Dependenz Kollusion", "Polyvagal Dependenz"]'),
+            answer("Mit Quellen [1]."),
+        ]
+    )
+    events_of(send(client, conversation))
+    with respx.mock(assert_all_called=False) as router:
+        search = router.get(f"{SEARX}/search").mock(
+            return_value=httpx.Response(
+                200, json=_results("Narzissmus und Dependenz", "Theater in der Schule")
+            )
+        )
+        router.get(url__startswith="https://x.example/").respond(200, text="x")
+        events = events_of(
+            send(client, conversation, content="nimm kritisch Stellung", web_search=True)
+        )
+    assert [c.request.url.params["q"] for c in search.calls] == [
+        "Narzissmus Dependenz Kollusion",
+        "Polyvagal Dependenz",
+    ]
+    assert "<gespraech>" in calls[1]["messages"][0].content
+    assert "Essay über Narzissmus" in calls[1]["messages"][0].content
+    titles = [s["title"] for name, data in events if name == "sources" for s in data["sources"]]
+    assert titles == ["Narzissmus und Dependenz"]
+
+
+def test_unusable_query_answer_falls_back_to_the_wording(
+    client, conversation, ai_model, search_settings, scripted
+):
+    scripted([answer("Erste."), answer("keine Liste"), answer("Zweite.")])
+    events_of(send(client, conversation))
+    with respx.mock() as router:
+        search = mock_web(router)
+        events_of(send(client, conversation, content="Und morgen?", web_search=True))
+    assert search.calls.last.request.url.params["q"] == "Und morgen?"
+
+
+def test_first_message_needs_no_extra_model_call(
+    client, conversation, ai_model, search_settings, scripted
+):
+    calls = scripted([answer("Antwort.")])
+    with respx.mock() as router:
+        search = mock_web(router)
+        events_of(send(client, conversation, web_search=True))
+    assert len(calls) == 1 and search.calls.last.request.url.params["q"] == QUESTION
+
+
+def test_parse_accepts_lists_only():
+    assert queries.parse('Hier: ["a  b", "a b", "c", "d", "e"]') == ["a b", "c", "d"]
+    assert queries.parse("keine Liste") == []
+    assert queries.parse('["a"') == []
+    assert queries.parse('[1, "b"]') == ["b"]
+
+
+def test_relevant_drops_hits_without_any_search_term():
+    good = SearchHit("Narzissten in Beziehungen", "https://a.example/", "")
+    bad = SearchHit("Flugsicherung Frankfurt", "https://b.example/", "CISM")
+    assert queries.relevant([good, bad], ["Narzissmus Dependenz"]) == [good]
+
+
+def test_hint_without_tool_says_it_cannot_search_again():
+    assert websearch.HINT_PRESEARCHED == websearch.system_hint(None, {"web_search": True}, False)
+    assert "mehrfach" in websearch.system_hint(None, {"web_search": True}, True)
