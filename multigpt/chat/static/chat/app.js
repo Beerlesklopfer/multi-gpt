@@ -64,6 +64,32 @@ window.MultiGPT = (() => {
     return template.replace("/0/", `/${encodeURIComponent(id)}/`);
   }
 
+  // Text in eine Statuszeile schreiben; ``closable`` hängt einen Knopf „×“ an, der die
+  // Meldung schließt (Fehler, Warnungen, Hinweise oben rechts).
+  function writeStatus(line, text, closable = false) {
+    line.replaceChildren();
+    if (!text) {
+      return;
+    }
+    const span = document.createElement("span");
+    span.className = "status-text";
+    span.textContent = text;
+    line.append(span);
+    if (closable) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "status-close";
+      button.setAttribute("aria-label", "Meldung schließen");
+      button.title = "Meldung schließen";
+      button.textContent = "×";
+      button.addEventListener("click", () => {
+        line.replaceChildren();
+        line.classList.remove("is-error", "is-warning", "is-toast");
+      });
+      line.append(button);
+    }
+  }
+
   // Meldung über die Statuszeile des Chats, sonst über die globale Zeile.
   let hideTimer = null;
   function announce(text, isError = false) {
@@ -72,12 +98,12 @@ window.MultiGPT = (() => {
     if (!line) {
       return;
     }
-    line.textContent = text;
+    writeStatus(line, text, isError);
     line.classList.toggle("is-error", Boolean(text) && isError);
     if (!chatStatus) {
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(() => {
-        line.textContent = "";
+        writeStatus(line, "");
       }, 8000);
     }
   }
@@ -90,16 +116,16 @@ window.MultiGPT = (() => {
       return;
     }
     window.clearTimeout(toastTimer);
-    line.textContent = text;
+    writeStatus(line, text, true);
     line.classList.add("is-toast");
     line.classList.toggle("is-warning", isWarning);
     toastTimer = window.setTimeout(() => {
-      line.textContent = "";
+      writeStatus(line, "");
       line.classList.remove("is-toast", "is-warning");
     }, 10000);
   }
 
-  return { csrfToken, errorMessage, requestJson, fillTemplate, announce, toast };
+  return { csrfToken, errorMessage, requestJson, fillTemplate, announce, toast, writeStatus };
 })();
 
 // Schriftgröße der Nachrichten: Knöpfe „A−“/„A+“ unter den Antworten

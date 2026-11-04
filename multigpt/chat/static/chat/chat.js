@@ -245,7 +245,13 @@
 
     // level: false/"info", true/"error" oder "warning" (Hinweis, kein Fehler).
     function setStatus(text, level = false) {
-      statusLine.textContent = text;
+      // Fehler und Warnungen lassen sich mit „×“ schließen (app.js, writeStatus).
+      const closable = level === true || level === "error" || level === "warning";
+      if (window.MultiGPT?.writeStatus) {
+        window.MultiGPT.writeStatus(statusLine, text, closable);
+      } else {
+        statusLine.textContent = text;
+      }
       statusLine.classList.toggle("is-error", Boolean(text) && (level === true || level === "error"));
       statusLine.classList.toggle("is-warning", Boolean(text) && level === "warning");
     }
