@@ -63,7 +63,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | C50 | Kosten: Preisvorschläge prüfen und übernehmen (Admin „Preise aus der Preisliste vorschlagen“, Quelle LiteLLM, `gpt-image-2` ohne Vorschlag); Admin-Schlüssel für Istkosten am Konto eintragen; Abfragen gegen OpenAI und Anthropic ungeprüft (nur Mocks), DeepSeek `/user/balance` echt geprüft. |
 | C51 | Nach dem Deploy: Vorstellungen lokaler Modelle holen (`manage.py model_intros`, Übersetzung nur mit Fake-Adapter geprüft); `reader-de` in der Produktion auf Sprachausgabe stellen; DeepSeek-Guthaben 0,00 USD; `gpt-5` läuft am 2026-12-11 aus. |
 | C52 | Runner: `b0eda0b` hat die Vorlage `config.env.example` mit Platzhalter mitgenommen; `test_config_setup_creates_template_once` bleibt rot, bis die Beispieldatei unter `runner-rs` committet ist. Am 2026-11-04 im sauberen Baum nachgeprüft: weiterhin rot. |
-| C53 | Werkzeugauswahl als aufklappbare Liste (Branch `feature/tool-combobox`, noch nicht auf `main`): Zähler, Alle/Keine, Verwalten, Grund statt Ausblenden. Im headless Firefox geprüft; das Suchfeld (ab 6 Servern) und Chrome nicht. Lokale Modelle bekommen ab Werk die MCP-Freigabe „kein“; in der Produktion je Modell im Admin setzen. Dazu: MCP-Import nimmt einen einzelnen Eintrag ohne Namen an. |
+| C53 | Werkzeugauswahl als aufklappbare Liste (auf `main` seit `4d023f7`, volle Suite grün bis auf C52): Zähler, Alle/Keine, Verwalten, Grund statt Ausblenden. Im headless Firefox geprüft; das Suchfeld (ab 6 Servern) und Chrome nicht. Lokale Modelle bekommen ab Werk die MCP-Freigabe „kein“; in der Produktion je Modell im Admin setzen. Dazu: MCP-Import nimmt einen einzelnen Eintrag ohne Namen an. |
 
 ## D. Geplante Meilensteine
 
