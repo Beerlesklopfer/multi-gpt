@@ -6,8 +6,10 @@ n8n usw.::
     {"mcpServers": {"n8n-mcp": {"type": "http", "url": "https://…/mcp-server/http",
                                 "headers": {"Authorization": "Bearer …"}}}}
 
-ebenso ``{"servers": {…}}`` (VS Code) und die Server-Liste ohne Hülle
-(``{"name": {…}}``). Je Eintrag:
+ebenso ``{"servers": {…}}`` (VS Code), die Server-Liste ohne Hülle
+(``{"name": {…}}``) und ein einzelner Eintrag ohne Namen (``{"type": "http",
+"url": …}``); der heißt dann wie der erste Teil des Rechnernamens bzw. das
+Programm. Je Eintrag:
 
 - ``type`` ``http``/``streamable-http``/``streamableHttp`` → Transport HTTP;
   ``url`` (bzw. ``serverUrl``), ``headers`` → Zugangsdaten ``{"headers": …}``.
@@ -31,6 +33,8 @@ import json
 import re
 import shlex
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
@@ -136,6 +140,20 @@ def _entry(name: str, spec) -> ImportEntry:
     return entry
 
 
+def _single_entry(data: dict) -> bool:
+    """Ein Eintrag ohne Namen: Felder eines Servers statt einer Server-Liste."""
+    return any(isinstance(data.get(key), str) for key in ("url", "serverUrl", "command"))
+
+
+def _entry_name(spec: dict) -> str:
+    url = spec.get("url") or spec.get("serverUrl")
+    if isinstance(url, str) and url.strip():
+        host = urlsplit(url.strip()).hostname or ""
+        return host.split(".")[0] or "mcp"
+    command = (spec.get("command") or "").split()
+    return PurePosixPath(command[0]).name if command else "mcp"
+
+
 def parse_config(text: str) -> list[ImportEntry]:
     """JSON-Text in geprüfte Einträge zerlegen; ``ValueError`` bei Formfehlern."""
     try:
@@ -144,6 +162,8 @@ def parse_config(text: str) -> list[ImportEntry]:
         raise ValueError("Kein gültiges JSON (Kommas und Anführungszeichen prüfen).") from None
     if not isinstance(data, dict):
         raise ValueError("Erwartet wird ein JSON-Objekt mit „mcpServers“.")
+    if _single_entry(data):
+        data = {_entry_name(data): data}
     servers = data.get("mcpServers", data.get("servers", data))
     if not isinstance(servers, dict) or not servers:
         raise ValueError("Keine MCP-Server gefunden (erwartet „mcpServers“: {…}).")

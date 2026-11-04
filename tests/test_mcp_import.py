@@ -94,6 +94,30 @@ def test_parse_variants(wrapper, spec):
 
 
 @pytest.mark.parametrize(
+    ("spec", "name", "transport"),
+    [
+        (
+            {
+                "headers": {"Authorization": f"Bearer {TOKEN}"},
+                "type": "http",
+                "url": "https://david.intranet.bernau.family:8484/mcp",
+            },
+            "david",
+            "http",
+        ),
+        ({"command": "/usr/bin/fs-mcp --root /srv"}, "fs-mcp", "stdio"),
+    ],
+)
+def test_parse_single_entry_without_name(spec, name, transport):
+    (entry,) = parse_config(json.dumps(spec))
+    assert (entry.name, entry.transport, entry.error) == (name, transport, "")
+    if transport == "http":
+        assert parse_credentials(entry.credentials, "http").headers == {
+            "Authorization": f"Bearer {TOKEN}"
+        }
+
+
+@pytest.mark.parametrize(
     ("spec", "fragment"),
     [
         ({"type": "sse", "url": URL}, "SSE"),
