@@ -801,15 +801,18 @@
       updateMessageActions();
     }
 
-    // Senden nur mit Text oder Anhang; Stoppen geht immer, solange etwas läuft.
+    // Senden nur mit Text, Anhang oder laufender Aufnahme; Stoppen geht immer, solange etwas läuft.
     function updateSendButton() {
       if (!sendButton) {
         return;
       }
       const hasInput =
-        Boolean(textarea?.value.trim()) || (window.MultiGPT.attachments?.count() ?? 0) > 0;
+        Boolean(textarea?.value.trim()) ||
+        (window.MultiGPT.attachments?.count() ?? 0) > 0 ||
+        Boolean(window.MultiGPT.speech?.isActive(textarea));
       sendButton.disabled = !controller && (!modelsReady || !hasInput);
     }
+    document.addEventListener("multigpt:mic", updateSendButton);
 
     function returnFocus() {
       const active = document.activeElement;
@@ -1669,6 +1672,13 @@
       if (controller || !modelsReady) {
         return;
       }
+      // Senden beendet eine laufende Aufnahme; ihr Text geht mit (speech.js).
+      if (window.MultiGPT.speech?.isActive(textarea)) {
+        await window.MultiGPT.speech.finish(textarea);
+        if (controller) {
+          return;
+        }
+      }
       const attachments = window.MultiGPT.attachments;
       if (!textarea.value.trim() && !attachments?.count()) {
         textarea.focus();
@@ -2044,6 +2054,9 @@
       }
       if (!modelsReady) {
         return;
+      }
+      if (window.MultiGPT.speech?.isActive(area)) {
+        await window.MultiGPT.speech.finish(area);
       }
       const box = editing?.box;
       const attachTray = editing?.attachTray;

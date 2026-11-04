@@ -4616,10 +4616,16 @@ span.message-source-link {
 
 /* Sprache (M10, speech.js) */
 
-.chat-input-toolbar-left {
+.chat-input-toolbar-left,
+.chat-input-toolbar-right {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+/* Rechts: Zeitanzeige, Mikrofon, Senden. */
+.chat-input-toolbar-right {
+  margin-left: auto;
 }
 
 .message-editor-mic {

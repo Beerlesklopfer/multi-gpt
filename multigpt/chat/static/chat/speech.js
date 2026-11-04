@@ -60,6 +60,9 @@
   let tick = null;
   let cancelled = false;
   let busy = false;
+  // Erfüllt, sobald die laufende Aufnahme samt Erkennung fertig ist (finish, für Senden).
+  let settled = null;
+  let settle = null;
 
   function unsupportedReason() {
     if (!window.isSecureContext) {
@@ -98,6 +101,8 @@
     micButton.setAttribute("aria-label", label);
     micButton.title = recording ? "Aufnahme beenden (Escape)" : "Spracheingabe";
     micTimer.hidden = !recording;
+    // chat.js gibt Senden während der Aufnahme frei (auch bei leerem Feld).
+    document.dispatchEvent(new CustomEvent("multigpt:mic", { detail: { field: mic.field, state } }));
   }
 
   function releaseStream() {
@@ -151,6 +156,9 @@
     chunks = [];
     cancelled = false;
     active = mic;
+    settled = new Promise((resolve) => {
+      settle = resolve;
+    });
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data && event.data.size > 0) {
         chunks.push(event.data);
@@ -243,10 +251,16 @@
   }
 
   function finishMic() {
-    if (active) {
-      setMic(active, "idle");
-    }
+    const mic = active;
     active = null;
+    if (mic) {
+      setMic(mic, "idle");
+    }
+    if (settle) {
+      settle();
+    }
+    settle = null;
+    settled = null;
   }
 
   function extensionFor(type) {
@@ -355,6 +369,19 @@
     });
     // Mikrofon für den Editor (chat.js): Kopie des Knopfs aus der Eingabeleiste.
     window.MultiGPT.speech = {
+      // Läuft eine Aufnahme (oder ihre Erkennung) für dieses Feld?
+      isActive(field) {
+        return Boolean(active && active.field === field);
+      },
+      // Senden: laufende Aufnahme beenden und warten, bis der erkannte Text im Feld steht.
+      finish(field) {
+        if (!active || active.field !== field) {
+          return Promise.resolve();
+        }
+        const done = settled || Promise.resolve();
+        stopRecording();
+        return done;
+      },
       attachMic(field) {
         const button = micButton.cloneNode(true);
         button.removeAttribute("id");
