@@ -285,12 +285,19 @@ def load_parallel(ai_model: AIModel) -> int | None:
     gesehen als „Verlauf passt nicht in den Kontext“ mit Werkzeugbeschreibungen. Mehr
     gleichzeitige Anfragen stellt der Verwalter am Modell ein und vergrößert dazu den
     Kontext entsprechend."""
-    if ai_model.capability == AIModel.Capability.EMBEDDING:
+    if ai_model.capability in (AIModel.Capability.EMBEDDING, *SPEECH_CAPABILITIES):
         return None
     return ai_model.load_parallel or 1
 
 
+# Sprachmodelle (Whisper, Sprachausgabe) haben kein Kontextfenster und keine parallelen
+# Plätze: beim Laden weder ``context_length`` noch ``parallel`` senden.
+SPEECH_CAPABILITIES = (AIModel.Capability.STT, AIModel.Capability.TTS)
+
+
 def profile_context(ai_model: AIModel, max_context: int | None) -> int | None:
+    if ai_model.capability in SPEECH_CAPABILITIES:
+        return None
     value = ai_model.load_context_length or vram.default_context(ai_model.capability, max_context)
     if value and max_context:
         value = min(value, max_context)

@@ -170,6 +170,12 @@ MSG_VOICE_REQUIRED = (
     "Dieses Sprachmodell braucht eine Stimme. Bitte in den Einstellungen eine Stimme wählen."
 )
 MSG_BAD_AUDIO = "Der Anbieter kann die Aufnahme nicht lesen (kein Audio oder unbekanntes Format)."
+# 404 ohne ``model_not_found``: Eliezer sagt „Endpoint not found“ (Basis-URL ohne /v1)
+# bzw. „Model is not allowed“ (Modell-ID unbekannt oder für den Key nicht freigegeben).
+MSG_AUDIO_NO_ENDPOINT = (
+    "Der Anbieter kennt die Adresse für die {what} nicht – bitte die Basis-URL des "
+    "Anbieters prüfen (meist mit /v1)."
+)
 # Modelle, die ``verbose_json`` (Dauer, Segmente) kennen; GPT-4o-Transcribe nur ``json``.
 _VERBOSE_TRANSCRIPTION = re.compile(r"(^|/)whisper")
 _SPEECH_TYPES = {
@@ -633,6 +639,13 @@ class OpenAICompatAdapter(ProviderAdapter):
             status = response.status_code
             if status == 404 and detail.endswith("/model_not_found"):
                 message = _model_not_found(model_id)
+            elif status == 404:
+                # Nur zum Einordnen gelesen, nie angezeigt (Cloud-Texte können Keys enthalten).
+                text = _provider_text(response.content, 300).lower()
+                if "endpoint" in text:
+                    message = MSG_AUDIO_NO_ENDPOINT.format(what=what)
+                elif "model" in text:
+                    message = _model_not_found(model_id)
             elif status == 413:
                 message = MSG_AUDIO_TOO_LARGE if "transcriptions" in path else MSG_TEXT_TOO_LONG
             elif status == 400:

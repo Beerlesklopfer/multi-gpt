@@ -38,6 +38,7 @@ from multigpt.accounts import usage
 from multigpt.accounts.permissions import Action, can, model_permitted
 
 from . import attachments as chat_attachments
+from . import model_manager
 from . import status as provider_status
 from .models import AIModel, Attachment, ChatSettings, Message, Provider, SpeechPreference
 from .providers import registry
@@ -274,9 +275,13 @@ def transcribe(user, upload, duration, language=None) -> dict:
     adapter = registry.get_adapter(ai_model.provider)
     data = upload.read()
     try:
-        result = adapter.transcribe(
-            ai_model.model_id, ("aufnahme" + extension, mime_type, data), language=code
-        )
+        # Lokale Modelle (Eliezer) vorher laden und solange belegen, wie bei Embeddings/OCR.
+        with model_manager.use(ai_model, interactive=True):
+            result = adapter.transcribe(
+                ai_model.model_id, ("aufnahme" + extension, mime_type, data), language=code
+            )
+    except model_manager.ModelUnavailable as exc:
+        raise SpeechError(exc.message, 503) from None
     except NotImplementedError:
         raise SpeechError(MSG_UNSUPPORTED, 409) from None
     except ProviderError as exc:
@@ -417,7 +422,10 @@ def speak(user, message: Message, *, force: bool = False) -> tuple[Attachment, b
         raise SpeechError(reason, reason_status(reason))
     adapter = registry.get_adapter(ai_model.provider)
     try:
-        result = adapter.speak(ai_model.model_id, text, voice_for(user, ai_model) or None)
+        with model_manager.use(ai_model, interactive=True):
+            result = adapter.speak(ai_model.model_id, text, voice_for(user, ai_model) or None)
+    except model_manager.ModelUnavailable as exc:
+        raise SpeechError(exc.message, 503) from None
     except NotImplementedError:
         raise SpeechError(MSG_UNSUPPORTED, 409) from None
     except ProviderError as exc:

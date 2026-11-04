@@ -146,6 +146,23 @@ def test_transcribe_errors_are_german_and_hide_the_provider_text(status, text, c
     assert KEY not in str(info.value) and KEY not in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("message", "text"),
+    [
+        ("Endpoint not found", "Basis-URL des Anbieters prüfen"),
+        ("Model is not allowed", "„whisper-de“ ist beim Anbieter nicht (mehr) verfügbar"),
+    ],
+)
+def test_transcribe_404_tells_address_from_model(message, text):
+    body = {"error": {"type": "not_found", "message": message}}
+    with respx.mock() as router:
+        router.post(f"{ELIEZER}/v1/audio/transcriptions").respond(404, json=body)
+        with pytest.raises(ProviderError) as info:
+            eliezer_adapter().transcribe("whisper-de", ("a.wav", "audio/wav", b"X"))
+    assert text in str(info.value)
+    assert message not in str(info.value)
+
+
 def test_transcribe_network_error_and_empty_input():
     with respx.mock() as router:
         router.post(f"{OPENAI}/audio/transcriptions").mock(side_effect=httpx.ConnectError("x"))
@@ -798,3 +815,65 @@ def test_book_service_has_no_message_and_uses_the_provider_account(db, provider,
     entry = booking.book_service(adult, stt_model, {"audio_minute": 2})
     assert entry.kind == UsageEntry.Kind.TOOL and entry.units == {"audio_minute": 2}
     assert entry.account == booking.account_of(provider)
+
+
+# --- Modellverwaltung: Sprachmodelle vorher laden -------------------------------------
+
+
+@pytest.fixture
+def uses(monkeypatch):
+    """Aufrufe von ``model_manager.use``; ``fail`` lässt das Laden scheitern."""
+    from contextlib import contextmanager
+
+    from multigpt.chat import model_manager
+
+    calls = []
+
+    def install(fail=False):
+        @contextmanager
+        def fake_use(ai_model, *, interactive=False, on_status=None):
+            calls.append((ai_model.model_id, interactive))
+            if fail:
+                raise model_manager.ModelUnavailable("„whisper-1“ ist nicht geladen.")
+            yield
+
+        monkeypatch.setattr(model_manager, "use", fake_use)
+        return calls
+
+    return install
+
+
+@pytest.mark.django_db
+def test_transcribe_loads_the_model_first(client, adult, stt_model, fake, uses):
+    loads = uses()
+    calls = fake()
+    assert transcribe(client, audio_upload()).status_code == 200
+    assert loads == [("whisper-1", True)]
+    assert calls and calls[0][0] == "transcribe"
+
+
+@pytest.mark.django_db
+def test_transcribe_reports_a_model_that_cannot_be_loaded(client, adult, stt_model, fake, uses):
+    uses(fail=True)
+    calls = fake()
+    response = transcribe(client, audio_upload())
+    assert response.status_code == 503
+    assert "nicht geladen" in response.json()["error"]
+    assert calls == []
+
+
+@pytest.mark.django_db
+def test_speak_loads_the_model_first(client, answer, tts_model, fake, uses):
+    loads = uses()
+    fake()
+    assert speak(client, answer).status_code == 200
+    assert loads == [("tts-1", True)]
+
+
+@pytest.mark.django_db
+def test_speech_models_load_without_context_and_parallel(stt_model, tts_model):
+    from multigpt.chat import model_manager
+
+    for ai_model in (stt_model, tts_model):
+        assert model_manager.profile_context(ai_model, 448) is None
+        assert model_manager.load_parallel(ai_model) is None
