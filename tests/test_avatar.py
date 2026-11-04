@@ -106,10 +106,10 @@ def test_menu_entries_follow_rights(client):
 
 
 def test_version_shown_in_sidebar_login_and_admin(client):
-    from multigpt.version import app_version
+    from multigpt.version import app_version, version_label
 
-    version = app_version()
-    assert version and version != "0"
+    assert app_version() and app_version() != "0"
+    version = version_label()  # mit Git-Stand, z. B. „0.4.0 (d9face2)“
     login = client.get(reverse("login")).content.decode()
     assert f"MultiGPT {version}" in login
     admin = make_user("jo", role_key="admin", is_staff=True, is_superuser=True)

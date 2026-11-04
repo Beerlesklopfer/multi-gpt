@@ -71,3 +71,4 @@ runner-rs/target/
 # Temporäre Wurzeln der Paket-Tests
 tests/packaging/root.*
 tests/packaging/last-good-root
+multigpt/BUILD

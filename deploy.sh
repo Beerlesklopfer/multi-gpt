@@ -124,6 +124,12 @@ fi
 
 step "Stand vermerken ($VENV/DEPLOYED)"
 target "printf '%s\n' '$STAMP' | $SUDO tee $VENV/DEPLOYED >/dev/null"
+# Kurzer Stand für Oberfläche und Admin („0.4.0 (d9face2)“, multigpt/version.py).
+if [ "$REV" != unbekannt ]; then
+    BUILD=$REV
+    [ -z "$DIRTY" ] || BUILD="$REV-dirty"
+    target "printf '%s\n' '$BUILD' | $SUDO tee $SITE/multigpt/BUILD >/dev/null"
+fi
 
 if [ "$RESTART" = 1 ]; then
     step "Dienste neu starten ($UNITS)"

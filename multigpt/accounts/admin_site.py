@@ -18,7 +18,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
-from multigpt.version import app_version
+from multigpt.version import version_label
 
 from .permissions import Action, can
 
@@ -31,7 +31,7 @@ class FamilyAdminSite(admin.AdminSite):
     def each_context(self, request):
         # Version im Kopf der Verwaltung (gleiche Quelle wie Menü und MCP-Server).
         context = super().each_context(request)
-        context["site_header"] = f"{self.site_header} {app_version()}"
+        context["site_header"] = f"{self.site_header} {version_label()}"
         return context
 
     def has_permission(self, request):

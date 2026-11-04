@@ -32,6 +32,10 @@ override_dh_virtualenv:
 	    STATIC_ROOT=$(VENV_BUILD)/static \
 	    $(VENV_BUILD)/bin/python -I -B -m django collectstatic --noinput --verbosity 1
 	echo "venv:Depends=python$(PY_VERSION)" >> debian/multi-gpt.substvars
+	# Kurzer Git-Stand für Oberfläche und Admin (multigpt/version.py); ohne git leer.
+	rev=$$(git -c safe.directory='*' -C $(CURDIR) rev-parse --short HEAD 2>/dev/null) && \
+	    [ -n "$$rev" ] && \
+	    printf '%s\n' "$$rev" > $$(ls -d $(VENV_BUILD)/lib/python*/site-packages/multigpt)/BUILD || true
 
 # Die Tests brauchen eine laufende PostgreSQL-Datenbank und laufen deshalb
 # nicht im Paketbau, sondern über `make test`. (Die Sequenz python-virtualenv

@@ -162,6 +162,12 @@ end
 
 step "Stand vermerken ($venv/DEPLOYED)"
 target "printf '%s\n' '$stamp' | $sudo tee $venv/DEPLOYED >/dev/null"
+# Kurzer Stand für Oberfläche und Admin („0.4.0 (d9face2)“, multigpt/version.py).
+if test "$rev" != unbekannt
+    set -l build $rev
+    test -z "$dirty"; or set build "$rev-dirty"
+    target "printf '%s\n' '$build' | $sudo tee $site/multigpt/BUILD >/dev/null"
+end
 
 if test $restart = 1
     step "Dienste neu starten ($units)"

@@ -7,7 +7,7 @@ Seite die Seitenleiste wirklich zeigt (nicht bei Login, JSON, Admin).
 
 from django import template
 
-from multigpt.version import app_version
+from multigpt.version import version_label
 
 from .. import projects, sharing
 from ..mcp import status as mcp_status
@@ -63,7 +63,7 @@ def chat_sidebar(context):
         # „Mit mir geteilt“ (sharing.py): Chats anderer Konten, gleiche Suche/Archiv.
         "shared_conversations": sharing.shared_with(request.user, query, show_archived),
         "active_conversation": context.get("active_conversation"),
-        "app_version": app_version(),  # Fußzeile der Seitenleiste
+        "app_version": version_label(),  # Fußzeile der Seitenleiste
     }
 
 
