@@ -990,8 +990,35 @@
       return modelSelect?.selectedOptions[0]?.dataset.tools === "true";
     }
 
-    // Nur sichtbar, wenn es Server gibt und das gewählte Modell Werkzeuge kann;
-    // davon nur die für das Modell freigegebenen Server (Prüfung auf dem Server).
+    const toolPickerButton = document.getElementById("tool-picker-button");
+    const toolPickerPanel = document.getElementById("tool-picker-panel");
+    const toolPickerFilter = document.getElementById("tool-picker-filter");
+    const toolPickerCount = document.getElementById("tool-picker-count");
+    // Ab so vielen freigegebenen Servern bekommt die Liste ein Suchfeld.
+    const TOOL_FILTER_FROM = 6;
+
+    // Freigegebene Schalter (label nicht hidden); runner_chat.js und input_options.js
+    // lesen dieselben Elemente.
+    function visibleToolInputs() {
+      return Array.from(toolSwitchList.querySelectorAll("label:not([hidden]) input"));
+    }
+
+    function updateToolCount() {
+      if (!toolPickerCount) return;
+      const inputs = visibleToolInputs();
+      const usable = modelSupportsTools() && inputs.length > 0;
+      const on = inputs.filter((i) => i.checked).length;
+      toolPickerCount.textContent = usable ? `${on}/${inputs.length}` : "–";
+      toolPickerButton.classList.toggle("is-active", usable && on > 0);
+      const names = inputs.filter((i) => i.checked).map((i) => i.nextElementSibling?.textContent);
+      toolPickerButton.title = !usable
+        ? document.getElementById("tool-servers-hint")?.textContent || "Keine Werkzeuge"
+        : names.length ? `Werkzeuge: ${names.join(", ")}` : "Keine Werkzeuge eingeschaltet";
+    }
+
+    // Sichtbar, sobald das Konto MCP-Server nutzen darf. In der Liste nur die für
+    // das Modell freigegebenen Server (Prüfung auf dem Server); kann das Modell
+    // keine Werkzeuge oder ist nichts freigegeben, nennt die Liste den Grund.
     function updateToolSwitches() {
       const tools = modelSupportsTools();
       if (toolFieldset) {
@@ -1005,11 +1032,33 @@
           if (widget) widget.hidden = !ok;
           shown += ok ? 1 : 0;
         }
-        toolFieldset.hidden = !mcpServers.length || !tools;
+        const blocked = mcpServers.length - shown;
+        toolFieldset.hidden = !mcpServers.length;
+        toolSwitchList.hidden = !tools;
+        const usable = tools && shown > 0;
+        toolFieldset.classList.toggle("is-unavailable", !usable);
         const hint = document.getElementById("tool-servers-hint");
         if (hint) {
-          hint.hidden = shown > 0;
+          hint.textContent = !tools
+            ? "Dieses Modell kann keine Werkzeuge nutzen."
+            : !shown
+              ? "Für dieses Modell sind keine MCP-Werkzeuge freigegeben."
+              : blocked
+                ? `${blocked} weitere${blocked === 1 ? "r Server ist" : " Server sind"} für dieses Modell nicht freigegeben.`
+                : "";
+          hint.hidden = !hint.textContent;
         }
+        for (const id of ["tool-picker-all", "tool-picker-none"]) {
+          document.getElementById(id)?.toggleAttribute("hidden", !usable);
+        }
+        if (toolPickerFilter) {
+          toolPickerFilter.hidden = !usable || shown < TOOL_FILTER_FROM;
+          if (toolPickerFilter.hidden && toolPickerFilter.value) {
+            toolPickerFilter.value = "";
+          }
+        }
+        filterTools();
+        updateToolCount();
       }
       const searchHint = document.getElementById("web-search-model-hint");
       if (searchHint) {
@@ -1100,9 +1149,81 @@
       updateToolSwitches();
     }
 
+    // Suche in der Liste: blendet nur aus (Klasse), ``hidden`` bleibt der Freigabe vorbehalten.
+    function filterTools() {
+      const query = (toolPickerFilter?.value || "").trim().toLocaleLowerCase("de");
+      for (const widget of toolSwitchList.querySelectorAll(".tool-server-widget")) {
+        const name = widget.querySelector(".tool-switch span")?.textContent.toLocaleLowerCase("de") || "";
+        widget.classList.toggle("is-filtered", Boolean(query) && !name.includes(query));
+      }
+    }
+
+    function toolPickerOpen() {
+      return Boolean(toolPickerPanel && !toolPickerPanel.hidden);
+    }
+
+    function setToolPicker(open, focusButton = false) {
+      if (!toolPickerPanel) return;
+      toolPickerPanel.hidden = !open;
+      toolPickerButton.setAttribute("aria-expanded", String(open));
+      if (open) {
+        const first = !toolPickerFilter.hidden
+          ? toolPickerFilter
+          : toolSwitchList.querySelector("label:not([hidden]) input:not(:disabled)") ||
+            toolPickerPanel.querySelector(".tool-picker-actions button:not([hidden]), .tool-picker-actions a");
+        first?.focus({ preventScroll: true });
+      } else if (focusButton) {
+        toolPickerButton.focus({ preventScroll: true });
+      }
+    }
+
+    if (toolPickerButton) {
+      toolPickerButton.addEventListener("click", () => setToolPicker(!toolPickerOpen()));
+      // Escape schließt zuerst die Liste (vor Stop im Dokument-Listener).
+      toolFieldset.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && toolPickerOpen()) {
+          event.preventDefault();
+          setToolPicker(false, true);
+        }
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (toolPickerOpen() && !toolFieldset.contains(event.target)) {
+          setToolPicker(false);
+        }
+      });
+      toolFieldset.addEventListener("focusout", (event) => {
+        if (toolPickerOpen() && event.relatedTarget && !toolFieldset.contains(event.relatedTarget)) {
+          setToolPicker(false);
+        }
+      });
+      toolPickerFilter.addEventListener("input", filterTools);
+      toolPickerFilter.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault(); // nicht das Formular absenden
+        }
+      });
+      toolSwitchList.addEventListener("change", updateToolCount);
+      // runner_chat.js setzt seinen Schalter nach dem Neuaufbau ohne change-Ereignis.
+      new MutationObserver(() => setTimeout(updateToolCount)).observe(toolSwitchList, { childList: true });
+      // Alle/Keine wirkt auf die angezeigten Server; offline und Runner bleiben unberührt.
+      for (const [id, value] of [["tool-picker-all", true], ["tool-picker-none", false]]) {
+        document.getElementById(id)?.addEventListener("click", () => {
+          for (const input of visibleToolInputs()) {
+            if (input.disabled || input.closest(".tool-server-widget")?.classList.contains("is-filtered")) {
+              continue;
+            }
+            if (input.checked !== value) {
+              input.checked = value;
+              input.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          }
+        });
+      }
+    }
+
     // Auswahl für den Request; null = Schlüssel weglassen (Voreinstellung des Servers).
     function selectedMcpServers() {
-      if (!toolFieldset || toolFieldset.hidden) {
+      if (!toolFieldset || toolFieldset.hidden || !modelSupportsTools()) {
         return null;
       }
       return Array.from(

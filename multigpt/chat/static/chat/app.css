@@ -4661,3 +4661,134 @@ span.message-source-link {
     height: 2.6rem;
   }
 }
+
+/* Werkzeugauswahl (MCP-Server) als aufklappbare Liste; chat.js steuert Inhalt und Zustand. */
+.tool-picker {
+  position: relative;
+}
+
+.tool-picker-button {
+  font: inherit;
+  color: var(--text);
+}
+
+.tool-picker-button.is-active {
+  border-color: var(--accent);
+}
+
+.tool-picker-button .icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--text-muted);
+}
+
+.tool-picker-button.is-active .icon {
+  color: var(--accent);
+}
+
+.tool-picker.is-unavailable .tool-picker-button {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.tool-picker-count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tool-picker-caret {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.tool-picker-panel {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: max-content;
+  min-width: 16rem;
+  max-width: min(24rem, calc(100vw - 2rem));
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+}
+
+.tool-picker-panel[hidden] {
+  display: none;
+}
+
+.tool-picker-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.tool-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.tool-picker-actions button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-picker-actions button[hidden] {
+  display: none;
+}
+
+.tool-picker-manage {
+  margin-left: auto;
+}
+
+.tool-picker-panel .chat-input-tools-list {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  max-height: min(18rem, 50vh);
+  overflow-y: auto;
+}
+
+.tool-picker-panel .chat-input-tools-list[hidden] {
+  display: none;
+}
+
+.tool-picker-panel .tool-server-widget {
+  display: flex;
+  border-radius: var(--radius);
+}
+
+.tool-picker-panel .tool-server-widget[hidden],
+.tool-picker-panel .tool-server-widget.is-filtered {
+  display: none;
+}
+
+.tool-picker-panel .tool-server-widget > .tool-switch {
+  flex: 1;
+}
+
+.tool-picker-panel .chat-input-tools-hint {
+  margin: 0;
+}

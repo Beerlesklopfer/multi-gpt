@@ -198,6 +198,17 @@ def test_composer_has_tool_switch_container_and_no_inline_js(anna_client):
     assert not re.search(r"<[^>]*\son[a-z]+=", html)
 
 
+def test_composer_tool_picker_manage_link_only_for_staff(anna_client, anna):
+    manage = reverse("admin:chat_mcpserver_changelist")
+    html = anna_client.get(reverse("chat:index")).content.decode()
+    assert 'id="tool-picker-button"' in html
+    assert 'aria-controls="tool-picker-panel"' in html
+    assert manage not in html
+    anna.is_staff = True
+    anna.save(update_fields=["is_staff"])
+    assert manage in anna_client.get(reverse("chat:index")).content.decode()
+
+
 def test_tool_page_has_no_inline_js(anna_client, anna, ai_model, server):
     conv = Conversation.objects.create(user=anna)
     msg = make_answer(conv, ai_model, status=Message.Status.AWAITING_CONFIRMATION, content="")

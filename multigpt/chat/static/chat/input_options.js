@@ -74,8 +74,8 @@
         parts.push("Websuche");
       }
       const tools = document.getElementById("tool-servers");
-      if (tools && !tools.hidden && !comparing()) {
-        const names = checkedNames("#tool-servers-list input:checked");
+      if (tools && !tools.hidden && !tools.classList.contains("is-unavailable") && !comparing()) {
+        const names = checkedNames("#tool-servers-list label:not([hidden]) input:checked");
         if (names.length) {
           parts.push(`Werkzeuge: ${names.join(", ")}`);
         }
@@ -126,7 +126,7 @@
     for (const id of ["collection-picker", "tool-servers"]) {
       const el = document.getElementById(id);
       if (el) {
-        observer.observe(el, { attributes: true, attributeFilter: ["hidden"] });
+        observer.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
       }
     }
 
