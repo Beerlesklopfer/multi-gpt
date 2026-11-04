@@ -852,6 +852,40 @@ def own_instance(ai_model: AIModel, instance_id: str) -> bool:
     return bool(loaded) and loaded == instance_id
 
 
+def keep_pinned_loaded() -> int:
+    """Worker: angeheftete Modelle wieder laden, wenn sie fehlen (Neustart des Anbieters,
+    von Eliezer selbst verdrängt). Sprachmodelle sind ab Werk angeheftet, damit Mikrofon und
+    Vorlesen nicht erst laden müssen. Fehlschläge zählen in den Backoff des Modells, damit
+    der Wächter einen dauerhaft kaputten Ladevorgang nicht jede Minute wiederholt."""
+    count = 0
+    pinned = AIModel.objects.filter(
+        pinned=True,
+        active=True,
+        provider__manage_models=True,
+        provider__active=True,
+        provider__is_local=True,
+        provider__vram_budget_gb__isnull=False,
+    ).select_related("provider")
+    for ai_model in pinned:
+        if not managed(ai_model.provider):
+            continue
+        try:
+            _check_backoff(ai_model)
+        except ModelUnavailable:
+            continue  # wartet noch nach einem Fehlschlag
+        try:
+            # force: auch ohne „automatisch laden“ – angeheftet heißt „immer da“.
+            if ensure_loaded(ai_model, interactive=False, force=True):
+                count += 1
+                logger.info("Wächter: angeheftetes Modell %s wieder geladen", ai_model.pk)
+        except ModelUnavailable as exc:
+            logger.info("Wächter: Modell %s nicht geladen (%s)", ai_model.pk, exc.message)
+            rt = ModelRuntime.objects.filter(ai_model=ai_model).first()
+            if not (rt and rt.retry_after and rt.retry_after > timezone.now()):
+                _record_failure(ai_model, exc.message)  # z. B. kein Platz: nicht jede Minute
+    return count
+
+
 def unload_idle(now=None) -> int:
     """Worker: Modelle nach Leerlauf entladen; abgelaufene Belegungen löschen."""
     now = now or timezone.now()

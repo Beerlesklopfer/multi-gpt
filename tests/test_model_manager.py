@@ -1005,3 +1005,39 @@ def test_lm_studio_interface_derives_both_paths_from_one_address():
         assert lmstudio.api_root(provider) == "http://pc:1234"
     empty = Provider(name="l", kind=Provider.Kind.LMSTUDIO)
     assert get_adapter(empty).base_url == "http://localhost:1234/v1"
+
+
+# --- Wächter: angeheftete Modelle geladen halten ---------------------------------------
+
+
+def test_watcher_reloads_a_missing_pinned_model(provider, lms, nomic, gpt):
+    assert model_manager.keep_pinned_loaded() == 1
+    assert ("load", NOMIC) in lms.actions()
+    assert ("load", GPT) not in lms.actions()  # nicht angeheftet: bleibt, wie es ist
+
+
+def test_watcher_leaves_a_loaded_pinned_model_alone(provider, nomic):
+    with respx.mock(assert_all_called=False) as mock:
+        lms = FakeLms(mock, loaded={NOMIC: 2048})
+        assert model_manager.keep_pinned_loaded() == 0
+    assert lms.actions() == []
+
+
+def test_watcher_backs_off_after_a_failed_load(provider, lms, nomic):
+    lms.fail_load = "kaputt"
+    assert model_manager.keep_pinned_loaded() == 0
+    loads = [a for a in lms.actions() if a[0] == "load"]
+    assert len(loads) == 1
+    assert model_manager.keep_pinned_loaded() == 0  # Backoff: kein zweiter Versuch
+    assert len([a for a in lms.actions() if a[0] == "load"]) == 1
+
+
+def test_new_speech_models_are_pinned(provider):
+    from multigpt.chat import detect
+    from multigpt.chat.capabilities import Detected
+
+    stt = detect.new_model(
+        provider, "whisper-de", Detected(AIModel.Capability.STT, False, False, "test")
+    )
+    chat = detect.new_model(provider, "x", Detected(AIModel.Capability.CHAT, False, False, "test"))
+    assert stt.pinned is True and chat.pinned is False

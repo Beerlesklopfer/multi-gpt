@@ -222,8 +222,10 @@ class Command(BaseCommand):
                         runner_delivery.cleanup()
                         # Legacy-SSE (M15): Sitzungen ohne lebenden Stream löschen.
                         api_sse.cleanup()
-                        # Modellverwaltung (LM Studio): nach Leerlauf entladen.
+                        # Modellverwaltung (LM Studio): nach Leerlauf entladen,
+                        # angeheftete (u. a. Sprachmodelle) wieder laden, wenn sie fehlen.
                         model_manager.unload_idle()
+                        model_manager.keep_pinned_loaded()
                         # Mitteilungen (A15): gelesene nach 90 Tagen löschen.
                         notices.cleanup()
                         # EZB-Kurs USD (A11): einmal täglich, Fehler nur als Warnung.

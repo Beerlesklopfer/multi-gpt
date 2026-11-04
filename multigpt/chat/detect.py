@@ -93,6 +93,9 @@ def new_model(provider: Provider, model_id: str, detected: Detected, **fields) -
         "supports_vision": detected.vision,
         "can_edit_images": detected.edit,
         "mcp_access": default_mcp_access(provider),
+        # Sprachmodelle bleiben geladen (Wächter, model_manager.keep_pinned_loaded):
+        # Mikrofon und Vorlesen sollen nicht erst laden müssen.
+        "pinned": detected.capability in (AIModel.Capability.STT, AIModel.Capability.TTS),
         **fields,
     }
     return AIModel(**values)
