@@ -3,7 +3,10 @@
    Schätzung (Modelldatei + Kontext-Cache), dem Budget und ggf. einer Warnung.
    Wechselt das zugehörige Modell (data-vram-for), werden die Stufen neu
    aufgebaut (nur bis zur maximalen Kontextlänge laut LM Studio). Die Zahlen
-   kommen vom Server (nur für Verwalter, nur lesend). */
+   kommen vom Server (nur für Verwalter, nur lesend).
+   In der Liste „KI-Modelle“ (#result_list) steht statt der Zeilen nur ein kurzes
+   Kennzeichen („7,1 GB ✓“, Warnung rot „9,0 GB ⚠“); der volle Text erscheint beim
+   Darüberfahren bzw. mit der Tastatur (Fokus) und für Screenreader. */
 (function () {
   "use strict";
 
@@ -22,8 +25,13 @@
     if (!box) {
       box = document.createElement("div");
       box.className = "vram-estimate help";
-      box.setAttribute("role", "status");
-      box.setAttribute("aria-live", "polite");
+      if (select.closest("#result_list")) {
+        box.classList.add("vram-compact");
+        box.id = "vram-" + (select.id || select.name || String(Math.random()).slice(2));
+      } else {
+        box.setAttribute("role", "status");
+        box.setAttribute("aria-live", "polite");
+      }
       select.insertAdjacentElement("afterend", box);
     }
     return box;
@@ -42,12 +50,46 @@
     select.value = keep ? current : "";
   }
 
+  function gbText(value) {
+    return Number(value).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " GB";
+  }
+
+  // Kurzform für die Liste: Kennzeichen sichtbar, Einzelheiten im Aufklapper.
+  function renderCompact(box, data, lines) {
+    var mark = document.createElement("span");
+    mark.className = "vram-mark";
+    var total = data.known && data.estimate ? gbText(data.estimate.total_gb) : "?";
+    var symbol = data.warning ? " ⚠" : data.fits === true ? " ✓" : "";
+    mark.textContent = total + symbol;
+    var details = document.createElement("span");
+    details.className = "vram-details";
+    details.setAttribute("role", "tooltip");
+    details.id = box.id + "-details";
+    lines.concat(data.warning ? [data.warning] : data.fits === true ? ["passt ins Budget."] : [])
+      .forEach(function (line) {
+        var div = document.createElement("span");
+        div.textContent = line;
+        details.appendChild(div);
+      });
+    box.tabIndex = 0;
+    box.setAttribute("aria-describedby", details.id);
+    box.title = "";
+    box.append(mark, details);
+    if (data.warning) box.classList.add("vram-warning");
+    else if (data.fits === true) box.classList.add("vram-fits");
+  }
+
   function render(box, data) {
     box.textContent = "";
-    box.classList.remove("vram-warning");
+    box.classList.remove("vram-warning", "vram-fits");
+    box.removeAttribute("tabindex");
     if (!data || data.local === false) return;
     var lines = [data.text, data.budget_text].filter(Boolean);
     if (data.error) lines.push("LM Studio: " + data.error + " (letzte bekannte Werte)");
+    if (box.classList.contains("vram-compact")) {
+      renderCompact(box, data, lines);
+      return;
+    }
     lines.forEach(function (line) {
       var div = document.createElement("div");
       div.textContent = line;

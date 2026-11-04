@@ -59,6 +59,15 @@
 .vram-estimate { margin-top: 0.3em; }
 .vram-estimate.vram-warning, .vram-warning-text { color: #ba2121; }
 .vram-ok { color: #2b5a1e; }
+/* Liste „KI-Modelle“: Kennzeichen statt Text, Einzelheiten beim Darüberfahren/Fokus. */
+.vram-estimate.vram-compact { position: relative; display: inline-block; margin: 0 0 0 0.4em; vertical-align: middle; cursor: help; }
+.vram-compact .vram-mark { display: inline-block; padding: 0.1em 0.45em; border: 1px solid var(--hairline-color); border-radius: 999px; white-space: nowrap; font-size: 0.75rem; }
+.vram-compact.vram-fits .vram-mark { border-color: #2b5a1e; color: #2b5a1e; }
+.vram-compact.vram-warning .vram-mark { border-color: #ba2121; color: #ba2121; font-weight: bold; }
+.vram-compact .vram-details { display: none; position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; width: 22rem; max-width: 70vw; padding: 0.5em 0.7em; border: 1px solid var(--hairline-color); border-radius: 4px; background: var(--body-bg); color: var(--body-fg); box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); white-space: normal; }
+.vram-compact .vram-details span { display: block; }
+.vram-compact:hover .vram-details, .vram-compact:focus .vram-details, .vram-compact:focus-within .vram-details { display: block; }
+.vram-compact:focus-visible { outline: 2px solid var(--link-fg); outline-offset: 2px; border-radius: 999px; }
 .vram-bar { display: flex; height: 1.4em; border-radius: 4px; overflow: hidden; margin: 10px; border: 1px solid var(--hairline-color); }
 .vram-bar span { display: block; min-width: 2px; }
 .vram-bar .vram-seg--model { background: #4a90d9; }
@@ -73,6 +82,8 @@
 @media (prefers-color-scheme: dark) {
   .vram-estimate.vram-warning, .vram-warning-text { color: #f19a9a; }
   .vram-ok { color: #9fd38a; }
+  .vram-compact.vram-fits .vram-mark { border-color: #9fd38a; color: #9fd38a; }
+  .vram-compact.vram-warning .vram-mark { border-color: #f19a9a; color: #f19a9a; }
   .vram-bar .vram-seg--free { background: #24421b; }
   .vram-bar .vram-seg--reserve { background: repeating-linear-gradient(45deg, #5a1c1c, #5a1c1c 4px, #3d1414 4px, #3d1414 8px); }
 }
