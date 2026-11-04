@@ -9,9 +9,9 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 
 | Nr. | Thema | Frage | Empfehlung | Entscheidung |
 |---|---|---|---|---|
-| A12 | Kosten | Kosten für Embeddings/OCR/Bildbeschreibung buchen? | sobald dort Cloud-Modelle genutzt werden | sobald dort Cloud-Modelle genutzt werden |
-| A17 | Darstellung | Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)? | erst bei Bedarf | erst bei Bedarf |
-| A24 | Modellverwaltung | Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)? | erst, wenn der Chat während Läufen stört | erst, wenn der Chat während Läufen stört |
+| ~~A12~~ | ~~Kosten~~ | ~~Kosten für Embeddings/OCR/Bildbeschreibung buchen?~~ | ~~sobald dort Cloud-Modelle genutzt werden~~ | ~~sobald dort Cloud-Modelle genutzt werden~~ |
+| ~~A17~~ | ~~Darstellung~~ | ~~Mermaid (ca. 3 MB, nur nachgeladen, als `<img>`)?~~ | ~~erst bei Bedarf~~ | ~~erst bei Bedarf~~ |
+| ~~A24~~ | ~~Modellverwaltung~~ | ~~Zeitfenster „Indexierung nachts“ (große Läufe nur zu festen Zeiten)?~~ | ~~erst, wenn der Chat während Läufen stört~~ | ~~erst, wenn der Chat während Läufen stört~~ |
 
 ## B. Klärung im Betrieb
 
