@@ -240,3 +240,66 @@ def test_admin_import_requires_permission(client, django_user_model):
     response = client.post(reverse("admin:chat_mcpserver_import"), {"config": config(N8N)})
     assert response.status_code == 403
     assert not McpServer.objects.exists()
+
+
+# --- Formular „MCP-Server hinzufügen“: JSON einfügen (parse/) -------------------------
+
+
+@pytest.mark.django_db
+def test_admin_add_form_offers_json_paste(admin_client):
+    html = admin_client.get(reverse("admin:chat_mcpserver_add")).content.decode()
+    assert 'id="mcp-paste-config"' in html
+    assert reverse("admin:chat_mcpserver_parse") in html
+    assert "admin_mcp_paste.js" in html
+    # Das Textfeld hat keinen Namen und wird mit „Sichern“ nicht mitgesendet.
+    assert 'name="mcp-paste' not in html
+
+
+@pytest.mark.django_db
+def test_admin_change_form_has_no_json_paste(admin_client):
+    server = McpServer.objects.create(name="s", transport=McpServer.Transport.HTTP, url=URL)
+    html = admin_client.get(reverse("admin:chat_mcpserver_change", args=[server.pk])).content
+    assert b"mcp-paste-config" not in html
+
+
+@pytest.mark.django_db
+def test_admin_parse_single_entry_fills_form_fields(admin_client):
+    spec = {"type": "http", "url": URL, "headers": {"Authorization": f"Bearer {TOKEN}"}}
+    response = admin_client.post(
+        reverse("admin:chat_mcpserver_parse"), {"config": json.dumps(spec)}
+    )
+    assert response.status_code == 200
+    assert "no-store" in response["Cache-Control"]
+    (entry,) = response.json()["entries"]
+    assert (entry["name"], entry["transport"], entry["url"], entry["error"]) == (
+        "intranet",
+        "http",
+        URL,
+        "",
+    )
+    assert parse_credentials(entry["credentials"], "http").headers == {
+        "Authorization": f"Bearer {TOKEN}"
+    }
+    assert not McpServer.objects.exists()  # nur zerlegt, nichts gespeichert
+
+
+@pytest.mark.django_db
+def test_admin_parse_placeholder_and_errors(admin_client):
+    url = reverse("admin:chat_mcpserver_parse")
+    (entry,) = admin_client.post(url, {"config": config(N8N_PLACEHOLDER)}).json()["entries"]
+    assert entry["placeholders"] == ["Authorization"]
+    assert entry["credentials"] == ""
+    response = admin_client.post(url, {"config": "{kaputt"})
+    assert response.status_code == 400
+    assert "Kein gültiges JSON" in response.json()["error"]
+    assert admin_client.get(url).status_code == 405
+
+
+@pytest.mark.django_db
+def test_admin_parse_requires_add_permission(client, django_user_model):
+    user = django_user_model.objects.create_user(username="kind", password=PASSWORD)
+    user.is_staff = True
+    user.save()
+    client.force_login(user)
+    response = client.post(reverse("admin:chat_mcpserver_parse"), {"config": config(N8N)})
+    assert response.status_code == 403

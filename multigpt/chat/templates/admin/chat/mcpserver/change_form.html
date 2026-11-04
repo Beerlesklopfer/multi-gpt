@@ -7,6 +7,28 @@
 {% block admin_change_form_document_ready %}
   {{ block.super }}
   <script src="{% static 'chat/admin_submit_once.js' %}" defer></script>
+  {% if add %}<script src="{% static 'chat/admin_mcp_paste.js' %}" defer></script>{% endif %}
+{% endblock %}
+
+{# Neuer Server: JSON-Eintrag (Claude Desktop, Claude Code, Cursor, n8n) einfügen und das #}
+{# Formular damit füllen; zerlegt wird auf dem Server (mcp/importer.py), gespeichert erst mit „Sichern“. #}
+{% block form_top %}
+  {% if add %}
+    <fieldset class="module aligned mcp-paste" id="mcp-paste" data-parse-url="{% url 'admin:chat_mcpserver_parse' %}">
+      <h2>Aus JSON übernehmen</h2>
+      <div class="form-row">
+        <label for="mcp-paste-config">JSON:</label>
+        <textarea id="mcp-paste-config" rows="5" cols="80" spellcheck="false" autocomplete="off"
+                  placeholder='{"type": "http", "url": "https://…/mcp", "headers": {"Authorization": "Bearer …"}}'></textarea>
+        <div class="help">Eintrag einfügen, wie ihn Claude Desktop, Claude Code, Cursor oder n8n zeigen – mit oder ohne „mcpServers“. Die Felder unten werden gefüllt; gespeichert wird erst mit „Sichern“. Mehrere Server auf einmal: <a href="{% url 'admin:chat_mcpserver_import' %}">Aus JSON importieren</a>.</div>
+        <p>
+          <button type="button" class="button" id="mcp-paste-clipboard" hidden>Aus Zwischenablage einfügen</button>
+          <button type="button" class="button" id="mcp-paste-apply">Übernehmen</button>
+        </p>
+        <p id="mcp-paste-status" aria-live="polite"></p>
+      </div>
+    </fieldset>
+  {% endif %}
 {% endblock %}
 
 {% block object-tools-items %}

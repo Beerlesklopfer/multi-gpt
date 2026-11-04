@@ -22,7 +22,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
 from django.db import models, transaction
-from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
@@ -1077,9 +1077,43 @@ class McpServerAdmin(admin.ModelAdmin):
         view = self.admin_site.admin_view
         return [
             path("import/", view(self.import_view), name="chat_mcpserver_import"),
+            path("parse/", view(self.parse_view), name="chat_mcpserver_parse"),
             path("<path:object_id>/check/", view(self.check_view), name="chat_mcpserver_check"),
             *super().get_urls(),
         ]
+
+    def parse_view(self, request):
+        """JSON-Konfiguration zerlegen, ohne zu speichern: Der Browser füllt damit das
+        Formular „MCP-Server hinzufügen“ (admin_mcp_paste.js). Gleiche Prüfung wie der
+        Import (Platzhalter, Name eines einzelnen Eintrags); die Zugangsdaten gehen nur an
+        den Verwalter zurück, der sie eingefügt hat."""
+        if not self.has_add_permission(request):
+            raise PermissionDenied
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        try:
+            entries = mcp_importer.parse_config(request.POST.get("config", ""))
+        except ValueError as exc:
+            response = JsonResponse({"error": str(exc)}, status=400)
+        else:
+            response = JsonResponse(
+                {
+                    "entries": [
+                        {
+                            "name": e.name,
+                            "transport": e.transport,
+                            "command": e.command,
+                            "url": e.url,
+                            "credentials": e.credentials,
+                            "placeholders": e.placeholders,
+                            "error": e.error,
+                        }
+                        for e in entries
+                    ]
+                }
+            )
+        response["Cache-Control"] = "no-store"
+        return response
 
     def import_view(self, request):
         """MCP-Server aus einer JSON-Konfiguration („mcpServers“) übernehmen."""
