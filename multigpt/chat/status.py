@@ -150,10 +150,16 @@ def check_provider(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckR
 
 
 def _store_context(provider: Provider, contexts: dict) -> None:
-    """Geladene Kontextlängen (LM Studio) speichern, nur bei Änderung."""
-    if contexts != (provider.reported_context or {}):
-        Provider.objects.filter(pk=provider.pk).update(reported_context=contexts)
-        provider.reported_context = contexts
+    """Geladene Kontextlängen (LM Studio, Eliezer) speichern, nur bei Änderung.
+
+    Ergänzt statt ersetzt: Werte, die der Modellverwalter beim Laden gemerkt hat
+    (``model_manager.remember_context``), bleiben stehen, auch wenn das Modell bei
+    dieser Prüfung nicht geladen ist oder der Server keine Länge nennt. Gemeldete
+    Werte gehen vor."""
+    merged = {**(provider.reported_context or {}), **contexts}
+    if merged != (provider.reported_context or {}):
+        Provider.objects.filter(pk=provider.pk).update(reported_context=merged)
+        provider.reported_context = merged
 
 
 def force_check(provider: Provider, timeout: float = CHECK_TIMEOUT) -> CheckResult:

@@ -393,6 +393,29 @@ def test_ensure_loaded_loads_with_profile_without_ttl(lms, gpt):
     assert model_manager.ensure_loaded(gpt, interactive=True) is False
 
 
+def test_loading_remembers_context_for_the_send_check(lms, gpt, provider):
+    """Lädt der Chat das Modell erst, kennt die Prüfung vor dem Senden die Länge sofort
+    (sonst ging ein zu langer Verlauf ungekürzt an Eliezer, Chat 59, 2026-11-05)."""
+    from multigpt.chat import context_budget
+
+    assert context_budget.context_length(gpt) is None
+    assert model_manager.ensure_loaded(gpt, interactive=True) is True
+    assert context_budget.context_length(gpt) == 32768  # dasselbe Objekt, ohne Neuladen
+    provider.refresh_from_db()
+    assert provider.reported_context == {GPT: 32768}
+
+
+def test_already_loaded_instance_context_is_remembered(lms, gpt, provider):
+    lms.loaded[GPT] = 16384
+    assert model_manager.is_loaded(gpt) is True
+    provider.refresh_from_db()
+    assert provider.reported_context == {GPT: 16384}
+    model_manager._verified.clear()
+    lms.loaded[GPT] = 8192  # neu geladen mit anderer Länge: neuer Wert gilt
+    assert model_manager.ensure_loaded(gpt, interactive=True) is False
+    assert gpt.provider.reported_context == {GPT: 8192}
+
+
 def test_not_managed_provider_is_left_alone(lms, gpt, provider):
     provider.manage_models = False
     provider.save()

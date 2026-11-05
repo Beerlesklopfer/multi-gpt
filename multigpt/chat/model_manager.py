@@ -62,7 +62,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from django.db import connection
+from django.db import connection, transaction
 from django.utils import timezone
 
 from . import lmstudio, vram
@@ -249,6 +249,27 @@ def match(ai_model: AIModel, catalog: list[lmstudio.CatalogModel]):
         inst = entry_for_key.instances[0] if entry_for_key.instances else None
         return entry_for_key, inst
     return None, None
+
+
+def remember_context(ai_model: AIModel, context: int | None) -> None:
+    """Kontextlänge, mit der das Modell geladen ist, als ``Provider.reported_context`` merken.
+
+    Für die Prüfung vor dem Senden (``context_budget``): Die Statusprüfung kennt nur
+    Modelle, die bei ihr schon geladen waren. Lädt der Chat das Modell erst
+    (``chat_ready``), fehlte die Länge, und ein zu langer Verlauf ging ungekürzt an
+    Eliezer (HTTP 400, Chat 59, 2026-11-05). Gilt sofort auch für das übergebene
+    ``ai_model.provider``."""
+    if not context or context <= 0:
+        return
+    provider = ai_model.provider
+    if (provider.reported_context or {}).get(ai_model.model_id) == context:
+        return
+    with transaction.atomic():
+        row = Provider.objects.select_for_update().only("reported_context").get(pk=provider.pk)
+        contexts = dict(row.reported_context or {})
+        contexts[ai_model.model_id] = context
+        Provider.objects.filter(pk=provider.pk).update(reported_context=contexts)
+    provider.reported_context = contexts
 
 
 def remember_catalog(provider: Provider, catalog: list[lmstudio.CatalogModel]) -> None:
@@ -672,6 +693,7 @@ def is_loaded(ai_model: AIModel) -> bool:
     _entry, inst = match(ai_model, catalog)
     if inst is not None:
         _mark_verified(ai_model)
+        remember_context(ai_model, inst.context_length)
     return inst is not None
 
 
@@ -712,8 +734,10 @@ def ensure_loaded(
         logger.info("LM Studio (Anbieter %s): Liste nicht abrufbar (%s)", provider.pk, exc.status)
         return False
     remember_catalog(provider, catalog)
-    if match(ai_model, catalog)[1] is not None:
+    found = match(ai_model, catalog)[1]
+    if found is not None:
         _mark_verified(ai_model)
+        remember_context(ai_model, found.context_length)
         return False
     name = model_name(ai_model)
     if not (ai_model.auto_load or force):
@@ -729,6 +753,7 @@ def ensure_loaded(
             entry, inst = match(ai_model, catalog)
             if inst is not None:  # inzwischen von einem anderen Prozess geladen
                 _mark_verified(ai_model)
+                remember_context(ai_model, inst.context_length)
                 return False
             context = profile_context(ai_model, entry.max_context_length if entry else None)
             fit = eliezer_fit(provider, ai_model, entry, context) if eliezer(provider) else None
@@ -760,6 +785,7 @@ def ensure_loaded(
                 logger.warning("LM Studio: Modell %s nicht geladen (%s)", ai_model.pk, exc.status)
                 raise ModelUnavailable(message) from None
             _record_success(ai_model)
+            remember_context(ai_model, context)
             instance = str(answer.get("instance_id") or (entry.key if entry else ai_model.model_id))
             ModelRuntime.objects.filter(ai_model=ai_model).update(loaded_instance=instance)
             _mark_verified(ai_model)

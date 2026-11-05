@@ -563,6 +563,21 @@ def test_lmstudio_context_lengths_stored_on_check(provider):
     assert status.serialize(provider)["contexts"] == {"openai/gpt-oss-20b": 16384}
 
 
+def test_status_check_keeps_remembered_context(provider):
+    """Die Statusprüfung ergänzt: eine beim Laden gemerkte Länge bleibt, wenn das Modell
+    bei der Prüfung nicht geladen ist; eine gemeldete Länge geht vor."""
+    from multigpt.chat import status
+
+    provider.reported_context = {"google/gemma-4-26b-a4b": 32768, "openai/gpt-oss-20b": 8192}
+    provider.save(update_fields=["reported_context"])
+    status._store_context(provider, {"openai/gpt-oss-20b": 16384})
+    provider.refresh_from_db()
+    assert provider.reported_context == {
+        "google/gemma-4-26b-a4b": 32768,
+        "openai/gpt-oss-20b": 16384,
+    }
+
+
 def test_tight_context_switches_to_on_demand(client, adult, model, mcp_mock, servers):
     hass, _ = servers
     # Nur HASS (8 Werkzeuge, klein): „automatisch“ gäbe alle direkt mit – bei
