@@ -274,11 +274,14 @@ class OpenAICompatAdapter(ProviderAdapter):
     def _stream_error(self, parser: _ChunkParser) -> Error:
         """Fehler mitten im Stream: bei Anbietern ohne Key (LM Studio) mit dessen Text."""
         self._log("Fehler im Stream", parser.error_code)
-        keyless = not (self.provider.api_key or "").strip()
-        context = _is_context_error(parser.error_code)
-        if context or (keyless and _is_context_error(parser.error_raw)):
+        local = self._shows_provider_text()
+        if _is_context_error(parser.error_code) or _is_context_error(parser.error_raw):
             return Error(
-                context_error_message(parser.error_raw, keyless),
+                context_error_message(
+                    clean_excerpt(parser.error_raw, [self.provider.api_key], limit=1000),
+                    local,
+                    self.provider.name,
+                ),
                 retryable=False,
                 detail={
                     "status": None,
@@ -294,9 +297,18 @@ class OpenAICompatAdapter(ProviderAdapter):
             "excerpt": clean_excerpt(parser.error_raw, [self.provider.api_key]),
             "retryable": True,
         }
-        if not keyless or not text:
+        if not local or not text:
             return Error(MSG_STREAM_ERROR, retryable=True, detail=detail)
-        return Error(f"{MSG_STREAM_ERROR} LM Studio meldet: {text}", retryable=True, detail=detail)
+        text = clean_excerpt(text, [self.provider.api_key])
+        return Error(
+            f"{MSG_STREAM_ERROR} {self.provider.name} meldet: {text}", retryable=True, detail=detail
+        )
+
+    def _shows_provider_text(self) -> bool:
+        """Den Fehlertext des Anbieters anzeigen? Bei lokalen Servern (LM Studio ohne Key,
+        Eliezer mit Key) nennt er die Ursache; Cloud-Anbieter nie. Angezeigt wird er nur
+        geschwärzt (``clean_excerpt``). Erkannt wird ein Kontextüberlauf immer am Text."""
+        return self.provider.is_local or not (self.provider.api_key or "").strip()
 
     # --- Modellliste ---------------------------------------------------------
 
@@ -813,12 +825,15 @@ class OpenAICompatAdapter(ProviderAdapter):
                     message, retryable = http_error_message(response.status_code, error_body)
                     if response.status_code == 404 and detail.endswith("/model_not_found"):
                         message = _model_not_found(model_id)
-                    keyless = not (self.provider.api_key or "").strip()
-                    raw = _provider_text(error_body, limit=None) if keyless else ""
+                    raw = _provider_text(error_body, limit=None)
                     if response.status_code in (400, 413) and (
                         _is_context_error(detail) or _is_context_error(raw)
                     ):
-                        message, retryable = context_error_message(raw, keyless), False
+                        shown = clean_excerpt(raw, [self.provider.api_key], limit=1000)
+                        message = context_error_message(
+                            shown, self._shows_provider_text(), self.provider.name
+                        )
+                        retryable = False
                     rejected = rejected_parameter(response.status_code, error_body)
                     yield Error(
                         message,
@@ -850,7 +865,7 @@ class OpenAICompatAdapter(ProviderAdapter):
 
 MSG_CONTEXT_TOO_SMALL = (
     "Der Verlauf passt nicht in den Kontext des Modells (inklusive Werkzeugbeschreibungen). "
-    "In LM Studio das Modell mit größerer Kontextlänge laden (z. B. 16k oder 32k) oder "
+    "Auf dem Modellserver das Modell mit größerer Kontextlänge laden (z. B. 32k oder 64k) oder "
     "den Chat kürzen bzw. Werkzeuge abschalten."
 )
 MSG_CONTEXT_TOO_SMALL_CLOUD = (
@@ -881,9 +896,10 @@ _CONTEXT_NUMBERS = (
 )
 
 
-def context_error_message(text: str, local: bool) -> str:
+def context_error_message(text: str, local: bool, source: str = "LM Studio") -> str:
     """Meldung für einen zu kleinen Kontext, mit Zahlen, wenn der Anbieter sie nennt
-    (z. B. „25 743 von 16 384 Tokens“); bei Anbietern ohne Key mit dessen Text."""
+    (z. B. „25 743 von 16 384 Tokens“); bei lokalen Anbietern mit dessen Text
+    (``source`` = Anbietername, Text schon geschwärzt)."""
     numbers = ""
     for pattern in _CONTEXT_NUMBERS:
         match = pattern.search(text or "")
@@ -897,7 +913,7 @@ def context_error_message(text: str, local: bool) -> str:
     inner = re.search(r'"message"\s*:\s*"([^"]{10,300})"', text or "")
     short = " ".join((inner.group(1) if inner else text or "").split())
     short = short[:200] + ("…" if len(short) > 200 else "")
-    return MSG_CONTEXT_TOO_SMALL + numbers + (f" LM Studio meldet: {short}" if short else "")
+    return MSG_CONTEXT_TOO_SMALL + numbers + (f" {source} meldet: {short}" if short else "")
 
 
 def _anchor(pattern: str) -> str:

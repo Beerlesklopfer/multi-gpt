@@ -3,13 +3,13 @@
 import json
 
 import httpx
-import pytest
 import respx
 
 from multigpt.chat.models import Provider
 from multigpt.chat.providers.base import ChatMessage, Error
 from multigpt.chat.providers.openai_compat import (
     MSG_CONTEXT_TOO_SMALL,
+    MSG_CONTEXT_TOO_SMALL_CLOUD,
     MSG_STREAM_ERROR,
     OpenAICompatAdapter,
 )
@@ -51,10 +51,56 @@ def test_local_other_error_shows_text():
     assert error.retryable is True
 
 
-@pytest.mark.parametrize("message", ["context length exceeded", "boom sk-geheim"])
-def test_provider_with_key_stays_generic(message):
-    (error,) = run("sk-geheim", message)
+def test_provider_with_key_stays_generic():
+    (error,) = run("sk-geheim", "boom sk-geheim")
     assert error.message == MSG_STREAM_ERROR
+
+
+def test_cloud_context_error_recognized_without_its_text():
+    # Kontextüberlauf wird am Text erkannt, auch mit Key; gezeigt wird der Text nicht.
+    (error,) = run("sk-geheim", "context length exceeded sk-geheim")
+    assert error.message == MSG_CONTEXT_TOO_SMALL_CLOUD
+    assert "sk-geheim" not in error.message
+    assert error.retryable is False
+
+
+ELIEZER_TEXT = "The request is invalid or does not fit the model's context window"
+
+
+def _eliezer():
+    return OpenAICompatAdapter(
+        Provider(
+            name="Eliezer",
+            kind="openai_compat",
+            base_url=BASE,
+            api_key="eliezer-geheim-123",
+            is_local=True,
+        )
+    )
+
+
+def test_eliezer_context_error_http_400_explained():
+    """Eliezer (lokal, mit Key): HTTP 400 invalid_request mit Kontext-Text (2026-11-05)."""
+    body = {"error": {"message": ELIEZER_TEXT, "type": "invalid_request", "code": None}}
+    with respx.mock() as mock:
+        mock.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(400, json=body))
+        (error,) = list(_eliezer().stream("m", MESSAGES))
+    assert error.message.startswith(MSG_CONTEXT_TOO_SMALL)
+    assert f"Eliezer meldet: {ELIEZER_TEXT}" in error.message
+    assert "LM Studio" not in error.message
+    assert error.retryable is False
+    assert error.detail["status"] == 400
+
+
+def test_eliezer_stream_error_shows_redacted_text():
+    adapter = _eliezer()
+    with respx.mock() as mock:
+        mock.post(f"{BASE}/chat/completions").mock(
+            return_value=sse({"error": {"message": "boom eliezer-geheim-123", "type": "x"}})
+        )
+        (error,) = list(adapter.stream("m", MESSAGES))
+    assert error.message.startswith(f"{MSG_STREAM_ERROR} Eliezer meldet: boom")
+    assert "eliezer-geheim-123" not in error.message
 
 
 def _sent_tool_schema(api_key):
