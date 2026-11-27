@@ -1,6 +1,7 @@
 {{ define "main" }}
 {{- $lang := site.Language.Lang }}
 <section class="hero">
+  <div class="hero-text">
   <p class="eyebrow">{{ .Params.eyebrow }}</p>
   <h1>{{ .Params.headline }}</h1>
   <p class="lead">{{ .Params.lead }}</p>
@@ -8,6 +9,8 @@
     {{- with site.GetPage "/installation" }}<a class="button" href="{{ .RelPermalink }}">{{ T "cta_install" }}</a>{{ end }}
     {{- with site.GetPage "/roadmap" }}<a class="button button-secondary" href="{{ .RelPermalink }}">{{ T "cta_roadmap" }}</a>{{ end }}
   </p>
+  </div>
+  <img class="hero-art" src="{{ "images/art/hero.webp" | relURL }}" width="720" height="768" alt="" fetchpriority="high">
 </section>
 
 {{ partial "early-stage.html" . }}
@@ -18,6 +21,9 @@
   <ul class="card-grid card-grid-3">
     {{- range .Params.pillars }}
     <li class="card pillar">
+      {{- with .image }}
+      <img class="pillar-art" src="{{ printf "images/art/%s.webp" . | relURL }}" width="320" height="320" alt="" loading="lazy">
+      {{- end }}
       <h3>{{ .title }}</h3>
       <p>{{ .text | markdownify }}</p>
     </li>
@@ -41,9 +47,15 @@
   {{- end }}
 </section>
 
-<div class="placeholder">
-  <p>{{ T "screenshot_placeholder" }}</p>
-</div>
+<section class="gallery" aria-labelledby="ansichten">
+  <h2 id="ansichten">{{ T "screens_title" }}</h2>
+  {{ partial "shot.html" (dict "name" "chat-rag" "page" .) }}
+  <div class="gallery-row">
+    {{ partial "shot.html" (dict "name" "chat-code" "page" .) }}
+    {{ partial "shot.html" (dict "name" "chat-phone" "page" .) }}
+  </div>
+  <p class="muted">{{ T "screens_note" }}</p>
+</section>
 
 <section class="prose">
   {{ .Content }}

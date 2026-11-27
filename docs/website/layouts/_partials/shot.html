@@ -1,0 +1,12 @@
+{{- /* Bildschirmfoto mit dunkler Variante. Aufruf: partial "shot.html" (dict "name" "chat-rag" "page" .) */ -}}
+{{- $s := index hugo.Data.screens .name }}
+{{- $lang := .page.Language.Lang }}
+{{- $base := printf "images/screens/%s" .name }}
+<figure class="shot{{ if lt $s.width 600 }} shot-phone{{ end }}">
+  <picture>
+    <source srcset="{{ printf "%s-dark.webp" $base | relURL }}" media="(prefers-color-scheme: dark)">
+    <img src="{{ printf "%s.webp" $base | relURL }}" width="{{ $s.width }}" height="{{ $s.height }}"
+      alt="{{ index $s.alt $lang }}" loading="lazy" decoding="async">
+  </picture>
+  <figcaption>{{ index $s.caption $lang }}</figcaption>
+</figure>

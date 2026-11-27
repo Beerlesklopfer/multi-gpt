@@ -29,6 +29,8 @@ Detailed guides are in the [wiki](https://github.com/Beerlesklopfer/multi-gpt/wi
 
 {{< status "done" "3 / 4 / 5" >}}
 
+{{< shot "chat-code" >}}
+
 - Chat list in the sidebar: new, rename, archive, delete, search. The sidebar can be hidden,
   answers use the full width, and the font size can be changed with A−/A+.
 - The model can be chosen **per message**. Answers are streamed, a round button in the input
@@ -175,6 +177,8 @@ MultiGPT infers them from the model ID. For existing models,
 
 {{< status "done" "2 / 6" >}}
 
+{{< shot "chat-phone" >}}
+
 Four default roles, adjustable in the admin area:
 
 | Role | May |
@@ -199,6 +203,8 @@ Four default roles, adjustable in the admin area:
 ## Billing accounts and costs
 
 {{< status "done" "6" >}}
+
+{{< shot "usage" >}}
 
 Every provider bills through a **billing account**:
 
@@ -325,6 +331,8 @@ opens in the chat with “Ansehen” (view).
 ## Ask your own documents (RAG)
 
 {{< status "done" "7" >}}
+
+{{< shot "collections" >}}
 
 - Create collections and upload documents (PDF, DOCX, TXT, MD and image files, up to 25 MB
   per file), private or shared with groups – read-only or with write access.

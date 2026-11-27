@@ -37,11 +37,11 @@ and is started via systemd. It creates the system user `multi-gpt`; data lives i
 
 ```
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://beerlesklopfer.github.io/multi-gpt/apt/multi-gpt.gpg \
+curl -fsSL https://multigpt.bernau.family/apt/multi-gpt.gpg \
   | sudo tee /etc/apt/keyrings/multi-gpt.gpg >/dev/null
 sudo tee /etc/apt/sources.list.d/multi-gpt.sources >/dev/null <<'EOF'
 Types: deb
-URIs: https://beerlesklopfer.github.io/multi-gpt/apt
+URIs: https://multigpt.bernau.family/apt
 Suites: stable
 Components: main
 Architectures: amd64

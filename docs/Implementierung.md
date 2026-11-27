@@ -1300,7 +1300,7 @@ vertrauenswürdig – wie Webtext.
     - Abhängigkeiten `python3.13, python3 (>= 3.12), adduser`.
     - `collectstatic` im Paket.
     - Im postinst läuft die Migration einmal und vor dem Start bzw. Neustart des Dienstes.
-  - Repository https://github.com/Beerlesklopfer/multi-gpt (öffentlich, AGPL-3.0-or-later). Website über GitHub Pages: https://beerlesklopfer.github.io/multi-gpt/
+  - Repository https://github.com/Beerlesklopfer/multi-gpt (öffentlich, AGPL-3.0-or-later). Website über GitHub Pages: https://multigpt.bernau.family/
 - **Offen für die Abnahme von M1:**
   - Installation, automatische Migration und `purge` des Pakets auf Debian 13.
   - Login im Browser.

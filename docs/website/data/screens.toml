@@ -1,0 +1,42 @@
+# Bildschirmfotos (static/images/screens/<name>.webp, dunkel: <name>-dark.webp).
+# Neu aufnehmen: docs/website/tools/ (demo_seed.py, screenshots.py).
+
+[chat-rag]
+width = 1440
+height = 900
+alt.de = "Chatansicht: Frage nach der Heizungswartung, Antwort von Claude Sonnet mit Tabelle und Quellenangabe aus einem Dokument"
+alt.en = "Chat view: question about the heating service, answer from Claude Sonnet with a table and a source from a document"
+caption.de = "Fragen an eigene Dokumente – mit Quelle und Seite, in einem Projekt."
+caption.en = "Asking your own documents – with source and page, inside a project."
+
+[chat-code]
+width = 1440
+height = 900
+alt.de = "Chatansicht: Python-Code mit Syntaxhervorhebung von einem lokalen Modell"
+alt.en = "Chat view: Python code with syntax highlighting from a local model"
+caption.de = "Lokale Modelle auf der eigenen GPU, mit Code-Hervorhebung."
+caption.en = "Local models on your own GPU, with code highlighting."
+
+[chat-phone]
+width = 390
+height = 844
+alt.de = "Chatansicht auf dem Handy: Erklärung der Fotosynthese für ein Jugendkonto"
+alt.en = "Chat view on a phone: photosynthesis explained for a teen account"
+caption.de = "Auf dem Handy – hier ein Jugendkonto mit freigegebenen lokalen Modellen."
+caption.en = "On the phone – here a teen account limited to local models."
+
+[collections]
+width = 1440
+height = 900
+alt.de = "Sammlung „Familienordner“ mit indexierten PDF-Dokumenten"
+alt.en = "Collection “Familienordner” with indexed PDF documents"
+caption.de = "Sammlungen für die Dokumentsuche, teilbar in der Familie."
+caption.en = "Collections for document search, shareable within the family."
+
+[usage]
+width = 1440
+height = 900
+alt.de = "Verbrauchsseite mit Tokens und Kosten je Abrechnungskonto und Modell"
+alt.en = "Usage page with tokens and costs per billing account and model"
+caption.de = "Verbrauch und Kosten je Konto und Modell; lokale Modelle zählen nur Tokens."
+caption.en = "Usage and costs per account and model; local models only count tokens."

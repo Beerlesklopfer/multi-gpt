@@ -1,0 +1,2 @@
+{{- /* Bildschirmfoto im Fließtext: {{< shot "usage" >}} (Namen in data/screens.toml). */ -}}
+{{ partial "shot.html" (dict "name" (.Get 0) "page" .Page) }}

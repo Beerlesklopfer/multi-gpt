@@ -8,10 +8,13 @@ pillarsTitle: "The idea behind it"
 pillarsLead: "These are the goals for version 1. The status labels further down show what has been built so far."
 pillars:
   - title: "Your own data"
+    image: "own-data"
     text: "The interface, chat histories and API keys live only on your own server in your home network, in PostgreSQL. Keys are stored encrypted. The only traffic leaving the network is the requests to the AI providers you choose."
   - title: "One chat for many providers"
+    image: "providers"
     text: "One interface for all connected models, with the model chosen per message. Local models from LM Studio join in for free whenever that PC is on."
   - title: "Family accounts with roles and budgets"
+    image: "family"
     text: "Every family member gets their own account. Roles define who may use which models and features. Monthly budgets keep costs in check."
 menus:
   main:

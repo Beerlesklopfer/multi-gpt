@@ -1,10 +1,10 @@
 # Hugo-Konfiguration der Projektseite von MultiGPT.
 # Bauen: hugo --source docs/website --minify   (Hugo-Version: siehe README.md)
 
-# PLATZHALTER: Die endgültige Adresse steht noch nicht fest. Beim Veröffentlichen
-# über GitHub Pages setzt der Workflow (.github/workflows/website.yml) die
-# baseURL per --baseURL; dieser Wert gilt nur für lokale Builds ohne Server.
-baseURL = "https://beerlesklopfer.github.io/multi-gpt/"
+# Eigene Domain auf GitHub Pages (CNAME multigpt → beerlesklopfer.github.io bei
+# Hetzner, Domain unter Settings → Pages). Der Workflow setzt die baseURL beim
+# Veröffentlichen ohnehin per --baseURL aus der Pages-Konfiguration.
+baseURL = "https://multigpt.bernau.family/"
 
 title = "MultiGPT"
 

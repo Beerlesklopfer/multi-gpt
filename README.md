@@ -10,11 +10,11 @@ Fertige Pakete für Debian 13 (amd64) kommen aus einer eigenen, signierten Paket
 
 ```sh
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://beerlesklopfer.github.io/multi-gpt/apt/multi-gpt.gpg \
+curl -fsSL https://multigpt.bernau.family/apt/multi-gpt.gpg \
   | sudo tee /etc/apt/keyrings/multi-gpt.gpg >/dev/null
 sudo tee /etc/apt/sources.list.d/multi-gpt.sources >/dev/null <<'EOF'
 Types: deb
-URIs: https://beerlesklopfer.github.io/multi-gpt/apt
+URIs: https://multigpt.bernau.family/apt
 Suites: stable
 Components: main
 Architectures: amd64
@@ -28,7 +28,7 @@ Fingerabdruck des Signierschlüssels: `8822 DF96 2A10 31EC AD6A  6F40 3DE7 6675 
 (prüfen mit `gpg --show-keys /etc/apt/keyrings/multi-gpt.gpg`). Updates kommen mit
 `sudo apt update && sudo apt upgrade`. PostgreSQL mit pgvector, die Fragen bei der
 Installation und alles Weitere beschreibt die
-[Installationsanleitung](https://beerlesklopfer.github.io/multi-gpt/installation/).
+[Installationsanleitung](https://multigpt.bernau.family/installation/).
 Jedes Paket liegt außerdem am [GitHub-Release](https://github.com/Beerlesklopfer/multi-gpt/releases).
 
 ## Entwicklung

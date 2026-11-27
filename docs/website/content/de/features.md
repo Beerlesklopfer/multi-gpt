@@ -30,6 +30,8 @@ Ausführliche Anleitungen stehen im [Wiki](https://github.com/Beerlesklopfer/mul
 
 {{< status "done" "3 / 4 / 5" >}}
 
+{{< shot "chat-code" >}}
+
 - Chatliste in der Seitenleiste: neu, umbenennen, archivieren, löschen, Suche. Die
   Seitenleiste lässt sich ausblenden, Antworten nutzen die volle Breite, die Schriftgröße
   lässt sich mit A−/A+ ändern.
@@ -180,6 +182,8 @@ schätzt MultiGPT sie aus der Modell-ID. Für vorhandene Modelle holt
 
 {{< status "done" "2 / 6" >}}
 
+{{< shot "chat-phone" >}}
+
 Vier Startrollen, in der Verwaltung anpassbar:
 
 | Rolle | Darf |
@@ -204,6 +208,8 @@ Vier Startrollen, in der Verwaltung anpassbar:
 ## Kontenrahmen und Kosten
 
 {{< status "done" "6" >}}
+
+{{< shot "usage" >}}
 
 Jeder Anbieter rechnet über ein **Abrechnungskonto** ab:
 
@@ -331,6 +337,8 @@ Seit 0.3.1: Wer um ein Blatt bittet, bekommt ein **druckfertiges PDF** (Werkzeug
 ## Fragen an eigene Dokumente (RAG)
 
 {{< status "done" "7" >}}
+
+{{< shot "collections" >}}
 
 - Sammlungen anlegen und Dokumente hochladen (PDF, DOCX, TXT, MD und Bilddateien, bis 25 MB
   je Datei), privat oder mit Gruppen geteilt – nur lesend oder mit Schreibrecht.
