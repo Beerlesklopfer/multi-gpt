@@ -72,6 +72,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 | ~~M9-02 Bilder bearbeiten~~ | ~~umgesetzt (Browserlauf offen, C39): Bilder anhängen und verändern (`/images/edits`, OpenAI und Eliezer), Weiterarbeiten am letzten Bild, „Weiter bearbeiten“, Varianten, Werkzeug `edit_image`, Maske (nur Anbieter mit `mask`, z. B. GPT Image), eigene Auflösung~~ |
 | M9-03 `mcp_imagetools` (Pillow: Zuschneiden, Skalieren, Drehen, Text, Collage) | offen, Verzeichnis existiert nicht |
 | FLUX.1 über Rust-Runner | Planung 2026-10-17: GPU-Container auf WS-Joerg; Laufzeit im Image, Gewichte/Cache in Volumes, Ergebnisse als Chat-Versionen in MultiGPT. Bestandsaufnahme von `~/D/f/flux1-project` offen. [Plan und Umsetzungsschritte](plans/FLUX-Runner.md). |
+| Gemeinsamer Runner (1:n) | Planung 2026-10-18: ein Familienrechner (GPU) als Runner für mehrere Benutzer des Servers; `RunnerShare`, Auswahl im Chat, Trennung der Sitzungen, Ports und GPU. [Plan](plans/Runner-Familienrechner.md). |
 | ~~M10 Sprache (Spracherkennung, Vorlesen)~~ | ~~umgesetzt~~ (Mikrofon → `stt`-Modell → Eingabefeld, Lautsprecherknopf → `tts`-Modell, Audio als Anhang, Stimme und „automatisch vorlesen“ je Konto, Grenzen im Admin, Eliezer und OpenAI); Browser, Mikrofon und echter Eliezer ungeprüft, siehe C46 |
 | M11 Musik | Umfang offen |
 | M12 Betrieb (Rest) | teilweise |
