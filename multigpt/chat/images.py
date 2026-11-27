@@ -124,12 +124,15 @@ MSG_EDIT_UNSUPPORTED = (
 CONTINUE_MAX_CHARS = 200  # Vorgabe; Instanzeinstellung IMAGE_CONTINUE_MAX_CHARS (settings)
 
 
-def continue_max_chars(requested=None) -> int:
+def continue_max_chars(requested=None, ai_model: AIModel | None = None) -> int:
     """Schwelle für „Am letzten Bild weiterarbeiten“ (LOP C41).
 
-    ``requested``: Wert des Chats (Browser, 0 bis ``MAX_PROMPT``); sonst die Instanzeinstellung
+    Vorrang: ``requested`` (Wert des Chats im Browser, 0 bis ``MAX_PROMPT``), dann der Wert am
+    Bildmodell (``AIModel.image_continue_max_chars``), sonst die Instanzeinstellung
     ``IMAGE_CONTINUE_MAX_CHARS``. 0 heißt: nie weiterarbeiten, jede Nachricht ist ein neues Bild.
     """
+    if requested is None and ai_model is not None:
+        requested = ai_model.image_continue_max_chars
     if requested is None:
         requested = getattr(settings, "IMAGE_CONTINUE_MAX_CHARS", CONTINUE_MAX_CHARS)
     return max(0, min(int(requested), MAX_PROMPT))

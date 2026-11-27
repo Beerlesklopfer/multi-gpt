@@ -1414,6 +1414,27 @@ def test_continue_threshold_is_adjustable(client, conversation, image_model, fak
         assert response.status_code == 400
 
 
+@pytest.mark.django_db
+def test_continue_threshold_per_model(client, conversation, image_model, fakes, settings):
+    """LOP C41: Wert am Bildmodell vor der Instanz, Wert im Chat vor dem Modell."""
+    settings.IMAGE_CONTINUE_MAX_CHARS = 200
+    image_model.image_continue_max_chars = 10
+    image_model.save()
+    assert images.continue_max_chars(None, image_model) == 10
+    assert images.continue_max_chars(300, image_model) == 300
+    image_model.image_continue_max_chars = None
+    assert images.continue_max_chars(None, image_model) == 200
+    image_model.image_continue_max_chars = 10
+    _, image_calls = fakes()
+    first_image(client, conversation, prompt="Ein roter Kreis")
+    text = "mehr Schatten bitte, und zwar deutlich mehr davon"  # 49 Zeichen > 10
+    events_of(post(client, conversation, content=text, image={"continue": True}))
+    assert image_calls[1]["prompt"] == text  # neues Bild nach der Schwelle des Modells
+    # Die Seite trägt die Vorgabe je Modell für den Browser.
+    page = client.get(f"/c/{conversation.pk}/").content.decode()
+    assert 'data-default="10"' in page  # ein Bildmodell: Vorgabe am Feld
+
+
 def test_parse_size_accepts_the_usual_spellings_and_limits():
     assert images.parse_size("1920x1080") == (1920, 1080)
     assert images.parse_size(" 3840 × 2160 ") == (3840, 2160)

@@ -279,6 +279,14 @@ class AIModel(models.Model):
         default=False,
         help_text="Kann vorhandene Bilder bearbeiten bzw. Varianten erzeugen (M9-02).",
     )
+    image_continue_max_chars = models.PositiveIntegerField(
+        "Weiterarbeiten bis Zeichen",
+        null=True,
+        blank=True,
+        help_text="Nur Bildmodelle: Nachrichten bis zu dieser Länge gelten als Änderung am "
+        "letzten Bild, längere als neues Bild; 0 = nie. Leer = Vorgabe der Instanz "
+        "(IMAGE_CONTINUE_MAX_CHARS). Ein Wert im Chat geht vor.",
+    )
     rejected_params = models.JSONField(
         "Abgelehnte Parameter",
         default=list,

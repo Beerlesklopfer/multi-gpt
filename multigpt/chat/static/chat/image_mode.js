@@ -264,9 +264,26 @@
     if (keepWorking && wantsContinue === false) {
       keepWorking.checked = false; // gemerkt: ausdrücklich ausgeschaltet
     }
-    if (continueMax && Number.isInteger(chatSaved.continueMax) && chatSaved.continueMax >= 0) {
-      continueMax.value = String(chatSaved.continueMax);
+    // Im Chat gemerkter Wert (remember() schreibt ihn bei jeder Änderung in chats).
+    const chatLimit = () => {
+      const limit = (chats[chatKey] || chatSaved).continueMax;
+      return Number.isInteger(limit) && limit >= 0 ? limit : null;
+    };
+    // Vorgabe des gewählten Bildmodells (data-continue-max), sonst der Instanz (LOP C41).
+    // Ein im Chat gemerkter Wert bleibt beim Modellwechsel stehen.
+    function updateContinueDefault() {
+      if (!continueMax) {
+        return;
+      }
+      const fromModel = imageModel?.selectedOptions?.[0]?.dataset.continueMax;
+      if (fromModel !== undefined && /^\d+$/.test(fromModel)) {
+        continueMax.dataset.default = fromModel;
+      }
+      const limit = chatLimit();
+      continueMax.value = String(limit !== null ? limit : continueMax.dataset.default);
     }
+    updateContinueDefault();
+    imageModel?.addEventListener("change", updateContinueDefault);
     // Leer oder ungültig: Vorgabe der Instanz (data-default) gilt, nichts wird gesendet.
     const continueLimit = () => {
       const value = continueMax ? continueMax.value.trim() : "";

@@ -58,7 +58,7 @@ Nur, wenn für den Betrachter ein Bildmodell nutzbar ist (Rolle, Budget, online)
       {% if image_mode.models|length > 1 %}
       <label class="image-mode-field"><span>Modell</span>
         <select id="image-mode-model">
-          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}" data-size="{{ m.size|yesno:'true,false' }}" data-quality="{{ m.quality|yesno:'true,false' }}" data-variants="{{ m.variants }}" data-mask="{{ m.mask|yesno:'true,false' }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
+          {% for m in image_mode.models %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-edit="{{ m.edit|yesno:'true,false' }}" data-size="{{ m.size|yesno:'true,false' }}" data-quality="{{ m.quality|yesno:'true,false' }}" data-variants="{{ m.variants }}" data-mask="{{ m.mask|yesno:'true,false' }}" data-continue-max="{{ m.continue_max }}">{{ m.name }}{% if m.edit %} (kann bearbeiten){% endif %}</option>{% endfor %}
         </select>
       </label>
       {% else %}

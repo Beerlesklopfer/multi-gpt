@@ -31,6 +31,7 @@ def image_mode_config(context) -> dict:
                 "quality": images.supports_quality(m),
                 "variants": images.max_variants(m),
                 "mask": images.supports_mask(m),
+                "continue_max": images.continue_max_chars(None, m),
             }
             for m in models
         ],
@@ -40,7 +41,7 @@ def image_mode_config(context) -> dict:
         "variants": images.max_variants(models[0]),
         "mask": images.supports_mask(models[0]),
         "counts": list(range(1, images.MAX_VARIANTS + 1)),
-        "continue_max": images.continue_max_chars(),
+        "continue_max": images.continue_max_chars(None, models[0]),
         "resolutions": images.RESOLUTION_PRESETS,
         "side": {"min": images.MIN_SIDE, "max": images.MAX_SIDE},
         "formats": list(images.FORMAT_LABELS.items()),

@@ -140,7 +140,7 @@ def stream(request, conversation: Conversation, data: dict, *, error, event_stre
             sources,
             continue_last=continue_last
             and not sources
-            and len(content) <= images.continue_max_chars(continue_max),
+            and len(content) <= images.continue_max_chars(continue_max, ai_model),
             target=target,
             count=count,
             mask_id=mask_id,
