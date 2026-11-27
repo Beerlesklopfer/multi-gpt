@@ -109,7 +109,8 @@ Fertig, aber noch nicht veröffentlicht (Stand 27. November 2026):
   Chat-, Bild-, Sprach- und Embedding-Modelle mit Speicherschätzung; dazu eine
   **Hub-Suche** im Admin, die zeigt, welche Modellvariante in den Speicher passt.
 - **Bilder bearbeiten:** angehängte Bilder verändern, auch mit Maske, Varianten, am letzten Bild
-  weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, lokale Bilder mit FLUX.2 klein.
+  weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, lokale Bilder mit FLUX.2 klein,
+  dazu klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage).
 - **Sprache:** Frage einsprechen und Antworten vorlesen lassen, lokal oder über OpenAI.
 - **Runner:** Container-Logs je Sitzung, ein Volumen `/data` für Caches und Ergebnisse,
   eigene Arbeits-Images per `multigpt-runner images add`.

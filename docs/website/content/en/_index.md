@@ -107,7 +107,8 @@ Done but not yet released (as of 27 November 2026):
   chat, image, voice and embedding models with memory estimates, plus a **hub search** in the
   admin area that shows which model variant fits into memory.
 - **Image editing:** change attached images, with a mask too, variations, keep working on the
-  last image, custom resolution, delete single versions, local images with FLUX.2 klein.
+  last image, custom resolution, delete single versions, local images with FLUX.2 klein, plus
+  classic editing without an image model (crop, resize, rotate, text, collage).
 - **Voice:** speak your question and have answers read aloud, locally or via OpenAI.
 - **Runner:** container logs per session, a `/data` volume for caches and results, your own
   work images via `multigpt-runner images add`.

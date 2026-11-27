@@ -223,7 +223,7 @@ LM Studio stellt einen OpenAI-kompatiblen Server bereit (Standard: `http://<PC-I
 - **Ablauf:** Modus "Bild" im Eingabefeld mit Auswahl eines Modells mit `capability=image` sowie Format (quadratisch, quer, hoch). Das Ergebnis wird als `Attachment` gespeichert und im Chat angezeigt, mit Herunterladen und "Neu erzeugen".
 - **Adapter:** eigene Methode `generate_image(model_id, prompt, **params)`, getrennt vom Chat-Streaming.
 - **Bearbeitung mit Bildmodell:** Bild hochladen oder ein erzeugtes Bild auswählen, dann "Bereich ändern" (Inpainting: Bereich im Browser auf einer Zeichenfläche markieren, Maske geht mit) oder "Varianten". Adaptermethode `edit_image(model_id, image, prompt, mask=None)`. Nicht jeder Anbieter kann das, die Fähigkeit wird je Modell im Admin markiert (`can_edit_images`).
-- **Klassische Bearbeitung in Python:** Zuschneiden, Skalieren, Drehen, Format umwandeln, Hintergrund füllen, Text einsetzen, Collage. Umgesetzt mit Pillow als mitgelieferter MCP-Server `mcp_imagetools` (Abschnitt 8g), damit jedes werkzeugfähige Modell es per Sprache bedienen kann ("mach das Bild quadratisch und 1024 Pixel breit").
+- **Klassische Bearbeitung in Python:** Zuschneiden, Skalieren, Drehen, Format umwandeln, Hintergrund füllen, Text einsetzen, Collage. Umgesetzt mit Pillow als mitgelieferter MCP-Server `mcp_imagetools` (Abschnitt 8g; **umgesetzt 2026-11-27 als eingebautes Werkzeug `transform_image`**, auch über den MCP-Knoten, siehe Implementierung.md M9-03), damit jedes werkzeugfähige Modell es per Sprache bedienen kann ("mach das Bild quadratisch und 1024 Pixel breit").
 - **Verlauf:** Jede Bearbeitung erzeugt ein neues `Attachment` mit Verweis auf das Ausgangsbild. Das Original bleibt erhalten.
 - **Kosten:** Bilder werden pro Stück in der Verbrauchsübersicht geführt.
 
@@ -256,7 +256,7 @@ Die App ist **MCP-Client**: Sie verbindet sich mit MCP-Servern, reicht deren Wer
 - **Werkzeugschleife:** Modell meldet `tool_call` → Rechte prüfen → ggf. Rückfrage → Werkzeug über MCP ausführen → Ergebnis zurück an das Modell → weiter streamen. Höchstens 10 Runden je Antwort, Timeout je Aufruf.
 - **Anzeige:** Jeder Aufruf erscheint im Chat als aufklappbare Zeile (Werkzeug, Argumente, Ergebnis, Dauer). Liefert ein Werkzeug ein Bild oder eine Datei, wird daraus ein `Attachment`.
 - **Auswahl im Chat:** Schalter je Server im Eingabefeld, voreingestellt nach Rolle.
-- **Mitgelieferte Server:** `mcp_imagetools` (Pillow). Websuche (8d) und RAG-Suche (8b) werden zusätzlich als Werkzeuge bereitgestellt, damit werkzeugfähige Modelle selbst entscheiden, wann sie suchen. Der feste Ablauf aus 8b/8d bleibt für Modelle ohne Werkzeugunterstützung.
+- **Mitgelieferte Server:** `mcp_imagetools` (Pillow; umgesetzt als eingebautes Werkzeug `transform_image`). Websuche (8d) und RAG-Suche (8b) werden zusätzlich als Werkzeuge bereitgestellt, damit werkzeugfähige Modelle selbst entscheiden, wann sie suchen. Der feste Ablauf aus 8b/8d bleibt für Modelle ohne Werkzeugunterstützung.
 - **Rechte:** `Role.allowed_mcp_servers` legt fest, wer welche Server nutzen darf. Prüfung über `can()` vor jedem Aufruf.
 - **Rückfrage:** Werkzeuge, die etwas verändern oder nach außen senden, stehen in `tools_requiring_confirmation` und werden erst nach Bestätigung des Nutzers im Chat ausgeführt. Neue, unbekannte Werkzeuge eines Servers gelten bis zur Einstufung durch den Verwalter als rückfragepflichtig.
 - **Dateizugriff:** Mitgelieferte Server arbeiten nur in einem Arbeitsordner je Nutzer unter `MEDIA_ROOT`.

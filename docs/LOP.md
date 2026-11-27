@@ -65,6 +65,7 @@ Entschieden und erledigt bzw. ohne Arbeit (2026-10-12): A3 nein, A5 nein, A8 ja,
 
 | Meilenstein | Stand |
 |---|---|
+| ~~M9-03/04/05 Bildwerkzeuge, Medien über nginx, Tests~~ | ~~umgesetzt 2026-11-27: `transform_image` (Pillow) als eingebautes Werkzeug, auch über MCP; X-Accel-Redirect ab Werk mit Gruppe `multi-gpt-media`. Für die NEWS der nächsten Version: bestehende Installationen setzen `USE_X_ACCEL_REDIRECT=True`, wenn `MEDIA_ROOT` das Standardverzeichnis ist.~~ |
 | ~~M9-02 Bilder bearbeiten~~ | ~~umgesetzt (Browserlauf offen, C39): Bilder anhängen und verändern (`/images/edits`, OpenAI und Eliezer), Weiterarbeiten am letzten Bild, „Weiter bearbeiten“, Varianten, Werkzeug `edit_image`, Maske (nur Anbieter mit `mask`, z. B. GPT Image), eigene Auflösung~~ |
 | FLUX.1 über Rust-Runner | Planung 2026-10-17: GPU-Container auf WS-Joerg; Laufzeit im Image, Gewichte/Cache in Volumes, Ergebnisse als Chat-Versionen in MultiGPT. Bestandsaufnahme von `~/D/f/flux1-project` offen. [Plan und Umsetzungsschritte](plans/FLUX-Runner.md). |
 | Gemeinsamer Runner (1:n) | Planung 2026-10-18: ein Familienrechner (GPU) als Runner für mehrere Benutzer des Servers; `RunnerShare`, Auswahl im Chat, Trennung der Sitzungen, Ports und GPU. [Plan](plans/Runner-Familienrechner.md). |
@@ -85,7 +86,6 @@ Aus der LOP genommen am 2026-11-27 (Entscheidung des Nutzers): neue Funktionen, 
 | C22 | Kontextmenü (M13-01): offen sind „Ins Scratchpad“ (M13-05), eigene Vorlagen (M13-02), Knopf „⋯“ je Nachricht für die ganze Nachricht, die Abschnittsansicht `collections/chunk.html` und „Nachfragen“ aus nur lesbaren Chats in einem neuen Chat (Frage 7c). |
 | C40 | Eigene Auflösung: Bilder über 2 Megapixel sind hochgerechnet (mittig zugeschnitten, Lanczos), nicht neu berechnet; ein Upscaler-Modell (Real-ESRGAN o. ä.) als Dienst bei Eliezer wäre der nächste Schritt. Nur bei Anbietern mit beliebigen Größen (Eliezer/LM Studio). |
 | C49 | Recherche-Agent (Stufe 2): MultiGPT steuert Plan, Suchrunden, Lückenprüfung und Bericht als Worker-Job, auch für Modelle ohne Werkzeuge, mit Kosten- und Schrittlimit. Entwurf offen. |
-| M9-03 | `mcp_imagetools` (Pillow: Zuschneiden, Skalieren, Drehen, Text, Collage); Verzeichnis existiert nicht. |
 | R1 | Runner unter Docker (Abschnitt 8h); heute nur Podman rootless. |
 | R2 | `runner-rs` auf crates.io (Name `multigpt-runner` frei); nichts veröffentlichen ohne Nutzer. |
 | R3 | Inkrementelle Bundles (Implementierung.md M14, Pflicht 6 „später“): nur Änderungen statt des ganzen Arbeitsstands hochladen; neue Protokollfunktion auf Server und Agent. |

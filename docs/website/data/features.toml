@@ -230,8 +230,8 @@
     de = "Bilder erzeugen und bearbeiten"
     en = "Create and edit images"
   [items.text]
-    de = "Bilder erzeugen mit OpenAI gpt-image oder Gemini: als Werkzeug des Chatmodells oder im Modus „Bild“. Fertig für die nächste Version: Bilder verändern (auch mit Maske), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung und lokale Bilder über den eigenen Modellserver. Klassische Bearbeitung folgt."
-    en = "Generate images with OpenAI gpt-image or Gemini: as a tool of the chat model or in “image” mode. Done for the next version: changing images (with a mask too), variations, keep working on the last image, custom resolution and local images via your own model server. Classic editing follows."
+    de = "Bilder erzeugen mit OpenAI gpt-image oder Gemini: als Werkzeug des Chatmodells oder im Modus „Bild“. Fertig für die nächste Version: Bilder verändern (auch mit Maske), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, lokale Bilder über den eigenen Modellserver und klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage)."
+    en = "Generate images with OpenAI gpt-image or Gemini: as a tool of the chat model or in “image” mode. Done for the next version: changing images (with a mask too), variations, keep working on the last image, custom resolution, local images via your own model server and classic editing without an image model (crop, resize, rotate, text, collage)."
 
 [[items]]
   status = "progress"

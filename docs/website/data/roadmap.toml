@@ -614,8 +614,8 @@
     de = "Bilderzeugung, Bereich ändern (Inpainting), Varianten und klassische Bearbeitung über einen mitgelieferten MCP-Server."
     en = "Image generation, editing a marked area (inpainting), variations and classic editing via a bundled MCP server."
   [milestones.note]
-    de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Fertig für die nächste Version, noch nicht veröffentlicht: Bilder anhängen und verändern (auch mit Maske, wo der Anbieter es kann), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, einzelne Versionen löschen und Bilder lokal über den eigenen Modellserver (FLUX.2 klein). Offen: der MCP-Server für klassische Bearbeitung."
-    en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Done for the next version, not yet released: attach and change images (with a mask where the provider supports it), variations, keep working on the last image, custom resolution, deleting single versions and local images via your own model server (FLUX.2 klein). Still open: the MCP server for classic editing."
+    de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Fertig für die nächste Version, noch nicht veröffentlicht: Bilder anhängen und verändern (auch mit Maske, wo der Anbieter es kann), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, Bilder lokal über den eigenen Modellserver (FLUX.2 klein), klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage; Werkzeug `transform_image`, auch über MCP) und Auslieferung der Bilder über nginx ab Werk."
+    en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Done for the next version, not yet released: attach and change images (with a mask where the provider supports it), variations, keep working on the last image, custom resolution, deleting single versions, local images via your own model server (FLUX.2 klein), classic editing without an image model (crop, resize, rotate, text, collage; tool `transform_image`, also via MCP) and serving images through nginx out of the box."
 
   [[milestones.steps]]
     id = "M9-01"
@@ -632,15 +632,15 @@
 
   [[milestones.steps]]
     id = "M9-03"
-    status = "planned"
+    status = "progress"
     de = "Klassische Bildbearbeitung über mitgelieferten MCP-Server"
     en = "Classic image editing via a bundled MCP server"
 
   [[milestones.steps]]
     id = "M9-04"
-    status = "partial"
-    de = "Geschützte Auslieferung der Bilder (Auslieferung über nginx noch offen)"
-    en = "Protected delivery of images (delivery via nginx still open)"
+    status = "progress"
+    de = "Geschützte Auslieferung der Bilder, über nginx ab Werk"
+    en = "Protected delivery of images, via nginx out of the box"
 
   [[milestones.steps]]
     id = "M9-05"
