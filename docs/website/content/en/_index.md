@@ -3,7 +3,7 @@ title: "MultiGPT"
 description: "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
 eyebrow: "Self-hosted · in development · version 0.4.0"
 headline: "One AI chat for the whole family – on your own server"
-lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to a local LM Studio. Chats, accounts and API keys stay on your own server."
+lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to local models on your own graphics card. Chats, accounts and API keys stay on your own server."
 pillarsTitle: "The idea behind it"
 pillarsLead: "These are the goals for version 1. The status labels further down show what has been built so far."
 pillars:
@@ -12,7 +12,7 @@ pillars:
     text: "The interface, chat histories and API keys live only on your own server in your home network, in PostgreSQL. Keys are stored encrypted. The only traffic leaving the network is the requests to the AI providers you choose."
   - title: "One chat for many providers"
     image: "providers"
-    text: "One interface for all connected models, with the model chosen per message. Local models from LM Studio join in for free whenever that PC is on."
+    text: "One interface for all connected models, with the model chosen per message. Local models from your own model server (or LM Studio) join in for free whenever that PC is on."
   - title: "Family accounts with roles and budgets"
     image: "family"
     text: "Every family member gets their own account. Roles define who may use which models and features. Monthly budgets keep costs in check."
@@ -99,11 +99,28 @@ Updating from 0.2? The required steps are under
 
 More under [features]({{< relref "features" >}}).
 
+## In progress for the next version
+
+Done but not yet released (as of 27 November 2026):
+
+- **Own model server Eliezer** (Rust) replaces LM Studio on the computer with the graphics card:
+  chat, image, voice and embedding models with memory estimates, plus a **hub search** in the
+  admin area that shows which model variant fits into memory.
+- **Image editing:** change attached images, with a mask too, variations, keep working on the
+  last image, custom resolution, delete single versions, local images with FLUX.2 klein.
+- **Voice:** speak your question and have answers read aloud, locally or via OpenAI.
+- **Runner:** container logs per session, a `/data` volume for caches and results, your own
+  work images via `multigpt-runner images add`.
+- **Web search** with queries derived from the conversation, a collapsible **tool picker**,
+  **price suggestions** for cloud models and readable **error details** in the chat.
+
+Next on the plan are background jobs and music, see the [roadmap]({{< relref "roadmap" >}}).
+
 ## Status
 
-It already runs for real with OpenAI and LM Studio; the other cloud providers have mostly
+It already runs for real with OpenAI and local models; the other cloud providers have mostly
 been tested with simulations so far. A fresh Debian installation is still pending, and the
-Docker build is untested. There is no Docker support for the runner, only Podman. Image editing, voice, music, backup and the actual scratchpad follow –
+Docker build is untested. There is no Docker support for the runner, only Podman. Music, backup and the actual scratchpad follow –
 details in the [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence

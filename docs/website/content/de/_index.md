@@ -3,7 +3,7 @@ title: "MultiGPT"
 description: "Selbst gehostetes Multi-KI-Chatsystem für Familie und Haushalt: eigene Daten, viele Anbieter, ein Chat."
 eyebrow: "Selbst gehostet · in Entwicklung · Version 0.4.0"
 headline: "Ein KI-Chat für die ganze Familie – auf dem eigenen Server"
-lead: "MultiGPT ist eine Web-App für das Heimnetz, über die alle im Haushalt mit verschiedenen KI-Modellen chatten – von OpenAI über Anthropic und Google bis zum lokalen LM Studio. Chats, Konten und API-Keys bleiben dabei auf dem eigenen Server."
+lead: "MultiGPT ist eine Web-App für das Heimnetz, über die alle im Haushalt mit verschiedenen KI-Modellen chatten – von OpenAI über Anthropic und Google bis zu lokalen Modellen auf der eigenen Grafikkarte. Chats, Konten und API-Keys bleiben dabei auf dem eigenen Server."
 pillarsTitle: "Die Idee dahinter"
 pillarsLead: "Das sind die Ziele für Version 1. Was davon schon umgesetzt ist, zeigen die Statusmarken weiter unten."
 pillars:
@@ -12,7 +12,7 @@ pillars:
     text: "Oberfläche, Chatverläufe und API-Keys liegen nur auf dem eigenen Server im Heimnetz, in PostgreSQL. API-Keys werden verschlüsselt gespeichert. Nach außen gehen nur die Anfragen an die gewählten KI-Anbieter."
   - title: "Ein Chat für viele Anbieter"
     image: "providers"
-    text: "Eine Oberfläche für alle angebundenen Modelle, Modellwahl pro Nachricht. Lokale Modelle aus LM Studio laufen kostenlos mit, sobald der PC an ist."
+    text: "Eine Oberfläche für alle angebundenen Modelle, Modellwahl pro Nachricht. Lokale Modelle vom eigenen Modellserver (oder LM Studio) laufen kostenlos mit, sobald der PC an ist."
   - title: "Familienkonten mit Rollen und Budgets"
     image: "family"
     text: "Jedes Familienmitglied hat ein eigenes Konto. Rollen legen fest, wer welche Modelle und Funktionen nutzen darf. Monatsbudgets halten die Kosten im Rahmen."
@@ -101,12 +101,29 @@ Wer von 0.2 aktualisiert, findet die nötigen Schritte unter
 
 Mehr dazu unter [Funktionen]({{< relref "features" >}}).
 
+## In Arbeit für die nächste Version
+
+Fertig, aber noch nicht veröffentlicht (Stand 27. November 2026):
+
+- **Eigener Modellserver Eliezer** (Rust) statt LM Studio für den Rechner mit der Grafikkarte:
+  Chat-, Bild-, Sprach- und Embedding-Modelle mit Speicherschätzung; dazu eine
+  **Hub-Suche** im Admin, die zeigt, welche Modellvariante in den Speicher passt.
+- **Bilder bearbeiten:** angehängte Bilder verändern, auch mit Maske, Varianten, am letzten Bild
+  weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, lokale Bilder mit FLUX.2 klein.
+- **Sprache:** Frage einsprechen und Antworten vorlesen lassen, lokal oder über OpenAI.
+- **Runner:** Container-Logs je Sitzung, ein Volumen `/data` für Caches und Ergebnisse,
+  eigene Arbeits-Images per `multigpt-runner images add`.
+- **Websuche** mit Suchanfragen aus dem Gesprächsverlauf, **Werkzeugauswahl** als aufklappbare
+  Liste, **Preisvorschläge** für Cloud-Modelle und auswertbare **Fehlerdetails** im Chat.
+
+Geplant sind als Nächstes Hintergrund-Aufträge und Musik, siehe [Roadmap]({{< relref "roadmap" >}}).
+
 ## Stand
 
-Mit OpenAI und LM Studio läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher
+Mit OpenAI und lokalen Modellen läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher
 überwiegend simuliert getestet; eine frische Debian-Installation steht noch aus, der
-Docker-Build ist ungetestet. Docker für den Runner gibt es nicht, nur Podman. Bildbearbeitung,
-Sprache, Musik, Backup und das eigentliche Scratchpad folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
+Docker-Build ist ungetestet. Docker für den Runner gibt es nicht, nur Podman. Musik, Backup und
+das eigentliche Scratchpad folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
 
