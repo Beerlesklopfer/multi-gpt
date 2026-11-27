@@ -244,7 +244,7 @@
     en = "Speak your question, correct the text before sending, have answers read aloud – locally via your own model server or via OpenAI. Since 0.4.1."
 
 [[items]]
-  status = "planned"
+  status = "partial"
   milestone = "13"
   [items.title]
     de = "Scratchpad"
