@@ -172,6 +172,28 @@ multi_gpt_warn() {
     echo "multi-gpt: $*" >&2
 }
 
+# Medien über nginx (X-Accel-Redirect, M9-04): nginx (www-data) liest MEDIA_ROOT über
+# eine eigene Gruppe multi-gpt-media – nicht über die Gruppe multi-gpt, sonst läse nginx
+# auch /etc/multi-gpt/.env. Nur das Standardverzeichnis, das dem Dienst gehört; ein
+# eigenes MEDIA_ROOT (z. B. Symlink auf eine NAS-Freigabe) bleibt unangetastet. Neue
+# Dateien erben die Gruppe (setgid), UMask 0027 der Units gibt der Gruppe Leserecht.
+# Vor multi_gpt_setup_nginx aufrufen: das Neuladen gibt den nginx-Workern die Gruppe.
+MEDIA_GROUP=multi-gpt-media
+multi_gpt_media_group() {
+    getent group "$MEDIA_GROUP" >/dev/null || addgroup --system --quiet "$MEDIA_GROUP"
+    if getent passwd www-data >/dev/null && ! id -nG www-data | tr ' ' '\n' | grep -qx "$MEDIA_GROUP"; then
+        adduser --quiet www-data "$MEDIA_GROUP"
+    fi
+    media=/var/lib/multi-gpt/media
+    [ -d "$media" ] && [ ! -L "$media" ] && [ "$(stat -c %U "$media")" = multi-gpt ] || return 0
+    chmod o+x /var/lib/multi-gpt  # nur Durchgang zu media, kein Auflisten
+    if [ "$(stat -c %G "$media")" != "$MEDIA_GROUP" ]; then
+        chgrp -R "$MEDIA_GROUP" "$media"
+        find "$media" -type d -exec chmod 2750 {} +
+        find "$media" -type f -exec chmod g+r {} +
+    fi
+}
+
 multi_gpt_nginx_reload() {
     if [ -d /run/systemd/system ] && systemctl is-active --quiet nginx.service 2>/dev/null; then
         deb-systemd-invoke reload nginx.service \
@@ -668,6 +690,7 @@ if [ "$1" = "configure" ]; then
     # – z. B. ein Symlink auf eine NAS-Freigabe – werden nicht angefasst.
     [ -d /var/lib/multi-gpt ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt
     [ -d /var/lib/multi-gpt/media ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt/media
+    multi_gpt_media_group
 
     # Konfigurationsverzeichnis: nur root schreibt, der Dienst liest.
     install -d /etc/multi-gpt
@@ -693,8 +716,10 @@ print("MEDIA_ROOT=/var/lib/multi-gpt/media")
 print("# nginx terminates TLS in front of gunicorn (one reverse proxy)")
 print("SECURE_COOKIES=True")
 print("AXES_PROXY_COUNT=1")
-print("# Serve document downloads via nginx (www-data needs read access to MEDIA_ROOT)")
-print("#USE_X_ACCEL_REDIRECT=True")
+print("# Serve attachments and documents via nginx (X-Accel-Redirect); nginx reads")
+print("# MEDIA_ROOT through the group multi-gpt-media. Turn off for a custom MEDIA_ROOT")
+print("# that nginx cannot read.")
+print("USE_X_ACCEL_REDIRECT=True")
 print("LOG_LEVEL=INFO")
 print("# Directory sources for collections (comma-separated absolute paths, read-only;")
 print("# below /home a systemd drop-in is needed, see multi-gpt-worker.service)")
