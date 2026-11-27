@@ -1,7 +1,7 @@
 # Funktionskacheln der Startseite.
 # status: "done" | "partial" | "progress" | "planned"; milestone verweist auf data/roadmap.toml.
 # "progress" = in Arbeit, noch nicht veröffentlicht (derzeit nirgends in Gebrauch).
-# Stand: Version 0.4.0
+# Stand: Version 0.4.1
 
 [[items]]
   status = "done"
@@ -20,8 +20,8 @@
     de = "Debian-Paket und systemd"
     en = "Debian package and systemd"
   [items.text]
-    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`, aktuell 0.4.0. Seit 0.3.4 über eine signierte apt-Paketquelle für Debian 13, Updates mit `apt upgrade`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
-    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command, currently 0.4.0. Since 0.3.4 from a signed apt repository for Debian 13, with updates via `apt upgrade`. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
+    de = "Ein `.deb` mit eigenem venv, nginx mit TLS, systemd-Units und dem Verwaltungsbefehl `mgpt-ctl`, aktuell 0.4.1. Seit 0.3.4 über eine signierte apt-Paketquelle für Debian 13, Updates mit `apt upgrade`. Docker als Ausweichweg. Die Testinstallation auf einem frischen Debian 13 steht noch aus."
+    en = "A `.deb` with its own venv, nginx with TLS, systemd units and the `mgpt-ctl` admin command, currently 0.4.1. Since 0.3.4 from a signed apt repository for Debian 13, with updates via `apt upgrade`. Docker as a fallback. A test install on a fresh Debian 13 is still pending."
 
 [[items]]
   status = "done"

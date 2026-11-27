@@ -1,515 +1,427 @@
 ---
 title: "Features"
-description: "What MultiGPT does and is meant to do: many providers, LM Studio with model management, attachments, projects, shared chats, family accounts, billing accounts, your own documents with citations, web search, calculations, PDF sheets, images, MCP tools, MultiGPT as an MCP server and the runner."
-lead: "This page describes what MultiGPT version 1 is meant to do, as of version 0.4.1. Done: chatting with many providers and LM Studio including model management, attachments, projects, shared chats, the context menu in the chat, family accounts with billing accounts and budgets, comparison mode, MCP tools, MultiGPT as an MCP server, calculations, PDF sheets, your own documents with citations, web search, image generation and the runner (new in 0.4.0). Image editing, voice and the actual scratchpad are planned. Every section shows its status and milestone."
+description: "What MultiGPT does, as of 0.4.1: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, images, voice, tools via MCP, the runner, family accounts with roles and budgets."
+lead: "What MultiGPT does today, how to use it and where its limits are – as of version 0.4.1. Done: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, creating and editing images, voice, tools via MCP, the runner and family accounts with roles and budgets. Sharing projects and administration via mgpt-ctl are ready for the next version. Planned: music, background jobs and the actual scratchpad."
 menus:
   main:
     weight: 10
 ---
 
-Detailed guides are in the [wiki](https://github.com/Beerlesklopfer/multi-gpt/wiki) (German).
+Every section shows a status badge and the milestone from the
+[roadmap]({{< relref "roadmap" >}}). “In progress” means: done, but not yet released. What is
+new in which version is listed on the [home page]({{< relref "/" >}}). Detailed guides are in
+the [wiki](https://github.com/Beerlesklopfer/multi-gpt/wiki) (German).
 
-## Login and accounts
+## Chatting
 
-{{< status "done" "1" >}}
+{{< status "done" "3 / 5" >}}
 
-- Log in, log out and change your password.
-- Login throttling: after five failed attempts, logging in with that user name from that
-  address is blocked for 15 minutes.
-- No self-registration. An administrator creates accounts – with
-  `mgpt-ctl createsuperuser`, `make user` (with a choice of role) or in the admin area.
-- **Personal menu** (since 0.3.5): the profile picture and name sit in the top right. A click
-  opens settings, profile picture, my usage, API keys, family, administration, password and
-  sign out – depending on your permissions. Without a profile picture your initials are
-  shown; an uploaded picture is stored without metadata.
-- The **version** is shown at the bottom of the sidebar, on the sign-in page and in the
-  administration header (since 0.3.6).
+One interface for all connected models, on the PC and on the phone.
 
-## Chatting with many providers
+- **Choose the model per message.** Answers are streamed and can be stopped and regenerated.
+  The header of every answer shows tokens per second and the time to the first token.
+- **Editing with versions:** your own messages can be changed, attachments included. Editing
+  and “regenerate” create versions, and “‹ 1/2 ›” switches between them. Single versions, or an
+  answer with everything after it, can be deleted; costs already booked stay booked.
+- **Rendering:** Markdown with code highlighting, formulas with KaTeX, SVG as a preview (as an
+  image only, without scripts). All libraries are served from your own server.
+- **Attachments:** attach, paste or drag in images and documents (PDF, DOCX, TXT, MD). Images
+  only go to models that understand them. Every image is re-encoded, and EXIF data such as the
+  location is dropped.
+- **Chat list:** search, archive, automatic titles, export as Markdown, input history with arrow
+  up and down, font size A−/A+.
+- **Control:** a system prompt per chat; creativity (temperature) and reasoning effort per chat
+  or project. The administrator's base rules apply to all models and are visible in the chat.
+- **Context menu:** right-click, use the bar or press Shift+F10 to quote selected text with its
+  origin, ask a follow-up, explain, simplify, translate, or look for counter-arguments or
+  evidence. Nothing is sent on its own.
+- **Errors** are shown with their cause; “technical details” give status, provider, model and
+  request size.
 
-{{< status "done" "3 / 4 / 5" >}}
+Guide: [wiki: Chat-Bedienung](https://github.com/Beerlesklopfer/multi-gpt/wiki/Chat-Bedienung).
 
-{{< shot "chat-code" >}}
+### Comparison mode
 
-- Chat list in the sidebar: new, rename, archive, delete, search. The sidebar can be hidden,
-  answers use the full width, and the font size can be changed with A−/A+.
-- The model can be chosen **per message**. Answers are streamed, a round button in the input
-  field sends or stops, and an answer can be regenerated.
-- Providers are connected via API key: OpenAI and all OpenAI-compatible services
-  (e.g. OpenRouter and LM Studio), plus Anthropic and Google Gemini.
-- In the admin area, “check connection now” tests a provider and names the cause of a
-  problem, e.g. “connection refused”, “API key expired” or “check the base URL”. Unreachable
-  cloud providers are greyed out in the chat.
-- Your own messages can be edited as in ChatGPT, attachments included. Editing and
-  “regenerate” create versions, and “‹ 1/2 ›” switches between them. Earlier versions are
-  kept. Every message has a copy button.
-- Markdown with code highlighting and a copy button. The libraries are bundled locally and
-  the output is sanitised.
-- Automatic chat titles, a system prompt per chat, export as Markdown.
-- **Input history** (since 0.3.4): arrow up and down bring earlier messages back into the
-  input field.
-- **Delete an answer with what follows** (since 0.3.4): an answer can be deleted together with
-  its question and everything after it. Costs stay booked.
-- While the AI is still writing you can scroll freely: the view only follows while you are at
-  the bottom; otherwise “↓ Neueste” (newest) takes you back to the end.
-- With Anthropic, MultiGPT uses **prompt caching** for the system prompt, tools and history
-  (since 0.3.4). This saves costs in longer chats.
+{{< status "done" "6" >}}
 
-## Context menu and quoting in the chat
+Ask two or three models the same question and read the answers side by side. They are kept
+as versions of the same message in the chat. MCP tools are off in comparison mode.
 
-{{< status "done" "13" >}}
-
-Since 0.3.2: reuse selected text in answers, your own messages, comparison columns and source
-lists – with a right-click, via a bar below the selection (on phones too) or with Shift+F10.
-
-- **Quoting:** the selected text goes into the input field as a quote, with its origin (the
-  model, “Ich” for yourself or “Quelle [n]” for a source). Several quotes go into one message,
-  one after the other.
-- **Quick actions:** ask a follow-up, explain, simplify, translate, counter-arguments, find
-  evidence and copy with a source reference.
-- Nothing is sent on its own. Shift+right-click still opens the browser's menu, and the
-  custom menu can be switched off in the settings.
-- Guide: [wiki: Chat-Bedienung](https://github.com/Beerlesklopfer/multi-gpt/wiki/Chat-Bedienung).
-
-## Attachments and image input
-
-{{< status "done" "5" >}}
-
-- Attach images and documents with the paper clip, paste them from the clipboard or drag them
-  into the input field. Images open large with a click (lightbox).
-- Images only go to models with the “understands images” tick, across all three provider
-  adapters. Documents (PDF, DOCX, TXT, MD) are passed on as text.
-- **Privacy:** every image is re-encoded on the server. This drops EXIF data such as the
-  location (GPS), camera data and embedded comments. The file type is checked by content,
-  not by extension.
-- Attachments are visible only in the chat they belong to and are served only after a
-  permission check.
-
-## Formulas and SVG preview
-
-{{< status "done" "5" >}}
-
-- Mathematical formulas are typeset with KaTeX. KaTeX lives on your own server; nothing is
-  loaded from the internet.
-- SVG code in answers gets a **preview**, with a switch to the code and “save as file”. The
-  preview is just an image: scripts, links and external content in the SVG have no effect.
-
-## Projects
-
-{{< status "done" "5" >}}
-
-Group chats into projects, as in ChatGPT or Claude – for example “Moving house” or “Tax return”.
-
-- A project gives its chats **instructions**, a **default model** and preselected
-  **collections** of your own documents.
-- Projects appear in the sidebar above the chats; they can be expanded, pinned and archived.
-  Search also finds project names.
-- Only the person who created a project can see it.
-- Guide: [wiki: Projekte](https://github.com/Beerlesklopfer/multi-gpt/wiki/Projekte).
-
-## Sharing chats
-
-{{< status "done" "5" >}}
-
-- Share a chat with individual accounts or a group. Each share has **RWUD** permissions:
-  read (always), write (join the conversation), update (edit messages, rename) and delete.
-- Recipients find shared chats under “Mit mir geteilt” (shared with me) and can continue them
-  as their own copy.
-- **Revoking takes effect at once**, even for an answer that is still running.
-- **Costs** are borne by whoever triggers an answer, not by the chat's owner. Which models
-  someone may choose depends on their own role and budget.
-- **Notices** (since 0.3.6): if a recipient deletes or archives the chat or deletes an answer,
-  the owner gets a notice in the personal menu – with the name and chat title, without
-  content.
-- Guide: [wiki: Chats teilen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Chats-teilen).
-
-## Local models with LM Studio
-
-{{< status "done" "4" >}}
-
-[LM Studio](https://lmstudio.ai/docs) runs on a PC in the home network and provides an
-OpenAI-compatible server. MultiGPT connects to it as a provider but does not start or wake it.
-
-- A status indicator in the header shows whether LM Studio is reachable. The browser
-  checks every 30 seconds while the tab is visible.
-- When LM Studio is off, local models are greyed out. When it is on, the models that
-  LM Studio actually reports are offered, along with their capabilities.
-- If LM Studio goes away in the middle of an answer, the text received so far is kept and
-  the cause is shown – with a dedicated hint when the model's context is too small.
-- Local models cost € 0 and stay usable even when the budget is used up.
-- In real use in the home network: chat (e.g. gpt-oss-20b), embeddings (nomic-embed-text) and
-  OCR (olmOCR) run through LM Studio.
-
-**Model management** (since 0.3.2, for LM Studio 0.4 or later): if you like, MultiGPT itself
-decides which models are loaded in LM Studio.
-
-- Before a chat, a comparison, embeddings, OCR or figure descriptions, MultiGPT loads the
-  right model with its context window and unloads others to make room – **never beyond a
-  memory budget** for the graphics card, keeping a reserve for the display and system.
-- Pinned models and models in use stay loaded, and indexing does not push out the chat model.
-  If something does not fit, the chat says “not enough graphics memory” and an indexing run
-  waits.
-- Indexing models stay loaded only for the run (since 0.3.4). Models unused for 30 minutes
-  are unloaded by the worker.
-- In the admin area you can choose the context window per model, with the expected memory
-  shown next to it; a separate page lists the loaded models. On the console: `mgpt-ctl lms`.
-- If several MultiGPT installations share one LM Studio, each unloads only the models it
-  loaded itself (since 0.3.6).
-- Guide: [wiki: Anbieter und Modelle](https://github.com/Beerlesklopfer/multi-gpt/wiki/Anbieter-und-Modelle).
-
-## Models and capabilities
+## Providers and models
 
 {{< status "done" "4 / 4a" >}}
 
-The **capability matrix** in the admin area lists every provider's models with their
-capabilities, editable in place:
+- Providers are connected with an API key: OpenAI and OpenAI-compatible services (e.g.
+  OpenRouter), Anthropic and Google Gemini, plus the “LM Studio” provider type for local models
+  (see below). Keys are stored encrypted in the database.
+- “Check connection now” names the cause of a problem, such as an expired key. Unreachable
+  providers are greyed out in the chat.
+- The **capability matrix** shows each model's main type (chat, image, embedding, speech
+  recognition, text-to-speech) and ticks for tools, image understanding and image editing. New
+  models get their capabilities automatically.
+- When you switch models, the chat shows a cost hint for cloud models and a short introduction
+  for local ones.
+- With Anthropic, MultiGPT uses prompt caching, which saves costs in longer chats.
 
-- **Main type:** chat, image generation, embedding, speech recognition, speech output or music.
-- **Ticks:** tools, understands images, edits images.
-- **MCP:** none, all or selected MCP servers (see below).
+Guide: [wiki: Anbieter und Modelle](https://github.com/Beerlesklopfer/multi-gpt/wiki/Anbieter-und-Modelle).
 
-New models get their capabilities **automatically**: LM Studio reports them itself, otherwise
-MultiGPT infers them from the model ID. For existing models,
-`sudo mgpt-ctl guess_capabilities --apply` catches up. Guide:
-[wiki: Anbieter und Modelle](https://github.com/Beerlesklopfer/multi-gpt/wiki/Anbieter-und-Modelle).
+## Local models
 
-## Roles, groups and budgets
+{{< status "done" "4" >}}
 
-{{< status "done" "2 / 6" >}}
+{{< shot "chat-code" >}}
 
-{{< shot "chat-phone" >}}
+Local models run on a PC with a graphics card in your home network, not on the MultiGPT
+server. That PC runs a model server with an OpenAI-compatible interface. MultiGPT connects it
+through the “LM Studio” provider type; the server's address is all it needs.
 
-Four default roles, adjustable in the admin area:
+The usual way now is **Eliezer**, our own model server written in Rust. **LM Studio** can still
+be used as a provider.
 
-| Role | May |
-|---|---|
-| Administrator | Everything: providers, keys, models, accounts, roles, groups, budgets, everyone's usage |
-| Adult | All enabled models and features, own collections, sharing with groups |
-| Teenager | Only enabled models and features, a fixed system prompt for the role, monthly budget |
-| Guest | Chat with one fixed model, no uploads, no sharing, small budget |
+- A status indicator in the header shows whether the model server is reachable. If it is off,
+  local models are greyed out. MultiGPT does not start or wake it.
+- The models the server reports are offered, along with their capabilities.
+- Local models cost nothing and stay usable even when the budget is used up.
+- If the server drops out in the middle of an answer, the text so far is kept.
 
-- Permissions are checked on the server, for every page and before every provider call –
-  not just by hiding things in the interface. There are separate permissions for image
-  generation, calculations and PDF documents, among others.
-- **Privacy:** chats are private. Administrators do not see other people's chats either,
-  only usage figures. The one exception: teenager accounts have an option "Einsicht in Chats
-  erlaubt" (chat insight allowed), off by default. When it is on, administrators can read
-  that account's chats but not write in them, and the member permanently sees a notice.
-- **Groups:** collections and individual chats can be shared with groups.
-- A "Familie" (family) page (`/familie/`) for administrators: create and lock accounts,
-  assign roles, reset passwords, set budgets, switch chat insight, manage groups and view
-  everyone's usage.
+**Model management** (can be switched on per provider): before chat, comparison, embeddings and
+OCR, MultiGPT loads the right model itself and unloads others to make room – never beyond a
+memory budget for the graphics card, with a reserve for the display and system.
 
-## Billing accounts and costs
+- Pinned models stay loaded, and indexing does not push out the chat model. Models unused for
+  30 minutes are unloaded.
+- If another model blocks the graphics memory, the chat offers to swap it out – only after
+  confirmation.
+- Reasoning effort and context window can be preset per model. If several installations share
+  one model server, each only unloads its own models.
 
-{{< status "done" "6" >}}
+### Own model server Eliezer
 
-{{< shot "usage" >}}
+{{< status "partial" "16" >}}
 
-Every provider bills through a **billing account**:
+Since 0.4.1. Eliezer provides chat, image, speech recognition, text-to-speech, OCR and embedding
+models. Memory needs and free space come from Eliezer itself. A **hub search** in the admin area
+shows which model variant fits into memory.
 
-- **monetary** in EUR or USD (cloud providers), **tokens only** (local models such as
-  LM Studio) or **flat rate** (subscription; requests and tokens are only counted).
-- **Prices with validity dates:** per model from a given date, with separate prices for cache,
-  long context and reasoning tokens. Image prices per size and quality. MultiGPT ships no
-  prices; the administrator maintains them.
-- **Exchange rates** for USD accounts; every answer is recorded as a **booking** with tokens,
-  amount and rate. Since 0.3.6 the worker fetches the **ECB reference rate** USD→EUR
-  automatically on working days (can be switched off), and EUR accounts can be switched to
-  USD; existing bookings stay unchanged.
-- **Budgets** per account, role and person (person before role): in euros, or as a quota for
-  token accounts. From 80 % a warning appears; from 100 % the account's models are blocked
-  until the next month. Free models stay usable.
-- **Mein Verbrauch** (my usage, `/verbrauch/`) shows everyone their tokens and costs per
-  account and model, their budget status and the last few months.
-- Guide: [wiki: Kosten und Budgets](https://github.com/Beerlesklopfer/multi-gpt/wiki/Kosten-und-Budgets).
+Limits: Eliezer does not report whether a model supports tools – MultiGPT guesses this from the
+model name. An image job takes the graphics card for itself and pushes out loaded chat models.
+Running Eliezer through the runner is not available yet.
 
-## Comparison mode
+## Your own documents and citations
 
-{{< status "done" "6" >}}
+{{< status "done" "7" >}}
 
-Ask two or three models the same question at the same time and read the answers side by side.
+{{< shot "chat-rag" >}}
 
-- A switch in the input field opens the choice of two or three models.
-- The answers appear as columns and are stored in the chat tree as versions of the same
-  message. Later, "‹ 1/3 ›" switches between them.
-- Picking one answer makes its model the chat's default model.
-- MCP tools are off in comparison mode, so no confirmations pop up in several columns at once.
+Ask questions about your own papers – contracts, manuals, school material – with source and
+page.
 
-## Tools via MCP
+- **Collections** of PDF, DOCX, TXT, MD and image files (up to 25 MB each), private or shared
+  with groups, read-only or with write access.
+- A background service extracts the text, recognises scanned pages via OCR and computes
+  embeddings. Several documents are processed at once, and runs can be paused.
+- Search uses PostgreSQL and pgvector, optionally combined with German full-text search. If you
+  like, a vision model describes figures so that search can find them.
+- **Fully local if you want:** embeddings and OCR via Eliezer or LM Studio, with Tesseract on the
+  server as a fallback. Then no document content leaves the house.
+- Models with tools can list documents, fetch the table of contents and read sections word for
+  word – only in collections you may read yourself.
+- **Folders on the server or NAS** can be added as a collection by an administrator; they are
+  read in again regularly.
+- **Access protection:** other people's private collections never end up in a query.
+  Administrators see only metadata in the RAG overview.
+
+**Citations:** below the answer, the sources are listed with their locator, e.g. “Sect. 7.5.3,
+p. 12, para. 3”. A PDF opens in the browser at the right page. The server formats citations by
+fixed rules in the account's style: DIN ISO 690, APA 7, Harvard, Chicago (author-date), MLA 9
+or BibTeX. Bibliographic data can be edited per document, standards included.
+
+{{< shot "collections" >}}
+
+Guides: [wiki: RAG](https://github.com/Beerlesklopfer/multi-gpt/wiki/RAG),
+[wiki: Zitieren](https://github.com/Beerlesklopfer/multi-gpt/wiki/Zitieren).
+
+## Web search
+
+{{< status "done" "8" >}}
+
+- A “web search” switch in the input field. MultiGPT derives the search queries from the
+  conversation and drops unrelated results. The links appear below the answer – with local
+  models too.
+- Searches go to a self-hosted [SearXNG](https://docs.searxng.org/); no commercial search API is
+  connected.
+- Models with tools read single pages or small websites, including URLs from your question, and
+  respect robots.txt.
+- **Protection:** addresses in the home network are blocked, also via redirects. Web text only
+  reaches the model as marked source material, never as instructions.
+- Links in an answer that appear in no source get a ⚠ and a “check sources” button.
+
+## Images
+
+{{< status "done" "9" >}}
+
+- **Generate** with OpenAI (gpt-image), Google Gemini or locally with FLUX.2 klein via Eliezer.
+  Chat models with tools call an image model themselves; there is also an “image” mode with
+  format, quality and custom resolution.
+- **Edit:** have an image model change attached images, with a mask where the provider supports
+  it; create variations; keep working on the last image.
+- **Without an image model:** the `transform_image` tool crops, resizes, rotates, adds text,
+  builds collages and converts formats – locally, free of charge, as a new image next to the
+  original.
+- Images are stored without metadata, and costs are booked per image. The description only goes
+  to the provider of the image model.
+- A role permission of its own, “create and edit images”, on by default for administrators and
+  adults.
+
+Guide: [wiki: Bilder](https://github.com/Beerlesklopfer/multi-gpt/wiki/Bilder).
+
+## Voice
+
+{{< status "done" "10" >}}
+
+Since 0.4.1.
+
+- A microphone next to “Send” turns your recording into text, which you can correct before
+  sending.
+- A speaker button reads answers aloud, automatically if you like. Voice and read-aloud are set
+  per account. Escape stops recording and playback.
+- Recognition and read-aloud run locally via Eliezer or via OpenAI. You need one model for
+  speech recognition and one for text-to-speech.
+- Browsers only allow the microphone over HTTPS.
+
+## Tools
+
+Models with the “tools” tick can call functions. Every call appears in the chat as a
+collapsible line with arguments, result and duration. A collapsible list in the input field
+selects which tools are offered.
+
+### Connecting MCP servers
 
 {{< status "done" "4a" >}}
 
 MultiGPT is a client for the [Model Context Protocol](https://modelcontextprotocol.io/).
-Models that support tools can call functions from connected MCP servers.
 
-- Only administrators add MCP servers – local (`stdio`) or via Streamable HTTP. Credentials
-  are stored encrypted.
-- **Import:** configurations in the `{"mcpServers": {…}}` format (as used by Claude Desktop,
-  Cursor or n8n) can be pasted in. Entries with placeholders instead of real credentials are
-  created disabled.
-- **Online status:** every server shows “online”, “offline” with the cause, “unchecked” or
-  “disabled”; the worker checks regularly.
-- **Classification:** a tool table lists all of a server's tools. Tools that change something
-  or send data out only run after a confirmation in the chat. New, unclassified tools require
-  confirmation.
-- **Access per model:** the administrator decides which models may use MCP (none, all,
-  selected servers). This protects against models that are more easily tricked into unwanted
-  calls. It is checked on the server, in addition to the role's permission.
-- Every call appears in the chat as an expandable line with arguments, result and duration.
-  At most 10 tool rounds per answer, with a time limit per call.
-- **Tools on demand** (since 0.3.2): with many tools – n8n with more than 50, for example –
-  the model gets only a core set and looks up more with `find_tools`. MultiGPT also estimates
-  the request before sending, drops older messages if needed and reports a context that is
-  too small with figures.
-- Administrators see MCP servers going offline live in the status bar (since 0.3.5).
-- Guide: [wiki: MCP](https://github.com/Beerlesklopfer/multi-gpt/wiki/MCP).
+- The administrator adds MCP servers, local (`stdio`) or over HTTP. Configurations in the
+  `{"mcpServers": {…}}` format can be pasted in. Every server shows its online status and can be
+  reconnected from the chat after an outage.
+- Tools that change something or send data out only run after confirmation in the chat.
+- The administrator decides per model which ones may use MCP (none, all, selected servers);
+  local models are set to “none” by default.
+- With many tools, the model gets only a core set and looks up the rest itself, so that the
+  context of local models is enough.
 
-## MultiGPT as an MCP server
+Guide: [wiki: MCP](https://github.com/Beerlesklopfer/multi-gpt/wiki/MCP).
+
+### Calculations
+
+{{< status "done" "4a" >}}
+
+The `run_python` tool calculates exactly with numpy, scipy, sympy and mpmath and draws charts
+with matplotlib. The code runs in a bubblewrap sandbox without network, server files or keys,
+with limits on time, memory and processes. Without a working sandbox the tool is not offered.
+Guide: [wiki: Berechnungen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Berechnungen).
+
+### Worksheets and documents as PDF
+
+{{< status "done" "4a" >}}
+
+The `create_pdf` tool produces print-ready sheets: handwriting rulings 0 to 4, lined and squared
+paper, arithmetic sheets with answers, times tables, number lines, clock faces, science
+worksheets, plus letters, invitations and tables. The server computes tasks and answers, not
+the model. Print at “actual size”. Guide:
+[wiki: Dokumente erzeugen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Dokumente-erzeugen).
+
+### Scratchpad
+
+{{< status "partial" "13" >}}
+
+MultiGPT keeps files from tool calls (SVG too, sanitised) permanently; they appear with the
+answer and under “Scratchpad” in the personal menu. The actual scratchpad – collecting material
+from chats, documents and the web with its origin and turning it into a fully referenced
+document with verified quotes – is planned.
+
+### MultiGPT as an MCP server
 
 {{< status "done" "15" >}}
 
-Since 0.3.2 MultiGPT is an MCP server itself: at `https://<hostname>/mcp/`, other programs such
-as n8n, Claude Desktop or your own agents control MultiGPT with an account's **API key**.
+Other programs such as n8n, Claude Desktop or your own agents control MultiGPT at
+`https://<hostname>/mcp/` with an account's **API key**.
 
-- **Tools:** ask models (`ask`), upload, search and read documents, start, follow, pause and
-  cancel indexing, read in directory sources, fetch generated files and call tools such as
-  `create_pdf` or `run_python` directly. Results come back directly as text, image or PDF
-  (since 0.3.3).
-- **Reading chats** (since 0.3.6): with the “read chats” permission, a key lists and reads the
-  account's own chats and chats shared with it – never anyone else's, not even for
-  administrators. Chats created by `ask` go into an “API” project by default.
-- **Permissions:** a key can never do more than its account. Every member creates keys under
-  settings → API keys, as far as the role allows (on for administrators and adults). Keys are
-  stored only as a hash, can be revoked and optionally expire.
-- Every call is recorded in the audit log without content. For older clients there is also
-  the HTTP+SSE transport at `/mcp/sse`.
-- On the console: `mgpt-ctl apikey` and `mgpt-ctl index status --follow`.
-- Guides: [wiki: API-Keys](https://github.com/Beerlesklopfer/multi-gpt/wiki/API-Keys) and
-  [wiki: n8n](https://github.com/Beerlesklopfer/multi-gpt/wiki/n8n).
+- They ask models, upload, search and read documents, follow and pause indexing, fetch generated
+  files and call tools such as `create_pdf` or `transform_image` directly. With the “read chats”
+  permission they read their own and shared chats.
+- A key can never do more than its account. Keys are stored only as hashes, can be revoked and
+  can have an expiry date. Every call is recorded in the audit log without content.
 
-## Calculations in a sandbox
-
-{{< status "done" "4a" >}}
-
-Language models easily miscalculate. Models with tool support therefore get the built-in
-`run_python` tool and calculate exactly.
-
-- **numpy** (numerics, statistics), **scipy** (since 0.3.6), **sympy** (equations, derivatives, integrals, exact
-  fractions), **mpmath** (high precision) and the standard library.
-- **Charts** made with matplotlib appear as PNG or SVG in the answer; SVG is sanitised on the
-  server.
-- Code and output can be expanded in the chat.
-- **Security:** the code is treated as untrusted and runs in a **bubblewrap sandbox** – no
-  network, no server files, no keys or environment, with limits on time, memory and
-  processes. Without a working sandbox the tool is not offered at all.
-- A separate role permission “Berechnungen ausführen” (run calculations; on for
-  administrators, adults, teenagers). Guide:
-  [wiki: Berechnungen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Berechnungen).
-
-## Worksheets and documents as PDF
-
-{{< status "done" "4a" >}}
-
-Since 0.3.1: ask for a sheet and you get a **print-ready PDF** (the `create_pdf` tool) that
-opens in the chat with “Ansehen” (view).
-
-- **Handwriting rulings** for learning to write: rulings 0 to 4 with the “little house” guide,
-  lined, squared 5 and 10 mm, dimensionally accurate in millimetres.
-- **Maths:** arithmetic tasks with an answer sheet, digit boxes, times tables, number lines,
-  clock faces. **The server** generates tasks and answers, not the model – so the answers are
-  always right.
-- **Science** and general worksheets with gap texts, tick boxes and pictures, plus letters,
-  invitations and tables.
-- When printing choose “actual size” or 100 % so the rulings stay accurate.
-- **Security:** the PDF is rendered in a separate process without network or file access;
-  only your own attachments may be embedded as images.
-- A separate role permission “Dokumente erzeugen (PDF)” (create documents; on for
-  administrators, adults, teenagers). Guide:
-  [wiki: Dokumente erzeugen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Dokumente-erzeugen).
-
-## Ask your own documents (RAG)
-
-{{< status "done" "7" >}}
-
-{{< shot "collections" >}}
-
-- Create collections and upload documents (PDF, DOCX, TXT, MD and image files, up to 25 MB
-  per file), private or shared with groups – read-only or with write access.
-- A background service (worker) reads the text, recognises scanned pages via OCR, splits the
-  text into passages and computes embeddings. Running jobs can be cancelled.
-- **Several documents at once** (since 0.3.5, default 2) in separate worker processes. Runs
-  can be **paused and resumed** (since 0.3.6), and uploads are processed before large runs.
-- In the chat you pick collections. Search uses PostgreSQL and pgvector, optionally combined
-  with German full-text search.
-- The documents used are listed below the answer with their locators. A PDF can be viewed in
-  the browser and jumps to the right page.
-- **Figures:** optionally, a vision model describes images and charts in PDFs and Word
-  documents. The description is searched as well and can be cited like text.
-- **Document tools:** models with tool support can list documents (`list_documents`), fetch
-  details and the table of contents (`document_info`) and read passages verbatim
-  (`read_document`). They only read, and they only see collections you may read yourself.
-- **Access control:** passages from other people's private collections never end up in a
-  query; access is checked inside the search query itself. Administrators see only metadata
-  in the RAG overview, never content.
-- **Fully local:** embeddings with nomic-embed-text and OCR with olmOCR run through LM Studio
-  in the home network, with Tesseract on the server as an optional fallback. So no document
-  content leaves the house.
-- **Directory sources:** an administrator can fill a collection from a folder on the server
-  or NAS that is read in again periodically. Only folders below the directories allowed in
-  `RAG_SOURCE_ROOTS` are accepted.
-- Guide: [wiki: RAG](https://github.com/Beerlesklopfer/multi-gpt/wiki/RAG).
-
-## Citations
-
-{{< status "done" "7" >}}
-
-- Every document source carries its **locator**: section heading, page and paragraph, e.g.
-  “Abschn. 7.5.3, S. 12, Abs. 3”.
-- **Citation style per account:** DIN ISO 690, APA 7, Harvard, Chicago (author-date) or
-  MLA 9. “Copy citation” and “copy bibliography” are also available as BibTeX.
-- The server formats citations by fixed rules, not the model.
-- **Bibliographic data** can be maintained per document: books, edited volumes, chapters,
-  articles, reports and **standards** with number and edition (e.g. “DIN EN ISO
-  9001:2015-11”). A DOI lookup via Crossref is prepared and off by default.
-- Guide: [wiki: Zitieren](https://github.com/Beerlesklopfer/multi-gpt/wiki/Zitieren).
-
-## Web search and page fetching
-
-{{< status "done" "8" >}}
-
-- A "web search" switch in the input field. Results go to the model as numbered sources,
-  and the links are listed below the answer. This also works with local models.
-- The search backend is a self-hosted [SearXNG](https://docs.searxng.org/) in the home network.
-- **Fetching pages and crawling sites:** models with tool support read single pages
-  (`fetch_url`) or several pages of a website (`crawl_site`). URLs in your question are read
-  directly. robots.txt is respected.
-- **Protection:** addresses in the home network are blocked, including via redirects (SSRF
-  protection). Fetched pages are treated as untrusted and reach the model only as marked
-  source material, never as instructions. URLs do not appear in the log.
-- **Invented links:** links in an answer that appear in no source, no tool result and not in
-  the question get a ⚠. The “Belege prüfen” (check sources) button prepares a follow-up with
-  web search. Base rules for all models urge them not to make things up.
-
-## Create and edit images
-
-{{< status "partial" "9" >}}
-
-**Done (0.3.0): image generation** with OpenAI (gpt-image) or Google Gemini.
-
-- Chat models with tool support call the `generate_image` tool themselves instead of
-  “drawing” images as SVG code.
-- An **“image” mode** in the input field with format (square, portrait, landscape) and quality.
-- If the chosen model has no tool support, MultiGPT offers “generate with image model” before
-  sending – never without your consent.
-- Images are stored without metadata, and the cost per image is booked. The description only
-  goes to the image model's provider.
-- Guide: [wiki: Bilder](https://github.com/Beerlesklopfer/multi-gpt/wiki/Bilder).
-
-**Planned:**
-
-- Mark an area of an image and have it changed (inpainting), or create variations.
-- Classic editing (crop, resize, rotate, convert, add text, collage) via a bundled MCP
-  server – also by instruction, such as "make the image square". The original is kept.
-
-## Voice
-
-{{< status "planned" "10" >}}
-
-- Microphone button: the recording becomes text that you can correct before sending.
-- Speaker button on every answer, optionally reading answers aloud automatically.
-- Requires HTTPS in the home network, because browsers only allow the microphone over HTTPS.
-
-## Scratchpad
-
-{{< status "planned" "13" >}}
-
-- Collect material from chats, your own documents, the web, tools, images and notes, each
-  with its origin and citation data.
-- Turn it into a fully referenced document: the model writes only from the entries, MultiGPT
-  sets in-text citations and the bibliography, and verbatim quotes are checked.
-- As first steps, the context menu in the chat has been available since 0.3.2 (see above)
-  and, since 0.4.0, permanent storage of files from tool calls (see “New in 0.4.0”);
-  your own prompt templates and “add to scratchpad” follow.
+Guides: [wiki: API-Keys](https://github.com/Beerlesklopfer/multi-gpt/wiki/API-Keys),
+[wiki: n8n](https://github.com/Beerlesklopfer/multi-gpt/wiki/n8n).
 
 ## Runner
 
 {{< status "done" "14" >}}
 
-Since version 0.4.0. The runner is a workspace for models – not on the server, but as a
-**container on the computer the browser runs on**. Inside it, a model works like a coding
-tool, but locked in. A guide is in the wiki under
-[Runner](https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner).
+Since 0.4.0. The runner is a workspace for models as a **container on the computer where the
+browser runs** – not on the server. Inside, a model works like a coding tool: it reads, searches
+and changes files, runs commands, tests and fixes.
 
-- **How it works:** the model reads, searches and edits files (`read`, `write`, `edit`,
-  `glob`, `grep`), runs commands with `bash`, tests and fixes – over many rounds until the
-  task is done. The work image has Python, git, Node and other standard tools.
-- **Locked in:** the container runs with rootless Podman and by default has no network (can
-  be enabled per role), no home directory and only a volatile in-memory workspace. Only a
-  fixed image is started, with fixed limits for CPU, memory and processes.
-- **Work stored on the server:** every change is committed; the work is kept as a git bundle
-  with its full history in MultiGPT's database, is backed up with it and can be downloaded.
-  Nothing is left on the computer after the session. For now the whole state is transferred
-  each time; uploading only the changes (incremental bundles) is still missing.
-- **In the browser:** a terminal (directly over a WebSocket, also for programs that wait for
-  input), a preview for HTML pages in a sandboxed frame and the model's task list. Results
-  can be brought into the chat as an attachment on request.
-- **Web server and ports:** with `serve` the model starts the lighttpd web server for static
-  files. In the container it listens on 8080 (http) and 8443 (https) and is reachable on the
-  computer at 24080 and 24443. **Note:** by default the runner binds these ports to
-  `0.0.0.0`, i.e. the whole home network and without any login. The setting
-  `MGPT_EXPOSE_BIND=127.0.0.1` restricts them to the computer itself.
-- **Installing packages:** with the “package sources” role permission the model can install
-  Debian packages (`apt_install`) as well as pip, npm, cargo and GitHub packages – only
-  through a proxy with a fixed allow list of package sources, never to the home network or
-  arbitrary sites.
-- **Scratchpad:** a place for intermediate results, either in the container (volatile) or in
-  a folder on the computer. Only what the model explicitly publishes with `publish` as an
-  attachment reaches MultiGPT.
-- **Devices on the home network:** via `ssh` or `telnet`, but only to devices the
-  administrator approves, and with a confirmation before every command. The model picks
-  devices by name only; the server manages the credentials. With `setup_host`, a model can,
-  after confirmation, set up an approved computer as another runner.
-- **MultiGPT stays the central point:** every access goes through the server, which checks
-  permissions, confirmations, quota and the audit log. The runner connects outgoing only, over
-  TLS, and is paired via a token (revocable, with an expiry date). The server signs its
-  frames, and the runner's tools are listed in a signed catalog; the runner accepts nothing
-  that does not match.
-- **The agent team:** agents such as n8n or Claude also reach the runner only through a
-  MultiGPT API key with the `runner.use` permission.
-- **“Runner runtime” time quota:** container minutes per role or person and month, a warning
-  from 80 %, a stop at 100 % – the work is kept.
-- **The runner agent:** a small Rust program `multigpt-runner` (static binaries for amd64 and
-  arm64) that you download from MultiGPT and run as a service of your own user. Requirement:
-  Linux with systemd and rootless Podman; on Windows and macOS via WSL2 or a Linux VM.
-- **Still open:** Docker is not supported, only Podman. Container logs on the “Runner” page
-  are missing, and tool runs do not yet appear live in the chat terminal.
+- **Locked in:** rootless Podman, a fixed image with limits on CPU, memory and processes, no
+  network by default and only a temporary workspace in RAM. A `/data` volume per computer keeps
+  caches and results (limit per role).
+- **Work kept on the server:** every change is committed; the work is stored as a git bundle in
+  MultiGPT's database, backed up with it and available for download.
+- **In the browser:** a terminal, a preview for HTML pages in a sandboxed frame, the model's task
+  list and container logs per session. Results can be brought into the chat as attachments.
+- **Packages** (Debian, pip, npm, cargo, GitHub) are only installed with the role permission
+  “package sources”, and only through a proxy with a fixed list of allowed sources.
+- **Devices in the home network** can be reached via `ssh` or `telnet` only if the administrator
+  allows them, with a confirmation before every command.
+- **Control:** every access goes through the server (permissions, confirmations, audit log). The
+  runner only connects outbound over TLS and only accepts signed commands. Container minutes
+  count against the monthly “runner time” quota.
+- **Installation:** download the `multigpt-runner` program (Linux amd64 and arm64) from MultiGPT
+  and run it as a service of your own user. It needs systemd and rootless Podman; on Windows and
+  macOS via WSL2 or a Linux VM.
 
-## New in 0.4.0
+**Note:** the web server in the container is reachable on the computer at ports 24080 and
+24443 – by default from the whole home network and without a login. `MGPT_EXPOSE_BIND=127.0.0.1`
+restricts it to the computer itself.
 
-{{< status "done" >}}
+Still open: Docker (Podman only), transferring only the changes instead of the whole work, and
+live output of tool runs in the chat terminal. Guide:
+[wiki: Runner](https://github.com/Beerlesklopfer/multi-gpt/wiki/Runner).
 
-Besides the runner (see above), 0.4.0 brings these changes since 0.3.6:
+## Family: accounts, roles, privacy
 
-- **“LM Studio” interface:** a provider type of its own where you only enter the address of
-  the LM Studio server. Chat runs over `/v1`, management over `/api/v1`. Model management
-  runs through it only.
-- **Tokens per second for each answer:** the header of every answer shows the speed and the
-  time to the first token, measured by MultiGPT itself – for all providers.
-- **Swapping when graphics memory is full:** if another model is taking up the space, the
-  chat offers to unload it and load the requested one – only after confirmation.
-- **Reasoning effort per model:** MultiGPT reads the available levels from LM Studio, and a
-  default can be set per model.
-- **Memory estimates** for Gemma 4 and Qwen3.8 based on measured needs; chat models without
-  a setting are loaded with “parallel 1”.
-- **Scratchpad on the server:** files from tool calls (including SVG, sanitised) are stored
-  permanently, appear on the answer and in the “Scratchpad” menu.
-- **Reconnect MCP servers:** after an outage, an MCP server can be reconnected right in the
-  chat.
+{{< status "done" "1 / 2 / 6" >}}
 
-## Deliberately not in version 1
+{{< shot "chat-phone" >}}
 
-- No starting or waking LM Studio from within the app.
-- No real-time voice conversation.
-- No image models running on the server itself.
-- No separation of several households in one installation.
+- **Accounts** are created by an administrator; there is no self-registration. After five failed
+  attempts, login is locked for 15 minutes.
+- The **personal menu** at the top right holds settings, profile picture, my usage, API keys,
+  scratchpad and – depending on permissions – family and admin.
+- Permissions are checked on the server, before every page and every provider call.
+
+Four default roles, adjustable in the admin area:
+
+| Role | May |
+|---|---|
+| Administrator | Everything: providers, models, accounts, roles, groups, budgets, everyone's usage |
+| Adult | Enabled models and features, own collections, sharing, API keys, runner |
+| Teenager | Only enabled models and features, fixed system prompt of the role, budget |
+| Guest | Chat with one set model, no uploads, no sharing, small budget |
+
+Teenagers and guests start without models; the administrator enables them per role.
+
+- **Privacy:** chats are private, and administrators cannot see other people's chats either –
+  only usage figures. The one exception: for teenager accounts, “chat access allowed” can be
+  switched on (off by default). Administrators can then read, and the member sees a permanent
+  notice.
+- The **family** page gives administrators accounts, roles, passwords, budgets, groups and
+  everyone's usage in one place.
+
+### Login names regardless of case
+
+{{< status "progress" >}}
+
+Ready for the next version: “Anna” and “anna” are the same account, and the login lock counts
+all spellings together. If two accounts differ only in case, the update stops and names them.
+
+## Projects and sharing
+
+{{< status "done" "5" >}}
+
+- **Projects** group chats, e.g. “moving house” or “tax return”. A project gives its chats
+  instructions, a default model and preselected collections.
+- **Share chats** with accounts or groups, with RWUD permissions: read (always), write, update,
+  delete. Recipients find them under “shared with me”. Revoking takes effect at once.
+- **Costs** are paid by whoever triggers an answer. Which models someone may use depends on
+  their own role and budget.
+- If a recipient deletes or archives something, the owner gets a notice – without content.
+
+Guides: [wiki: Projekte](https://github.com/Beerlesklopfer/multi-gpt/wiki/Projekte),
+[wiki: Chats teilen](https://github.com/Beerlesklopfer/multi-gpt/wiki/Chats-teilen).
+
+### Sharing projects
+
+{{< status "progress" >}}
+
+Ready for the next version: share a whole project with accounts or groups, with the same
+permissions as for chats. The share covers all chats of the project, including ones created
+later; single chats can be kept private. Recipients see instructions and chats read-only; only
+the person who created the project can change it.
+
+## Costs and budgets
+
+{{< status "done" "6" >}}
+
+{{< shot "usage" >}}
+
+- Each provider bills through a **billing account**: in euros or dollars, in tokens only (local
+  models) or as a flat rate (subscription).
+- **Prices** apply per model from a given date, with separate prices for cache and reasoning.
+  MultiGPT ships no prices; the administrator can adopt suggestions from the LiteLLM price list.
+  The ECB rate for dollars is fetched automatically.
+- Every answer is recorded as a **booking** with tokens, amount and rate. With an admin key from
+  the provider, MultiGPT compares daily with the provider's actual costs.
+- **Budgets** per account, role and person: a warning from 80 %, and from 100 % the models of
+  that account are blocked until the next month. Free models stay usable.
+- **My usage** shows everyone their tokens, costs and the state of their budgets.
+
+Guide: [wiki: Kosten und Budgets](https://github.com/Beerlesklopfer/multi-gpt/wiki/Kosten-und-Budgets).
+
+## Installation and operation
+
+{{< status "partial" "12" >}}
+
+- **Debian package** for Debian 13 from a signed apt repository, with updates via `apt upgrade`.
+  The package sets up PostgreSQL with pgvector, the schema and nginx with TLS, and migrates on
+  updates by itself.
+- Separate services for the web interface, background jobs and the runner; nginx serves
+  attachments and documents. An AppArmor profile for the sandbox is included.
+- Admin commands via `mgpt-ctl`, e.g. for accounts, API keys, indexing and model capabilities.
+  The version including the git revision is shown in the interface.
+- Docker is available as a fallback, but the build is untested. Backup is not built in yet.
+
+Step by step: [installation]({{< relref "installation" >}}).
+
+### Administration via mgpt-ctl
+
+{{< status "progress" >}}
+
+Ready for the next version: `mgpt-ctl` sets prices (from the LiteLLM price list), budgets and
+provider and model settings, and checks the sandbox – without the admin interface (`prices`,
+`providers`, `models`, `budgets`, `sandbox_check`).
+
+## Planned
+
+### Music
+
+{{< status "planned" "11" >}}
+
+Create songs locally via Eliezer and have songs described, with stored settings so a result
+can be repeated or varied.
+
+### Background jobs
+
+{{< status "planned" "17" >}}
+
+Answers keep running in the worker instead of the open page, plus scheduled tasks and notices
+when something is done or looks wrong.
+
+## Limits
+
+**Today:**
+
+- MultiGPT runs in real use with OpenAI and local models. Anthropic and Gemini have so far
+  mostly been tested with simulated responses.
+- A test installation on a fresh Debian 13 is still pending.
+- The runner only works with Podman, not with Docker.
+
+**Deliberately not in version 1:**
+
+- No starting or waking the model server from the app.
+- No real-time voice conversation – voice means recording to text and reading the answer aloud.
+- No image models on the MultiGPT server itself; local images are made on the computer with the
+  graphics card.
+- No separation of several households: one installation belongs to one family.
