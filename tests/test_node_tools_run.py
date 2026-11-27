@@ -221,7 +221,7 @@ def test_run_python_svg_only_gets_png_preview(client, secret):
 def test_matplotlib_svg_keeps_text():
     """svg.fonttype none: Beschriftungen bleiben <text> statt Glyphen-Pfaden."""
     code = "import matplotlib.pyplot as plt\nplt.title('Umsatz')\nplt.savefig('t.svg')\n"
-    (svg,) = sandbox.run(code, sandbox.Limits()).files
+    (svg,) = sandbox.run(code, sandbox.Limits(cpu_seconds=60, wall_seconds=120)).files
     content = svg.data.decode()
     assert "<text" in content and "Umsatz" in content
     assert '<use xlink:href="#DejaVuSans' not in content
@@ -232,11 +232,14 @@ def test_png_preview_only_when_requested():
     """Im Chat (ohne png_preview) bleibt es beim SVG; mit Vorschau kommt das PNG dazu,
     nicht aber, wenn der Code die Figur schon geschlossen hat."""
     code = "import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.savefig('linie.svg')\n"
-    plain = sandbox.run(code, sandbox.Limits())
+    plain = sandbox.run(code, sandbox.Limits(cpu_seconds=60, wall_seconds=120))
     assert [f.name for f in plain.files] == ["linie.svg"]
-    preview = sandbox.run(code, sandbox.Limits(png_preview=True))
+    preview = sandbox.run(code, sandbox.Limits(png_preview=True, cpu_seconds=60, wall_seconds=120))
     assert sorted(f.name for f in preview.files) == ["linie.png", "linie.svg"]
-    closed = sandbox.run(code + "plt.close('all')\n", sandbox.Limits(png_preview=True))
+    closed = sandbox.run(
+        code + "plt.close('all')\n",
+        sandbox.Limits(png_preview=True, cpu_seconds=60, wall_seconds=120),
+    )
     assert [f.name for f in closed.files] == ["linie.svg"]
 
 

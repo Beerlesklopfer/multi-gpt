@@ -53,8 +53,14 @@ SANDBOX = _sandbox_works()
 needs_sandbox = pytest.mark.skipif(not SANDBOX, reason="bubblewrap nicht nutzbar")
 
 
+# Unter Last der ganzen Suite (viele Prozesse, nice) brauchen Imports wie numpy, sympy oder
+# matplotlib mehr Zeit als die Standardgrenzen (LOP C16). Tests, die eine Grenze prüfen, geben
+# ihre Werte ausdrücklich an; alle anderen bekommen großzügige Zeiten.
+TEST_TIME_LIMITS = {"cpu_seconds": 60, "wall_seconds": 120}
+
+
 def run(code, **limits):
-    return sandbox.run(code, sandbox.Limits(**limits))
+    return sandbox.run(code, sandbox.Limits(**{**TEST_TIME_LIMITS, **limits}))
 
 
 # --- Echte Sandbox: Rechnen ------------------------------------------------------------

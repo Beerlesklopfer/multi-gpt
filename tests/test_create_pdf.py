@@ -735,7 +735,7 @@ def test_real_sandbox_returns_pdf():
         "fig.add_artist(plt.Line2D([0.1, 0.9], [0.5, 0.5]))\n"
         "fig.savefig('blatt.pdf')\n"
     )
-    result = sandbox.run(code, sandbox.Limits(cpu_seconds=30, wall_seconds=60))
+    result = sandbox.run(code, sandbox.Limits(cpu_seconds=60, wall_seconds=120))
     assert result.ok, result.stderr
     names = [f.name for f in result.files]
     assert names == ["blatt.pdf"] and result.files[0].data.startswith(b"%PDF-")
