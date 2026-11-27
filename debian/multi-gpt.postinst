@@ -691,6 +691,8 @@ if [ "$1" = "configure" ]; then
     [ -d /var/lib/multi-gpt ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt
     [ -d /var/lib/multi-gpt/media ] || install -d -m 0750 -o multi-gpt -g multi-gpt /var/lib/multi-gpt/media
     multi_gpt_media_group
+    # Sicherungen (mgpt-ctl backup, M12-02): gehört dem Dienst, nur er und root lesen.
+    install -d -m 0750 -o multi-gpt -g multi-gpt /var/backups/multi-gpt
 
     # Konfigurationsverzeichnis: nur root schreibt, der Dienst liest.
     install -d /etc/multi-gpt

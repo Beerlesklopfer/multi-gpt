@@ -70,6 +70,8 @@ override_dh_installsystemd:
 	dh_installsystemd --name=multi-gpt
 	dh_installsystemd --name=multi-gpt-worker
 	dh_installsystemd --name=multi-gpt-runner
+	# Sicherung (M12-02): Timer liegt bei, ist aber aus (systemctl enable --now multi-gpt-backup.timer).
+	dh_installsystemd --name=multi-gpt-backup --no-enable --no-start
 
 # Digests der Runner-Images (M14-13): Beim Tag legt die CI (package.yml, aus
 # images.yml) debian/runner-images.env an; Django liest daraus die Standardwerte

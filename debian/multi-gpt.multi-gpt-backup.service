@@ -1,0 +1,15 @@
+[Unit]
+Description=MultiGPT Sicherung (Datenbank, Medien, Konfiguration)
+Documentation=https://github.com/Beerlesklopfer/multi-gpt/wiki/Backup
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=multi-gpt
+Group=multi-gpt
+# mgpt-ctl liest /etc/multi-gpt/.env und legt das Archiv mit Rechten 0600 an.
+# Zielordner und Anzahl: systemctl edit multi-gpt-backup.service
+Environment=MULTI_GPT_BACKUP_ARGS="--keep 7"
+ExecStart=/bin/sh -c 'exec /usr/bin/mgpt-ctl backup $MULTI_GPT_BACKUP_ARGS'
+Nice=10
+IOSchedulingClass=idle

@@ -152,7 +152,8 @@ target "$sudo env DJANGO_SETTINGS_MODULE=multigpt.settings MULTI_GPT_ENV_FILE=/d
 
 if test $backup = 1
     step "Datenbank sichern (braucht sudo auf dem Ziel)"
-    target "$sudo install -d -o postgres -g postgres -m 0750 /var/backups/multi-gpt && $sudo -u postgres pg_dump -Fc multi-gpt -f /var/backups/multi-gpt/vor-$rev.dump"
+    # Als Besitzer der Datenbank (multi-gpt) in den Sicherungsordner des Pakets.
+    target "$sudo install -d -o multi-gpt -g multi-gpt -m 0750 /var/backups/multi-gpt && $sudo -u multi-gpt pg_dump -Fc multi-gpt -f /var/backups/multi-gpt/vor-$rev.dump"
 end
 
 if test $migrate = 1
