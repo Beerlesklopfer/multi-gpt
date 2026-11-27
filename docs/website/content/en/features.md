@@ -1,7 +1,7 @@
 ---
 title: "Features"
 description: "What MultiGPT does and is meant to do: many providers, LM Studio with model management, attachments, projects, shared chats, family accounts, billing accounts, your own documents with citations, web search, calculations, PDF sheets, images, MCP tools, MultiGPT as an MCP server and the runner."
-lead: "This page describes what MultiGPT version 1 is meant to do, as of version 0.4.0. Done: chatting with many providers and LM Studio including model management, attachments, projects, shared chats, the context menu in the chat, family accounts with billing accounts and budgets, comparison mode, MCP tools, MultiGPT as an MCP server, calculations, PDF sheets, your own documents with citations, web search, image generation and the runner (new in 0.4.0). Image editing, voice and the actual scratchpad are planned. Every section shows its status and milestone."
+lead: "This page describes what MultiGPT version 1 is meant to do, as of version 0.4.1. Done: chatting with many providers and LM Studio including model management, attachments, projects, shared chats, the context menu in the chat, family accounts with billing accounts and budgets, comparison mode, MCP tools, MultiGPT as an MCP server, calculations, PDF sheets, your own documents with citations, web search, image generation and the runner (new in 0.4.0). Image editing, voice and the actual scratchpad are planned. Every section shows its status and milestone."
 menus:
   main:
     weight: 10

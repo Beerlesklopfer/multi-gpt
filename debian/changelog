@@ -1,3 +1,18 @@
+multi-gpt (0.4.1) unstable; urgency=medium
+
+  * Eliezer: eigener Modellserver als Anbieter (Schnittstelle „LM Studio“),
+    Speicherschätzung, angeheftete Modelle, Hub-Suche im Admin
+  * Bilder: bearbeiten mit Maske, Varianten, Weiterarbeiten, eigene Auflösung,
+    Versionen löschen; Bildwerkzeuge transform_image (Pillow, auch über MCP)
+  * Sprache: Spracherkennung per Mikrofon und Vorlesen der Antworten (M10)
+  * Runner: Container-Logs, Volumen /data, images add; Python-Agent entfernt
+  * Paket: Medien über nginx (Gruppe multi-gpt-media, X-Accel-Redirect ab
+    Werk bei neuen Installationen), AppArmor-Profil für die Sandbox
+  * Kosten: Preisvorschläge, Währung je Preis, Abgleich mit Istkosten
+  * Release-Notizen und Upgrade-Hinweise siehe docs/releases/0.4.1.md und NEWS
+
+ -- Joerg Bernau <joerg@bernau.family>  Fri, 27 Nov 2026 19:58:04 +0100
+
 multi-gpt (0.4.0) unstable; urgency=medium
 
   * Runner: Rust-Agent, Podman-Arbeitscontainer, Terminal und Vorschau,

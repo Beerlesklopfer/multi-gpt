@@ -1,3 +1,25 @@
+multi-gpt (0.4.1) unstable; urgency=medium
+
+  Medien über nginx: Das Paket legt die Gruppe multi-gpt-media an, nimmt www-data
+  auf und gibt ihr Leserecht auf das Standardverzeichnis /var/lib/multi-gpt/media
+  (nicht über die Gruppe multi-gpt, damit nginx /etc/multi-gpt/.env nicht lesen
+  kann). Neue Installationen schalten USE_X_ACCEL_REDIRECT=True ein. Bestehende
+  Installationen können es in /etc/multi-gpt/.env setzen und multi-gpt neu
+  starten – nur, wenn MEDIA_ROOT das Standardverzeichnis ist. Ein eigenes
+  MEDIA_ROOT (Symlink, NAS) bleibt unangetastet.
+
+  Runner: Runner aus 0.4.0 laufen weiter. Volumen /data und Container-Logs
+  brauchen multigpt-runner 0.4.1 (Seite „Runner“, neu herunterladen) und das neue
+  Arbeits-Image. Der Python-Agent und die Quadlet-Unit sind entfernt; wer sie noch
+  nutzt, koppelt den Rechner mit dem nativen Programm neu (Wiki „Runner“).
+
+  Neu: eigener Modellserver Eliezer (Schnittstelle „LM Studio“) samt Hub-Suche im
+  Admin, Bilder bearbeiten und Bildwerkzeuge (transform_image, Rollenrecht
+  „Bilder“), Sprache (Mikrofon und Vorlesen; braucht stt-/tts-Modelle und HTTPS),
+  Kostenabgleich und Preisvorschläge. Migrationen laufen automatisch.
+
+ -- Joerg Bernau <joerg@bernau.family>  Fri, 27 Nov 2026 19:57:00 +0100
+
 multi-gpt (0.4.0) unstable; urgency=medium
 
   Runner (neu): Ein Modell kann in einem Container auf dem eigenen Rechner wie ein

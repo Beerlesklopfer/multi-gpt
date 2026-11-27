@@ -1,8 +1,8 @@
 # Meilensteine aus doc/Plan.md, Abschnitt 11.
 # status: "done" | "partial" | "progress" | "planned"  (Texte dazu in i18n/*.toml;
-#   "progress" = fertig auf main bzw. in Arbeit, noch nicht veröffentlicht)
+#   "progress" = in Arbeit, noch nicht veröffentlicht)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei. Stand: Version 0.4.0 (veröffentlicht), Entwicklungsstand 2026-11-27.
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.4.1 (veröffentlicht).
 # steps: Arbeitspakete je Meilenstein (id, status, optional version = erschienen mit;
 #   version nur für veröffentlichte Versionen setzen).
 
@@ -606,7 +606,7 @@
 
 [[milestones]]
   id = "9"
-  status = "partial"
+  status = "done"
   [milestones.title]
     de = "Bilder"
     en = "Images"
@@ -614,8 +614,8 @@
     de = "Bilderzeugung, Bereich ändern (Inpainting), Varianten und klassische Bearbeitung über einen mitgelieferten MCP-Server."
     en = "Image generation, editing a marked area (inpainting), variations and classic editing via a bundled MCP server."
   [milestones.note]
-    de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Fertig für die nächste Version, noch nicht veröffentlicht: Bilder anhängen und verändern (auch mit Maske, wo der Anbieter es kann), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, Bilder lokal über den eigenen Modellserver (FLUX.2 klein), klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage; Werkzeug `transform_image`, auch über MCP) und Auslieferung der Bilder über nginx ab Werk."
-    en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Done for the next version, not yet released: attach and change images (with a mask where the provider supports it), variations, keep working on the last image, custom resolution, deleting single versions, local images via your own model server (FLUX.2 klein), classic editing without an image model (crop, resize, rotate, text, collage; tool `transform_image`, also via MCP) and serving images through nginx out of the box."
+    de = "M9-01 umgesetzt (0.3.0): Bilderzeugung mit OpenAI gpt-image und Gemini, als Werkzeug `generate_image` des Chatmodells, im Modus „Bild“ und per Hinweis „Mit Bildmodell erzeugen“ bei Modellen ohne Werkzeuge; Bilder ohne Metadaten, Kosten je Bild. Erschienen mit 0.4.1: Bilder anhängen und verändern (auch mit Maske, wo der Anbieter es kann), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, einzelne Versionen löschen, Bilder lokal über den eigenen Modellserver (FLUX.2 klein), klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage; Werkzeug `transform_image`, auch über MCP) und Auslieferung der Bilder über nginx ab Werk."
+    en = "M9-01 done (0.3.0): image generation with OpenAI gpt-image and Gemini, as the chat model's `generate_image` tool, in “image” mode and via a “generate with image model” hint for models without tools; images without metadata, cost per image. Released with 0.4.1: attach and change images (with a mask where the provider supports it), variations, keep working on the last image, custom resolution, deleting single versions, local images via your own model server (FLUX.2 klein), classic editing without an image model (crop, resize, rotate, text, collage; tool `transform_image`, also via MCP) and serving images through nginx out of the box."
 
   [[milestones.steps]]
     id = "M9-01"
@@ -626,31 +626,35 @@
 
   [[milestones.steps]]
     id = "M9-02"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Bereich ändern (Maske) und Varianten"
     en = "Edit a marked area (mask) and variations"
 
   [[milestones.steps]]
     id = "M9-03"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Klassische Bildbearbeitung über mitgelieferten MCP-Server"
     en = "Classic image editing via a bundled MCP server"
 
   [[milestones.steps]]
     id = "M9-04"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Geschützte Auslieferung der Bilder, über nginx ab Werk"
     en = "Protected delivery of images, via nginx out of the box"
 
   [[milestones.steps]]
     id = "M9-05"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Tests der Bildbearbeitung"
     en = "Tests for image editing"
 
 [[milestones]]
   id = "10"
-  status = "progress"
+  status = "done"
   [milestones.title]
     de = "Sprache"
     en = "Voice"
@@ -658,24 +662,27 @@
     de = "Spracheingabe (Aufnahme → Text) und Vorlesen der Antworten, über HTTPS im Browser an PC und Handy."
     en = "Voice input (recording → text) and reading answers aloud, over HTTPS in the browser on PC and phone."
   [milestones.note]
-    de = "Fertig für die nächste Version, noch nicht veröffentlicht: Mikrofon neben „Senden“, Aufnahme wird lokal über den eigenen Modellserver oder OpenAI zu Text, Lautsprecherknopf an jeder Antwort, Stimme und automatisches Vorlesen je Konto, Grenzen im Admin. Escape beendet Aufnahme und Vorlesen."
-    en = "Done for the next version, not yet released: microphone next to “Send”, the recording is turned into text locally via your own model server or via OpenAI, a speaker button on every answer, voice and automatic read-aloud per account, limits in the admin area. Escape stops recording and reading aloud."
+    de = "Erschienen mit 0.4.1: Mikrofon neben „Senden“, Aufnahme wird lokal über den eigenen Modellserver oder OpenAI zu Text, Lautsprecherknopf an jeder Antwort, Stimme und automatisches Vorlesen je Konto, Grenzen im Admin. Escape beendet Aufnahme und Vorlesen."
+    en = "Released with 0.4.1: microphone next to “Send”, the recording is turned into text locally via your own model server or via OpenAI, a speaker button on every answer, voice and automatic read-aloud per account, limits in the admin area. Escape stops recording and reading aloud."
 
   [[milestones.steps]]
     id = "M10-01"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Spracheingabe: Aufnahme wird zu Text"
     en = "Voice input: recording becomes text"
 
   [[milestones.steps]]
     id = "M10-02"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Antworten vorlesen"
     en = "Read answers aloud"
 
   [[milestones.steps]]
     id = "M10-03"
-    status = "progress"
+    status = "done"
+    version = "0.4.1"
     de = "Grenzen für Aufnahmelänge und Dateigröße"
     en = "Limits for recording length and file size"
 
@@ -829,8 +836,8 @@
     de = "Ein Container auf dem Rechner, an dem der Browser läuft (Podman rootless; unter Windows und macOS über WSL2 bzw. eine Linux-VM), als Arbeitsumgebung für Modelle: Sie lesen, suchen und ändern Dateien, führen Befehle aus, testen und bessern nach – wie ein Programmierwerkzeug, aber eingesperrt. Der Container hat standardmäßig kein Netz (nur mit dem Rollenrecht „Paketquellen“ über einen Proxy zu festen Paketquellen) und nur einen flüchtigen Arbeitsbereich im Arbeitsspeicher; der Arbeitsstand liegt als git-Bundle mit der ganzen Historie auf dem Server und wird mit der Datenbank gesichert. Gekoppelt wird per Token (nur gehasht gespeichert, widerrufbar, mit Ablauf), die Verbindung geht nur ausgehend per WebSocket über TLS. Jeder Zugriff läuft über MultiGPT: Rechte, Rückfrage-Modi, Kontingent und Audit-Log prüft der Server. Im Chat gibt es ein Terminal im Browser, eine Vorschau für HTML-Seiten im abgeschotteten Rahmen und die Aufgabenliste des Modells. Geräte im Heimnetz lassen sich per `ssh` oder `telnet` steuern – nur solche, die der Verwalter freigibt, und mit Rückfrage vor jedem Befehl. Abgerechnet wird über die Kontoart „Laufzeit“ in Container-Minuten je Rolle bzw. Person und Monat, mit Hinweis ab 80 % und Stopp bei 100 % – der Arbeitsstand bleibt erhalten."
     en = "A container on the computer the browser runs on (rootless Podman; on Windows and macOS via WSL2 or a Linux VM) as a workspace for models: they read, search and edit files, run commands, test and fix – like a coding tool, but locked in. By default the container has no network (with the “package sources” permission only through a proxy to fixed package sources) and only a volatile in-memory workspace; the work is stored on the server as a git bundle with its full history and is backed up with the database. Pairing uses a token (stored only as a hash, revocable, with an expiry date), and the runner connects outgoing only, via WebSocket over TLS. Every access goes through MultiGPT: the server checks permissions, confirmation modes, quota and the audit log. In the chat there is a terminal in the browser, a preview for HTML pages in a sandboxed frame and the model's task list. Devices on the home network can be controlled via `ssh` or `telnet` – only those the administrator approves, and with a confirmation before every command. Usage is billed through the “runtime” account type in container minutes per role or person and month, with a warning from 80 % and a stop at 100 % – the work is kept."
   [milestones.note]
-    de = "Erschienen mit Version 0.4.0. Gegenüber dem ersten Plan geändert: Arbeitsstand als git-Bundle auf dem Server statt Volumes auf dem Rechner, das Modell arbeitet in vielen Runden wie ein Coding-Werkzeug statt nur einzelne Befehle auszuführen, dazu `ssh` und `telnet` zu freigegebenen Geräten, Paketquellen über einen Proxy mit Positivliste, ein Webserver (lighttpd) und der Agent als Rust-Programm `multigpt-runner`. Die Web-Ports des Runners sind standardmäßig im ganzen Heimnetz ohne Anmeldung erreichbar. Fertig für die nächste Version, noch nicht veröffentlicht: Container-Logs je Sitzung, ein Volumen `/data` je Rechner für Caches und Ergebnisse (Grenze je Rolle) und `multigpt-runner images add` für eigene Arbeits-Images; der alte Python-Agent ist entfernt. Noch offen: Docker (nur Podman), inkrementelle Bundles und die Live-Ausgabe der Werkzeugläufe im Chat-Terminal."
-    en = "Released with version 0.4.0. Changed from the first plan: the work is stored as a git bundle on the server instead of volumes on the client, the model works in many rounds like a coding tool instead of running single commands only, plus `ssh` and `telnet` to approved devices, package sources through a proxy with an allow list, a web server (lighttpd) and the agent as a Rust program `multigpt-runner`. The runner's web ports are by default reachable by the whole home network without any login. Done for the next version, not yet released: container logs per session, a `/data` volume per computer for caches and results (limit per role) and `multigpt-runner images add` for your own work images; the old Python agent is gone. Still open: Docker (Podman only), incremental bundles and live output of tool runs in the chat terminal."
+    de = "Erschienen mit Version 0.4.0. Gegenüber dem ersten Plan geändert: Arbeitsstand als git-Bundle auf dem Server statt Volumes auf dem Rechner, das Modell arbeitet in vielen Runden wie ein Coding-Werkzeug statt nur einzelne Befehle auszuführen, dazu `ssh` und `telnet` zu freigegebenen Geräten, Paketquellen über einen Proxy mit Positivliste, ein Webserver (lighttpd) und der Agent als Rust-Programm `multigpt-runner`. Die Web-Ports des Runners sind standardmäßig im ganzen Heimnetz ohne Anmeldung erreichbar. Erschienen mit 0.4.1: Container-Logs je Sitzung, ein Volumen `/data` je Rechner für Caches und Ergebnisse (Grenze je Rolle) und `multigpt-runner images add` für eigene Arbeits-Images; der alte Python-Agent ist entfernt. Noch offen: Docker (nur Podman), inkrementelle Bundles und die Live-Ausgabe der Werkzeugläufe im Chat-Terminal."
+    en = "Released with version 0.4.0. Changed from the first plan: the work is stored as a git bundle on the server instead of volumes on the client, the model works in many rounds like a coding tool instead of running single commands only, plus `ssh` and `telnet` to approved devices, package sources through a proxy with an allow list, a web server (lighttpd) and the agent as a Rust program `multigpt-runner`. The runner's web ports are by default reachable by the whole home network without any login. Released with 0.4.1: container logs per session, a `/data` volume per computer for caches and results (limit per role) and `multigpt-runner images add` for your own work images; the old Python agent is gone. Still open: Docker (Podman only), incremental bundles and live output of tool runs in the chat terminal."
 
   [[milestones.steps]]
     id = "M14-01"
@@ -1036,7 +1043,7 @@
 
 [[milestones]]
   id = "16"
-  status = "progress"
+  status = "partial"
   [milestones.title]
     de = "Eigener Modellserver (Eliezer)"
     en = "Own model server (Eliezer)"
@@ -1044,8 +1051,8 @@
     de = "Ein eigener Modellserver in Rust für den Rechner mit der Grafikkarte löst LM Studio ab: Sprach-, Bild-, Spracherkennungs-, Vorlese-, OCR- und Embedding-Modelle über eine OpenAI-kompatible Schnittstelle, mit Speicherschätzung, Laden und Entladen. MultiGPT bindet ihn an; LM Studio bleibt als Anbieterart nutzbar."
     en = "An own model server written in Rust for the computer with the graphics card replaces LM Studio: chat, image, speech recognition, text-to-speech, OCR and embedding models behind an OpenAI-compatible interface, with memory estimates, loading and unloading. MultiGPT connects to it; LM Studio remains available as a provider type."
   [milestones.note]
-    de = "Im Einsatz und angebunden (Status, Modellliste, Chat, Embeddings, Bilder erzeugen und bearbeiten, Sprache, Speicherschätzung, Hub-Suche im Admin); noch nicht veröffentlicht. Offen: GPU-Vergabe über den Runner und die Meldung der Werkzeug-Fähigkeit."
-    en = "In use and connected (status, model list, chat, embeddings, creating and editing images, voice, memory estimates, hub search in the admin area); not yet released. Open: GPU allocation via the runner and reporting the tool capability."
+    de = "Angebunden mit 0.4.1 (Status, Modellliste, Chat, Embeddings, Bilder erzeugen und bearbeiten, Sprache, Speicherschätzung, Hub-Suche im Admin). Offen: GPU-Vergabe über den Runner und die Meldung der Werkzeug-Fähigkeit."
+    en = "Connected with 0.4.1 (status, model list, chat, embeddings, creating and editing images, voice, memory estimates, hub search in the admin area). Open: GPU allocation via the runner and reporting the tool capability."
 
 [[milestones]]
   id = "17"

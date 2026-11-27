@@ -40,8 +40,8 @@
     de = "Lokale Modelle auf der eigenen Grafikkarte"
     en = "Local models on your own graphics card"
   [items.text]
-    de = "Ein PC im Heimnetz als Anbieter: bis 0.4.0 mit LM Studio, als Nächstes mit dem eigenen Modellserver Eliezer (Rust; fertig angebunden, noch nicht veröffentlicht). Eine Statusanzeige zeigt, ob er gerade läuft; die Modelle werden samt ihren Fähigkeiten automatisch angeboten. Auf Wunsch lädt und entlädt MultiGPT sie selbst, nie über ein Speicherbudget für die Grafikkarte. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
-    en = "A PC in your home network as a provider: up to 0.4.0 with LM Studio, next with our own model server Eliezer (Rust; connected, not yet released). A status indicator shows whether it is running; its models are offered automatically, along with their capabilities. If you like, MultiGPT loads and unloads them itself, never beyond a memory budget for the graphics card. Local models cost nothing. In real use in a home network."
+    de = "Ein PC im Heimnetz als Anbieter: bis 0.4.0 mit LM Studio, seit 0.4.1 auch mit dem eigenen Modellserver Eliezer (Rust). Eine Statusanzeige zeigt, ob er gerade läuft; die Modelle werden samt ihren Fähigkeiten automatisch angeboten. Auf Wunsch lädt und entlädt MultiGPT sie selbst, nie über ein Speicherbudget für die Grafikkarte. Lokale Modelle kosten nichts. Im echten Heimnetz im Einsatz."
+    en = "A PC in your home network as a provider: up to 0.4.0 with LM Studio, since 0.4.1 also with our own model server Eliezer (Rust). A status indicator shows whether it is running; its models are offered automatically, along with their capabilities. If you like, MultiGPT loads and unloads them itself, never beyond a memory budget for the graphics card. Local models cost nothing. In real use in a home network."
 
 [[items]]
   status = "done"
@@ -224,24 +224,24 @@
     en = "Models read web pages and small sites (with SSRF protection and robots.txt), including URLs from your question. Links in an answer without a source get a ⚠ and a “check sources” button."
 
 [[items]]
-  status = "partial"
+  status = "done"
   milestone = "9"
   [items.title]
     de = "Bilder erzeugen und bearbeiten"
     en = "Create and edit images"
   [items.text]
-    de = "Bilder erzeugen mit OpenAI gpt-image oder Gemini: als Werkzeug des Chatmodells oder im Modus „Bild“. Fertig für die nächste Version: Bilder verändern (auch mit Maske), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, lokale Bilder über den eigenen Modellserver und klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage)."
-    en = "Generate images with OpenAI gpt-image or Gemini: as a tool of the chat model or in “image” mode. Done for the next version: changing images (with a mask too), variations, keep working on the last image, custom resolution, local images via your own model server and classic editing without an image model (crop, resize, rotate, text, collage)."
+    de = "Bilder erzeugen mit OpenAI gpt-image oder Gemini: als Werkzeug des Chatmodells oder im Modus „Bild“. Seit 0.4.1: Bilder verändern (auch mit Maske), Varianten, am letzten Bild weiterarbeiten, eigene Auflösung, lokale Bilder über den eigenen Modellserver und klassische Bearbeitung ohne Bildmodell (zuschneiden, skalieren, drehen, Text, Collage)."
+    en = "Generate images with OpenAI gpt-image or Gemini: as a tool of the chat model or in “image” mode. Since 0.4.1: changing images (with a mask too), variations, keep working on the last image, custom resolution, local images via your own model server and classic editing without an image model (crop, resize, rotate, text, collage)."
 
 [[items]]
-  status = "progress"
+  status = "done"
   milestone = "10"
   [items.title]
     de = "Sprechen und Vorlesen"
     en = "Speak and listen"
   [items.text]
-    de = "Frage einsprechen, Text vor dem Senden korrigieren, Antworten vorlesen lassen – lokal über den eigenen Modellserver oder über OpenAI. Fertig für die nächste Version."
-    en = "Speak your question, correct the text before sending, have answers read aloud – locally via your own model server or via OpenAI. Done for the next version."
+    de = "Frage einsprechen, Text vor dem Senden korrigieren, Antworten vorlesen lassen – lokal über den eigenen Modellserver oder über OpenAI. Seit 0.4.1."
+    en = "Speak your question, correct the text before sending, have answers read aloud – locally via your own model server or via OpenAI. Since 0.4.1."
 
 [[items]]
   status = "planned"

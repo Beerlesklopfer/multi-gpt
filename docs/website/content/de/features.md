@@ -2,7 +2,7 @@
 title: "Funktionen"
 slug: "funktionen"
 description: "Was MultiGPT kann und können soll: viele Anbieter, LM Studio mit Modellverwaltung, Anhänge, Projekte, geteilte Chats, Familienkonten, Kontenrahmen, eigene Dokumente mit Zitaten, Websuche, Berechnungen, PDF-Blätter, Bilder, MCP-Werkzeuge, MultiGPT als MCP-Server und der Runner."
-lead: "Hier steht, was MultiGPT in Version 1 können soll, Stand Version 0.4.0. Umgesetzt sind Chatten mit vielen Anbietern und LM Studio samt Modellverwaltung, Anhänge, Projekte, geteilte Chats, das Kontextmenü im Chat, Familienkonten mit Kontenrahmen und Budgets, der Vergleichsmodus, MCP-Werkzeuge, MultiGPT als MCP-Server, Berechnungen, PDF-Blätter, eigene Dokumente mit Zitaten, die Websuche, die Bilderzeugung und der Runner (neu in 0.4.0). Bildbearbeitung, Sprache und das eigentliche Scratchpad sind geplant. Jeder Abschnitt trägt seinen Status und den Meilenstein."
+lead: "Hier steht, was MultiGPT in Version 1 können soll, Stand Version 0.4.1. Umgesetzt sind Chatten mit vielen Anbietern und LM Studio samt Modellverwaltung, Anhänge, Projekte, geteilte Chats, das Kontextmenü im Chat, Familienkonten mit Kontenrahmen und Budgets, der Vergleichsmodus, MCP-Werkzeuge, MultiGPT als MCP-Server, Berechnungen, PDF-Blätter, eigene Dokumente mit Zitaten, die Websuche, die Bilderzeugung und der Runner (neu in 0.4.0). Bildbearbeitung, Sprache und das eigentliche Scratchpad sind geplant. Jeder Abschnitt trägt seinen Status und den Meilenstein."
 menus:
   main:
     weight: 10

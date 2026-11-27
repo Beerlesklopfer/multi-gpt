@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Self-hosted multi-AI chat system for families and households: your own data, many providers, one chat."
-eyebrow: "Self-hosted · in development · version 0.4.0"
+eyebrow: "Self-hosted · in development · version 0.4.1"
 headline: "One AI chat for the whole family – on your own server"
 lead: "MultiGPT is a web app for your home network that everyone in the household uses to chat with different AI models – from OpenAI, Anthropic and Google to local models on your own graphics card. Chats, accounts and API keys stay on your own server."
 pillarsTitle: "The idea behind it"
@@ -99,9 +99,8 @@ Updating from 0.2? The required steps are under
 
 More under [features]({{< relref "features" >}}).
 
-## In progress for the next version
+## New in 0.4.1
 
-Done but not yet released (as of 27 November 2026):
 
 - **Own model server Eliezer** (Rust) replaces LM Studio on the computer with the graphics card:
   chat, image, voice and embedding models with memory estimates, plus a **hub search** in the
