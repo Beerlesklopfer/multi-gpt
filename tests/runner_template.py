@@ -122,6 +122,10 @@ BIND_OPTIONS = ["rbind", "rw", "noexec", "nosuid", "nodev"]
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
+# Volumen /data je Runner (wie template.rs DATA_VOLUME_RE)
+DATA_VOLUME_RE = re.compile(r"^multigpt-data(-[a-z0-9]{1,32})?$")
+
+
 @dataclass(frozen=True)
 class Scratch:
     """Scratchpad ``/scratch``: tmpfs (``container``) oder Ordner des Rechners (``local``)."""
@@ -670,6 +674,13 @@ def check_inspect(
         problems.append("Geräte eingebunden")
     for mount in info.get("Mounts") or []:
         options = mount.get("Options") or []
+        if (
+            mount.get("Type") == "volume"
+            and mount.get("Destination") == "/data"
+            and DATA_VOLUME_RE.match(mount.get("Name") or "")
+            and {"nosuid", "nodev"} <= set(options)
+        ):
+            continue  # Volumen /data je Runner
         if not (
             scratch_source
             and mount.get("Type") == "bind"
@@ -679,6 +690,9 @@ def check_inspect(
         ):
             problems.append(f"Mount {mount.get('Destination')} nicht erlaubt")
     for bind in host.get("Binds") or []:
+        name, _, rest = bind.partition(":")
+        if DATA_VOLUME_RE.match(name) and rest.startswith("/data:"):
+            continue
         if not (scratch_source and bind.startswith(f"{scratch_source}:/scratch:")):
             problems.append("Bind-Mount nicht erlaubt")
     if set(host.get("Tmpfs") or {}) - {"/workspace", "/tmp", "/scratch"}:

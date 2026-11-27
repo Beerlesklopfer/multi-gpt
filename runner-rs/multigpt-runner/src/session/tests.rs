@@ -1979,4 +1979,105 @@ except OSError as e:
         .await
         .expect("Zeitlimit");
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn podman_data_volume_persists_and_is_measured() {
+        let Some(setup) = setup(6, None) else { return };
+        let h = &setup.harness;
+        let volume = format!("multigpt-data-t{}", *RUN_ID);
+        // SAFETY: nur dieser Test startet Sitzungen mit /data und liest den Namen.
+        unsafe { std::env::set_var("MGPT_DATA_VOLUME", &volume) };
+        struct DropVolume(String);
+        impl Drop for DropVolume {
+            fn drop(&mut self) {
+                if template::DATA_VOLUME_RE.is_match(&self.0) && self.0 != template::DATA_VOLUME {
+                    let _ = Command::new("podman")
+                        .args(["volume", "rm", "-f", &self.0])
+                        .output();
+                }
+            }
+        }
+        let _volume = DropVolume(volume.clone());
+        run(async {
+            let s6 = sid(6);
+            let state = h.start(&s6, "pw6", json!({"data_mb": 1})).await;
+            assert_eq!(state["state"], "running", "{state}");
+            let out = sh(
+                h,
+                &s6,
+                Target::Work,
+                "id -u; mkdir -p /data/venv && head -c 1500000 /dev/zero > /data/venv/blob && \
+                 printf '#!/bin/sh\\necho EXEC' > /data/r.sh && chmod +x /data/r.sh && /data/r.sh",
+            )
+            .await;
+            assert_eq!(out.lines().next(), Some("1000"), "{out}");
+            assert!(out.contains("EXEC"), "/data ist ausführbar (venv): {out}");
+            let session = h.manager.get(&s6).unwrap();
+            assert_eq!(h.manager.measure_data(&session).await, Some(2));
+            assert!(session.data_full());
+            let err = h.write(&s6, "/data/b.txt", "x").await.unwrap_err();
+            assert!(err.message.contains("Volumen /data ist voll"), "{err}");
+            h.manager.stop(&s6, "user").await;
+
+            let s7 = sid(7);
+            let state = h.start(&s7, "pw7", json!({"data_mb": 100})).await;
+            assert_eq!(state["state"], "running", "{state}");
+            let out = sh(
+                h,
+                &s7,
+                Target::Work,
+                "ls -l /data/venv/blob | awk '{print $5}'",
+            )
+            .await;
+            assert!(out.contains("1500000"), "{out}");
+            h.manager.stop(&s7, "user").await;
+        })
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn data_volume_mounted_measured_and_locked_when_full() {
+    let h = Harness::new(config());
+    // Ohne data_mb: kein Volumen, keine Meldung.
+    let state = h.start("s0", "w0", json!({})).await;
+    assert_eq!(state["state"], "running", "{state}");
+    assert!(created_by_role(&h, "work").get("volumes").is_none());
+    assert_eq!(h.manager.infos()[0].data_used_mb, None);
+    h.manager.stop("s0", "user").await;
+
+    let state = h.start("s1", "w1", json!({"data_mb": 1})).await;
+    assert_eq!(state["state"], "running", "{state}");
+    let body = h
+        .engine
+        .state()
+        .created
+        .iter()
+        .rev()
+        .find(|b| b["labels"][template::LABEL_ROLE] == "work")
+        .cloned()
+        .unwrap();
+    assert_eq!(body["volumes"][0]["Dest"], "/data");
+    assert_eq!(body["volumes"][0]["Name"], template::data_volume_name());
+    assert_eq!(h.manager.infos()[0].data_used_mb, Some(0));
+
+    // Schreiben nach /data, Messung je Heartbeat (du -sm)
+    h.write("s1", "/data/cache/a.txt", "hallo").await.unwrap();
+    let session = h.manager.get("s1").unwrap();
+    assert_eq!(h.manager.measure_data(&session).await, Some(1));
+    assert!(session.data_full(), "1 MB von 1 MB belegt");
+    let err = h.write("s1", "/data/b.txt", "x").await.unwrap_err();
+    assert!(err.message.contains("Volumen /data ist voll"), "{err}");
+    // /workspace bleibt beschreibbar
+    h.write("s1", "ok.txt", "x").await.unwrap();
+    h.manager.stop("s1", "user").await;
+
+    // Neue Sitzung sieht den Inhalt von /data wieder (Volumen bleibt).
+    let state = h.start("s2", "w2", json!({"data_mb": 100})).await;
+    assert_eq!(state["state"], "running", "{state}");
+    let handle = h.handle("s2");
+    let mut fields = Map::new();
+    fields.insert("path".into(), json!("/data/cache/a.txt"));
+    let read = handle.fs("read", fields).await.unwrap();
+    assert!(read.to_string().contains("hallo"), "{read}");
 }

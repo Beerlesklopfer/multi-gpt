@@ -149,6 +149,8 @@ pub struct SessionMut {
     pub rootfs_used: Option<u64>,
     /// Zeitpunkt des letzten erfolgreichen `apt-get update` (Uhr des Managers).
     pub apt_updated: Option<f64>,
+    /// Gemessene Belegung von `/data` in MB (je Heartbeat, nur mit Volumen).
+    pub data_used_mb: Option<u64>,
 }
 
 pub struct Session {
@@ -189,6 +191,22 @@ impl Session {
                 .limits
                 .packages()
                 .then(|| st.rootfs_used.unwrap_or(0).div_ceil(1 << 20).min(1_048_576)),
+            data_used_mb: self
+                .data_mb()
+                .map(|_| st.data_used_mb.unwrap_or(0).min(1_048_576)),
+        }
+    }
+
+    /// Grenze des Volumens `/data` in MB; `None`: Sitzung ohne `/data`.
+    pub fn data_mb(&self) -> Option<u64> {
+        self.spec["data_mb"].as_u64().filter(|mb| *mb > 0)
+    }
+
+    /// `/data` an der Grenze (letzte Messung): `write`/`edit` dorthin gesperrt.
+    pub fn data_full(&self) -> bool {
+        match (self.data_mb(), self.state().data_used_mb) {
+            (Some(limit), Some(used)) => used >= limit,
+            _ => false,
         }
     }
 
@@ -486,6 +504,7 @@ impl SessionManager {
                     scratch_used: 0,
                     rootfs_used: None,
                     apt_updated: None,
+                    data_used_mb: None,
                 }),
                 ptys: Mutex::default(),
                 pty_tasks: Mutex::default(),
@@ -629,6 +648,10 @@ impl SessionManager {
             "allow": allow.iter().map(|(h, p)| json!([h, p])).collect::<Vec<_>>(),
             "package_hosts": package_hosts,
         });
+        let mut spec = spec;
+        if let Some(mb) = frame.data_mb.filter(|mb| *mb > 0) {
+            spec["data_mb"] = json!(mb);
+        }
         let session = Arc::new(Session {
             id: sid.clone(),
             workspace: frame.workspace.clone(),
@@ -651,6 +674,7 @@ impl SessionManager {
                 scratch_used: 0,
                 rootfs_used: None,
                 apt_updated: None,
+                data_used_mb: None,
             }),
             ptys: Mutex::default(),
             pty_tasks: Mutex::default(),
@@ -959,6 +983,9 @@ impl SessionManager {
                 proxy_url,
                 &self.bounds.expose_bind,
             );
+            if session.data_mb().is_some() {
+                template::add_data_volume(&mut body, &template::data_volume_name());
+            }
             self.with_labels(&mut body);
             self.engine.create_container(&body).await?;
             if let Err(e) = self.engine.start_container(&session.container).await {
@@ -1088,6 +1115,9 @@ impl SessionManager {
                     session.state().scratch_used = total;
                 }
             }
+            if session.data_mb().is_some() && session.state().state == "running" {
+                self.measure_data(&session).await;
+            }
             if session.packages() && session.state().state == "running" {
                 self.measure_rootfs(&session).await;
                 if session.rootfs_over() {
@@ -1121,6 +1151,35 @@ impl SessionManager {
     }
 
     // --- Paketquellen (apt, .gitignore, Schicht) -----------------------------------------
+
+    /// Belegung von `/data` messen und merken (MB, `du -sm` als Nutzer im Container).
+    pub async fn measure_data(&self, session: &Session) -> Option<u64> {
+        let argv: Vec<String> = ["du", "-sm", template::DATA_DEST]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let result = self
+            .engine
+            .exec(
+                &session.container,
+                &argv,
+                ExecOptions {
+                    stdin: None,
+                    timeout: Duration::from_secs(60),
+                    max_output: 4096,
+                    workdir: "/workspace".into(),
+                    root: false,
+                },
+            )
+            .await;
+        // du meldet nicht lesbare Teile mit Exit 1, die Summe steht trotzdem da.
+        let used = result.ok().and_then(|r| parse_du_mb(&r.stdout));
+        match used {
+            Some(mb) => session.state().data_used_mb = Some(mb),
+            None => tracing::warn!("/data von {} nicht messbar", session.id),
+        }
+        used
+    }
 
     /// Größe der beschreibbaren Schicht messen und merken (Byte).
     pub async fn measure_rootfs(&self, session: &Session) -> Option<u64> {
@@ -1335,6 +1394,10 @@ impl SessionManager {
         if let (true, Some(limit)) = (matches!(op, "write" | "edit"), limit) {
             // mgpt-fs prüft vor dem Schreiben nach /scratch.
             fields.insert("scratch_limit".into(), json!(limit));
+        }
+        if matches!(op, "write" | "edit") && session.data_full() {
+            // mgpt-fs lehnt dann Schreiben nach /data ab.
+            fields.insert("data_full".into(), json!(true));
         }
         Ok(self.fs_raw(session, op, payload, fields).await?.0)
     }
@@ -1968,6 +2031,17 @@ pub fn base_url(url: &str) -> String {
 }
 
 /// Belegung eines Ordners in Byte (Blöcke wie `du`, Symlinks nicht folgen).
+/// Erste Zahl der Ausgabe von `du -sm` (MB).
+pub fn parse_du_mb(stdout: &[u8]) -> Option<u64> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .last()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
 pub fn du(root: &std::path::Path) -> u64 {
     use std::os::unix::fs::MetadataExt;
     let mut total = 0;

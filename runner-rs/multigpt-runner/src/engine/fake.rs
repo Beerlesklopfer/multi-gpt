@@ -156,11 +156,23 @@ impl FakeEngine {
         }
         let ws = fake.dir.join("workspace");
         let tmp = fake.dir.join("tmp");
+        // Volumen /data: ein Ordner je Name, über Container hinweg (wie bei Podman).
+        let data = fake.body["volumes"][0]["Name"]
+            .as_str()
+            .map(|volume| self.root.join(format!("volume-{volume}")));
+        if let Some(dir) = &data {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| EngineError::new(format!("Volumen fehlt: {e}")))?;
+        }
         // Zugangsdateien (ssh) im tmp des „Containers“, nie im /tmp des Rechners.
         let ssh = format!("{}/.mgpt-ssh", tmp.display());
         let mut argv: Vec<String> = argv
             .iter()
             .map(|a| a.replace("/tmp/.mgpt-ssh", &ssh))
+            .map(|a| match &data {
+                Some(dir) if a == template::DATA_DEST => dir.to_string_lossy().into_owned(),
+                _ => a,
+            })
             .collect();
         {
             let mut state = self.state();
@@ -198,6 +210,12 @@ impl FakeEngine {
             ("MGPT_WORKSPACE", ws.to_string_lossy().into_owned()),
             ("MGPT_TMP", tmp.to_string_lossy().into_owned()),
             ("MGPT_SCRATCH", scratch.to_string_lossy().into_owned()),
+            (
+                "MGPT_DATA",
+                data.unwrap_or_else(|| fake.dir.join("kein-data"))
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             ("GIT_CONFIG_NOSYSTEM", "1".into()),
             ("GIT_CONFIG_GLOBAL", "/dev/null".into()),
         ] {

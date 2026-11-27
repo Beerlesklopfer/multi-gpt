@@ -143,6 +143,13 @@ class Role(models.Model):
         help_text="Höchstgröße der beschreibbaren, flüchtigen Container-Schicht im Modus "
         "„Paketquellen“ (installierte Pakete); darüber wird die Sitzung beendet.",
     )
+    runner_data_mb = models.PositiveIntegerField(
+        "Runner: Volumen /data (MB)",
+        default=2048,
+        help_text="Volumen /data auf dem Rechner des Runners: bleibt über Sitzungen hinweg "
+        "(Caches, venv, node_modules, Build-Ausgaben), wird nicht gesichert. Darüber lehnt "
+        "der Runner Schreiben nach /data ab. 0 = kein /data.",
+    )
     runner_max_workspaces = models.PositiveSmallIntegerField(
         "Runner: Arbeitsstände je Konto", default=10
     )

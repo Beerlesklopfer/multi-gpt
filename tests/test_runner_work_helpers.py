@@ -49,6 +49,7 @@ def run_fs(root: Path, request: dict, payload: bytes = b"") -> tuple[dict, bytes
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": os.devnull,
         "MGPT_SCRATCH": os.environ.get("MGPT_SCRATCH", str(root.parent / "kein-scratch")),
+        "MGPT_DATA": os.environ.get("MGPT_DATA", str(root.parent / "kein-data")),
     }
     proc = subprocess.run(
         [sys.executable, str(WORK_DIR / "mgpt_fs.py")],
@@ -301,3 +302,31 @@ def test_fs_scratch_limit_before_write(tmp_path, monkeypatch):
     res, _ = run_fs(env_root, {"op": "write", "path": "big", "content": "x" * 9000,
                                "scratch_limit": 4096})  # fmt: skip
     assert res["ok"] is True
+
+
+def test_fs_data_volume_read_write_and_full(tmp_path, monkeypatch):
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    res, _ = run_fs(ws, {"op": "write", "path": "/data/a.txt", "content": "x"})
+    assert res["ok"] is False and "kein Volumen /data" in res["error"]
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setenv("MGPT_DATA", str(data))
+    res, _ = run_fs(ws, {"op": "write", "path": "/data/cache/a.txt", "content": "eins\n"})
+    assert res == {"ok": True, "path": "/data/cache/a.txt", "bytes": 5, "created": True}
+    assert (data / "cache/a.txt").read_text() == "eins\n"
+    res, _ = run_fs(ws, {"op": "read", "path": "/data/cache/a.txt"})
+    assert res["ok"] is True and "eins" in res["content"]
+    # Über der Grenze (vom Agent gemessen): /data gesperrt, /workspace nicht
+    full = {"data_full": True}
+    res, _ = run_fs(ws, {"op": "write", "path": "/data/b.txt", "content": "x", **full})
+    assert res["ok"] is False and "Volumen /data ist voll" in res["error"]
+    res, _ = run_fs(ws, {"op": "edit", "path": "/data/cache/a.txt", "old_string": "eins",
+                         "new_string": "zwei", **full})  # fmt: skip
+    assert res["ok"] is False and "voll" in res["error"]
+    res, _ = run_fs(ws, {"op": "write", "path": "b.txt", "content": "x", **full})
+    assert res["ok"] is True
+    # Symlink aus /data hinaus
+    (data / "raus").symlink_to(tmp_path)
+    res, _ = run_fs(ws, {"op": "read", "path": "/data/raus/workspace/b.txt"})
+    assert res["ok"] is False and "/data" in res["error"]

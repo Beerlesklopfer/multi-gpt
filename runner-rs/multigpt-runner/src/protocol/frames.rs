@@ -31,6 +31,9 @@ pub struct SessionInfo {
     /// Gemessene beschreibbare Schicht (MB), nur im Modus `packages`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rootfs_used_mb: Option<u64>,
+    /// Belegung des Volumens `/data` (MB), nur wenn eingebunden.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_used_mb: Option<u64>,
 }
 
 /// Freigegebenes Ziel bei `network = allowlist`.
@@ -144,6 +147,9 @@ pub struct SessionStart {
     /// Grenze der beschreibbaren Schicht (MB), Pflicht bei `packages`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rootfs_mb: Option<u64>,
+    /// Volumen `/data` je Runner: Grenze in MB (fehlt oder 0: kein `/data`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

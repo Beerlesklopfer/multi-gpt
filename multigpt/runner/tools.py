@@ -189,7 +189,10 @@ _TOOLS = [
         "bash",
         COMMAND,
         "Führt einen Shell-Befehl im Container aus (Arbeitsverzeichnis /workspace, Pseudo-"
-        "Terminal, Zeitlimit, Ausgabe gekürzt). Netz ist normalerweise aus.",
+        "Terminal, Zeitlimit, Ausgabe gekürzt). Netz ist normalerweise aus. /workspace ist "
+        "der Arbeitsstand und wird gesichert; /data (falls vorhanden) bleibt auf dem Rechner "
+        "des Runners über Sitzungen hinweg – für Caches, venv, node_modules und Build-"
+        "Ausgaben, nicht gesichert.",
         _schema(
             {
                 "command": {"type": "string", "description": "Befehl für bash."},

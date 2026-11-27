@@ -818,3 +818,94 @@ fn inspect_in_packages_mode_allows_only_relaxed_values() {
     l.network = "none".into();
     assert_eq!(check_inspect(&ok, &l, None, None).len(), 2);
 }
+
+#[test]
+fn data_volume_only_as_data_in_work_container() {
+    let b = bounds();
+    let mut body = work();
+    add_data_volume(&mut body, DATA_VOLUME);
+    assert_eq!(
+        body["volumes"],
+        json!([{"Name": "multigpt-data", "Dest": "/data", "Options": ["nosuid", "nodev"]}])
+    );
+    assert_eq!(check_body(&body, &b).unwrap(), Role::Work);
+    add_data_volume(&mut body, "multigpt-data-test0run1");
+    assert!(check_body(&body, &b).is_ok());
+
+    let bad: Vec<(Value, &str)> = vec![
+        (
+            json!([{"Name": "home", "Dest": "/data", "Options": ["nosuid", "nodev"]}]),
+            "Fremdes",
+        ),
+        (
+            json!([{"Name": "multigpt-data", "Dest": "/etc", "Options": ["nosuid", "nodev"]}]),
+            "/data",
+        ),
+        (
+            json!([{"Name": "multigpt-data", "Dest": "/data", "Options": ["nodev"]}]),
+            "nosuid",
+        ),
+        (
+            json!([{"Name": "multigpt-data", "Dest": "/data", "Options": ["nosuid", "nodev"], "Driver": "x"}]),
+            "fremden",
+        ),
+        (json!([]), "Genau ein"),
+        (
+            json!([{"Name": "multigpt-data", "Dest": "/data", "Options": ["nosuid", "nodev"]},
+                {"Name": "multigpt-data-x", "Dest": "/data", "Options": ["nosuid", "nodev"]}]),
+            "Genau ein",
+        ),
+    ];
+    for (volumes, message) in bad {
+        let mut body = work();
+        body["volumes"] = volumes.clone();
+        let err = check_body(&body, &b).unwrap_err();
+        assert!(err.0.contains(message), "{volumes}: {err:?}");
+    }
+    // Hilfs- und Relay-Container bekommen kein Volumen.
+    let mut tool = tool_body("42", "c1", IMAGE);
+    add_data_volume(&mut tool, DATA_VOLUME);
+    assert!(
+        check_body(&tool, &b)
+            .unwrap_err()
+            .0
+            .contains("Arbeitscontainer")
+    );
+}
+
+#[test]
+fn data_volume_name_from_environment_only_when_valid() {
+    assert!(DATA_VOLUME_RE.is_match(DATA_VOLUME));
+    for name in ["multigpt-data-abc123", "multigpt-data-x"] {
+        assert!(DATA_VOLUME_RE.is_match(name), "{name}");
+    }
+    for name in [
+        "home",
+        "multigpt-data-",
+        "multigpt-data-A",
+        "../multigpt-data",
+        "multigpt-datax",
+    ] {
+        assert!(!DATA_VOLUME_RE.is_match(name), "{name}");
+    }
+}
+
+#[test]
+fn inspect_accepts_only_the_data_volume() {
+    let expected = limits();
+    let mut info = inspect(json!({"Binds": ["multigpt-data:/data:nosuid,nodev,rbind"]}));
+    info["Mounts"] = json!([{"Type": "volume", "Name": "multigpt-data",
+                             "Source": "/home/u/.local/share/containers/storage/volumes/multigpt-data/_data",
+                             "Destination": "/data", "Options": ["nosuid", "nodev", "rbind"]}]);
+    assert!(check_inspect(&info, &expected, Some(24080), None).is_empty());
+    let mut other = info.clone();
+    other["Mounts"][0]["Name"] = json!("home");
+    other["HostConfig"]["Binds"] = json!(["home:/data:nosuid,nodev,rbind"]);
+    assert_eq!(check_inspect(&other, &expected, Some(24080), None).len(), 2);
+    let mut exec = info.clone();
+    exec["Mounts"][0]["Options"] = json!(["nodev", "rbind"]);
+    assert!(!check_inspect(&exec, &expected, Some(24080), None).is_empty());
+    let mut elsewhere = info.clone();
+    elsewhere["HostConfig"]["Binds"] = json!(["multigpt-data:/etc:nosuid,nodev,rbind"]);
+    assert!(!check_inspect(&elsewhere, &expected, Some(24080), None).is_empty());
+}

@@ -30,6 +30,8 @@ import sys
 
 ROOT = os.path.realpath(os.environ.get("MGPT_WORKSPACE") or "/workspace")
 SCRATCH = os.path.realpath(os.environ.get("MGPT_SCRATCH") or "/scratch")
+# Volumen je Runner (bleibt auf dem Rechner, nicht im Arbeitsstand); nur wenn eingebunden.
+DATA = os.path.realpath(os.environ.get("MGPT_DATA") or "/data")
 TMP = os.environ.get("MGPT_TMP") or "/tmp"
 MAX_READ_BYTES = 2 * 1024 * 1024  # größere Dateien liest ``read`` nur teilweise
 MAX_LINE = 2000  # Zeichen je Zeile in ``read``/``grep``
@@ -73,10 +75,11 @@ def _inside(path: str, root: str = ROOT) -> bool:
 
 
 def resolve(path: str | None, *, for_write: bool = False) -> str:
-    """Pfad unter ``/workspace`` (bzw. ``/scratch``) auflösen.
+    """Pfad unter ``/workspace`` (bzw. ``/scratch`` oder ``/data``) auflösen.
 
     Relative Pfade gelten ab ``/workspace``; ``/scratch/…`` meint das Scratchpad
-    der Sitzung. Symlinks dürfen nicht aus der jeweiligen Wurzel hinausführen.
+    der Sitzung, ``/data/…`` das Volumen des Runners. Symlinks dürfen nicht aus
+    der jeweiligen Wurzel hinausführen.
     """
     if not isinstance(path, str) or not path.strip():
         path = "."
@@ -88,10 +91,15 @@ def resolve(path: str | None, *, for_write: bool = False) -> str:
             raise FsError("Diese Sitzung hat kein Scratchpad.")
         root, label = SCRATCH, "/scratch"
         path = os.path.relpath(path, "/scratch")
+    elif path == "/data" or path.startswith("/data/"):
+        if not os.path.isdir(DATA):
+            raise FsError("Diese Sitzung hat kein Volumen /data.")
+        root, label = DATA, "/data"
+        path = os.path.relpath(path, "/data")
     elif path.startswith("/workspace/") or path == "/workspace":
         path = os.path.relpath(path, "/workspace")
     if os.path.isabs(path):
-        raise FsError("Pfad liegt nicht unter /workspace oder /scratch.")
+        raise FsError("Pfad liegt nicht unter /workspace, /scratch oder /data.")
     joined = os.path.normpath(os.path.join(root, path))
     if not _inside(joined, root):
         raise FsError(f"Pfad liegt nicht unter {label}.")
@@ -106,13 +114,18 @@ def resolve(path: str | None, *, for_write: bool = False) -> str:
 
 
 def _root_of(path: str) -> str:
-    return SCRATCH if _inside(path, SCRATCH) else ROOT
+    if _inside(path, SCRATCH):
+        return SCRATCH
+    return DATA if _inside(path, DATA) else ROOT
 
 
 def display(path: str) -> str:
     if _inside(path, SCRATCH):
         rel = os.path.relpath(path, SCRATCH)
         return "/scratch" if rel == "." else "/scratch/" + rel
+    if _inside(path, DATA):
+        rel = os.path.relpath(path, DATA)
+        return "/data" if rel == "." else "/data/" + rel
     rel = os.path.relpath(path, ROOT)
     return "." if rel == "." else rel
 
@@ -230,6 +243,15 @@ def _check_scratch(req: dict, path: str, new_size: int) -> None:
         raise FsError(f"Scratchpad voll (Grenze {int(limit) >> 20} MB).")
 
 
+def _check_data(req: dict, path: str) -> None:
+    """Volumen /data über der Grenze (vom Agent gemessen, ``data_full``): nicht schreiben."""
+    if req.get("data_full") and _inside(path, DATA):
+        raise FsError(
+            "Volumen /data ist voll (Grenze der Rolle erreicht). Erst Platz schaffen, "
+            "z. B. mit bash: du -sh /data/* und rm."
+        )
+
+
 def op_write(req: dict) -> dict:
     content = req.get("content")
     if not isinstance(content, str):
@@ -239,6 +261,7 @@ def op_write(req: dict) -> dict:
         raise FsError("Inhalt zu groß.")
     path = resolve(req.get("path"), for_write=True)
     _check_scratch(req, path, len(data))
+    _check_data(req, path)
     if os.path.isdir(path):
         raise FsError("Pfad ist ein Verzeichnis.")
     created = _write_bytes(path, data)
@@ -254,6 +277,7 @@ def op_edit(req: dict) -> dict:
     if old == new:
         raise FsError("old_string und new_string sind gleich.")
     path = resolve(req.get("path"), for_write=True)
+    _check_data(req, path)
     data, size = _read_bytes(path, MAX_FILE_BYTES + 1)
     if size > MAX_FILE_BYTES or _is_binary(data):
         raise FsError("Datei zu groß oder binär.")

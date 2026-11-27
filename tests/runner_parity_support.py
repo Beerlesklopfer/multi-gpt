@@ -227,6 +227,9 @@ IMAGE = "ghcr.io/beerlesklopfer/multigpt-runner-work:1@sha256:" + "a" * 64
 CATALOG = RUST_DIR / "catalog.json"
 
 
+TEST_DATA_VOLUME = "multigpt-data-test"
+
+
 def agent_env(tmp_path: Path, url: str, secret: str, **extra: str) -> dict[str, str]:
     """Umgebung wie nach der Kopplung: Token- und Schlüsseldatei, FakeEngine (überschreibbar)."""
     from multigpt.runner import trust
@@ -250,6 +253,8 @@ def agent_env(tmp_path: Path, url: str, secret: str, **extra: str) -> dict[str, 
         "MGPT_HOSTNAME": "paritaet",
         "MGPT_ENGINE": "fake",
         "MGPT_FAKE_ROOT": str(tmp_path / "fake"),
+        # Volumen /data der Tests, nie das echte multigpt-data des Rechners
+        "MGPT_DATA_VOLUME": TEST_DATA_VOLUME,
     }
     values.update(extra)
     return base_env(tmp_path, **values)

@@ -83,6 +83,64 @@ pub const ENV: [(&str, &str); 4] = [
 /// Optionen des Bind-Mounts für das lokale Scratchpad (einzige Mount-Ausnahme).
 pub const BIND_OPTIONS: [&str; 5] = ["rbind", "rw", "noexec", "nosuid", "nodev"];
 
+/// Volumen je Runner als `/data` (Ergebnisse und Caches über Sitzungen hinweg, bleibt
+/// auf dem Rechner). Einziges benanntes Volume; ausführbar (venv, node_modules), aber
+/// ohne setuid und Geräte.
+pub const DATA_DEST: &str = "/data";
+pub const DATA_OPTIONS: [&str; 2] = ["nosuid", "nodev"];
+pub const DATA_VOLUME: &str = "multigpt-data";
+/// Name des Volumens: `multigpt-data`, für Tests mit Zusatz (`MGPT_DATA_VOLUME`).
+pub static DATA_VOLUME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^multigpt-data(-[a-z0-9]{1,32})?$").unwrap());
+
+/// Name des Volumens: `MGPT_DATA_VOLUME` (nur passend zu [`DATA_VOLUME_RE`]), sonst
+/// `multigpt-data`.
+pub fn data_volume_name() -> String {
+    std::env::var("MGPT_DATA_VOLUME")
+        .ok()
+        .filter(|name| DATA_VOLUME_RE.is_match(name))
+        .unwrap_or_else(|| DATA_VOLUME.to_string())
+}
+
+/// `/data` an einen Arbeitscontainer hängen (nach [`work_body`]).
+pub fn add_data_volume(body: &mut Value, name: &str) {
+    if let Some(map) = body.as_object_mut() {
+        map.insert(
+            "volumes".into(),
+            json!([{"Name": name, "Dest": DATA_DEST, "Options": DATA_OPTIONS}]),
+        );
+    }
+}
+
+/// `volumes` nur beim Arbeitscontainer und nur genau das Volumen `/data`.
+fn check_volumes(volumes: Option<&Value>, role: &str) -> Res {
+    let Some(volumes) = volumes else {
+        return Ok(());
+    };
+    expect(role == "work", "Volumen nur im Arbeitscontainer.")?;
+    let list = volumes.as_array();
+    expect(
+        list.is_some_and(|l| l.len() == 1),
+        "Genau ein Volumen erlaubt.",
+    )?;
+    let volume = &list.unwrap()[0];
+    expect(
+        keys_are(volume, &["Name", "Dest", "Options"]),
+        "Volumen mit fremden Feldern.",
+    )?;
+    expect(
+        volume["Name"]
+            .as_str()
+            .is_some_and(|n| DATA_VOLUME_RE.is_match(n)),
+        "Fremdes Volumen.",
+    )?;
+    expect(volume["Dest"] == DATA_DEST, "Volumen nur als /data.")?;
+    expect(
+        volume["Options"] == json!(DATA_OPTIONS),
+        "Volumen ohne nosuid/nodev.",
+    )
+}
+
 pub static NAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^mgpt-(ses|rly|tol)-[0-9a-f]{16}$").unwrap());
 pub static NETWORK_RE: LazyLock<Regex> =
@@ -104,7 +162,7 @@ pub static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
 static IMAGE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._/:-]{0,254}@sha256:[0-9a-f]{64}$").unwrap());
 
-const ALLOWED_KEYS: [&str; 32] = [
+const ALLOWED_KEYS: [&str; 33] = [
     "name",
     "image",
     "command",
@@ -120,6 +178,7 @@ const ALLOWED_KEYS: [&str; 32] = [
     "netns",
     "Networks",
     "mounts",
+    "volumes",
     "resource_limits",
     "r_limits",
     "env",
@@ -1085,6 +1144,7 @@ pub fn check_body(body: &Value, bounds: &Bounds) -> Res<Role> {
         )?;
     }
     let bind = check_mounts(map.get("mounts"), role.as_str(), bounds)?;
+    check_volumes(map.get("volumes"), role.as_str())?;
     if bind {
         expect(
             map.get("userns") == Some(&keep_id()),
@@ -1394,14 +1454,21 @@ pub fn check_inspect(
             .flatten()
             .filter_map(Value::as_str)
             .collect();
-        let ok = scratch_source.is_some_and(|src| {
-            mount["Type"] == "bind"
-                && mount["Source"] == src
-                && mount["Destination"] == "/scratch"
-                && ["noexec", "nosuid", "nodev"]
-                    .iter()
-                    .all(|o| options.contains(o))
-        });
+        let data = mount["Type"] == "volume"
+            && mount["Destination"] == DATA_DEST
+            && mount["Name"]
+                .as_str()
+                .is_some_and(|n| DATA_VOLUME_RE.is_match(n))
+            && DATA_OPTIONS.iter().all(|o| options.contains(o));
+        let ok = data
+            || scratch_source.is_some_and(|src| {
+                mount["Type"] == "bind"
+                    && mount["Source"] == src
+                    && mount["Destination"] == "/scratch"
+                    && ["noexec", "nosuid", "nodev"]
+                        .iter()
+                        .all(|o| options.contains(o))
+            });
         if !ok {
             let dest = match &mount["Destination"] {
                 Value::String(s) => s.clone(),
@@ -1411,10 +1478,16 @@ pub fn check_inspect(
         }
     }
     for bind in host["Binds"].as_array().into_iter().flatten() {
-        let ok = scratch_source.is_some_and(|src| {
-            bind.as_str()
-                .is_some_and(|b| b.starts_with(&format!("{src}:/scratch:")))
+        let data = bind.as_str().is_some_and(|b| {
+            b.split_once(':').is_some_and(|(name, rest)| {
+                DATA_VOLUME_RE.is_match(name) && rest.starts_with("/data:")
+            })
         });
+        let ok = data
+            || scratch_source.is_some_and(|src| {
+                bind.as_str()
+                    .is_some_and(|b| b.starts_with(&format!("{src}:/scratch:")))
+            });
         if !ok {
             problems.push("Bind-Mount nicht erlaubt".into());
         }

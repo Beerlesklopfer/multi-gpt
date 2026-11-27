@@ -312,6 +312,23 @@ def parse_catalog(text: str) -> tuple[str, list[dict]]:
     return release, services
 
 
+# Fähigkeiten, die ein Agent im Katalog melden kann (``"features"``); Unbekanntes
+# wird ignoriert. ``data``: Volumen /data (``session_start.data_mb``).
+KNOWN_FEATURES = ("data",)
+
+
+def parse_features(text: str) -> list[str]:
+    """Fähigkeiten aus ``catalog.json`` (nur bekannte, ohne Formfehler-Prüfung)."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    features = data.get("features") if isinstance(data, dict) else None
+    if not isinstance(features, list):
+        return []
+    return [name for name in KNOWN_FEATURES if name in features]
+
+
 def _accept_unsigned() -> bool:
     return bool(settings.DEBUG and getattr(settings, "RUNNER_ACCEPT_UNSIGNED", False))
 

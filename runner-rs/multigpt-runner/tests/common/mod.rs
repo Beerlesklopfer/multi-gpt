@@ -273,6 +273,7 @@ impl FrameHandler for RecHandler {
             state: "running".into(),
             preview_port: None,
             rootfs_used_mb: None,
+            data_used_mb: None,
         }]
     }
 

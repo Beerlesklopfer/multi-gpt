@@ -137,6 +137,8 @@ class Runner(models.Model):
     )
     catalog_release = models.CharField("Katalog-Release", max_length=50, blank=True)
     services = models.JSONField("freigegebene Dienste", default=list, blank=True)
+    # Fähigkeiten aus dem gültigen Katalog (trust.parse_features), z. B. "data".
+    features = models.JSONField("Fähigkeiten", default=list, blank=True)
 
     class Meta:
         ordering = ["-last_seen", "-pk"]

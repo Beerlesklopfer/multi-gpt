@@ -82,7 +82,7 @@ class RoleAdmin(admin.ModelAdmin):
                     ("runner_packages", "runner_rootfs_mb"),
                     ("runner_max_cpus", "runner_max_memory_mb"),
                     ("runner_max_pids", "runner_tmpfs_mb"),
-                    "runner_scratch_mb",
+                    ("runner_scratch_mb", "runner_data_mb"),
                     ("runner_max_workspaces", "runner_max_workspace_mb"),
                 ),
                 "description": "Container auf dem Rechner des Mitglieds (M14). Netz an heißt: "

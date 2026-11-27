@@ -27,6 +27,7 @@ _FALLBACK = {
     "network": False,
     "packages": False,
     "scratch_mb": 1024,
+    "data_mb": 0,
 }
 SCRATCH_CONTAINER = "container"
 SCRATCH_LOCAL = "local"
@@ -54,6 +55,7 @@ def session_limits(user, *, via_api_key: bool = False, workspace=None) -> dict:
             "network": bool(role.runner_network),
             "packages": bool(getattr(role, "runner_packages", False)),
             "scratch_mb": role.runner_scratch_mb,
+            "data_mb": int(getattr(role, "runner_data_mb", 0) or 0),
         }
     if via_api_key:
         limits["network"] = False

@@ -151,6 +151,7 @@ def connect(token_id: int, hello: dict, ip: str | None) -> Connected:
         runner.catalog_state = check.state
         runner.catalog_release = check.release[:50]
         runner.services = services
+        runner.features = trust.parse_features(hello.get("catalog") or "") if check.trusted else []
         runner.save()
     frames = reconcile(runner, hello.get("sessions") or [], now)
     if not check.trusted:
@@ -303,6 +304,7 @@ def heartbeat(runner_id: int, token_id: int, sessions: list[dict]) -> Beat:
         if state != session.status and state in RunnerSession.Status.values:
             session.status = state
             session.save(update_fields=["status"])
+        _remember_data(session, item.get("data_used_mb"))
         if _rootfs_exceeded(session, item.get("rootfs_used_mb")):
             beat.frames.append(
                 {"type": "session_stop", "session": item["session"], "reason": "mismatch"}
@@ -314,6 +316,17 @@ def heartbeat(runner_id: int, token_id: int, sessions: list[dict]) -> Beat:
             except Exception:
                 logger.exception("Laufzeit der Runner-Sitzung %s nicht gebucht", session.pk)
     return beat
+
+
+def _remember_data(session: RunnerSession, used_mb) -> None:
+    """Gemessene Belegung von /data merken (Anzeige); die Grenze setzt der Agent durch."""
+    if used_mb is None:
+        return
+    actual = dict(session.limits_actual or {})
+    if actual.get("data_used_mb") != used_mb:
+        actual["data_used_mb"] = used_mb
+        session.limits_actual = actual
+        session.save(update_fields=["limits_actual"])
 
 
 def _rootfs_exceeded(session: RunnerSession, used_mb) -> bool:

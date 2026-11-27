@@ -92,6 +92,7 @@ def test_session_limits_from_role_and_api_key():
         "network": True,
         "packages": False,  # freies Netz geht vor
         "scratch_mb": 1024,
+        "data_mb": 2048,
         "scratch_mode": "container",
     }
     assert limits.session_limits(anna, via_api_key=True)["network"] is False

@@ -187,6 +187,7 @@ NETWORK_MODES = ("none", "allowlist", "default", "packages")
 MAX_PACKAGE_HOSTS = 50
 MIN_ROOTFS_MB = 64
 MAX_ROOTFS_MB = 1024 * 1024
+MAX_DATA_MB = 1024 * 1024  # Volumen /data (MB)
 SCRATCH_MODES = ("container", "local")
 ERROR_CODES = (
     "invalid_frame",  # Rahmen verletzt das Schema
@@ -410,6 +411,8 @@ SESSION_INFO = _object(
         "preview_port": (_int(*REPORTED_PORTS), False),
         # Größe der beschreibbaren Container-Schicht (nur Netzmodus „packages“)
         "rootfs_used_mb": (_int(0, MAX_ROOTFS_MB), False),
+        # Belegung des Volumens /data (nur wenn eingebunden)
+        "data_used_mb": (_int(0, MAX_DATA_MB), False),
     }
 )
 ALLOW = _object(
@@ -508,6 +511,8 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             # ~/MultiGPT/Scratch/<workspace_uuid>/ (None = container).
             "scratch_mode": (_enum(SCRATCH_MODES), False),
             "scratch_mb": (_int(1, 1024 * 1024), False),
+            # Volumen /data je Runner: Grenze der Rolle in MB (fehlt oder 0: kein /data)
+            "data_mb": (_int(0, MAX_DATA_MB), False),
             "workspace_uuid": (_str(36, UUID_RE), False),
         },
     ),

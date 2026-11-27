@@ -495,6 +495,12 @@ def _session_frame(session: RunnerSession, workspace: RunnerWorkspace, ctx) -> d
         )
     if "workspace_uuid" in known and getattr(workspace, "uuid", None):
         frame["workspace_uuid"] = str(workspace.uuid)
+    # Volumen /data: nur an Agents, die es im signierten Katalog melden (ältere
+    # Agents lehnen unbekannte Felder ab).
+    data_mb = int(limits.get("data_mb") or 0)
+    runner = getattr(session, "runner", None)
+    if data_mb and "data_mb" in known and "data" in (getattr(runner, "features", None) or ()):
+        frame["data_mb"] = data_mb
     if limits.get("packages"):
         # Paketquellen: nur die Hosts der Einstellung über den Proxy im Relay;
         # Container-Schicht beschreibbar bis rootfs_mb. Kein allow (schließt sich aus).

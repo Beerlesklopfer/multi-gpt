@@ -112,8 +112,12 @@ fn session_info() -> Check {
         req("state", Check::Enum(SESSION_STATES)),
         opt("preview_port", preview_port()),
         opt("rootfs_used_mb", int(0, *ROOTFS_MB.end() as i128)),
+        opt("data_used_mb", int(0, DATA_MB_MAX)),
     ])
 }
+
+/// Obergrenze für `data_mb`/`data_used_mb` (1 TiB in MB).
+const DATA_MB_MAX: i128 = 1024 * 1024;
 
 fn rootfs_mb() -> Check {
     int(*ROOTFS_MB.start() as i128, *ROOTFS_MB.end() as i128)
@@ -225,6 +229,8 @@ fn build_frames() -> HashMap<&'static str, FrameSpec> {
             opt("bundle", bundle_info()),
             opt("scratch_mode", Check::Enum(SCRATCH_MODES)),
             opt("scratch_mb", int(1, 1024 * 1024)),
+            // Volumen /data je Runner (Grenze der Rolle in MB; fehlt oder 0: kein /data)
+            opt("data_mb", int(0, DATA_MB_MAX)),
             opt("workspace_uuid", sp(36, &UUID_RE)),
             opt(
                 "package_hosts",
