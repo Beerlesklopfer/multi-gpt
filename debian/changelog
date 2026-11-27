@@ -10,6 +10,7 @@ multi-gpt (0.4.1) unstable; urgency=medium
     Werk bei neuen Installationen), AppArmor-Profil für die Sandbox
   * Kosten: Preisvorschläge, Währung je Preis, Abgleich mit Istkosten
   * mgpt-ctl listusers: Konten mit Rolle, Status und letzter Anmeldung
+  * Anmeldenamen ohne Unterschied von Groß- und Kleinschreibung
   * Release-Notizen und Upgrade-Hinweise siehe docs/releases/0.4.1.md und NEWS
 
  -- Joerg Bernau <joerg@bernau.family>  Fri, 27 Nov 2026 19:58:04 +0100

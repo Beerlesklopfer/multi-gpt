@@ -31,6 +31,7 @@ Diese Entscheidungen sind in [Plan.md](Plan.md) eingearbeitet (Abschnitte 2, 5, 
 | Health-Check | `/healthz/` als Middleware ganz vorne: ohne Login, ohne `ALLOWED_HOSTS`-Prüfung, prüft die DB-Verbindung. Bei 503 eine WARNING ohne Stacktrace. |
 | Konten und Gruppen | App `multigpt.accounts`: `accounts.User` erweitert `AbstractUser` (`AUTH_USER_MODEL`), `accounts.UserGroup` erweitert `auth.Group` per Tabellenvererbung. Kein separates `Profil`. |
 | Login-Drosselung | django-axes, Sperre je Nutzername und IP nach 5 Fehlversuchen für 15 Minuten. |
+| Anmeldenamen | **Seit 2026-11-27 ohne Unterschied von Groß- und Kleinschreibung** (Nutzer): `accounts.UserManager.get_by_natural_key` sucht mit `iexact` (Anmeldung über `ModelBackend`), `UniqueConstraint(Lower("username"))` verhindert Konten, die sich nur in der Schreibweise unterscheiden (Migration accounts 0017 bricht bei vorhandenen Dubletten mit den Namen ab), die Schreibweise beim Anlegen bleibt erhalten. axes zählt alle Schreibweisen zusammen (`AXES_USERNAME_CALLABLE = client_ip.login_username`, klein geschrieben). Befehle mit Kontonamen (`create_account`, `apikey`, `runner`, `index`) suchen ebenfalls ohne Unterschied. |
 | Lizenz | AGPL-3.0-or-later: `LICENSE`, Metadaten in `pyproject.toml`, `debian/copyright`, Website. |
 | Versionen | Python 3.13 (Debian 13), Django 5.2 LTS. Entwicklungs-DB: PostgreSQL 18 mit pgvector 0.8. |
 
