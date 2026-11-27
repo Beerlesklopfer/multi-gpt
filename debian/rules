@@ -73,7 +73,7 @@ override_dh_installsystemd:
 
 # Digests der Runner-Images (M14-13): Beim Tag legt die CI (package.yml, aus
 # images.yml) debian/runner-images.env an; Django liest daraus die Standardwerte
-# von RUNNER_AGENT_IMAGE und RUNNER_WORK_IMAGE (/etc/multi-gpt/.env geht vor).
+# von RUNNER_WORK_IMAGE (/etc/multi-gpt/.env geht vor).
 # Lokal (make deb, Docker) fehlt die Datei, dann gelten die Tags aus settings.py.
 #
 # Runner-Binaries (M14): Beim Tag legt die CI (package.yml, Job runner-dist,

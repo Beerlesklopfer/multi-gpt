@@ -16,7 +16,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from runner_agent import protocol
+from multigpt.runner import protocol
 
 LABEL_RUNNER = "multigpt.runner"
 LABEL_SESSION = "multigpt.session"

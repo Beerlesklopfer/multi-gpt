@@ -390,13 +390,3 @@ def test_protocol_has_no_django_imports():
 
 def test_preview_ports_cover_all_ten_export_pairs():
     assert list(P.PREVIEW_PORTS) == list(range(24080, 24090))
-
-
-def test_agent_copy_is_identical():
-    copy = ROOT / "runner_agent" / "protocol.py"
-    if not copy.exists():
-        pytest.skip("runner_agent/protocol.py fehlt noch")
-    assert copy.read_bytes() == (ROOT / "multigpt/runner/protocol.py").read_bytes(), (
-        "runner_agent/protocol.py weicht ab – Kopie aktualisieren "
-        "(cp multigpt/runner/protocol.py runner_agent/)"
-    )

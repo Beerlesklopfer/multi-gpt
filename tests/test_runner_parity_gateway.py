@@ -25,6 +25,7 @@ from tests.runner_parity_support import (
     catalog_env,
     make_release_key,
     require_variant,
+    self_signed_cert,
     wait_for,
 )
 
@@ -234,11 +235,9 @@ def test_foreign_server_key_rejects_signed_frames(agent_variant, server, agents,
 
 @pytest.fixture
 def tls_server(tmp_path_factory, monkeypatch):
-    from tests.test_runner_agent_connection import _self_signed
-
     monkeypatch.setattr(gateway, "HEARTBEAT_SECONDS", 5)
     certdir = tmp_path_factory.mktemp("cert")
-    _, fingerprint = _self_signed(certdir)
+    _, _, fingerprint = self_signed_cert(certdir)
     srv = GatewayServer(
         ssl_certfile=str(certdir / "cert.pem"), ssl_keyfile=str(certdir / "key.pem")
     )

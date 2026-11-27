@@ -70,9 +70,9 @@ RUN apt-get update \
 #   mgpt-serve  startet lighttpd (statisch, http 8080 und https 8443, 8p/8x)
 #   mgpt-relay  TCP-Weiterleitung nur zu freigegebenen Zielen (ssh/telnet, 8w)
 #               bzw. HTTP-Proxy nur zu den Paket-Hosts (Modus Paketquellen)
-COPY --chmod=0755 runner_agent/mgpt_fs.py /usr/local/bin/mgpt-fs
-COPY --chmod=0755 runner_agent/mgpt_lighttpd.py /usr/local/bin/mgpt-serve
-COPY --chmod=0755 runner_agent/mgpt_relay.py /usr/local/bin/mgpt-relay
+COPY --chmod=0755 containers/work/mgpt_fs.py /usr/local/bin/mgpt-fs
+COPY --chmod=0755 containers/work/mgpt_lighttpd.py /usr/local/bin/mgpt-serve
+COPY --chmod=0755 containers/work/mgpt_relay.py /usr/local/bin/mgpt-relay
 
 
 # apt über den Proxy: kein Pipelining (der Proxy leitet je Verbindung genau eine

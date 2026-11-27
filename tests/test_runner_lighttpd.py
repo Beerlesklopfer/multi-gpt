@@ -1,8 +1,21 @@
-"""mgpt-serve im Arbeits-Image (runner_agent/mgpt_lighttpd.py): Konfiguration für lighttpd."""
+"""mgpt-serve im Arbeits-Image (containers/work/mgpt_lighttpd.py): Konfiguration für lighttpd."""
+
+import importlib.util
+from pathlib import Path
 
 import pytest
 
-from runner_agent import mgpt_lighttpd as m
+_WORK = Path(__file__).resolve().parent.parent / "containers" / "work"
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(f"mgpt_work_{name}", _WORK / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+m = _load("mgpt_lighttpd")
 
 TOKEN = "abcdefghijklmnop0123456789"
 

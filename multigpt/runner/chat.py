@@ -701,7 +701,7 @@ def _pairing(ctx: RunnerContext, host_name: str):
     """Kopplung für ``setup_host``: frischer Token (nur für diesen Aufruf gezeigt),
     Adresse, Fingerprint und öffentlicher Installationsschlüssel des Servers,
     Programme mit Prüfsumme. Liefert (Daten, Token-Objekt)."""
-    from . import quadlet, tokens, trust
+    from . import pairing, tokens, trust
 
     base = trust.public_url()
     if not base:
@@ -719,7 +719,7 @@ def _pairing(ctx: RunnerContext, host_name: str):
     data = {
         "url": base,
         "token": created.secret,
-        "ca_sha256": quadlet.ca_fingerprint(),
+        "ca_sha256": pairing.ca_fingerprint(),
         "server_key": key,
         # Arbeits-Image mit Digest für ``pair --images`` (wie auf der Kopplungsseite).
         "images": [settings.RUNNER_WORK_IMAGE],

@@ -1,9 +1,9 @@
 """Rahmenprotokoll zwischen Runner-Agent und Runner-Dienst (M14-03).
 
-Diese Datei hat bewusst **keine Django-Importe** und nur die Standardbibliothek:
-Sie wird unverändert in das Agent-Paket ``runner_agent/`` kopiert, ein Test
-prüft die Gleichheit. Änderungen nur nach Absprache (Sprach-Bus) und in beiden
-Kopien.
+Diese Datei hat bewusst **keine Django-Importe** und nur die Standardbibliothek
+(die Testvektoren unter ``runner-rs/testdata/`` entstehen ohne Webframework). Das
+Gegenstück im Agent ist ``runner-rs/multigpt-runner/src/protocol/``; Änderungen
+immer an beiden Stellen.
 
 **Rahmen:** Jeder WebSocket-Textrahmen ist genau ein JSON-Objekt mit dem Feld
 ``type`` und den Feldern seines Typs. Unbekannte Typen und unbekannte Felder

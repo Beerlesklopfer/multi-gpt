@@ -8,12 +8,12 @@ ablehnen. Neu erzeugen: ``python -m tests.runner_vectors``.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from multigpt.runner import protocol as P
 from tests import runner_signature_vectors as SV
-from tests import runner_template_vectors as TV
 from tests import runner_vectors as V
 
 FILES = sorted(p for p in V.FRAMES_DIR.glob("*/*.json"))
@@ -78,17 +78,10 @@ def test_invalid_vectors(path):
     assert info.value.close_code == entry["close_code"]
 
 
-# --- Feste Vorlage (runner_agent/template.py) ----------------------------------------
+# --- Feste Vorlage (eingefroren, geprüft vom Rust-Agent: tests/template_vectors.rs) ------
 
-TEMPLATE_FILES = sorted(TV.TEMPLATE_DIR.glob("*.json"))
-
-
-def test_template_files_match_generator():
-    expected = TV.build()
-    on_disk = {p.name: p.read_text(encoding="utf-8") for p in TEMPLATE_FILES}
-    assert set(on_disk) == set(expected), "python -m tests.runner_template_vectors ausführen"
-    for name, entry in expected.items():
-        assert on_disk[name] == TV.render(entry), name
+TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "runner-rs" / "testdata" / "template"
+TEMPLATE_FILES = sorted(TEMPLATE_DIR.glob("*.json"))
 
 
 def test_template_vectors_cover_all_checks():
@@ -101,22 +94,6 @@ def test_template_vectors_cover_all_checks():
         "reject",
     }
     assert sum(e["expect"] == "reject" for e in entries) >= 80
-
-
-def _template_params():
-    for path in TEMPLATE_FILES:
-        marks = []
-        if path.stem in TV.KNOWN_PYTHON_DEVIATIONS:
-            marks.append(
-                pytest.mark.xfail(reason=TV.KNOWN_PYTHON_DEVIATIONS[path.stem], strict=True)
-            )
-        yield pytest.param(path, marks=marks, id=path.stem)
-
-
-@pytest.mark.parametrize("path", list(_template_params()))
-def test_template_vectors(path):
-    entry = _load(path)
-    assert TV.evaluate(entry) == entry["expect"]
 
 
 # --- Signaturen des Servers (Protokoll 2) ----------------------------------------------

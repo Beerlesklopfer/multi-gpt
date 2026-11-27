@@ -1,16 +1,13 @@
-"""Gleichwertigkeitstests Python-/Rust-Agent (rs-e2e): Agent als Prozess, Runner-Dienst im Prozess.
+"""Agent-Tests über den Draht (rs-e2e): Rust-Agent als Prozess, Runner-Dienst im Prozess.
 
-Beide Agenten laufen als eigene Prozesse mit denselben Umgebungsvariablen und
-werden nur über Exit-Code, Server-Zustand (Datenbank, Audit) und Container
-beobachtet – so gelten dieselben Tests für beide:
+Der Agent (``runner-rs/target/debug/multigpt-runner``, gebaut mit
+``cargo build --features fake-engine`` bzw. ``MGPT_RUST_RUNNER_BIN``) läuft als
+eigener Prozess und wird nur über Exit-Code, Server-Zustand (Datenbank, Audit)
+und Container beobachtet. Bis 0.4 liefen dieselben Tests auch gegen den
+Python-Agent (entfernt); daher die Parametrisierung ``agent_variant``.
 
-- ``python``: ``python -m tests.runner_py_agent`` (``runner_agent`` mit Engine-Wahl)
-- ``rust``: ``runner-rs/target/debug/multigpt-runner``, gebaut mit
-  ``cargo build --features fake-engine`` (bzw. ``MGPT_RUST_RUNNER_BIN``)
-
-Fehlt das Rust-Binary (Crate noch im Bau, kein cargo), wird die Rust-Variante
-übersprungen; mit ``MGPT_PARITY_REQUIRE_RUST=1`` schlägt sie stattdessen fehl.
-Die Parametrisierung entfällt, sobald der Python-Agent entfernt ist.
+Fehlt das Binary (kein cargo), wird übersprungen; mit
+``MGPT_PARITY_REQUIRE_RUST=1`` schlägt der Test stattdessen fehl.
 """
 
 from __future__ import annotations
@@ -20,7 +17,6 @@ import os
 import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -29,7 +25,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RUST_DIR = ROOT / "runner-rs"
-VARIANTS = ("python", "rust")
+VARIANTS = ("rust",)
 CARGO = shutil.which("cargo") or str(Path.home() / ".cargo" / "bin" / "cargo")
 
 _build_lock = threading.Lock()
@@ -95,20 +91,17 @@ def base_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     return env
 
 
-# Zuschlag für den Programmstart (der Python-Agent importiert das MCP-SDK samt pydantic).
+# Zuschlag für den Programmstart (unter Last, Testrechner).
 STARTUP_SECONDS = 45
 
 
 class AgentProcess:
-    """Ein Agent-Prozess (Python oder Rust) mit Log-Datei."""
+    """Ein Agent-Prozess (Rust) mit Log-Datei."""
 
     def __init__(self, variant: str, env: dict[str, str], log_path: Path):
         self.variant = variant
         self.log_path = log_path
-        if variant == "python":
-            argv = [sys.executable, "-m", "tests.runner_py_agent"]
-        else:
-            argv = [str(rust_binary())]
+        argv = [str(rust_binary())]
         self._log = open(log_path, "wb")  # noqa: SIM115 - lebt bis stop()
         self.proc = subprocess.Popen(
             argv,
@@ -125,8 +118,7 @@ class AgentProcess:
         return self.proc.poll()
 
     def wait(self, timeout: float) -> int:
-        """Auf das Ende warten; ``timeout`` zählt ab Programmstart (Python lädt mcp/pydantic
-        unter Last bis zu ~30 s, daher kommt STARTUP_SECONDS hinzu)."""
+        """Auf das Ende warten; ``timeout`` zählt ab Programmstart (zuzüglich STARTUP_SECONDS)."""
         try:
             return self.proc.wait(timeout + STARTUP_SECONDS)
         except subprocess.TimeoutExpired:
@@ -307,3 +299,39 @@ def catalog_env(tmp_path: Path, private, key_id: str, *, tamper: bool = False) -
         "MGPT_CATALOG_SIG_FILE": str(sig),
         "MGPT_CATALOG_KEY": key_id,
     }
+
+
+def self_signed_cert(directory: Path) -> tuple[Path, Path, str]:
+    """Selbst signiertes Zertifikat (snakeoil): (cert.pem, key.pem, SHA-256 der DER-Form)."""
+    import datetime
+    import hashlib
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "snakeoil")])
+    now = datetime.datetime.now(datetime.UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=30))
+        .sign(key, hashes.SHA256())
+    )
+    cert_file, key_file = directory / "cert.pem", directory / "key.pem"
+    cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_file.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    der = cert.public_bytes(serialization.Encoding.DER)
+    return cert_file, key_file, hashlib.sha256(der).hexdigest()

@@ -45,7 +45,7 @@ from multigpt.runner import chat as runner_chat
 from multigpt.runner import control, tokens, workspaces
 from multigpt.runner.mcp_server import ensure_mcp_server
 from multigpt.runner.models import Runner, RunnerSession, RunnerWorkspace
-from runner_agent import template
+from tests import runner_template as template
 from tests.node_support import make_user
 from tests.runner_parity_support import (
     AgentProcess,

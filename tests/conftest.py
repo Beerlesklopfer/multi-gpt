@@ -63,19 +63,22 @@ def runner_server_key_path(tmp_path_factory):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from multigpt.runner import trust
-    from runner_agent import tools as agent_tools
 
     path = tmp_path_factory.mktemp("runner-key") / "server.key"
     _new, key = trust.generate_server_key(path)
     (path.parent / "server.pub").write_text(key.public_b64 + "\n")
-    # Release-Schlüssel wie in der CI: Katalog des Python-Agents signieren, nur den
+    # Release-Schlüssel wie in der CI: Katalog des Rust-Agents signieren, nur den
     # öffentlichen Teil behalten (release_keys.json), den privaten verwerfen.
     release = Ed25519PrivateKey.generate()
     raw = release.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
     kid = trust.protocol.key_id(raw)
-    catalog = agent_tools.catalog_text("0.0-test").encode()
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    catalog = (root / "runner-rs" / "catalog.json").read_text(encoding="utf-8")
+    catalog = catalog.replace('"release": "dev"', '"release": "0.0-test"', 1).encode()
     (path.parent / "catalog.json").write_bytes(catalog)
     (path.parent / "catalog.json.sig").write_text(trust.public_text(release.sign(catalog)) + "\n")
     (path.parent / "catalog.key_id").write_text(kid)

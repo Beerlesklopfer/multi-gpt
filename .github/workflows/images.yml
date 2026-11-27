@@ -1,18 +1,16 @@
-# Baut zu jedem Versions-Tag (v*) die beiden Images des Runners (M14-13) und
-# veröffentlicht sie auf ghcr.io:
-#   ghcr.io/<owner>/multigpt-work    Arbeits-Image (containers/work/Containerfile)
-#   ghcr.io/<owner>/multigpt-runner  Agent-Image  (containers/agent/Containerfile)
+# Baut zu jedem Versions-Tag (v*) das Arbeits-Image des Runners (M14-13) und
+# veröffentlicht es auf ghcr.io:
+#   ghcr.io/<owner>/multigpt-runner-work  Arbeits-Image (containers/work/Containerfile)
 # Maßgeblich ist der Digest (name@sha256:…): Ihn tragen die Einstellungen des
-# Servers und die Quadlet-Datei ein, der Agent startet nur Images mit Digest aus
+# Servers und die Kopplung (pair --images) ein, der Agent startet nur Images mit Digest aus
 # seiner Positivliste. Die Digests stehen in der Zusammenfassung des Laufs und
 # im Artefakt image-digests (images.txt für das Release, runner-images.env für
 # das Debian-Paket: /usr/share/multi-gpt/runner-images.env).
 #
 # Aufgerufen von package.yml beim Tag, parallel zum Bau des Debian-Pakets (seit
 # dem Rust-Agent keine Voraussetzung mehr: Scheitert dieser Workflow, z. B. weil
-# ghcr.io nicht erreichbar ist, entsteht das Paket ohne Digests). Das Arbeits-
-# Image bleibt nötig (Sitzungscontainer auch für den nativen Agent); das
-# Agent-Image braucht nur noch der Python-Agent unter Quadlet und entfällt mit ihm.
+# ghcr.io nicht erreichbar ist, entsteht das Paket ohne Digests). Das frühere
+# Agent-Image (Python-Agent unter Quadlet) ist entfallen.
 # Von Hand:
 # Actions → Runner-Images → "Run workflow" mit dem Tag (hängt images.txt an ein
 # vorhandenes Release).
@@ -38,7 +36,6 @@ on:
     branches: [main]
     paths:
       - "containers/**"
-      - "runner_agent/mgpt_*.py"
       - ".github/workflows/images.yml"
 
 permissions:
@@ -69,9 +66,6 @@ jobs:
           - kind: work
             name: multigpt-runner-work
             var: RUNNER_WORK_IMAGE
-          - kind: agent
-            name: multigpt-runner
-            var: RUNNER_AGENT_IMAGE
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,13 +113,6 @@ jobs:
               [ -z "$(find / -xdev -type f -perm /6000 2>/dev/null)" ] || { echo "setuid gefunden"; exit 1; }
               cd /workspace && git init -q && echo ok > a.txt && git add -A && git commit -qm test
               git bundle create /tmp/t.bundle --all && git bundle verify -q /tmp/t.bundle'
-
-      - name: Rauchtest Agent-Image
-        if: matrix.kind == 'agent'
-        run: |
-          podman run --rm --network none --read-only --cap-drop ALL \
-            --security-opt no-new-privileges --entrypoint python "${IMAGE}:${VERSION}" \
-            -P -c 'import runner_agent, websockets, httpx, mcp; print("ok")'
 
       - name: Veröffentlichen
         env:

@@ -9,11 +9,23 @@ Adressen (auch nach der Auflösung) abgewiesen werden.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import socket
+from pathlib import Path
 
 import pytest
 
-from runner_agent import mgpt_relay
+_WORK = Path(__file__).resolve().parent.parent / "containers" / "work"
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(f"mgpt_work_{name}", _WORK / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+mgpt_relay = _load("mgpt_relay")
 
 HOSTS = ["deb.debian.org", "pypi.org"]
 

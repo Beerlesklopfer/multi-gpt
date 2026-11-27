@@ -4,15 +4,18 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chat', '0051_speech'),
+        ("chat", "0051_speech"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='aimodel',
-            name='intro',
-            field=models.TextField(blank=True, help_text='Erscheint beim Wechsel auf ein lokales Modell im Chat. Von Hand oder per Aktion „Vorstellung von Hugging Face holen“.', verbose_name='Kurzvorstellung'),
+            model_name="aimodel",
+            name="intro",
+            field=models.TextField(
+                blank=True,
+                help_text="Erscheint beim Wechsel auf ein lokales Modell im Chat. Von Hand oder per Aktion „Vorstellung von Hugging Face holen“.",
+                verbose_name="Kurzvorstellung",
+            ),
         ),
     ]

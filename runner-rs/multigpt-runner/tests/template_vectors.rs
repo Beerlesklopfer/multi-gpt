@@ -1,8 +1,9 @@
-//! Gemeinsame Testvektoren der festen Vorlage (Orakel: `runner_agent/template.py`).
+//! Testvektoren der festen Vorlage.
 //!
-//! Liest alle Dateien unter `runner-rs/testdata/template/` (erzeugt mit
-//! `python -m tests.runner_template_vectors`) und prüft sie gegen
-//! `multigpt_runner::template`.
+//! Liest alle Dateien unter `runner-rs/testdata/template/` und prüft sie gegen
+//! `multigpt_runner::template`. Erzeugt wurden sie mit der Python-Referenz des
+//! früheren Python-Agents (entfernt); seitdem sind sie eingefroren und werden bei
+//! Änderungen der Vorlage hier von Hand ergänzt.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

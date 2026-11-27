@@ -377,7 +377,7 @@ def test_pairing_page_shows_native_setup(client, dist):
     assert "MGPT_CONFIG_EOF" in page
     assert "MGPT_EXPOSE_HOST=192.168.xxx.yyy" in page
     assert "MGPT_SERVER_KEY_FILE=%h/.config/multigpt-runner/server.pub" in page
-    assert "mgpt_runner_server_key" in page  # Ausweg Quadlet: Schlüssel als Secret
+    assert "mgpt_runner_server_key" not in page  # kein Quadlet-Weg mehr
     # Der private Schlüssel erscheint nirgends.
     pem = open(trust.server_key_path(), "rb").read().decode()
     assert pem.splitlines()[1] not in page
@@ -399,11 +399,11 @@ def test_config_setup_creates_template_once(tmp_path):
     import subprocess
     from pathlib import Path
 
-    from multigpt.runner import quadlet
+    from multigpt.runner import pairing
 
     config_root = tmp_path / "xdg with spaces"
     env = {**os.environ, "XDG_CONFIG_HOME": str(config_root)}
-    command = quadlet.config_setup_command()
+    command = pairing.config_setup_command()
     subprocess.run(["sh", "-eu", "-c", command], env=env, check=True)
     config = config_root / "multigpt-runner/config.env"
     template = Path("runner-rs/multigpt-runner/systemd/config.env.example").read_text()

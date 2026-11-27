@@ -3,7 +3,7 @@
 //! Jeder „Container“ ist ein Verzeichnis: `exec` führt den Befehl als lokalen
 //! Prozess aus, mit `/workspace` = eigenes Temp-Verzeichnis (über
 //! `MGPT_WORKSPACE`). Die Hilfsprogramme `mgpt-fs`/`mgpt-serve`/`mgpt-relay`
-//! laufen als Python-Skripte aus `runner_agent/` (bzw. `MGPT_FAKE_HELPERS`). Alle
+//! laufen als Python-Skripte aus `containers/work/` (bzw. `MGPT_FAKE_HELPERS`). Alle
 //! Körper werden wie bei Podman gegen die Vorlage geprüft und in `created`
 //! festgehalten; `inspect` leitet die Ist-Werte daraus ab (`tamper` verfälscht sie).
 //!
@@ -113,7 +113,7 @@ pub fn default_helpers() -> PathBuf {
     if let Some(dir) = std::env::var_os("MGPT_FAKE_HELPERS") {
         return PathBuf::from(dir);
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../runner_agent")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../containers/work")
 }
 
 impl FakeEngine {

@@ -79,36 +79,6 @@
         {% else %}
           <p class="hint">Auf diesem Server liegen keine Runner-Programme zum Herunterladen (das Paket bringt sie mit). Für Entwickler: <code>cargo install --path runner-rs/multigpt-runner</code>, dann <code>multigpt-runner pair</code> wie im Wiki beschrieben.</p>
         {% endif %}
-        <details>
-          <summary>Ausweg: Runner als Container (Quadlet, Python-Agent)</summary>
-          <ol class="runner-steps">
-            {% for text, command in commands %}
-              <li>{{ text }}:
-                <div class="connect-block">
-                  <pre id="runner-cmd-{{ forloop.counter }}"><code>{{ command }}</code></pre>
-                  <button type="button" class="icon-button connect-copy" data-connect-copy="runner-cmd-{{ forloop.counter }}"
-                          aria-label="Befehl kopieren" title="Befehl kopieren">{% include "runner/_copy_icon.html" %}</button>
-                  <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
-                </div>
-              </li>
-            {% endfor %}
-          </ol>
-          <p>Schlüssel des Servers (für das zweite Secret):</p>
-          <div class="connect-block">
-            <pre id="runner-server-key"><code>{{ server_key }}</code></pre>
-            <button type="button" class="icon-button connect-copy" data-connect-copy="runner-server-key"
-                    aria-label="Schlüssel kopieren" title="Schlüssel kopieren">{% include "runner/_copy_icon.html" %}</button>
-            <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
-          </div>
-          <p>Inhalt von <code>~/.config/containers/systemd/{{ quadlet_name }}</code>:</p>
-          <div class="connect-block">
-            <pre id="runner-quadlet"><code>{{ quadlet }}</code></pre>
-            <button type="button" class="icon-button connect-copy" data-connect-copy="runner-quadlet"
-                    aria-label="Quadlet-Datei kopieren" title="Quadlet-Datei kopieren">{% include "runner/_copy_icon.html" %}</button>
-            <span class="hint connect-copy-done" data-copy-done hidden role="status"></span>
-          </div>
-          <p class="hint">Der Token steht nicht in der Datei, sondern im Podman-Secret <code>{{ secret_name }}</code>.</p>
-        </details>
       </section>
     {% endif %}
 

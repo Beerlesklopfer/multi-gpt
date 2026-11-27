@@ -130,12 +130,6 @@ def test_protocol_limits_and_heartbeat_fields():
     assert beat["sessions"][0]["rootfs_used_mb"] == 12
 
 
-def test_protocol_copies_identical():
-    root = Path(__file__).resolve().parent.parent
-    server = (root / "multigpt" / "runner" / "protocol.py").read_bytes()
-    assert server == (root / "runner_agent" / "protocol.py").read_bytes()
-
-
 # --- Rolle und Grenzen ----------------------------------------------------------------------
 
 
@@ -400,14 +394,3 @@ def test_session_api_and_page_show_packages(client, adult, workspace, runner):
     assert data["packages"] is True
     page = client.get(f"/runner/sitzung/{session.uuid}/").content.decode()
     assert "nur Paketquellen" in page
-
-
-def test_python_agent_rejects_packages():
-    import asyncio
-
-    from runner_agent import session as agent_session
-
-    manager = agent_session.SessionManager.__new__(agent_session.SessionManager)
-    with pytest.raises(agent_session.SessionError) as err:
-        asyncio.run(manager._start(protocol.validate(start_frame(), protocol.SERVER)))
-    assert "Paketquellen" in str(err.value)

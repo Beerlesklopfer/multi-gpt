@@ -12,7 +12,9 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use super::{EXIT_CONFIG, EXIT_FAILED, EXIT_OK, UNIT_NAME, systemctl, user_unit_dir, write_private};
+use super::{
+    EXIT_CONFIG, EXIT_FAILED, EXIT_OK, UNIT_NAME, systemctl, user_unit_dir, write_private,
+};
 use crate::config;
 use crate::protocol;
 
@@ -77,7 +79,8 @@ pub fn effective(unit: Option<&str>, env_file: Option<&str>) -> Option<(Source, 
     if let Some(value) = env_file.and_then(env_file_value) {
         return Some((Source::ConfigEnv, split(&value)));
     }
-    unit.and_then(unit_value).map(|value| (Source::Unit, split(&value)))
+    unit.and_then(unit_value)
+        .map(|value| (Source::Unit, split(&value)))
 }
 
 fn joined(images: &BTreeSet<String>) -> String {
@@ -90,7 +93,11 @@ pub fn rewrite_env_file(text: &str, images: &BTreeSet<String>) -> String {
     let active: Vec<usize> = text
         .lines()
         .enumerate()
-        .filter(|(_, l)| l.trim().strip_prefix(KEY).is_some_and(|r| r.starts_with('=')))
+        .filter(|(_, l)| {
+            l.trim()
+                .strip_prefix(KEY)
+                .is_some_and(|r| r.starts_with('='))
+        })
         .map(|(i, _)| i)
         .collect();
     let mut out = Vec::new();
@@ -149,7 +156,9 @@ pub fn parse_change_args(args: &[String]) -> Result<ChangeArgs, String> {
     for arg in args {
         match arg.as_str() {
             "--no-restart" => restart = false,
-            other if other.starts_with("--") => return Err(format!("images: unbekannte Option {other}")),
+            other if other.starts_with("--") => {
+                return Err(format!("images: unbekannte Option {other}"));
+            }
             image => {
                 if !protocol::is_image(image) {
                     return Err(format!(
@@ -225,8 +234,7 @@ pub fn main(args: &[String]) -> i32 {
                     return EXIT_CONFIG;
                 }
             };
-            let (source, mut images) =
-                current.unwrap_or((Source::ConfigEnv, BTreeSet::new()));
+            let (source, mut images) = current.unwrap_or((Source::ConfigEnv, BTreeSet::new()));
             let before = images.clone();
             for image in &change.images {
                 if cmd == "add" {
@@ -248,10 +256,10 @@ pub fn main(args: &[String]) -> i32 {
             }
             let written = match source {
                 Source::ConfigEnv => {
-                    if let Some(dir) = paths.env_file.parent() {
-                        if std::fs::create_dir_all(dir).is_ok() {
-                            let _ = super::set_mode(dir, 0o700);
-                        }
+                    if let Some(dir) = paths.env_file.parent()
+                        && std::fs::create_dir_all(dir).is_ok()
+                    {
+                        let _ = super::set_mode(dir, 0o700);
                     }
                     let text = rewrite_env_file(env_file.as_deref().unwrap_or(""), &images);
                     write_private(&paths.env_file, &text, 0o600)
@@ -302,8 +310,10 @@ pub fn main(args: &[String]) -> i32 {
 mod tests {
     use super::*;
 
-    const A: &str = "ghcr.io/x/work@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const B: &str = "ghcr.io/x/work@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const A: &str =
+        "ghcr.io/x/work@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const B: &str =
+        "ghcr.io/x/work@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
     fn set(items: &[&str]) -> BTreeSet<String> {
         items.iter().map(|s| s.to_string()).collect()
@@ -311,23 +321,36 @@ mod tests {
 
     #[test]
     fn unit_value_is_read_from_quoted_environment() {
-        let unit = format!("[Service]\nEnvironment=MGPT_URL=https://h\nEnvironment=\"MGPT_IMAGES={A} {B}\"\n");
-        assert_eq!(effective(Some(&unit), None), Some((Source::Unit, set(&[A, B]))));
+        let unit = format!(
+            "[Service]\nEnvironment=MGPT_URL=https://h\nEnvironment=\"MGPT_IMAGES={A} {B}\"\n"
+        );
+        assert_eq!(
+            effective(Some(&unit), None),
+            Some((Source::Unit, set(&[A, B])))
+        );
     }
 
     #[test]
     fn active_config_env_line_wins_over_unit() {
         let unit = format!("Environment=\"MGPT_IMAGES={A}\"\n");
         let env = format!("# MGPT_IMAGES=\"ignored@sha256:x\"\nMGPT_IMAGES=\"{B}\"\n");
-        assert_eq!(effective(Some(&unit), Some(&env)), Some((Source::ConfigEnv, set(&[B]))));
+        assert_eq!(
+            effective(Some(&unit), Some(&env)),
+            Some((Source::ConfigEnv, set(&[B])))
+        );
         // nur auskommentiert: Unit gilt
         let commented = "# MGPT_IMAGES=\"x\"\n";
-        assert_eq!(effective(Some(&unit), Some(commented)).unwrap().0, Source::Unit);
+        assert_eq!(
+            effective(Some(&unit), Some(commented)).unwrap().0,
+            Source::Unit
+        );
     }
 
     #[test]
     fn rewrite_unit_replaces_only_the_images_line() {
-        let unit = format!("[Service]\nEnvironment=MGPT_URL=https://h\nEnvironment=\"MGPT_IMAGES={A}\"\nRestart=on-failure\n");
+        let unit = format!(
+            "[Service]\nEnvironment=MGPT_URL=https://h\nEnvironment=\"MGPT_IMAGES={A}\"\nRestart=on-failure\n"
+        );
         let new = rewrite_unit(&unit, &set(&[A, B])).unwrap();
         assert!(new.contains(&format!("Environment=\"MGPT_IMAGES={A} {B}\"\n")));
         assert!(new.contains("Environment=MGPT_URL=https://h\n"));
@@ -339,7 +362,10 @@ mod tests {
     fn rewrite_env_file_keeps_comments_and_collapses_duplicates() {
         let env = format!("# Kommentar\nMGPT_IMAGES={A}\nMGPT_HOSTNAME=WS\nMGPT_IMAGES=\"{A}\"\n");
         let new = rewrite_env_file(&env, &set(&[A, B]));
-        assert_eq!(new, format!("# Kommentar\nMGPT_HOSTNAME=WS\nMGPT_IMAGES=\"{A} {B}\"\n"));
+        assert_eq!(
+            new,
+            format!("# Kommentar\nMGPT_HOSTNAME=WS\nMGPT_IMAGES=\"{A} {B}\"\n")
+        );
         assert_eq!(env_file_value(&new).map(|v| split(&v)), Some(set(&[A, B])));
         let appended = rewrite_env_file("# leer\n", &set(&[B]));
         assert_eq!(appended, format!("# leer\nMGPT_IMAGES=\"{B}\"\n"));
@@ -350,9 +376,16 @@ mod tests {
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
             parse_change_args(&args(&[A, "--no-restart"])),
-            Ok(ChangeArgs { images: vec![A.into()], restart: false })
+            Ok(ChangeArgs {
+                images: vec![A.into()],
+                restart: false
+            })
         );
-        assert!(parse_change_args(&args(&["ghcr.io/x/work:latest"])).unwrap_err().contains("Digest"));
+        assert!(
+            parse_change_args(&args(&["ghcr.io/x/work:latest"]))
+                .unwrap_err()
+                .contains("Digest")
+        );
         assert!(parse_change_args(&args(&[])).is_err());
         assert!(parse_change_args(&args(&["--force", A])).is_err());
     }

@@ -32,8 +32,8 @@ def test_runner_page_requires_login(client):
     assert response.status_code == 302
 
 
-def test_create_token_shown_once_with_quadlet(client, settings):
-    settings.RUNNER_AGENT_IMAGE = "ghcr.io/test/agent@sha256:" + "a" * 64
+def test_create_token_shown_once_with_unit(client, settings):
+    settings.RUNNER_WORK_IMAGE = "ghcr.io/test/work@sha256:" + "a" * 64
     settings.RUNNER_CA_SHA256 = "AB:" * 31 + "AB"
     anna = make_user("anna")
     login(client, anna)
@@ -45,12 +45,12 @@ def test_create_token_shown_once_with_quadlet(client, settings):
     secret = response.context["created"].secret
     assert tokens.authenticate(secret) == token
     assert secret in body
-    quadlet = response.context["quadlet"]
-    assert "ghcr.io/test/agent@sha256:" in quadlet
-    assert "MGPT_URL=http://testserver" in quadlet
-    assert "MGPT_CA_SHA256=" + "ab" * 32 in quadlet
-    assert secret not in quadlet  # Token nur als Podman-Secret
-    assert "podman secret create mgpt_runner_token -" in body
+    unit = response.context["unit"]
+    assert "ghcr.io/test/work@sha256:" in unit
+    assert "MGPT_URL=http://testserver" in unit
+    assert "MGPT_CA_SHA256=" + "ab" * 32 in unit
+    assert secret not in unit  # Token nur über die Eingabe von pair
+    assert "Quadlet" not in body and "podman secret" not in body  # Python-Agent entfernt
     # Danach nie wieder sichtbar.
     again = client.get(reverse("runner:index"))
     assert again["Cache-Control"] == "no-store"
@@ -60,12 +60,12 @@ def test_create_token_shown_once_with_quadlet(client, settings):
     assert anna.runner_mcp_servers.count() == 1
 
 
-def test_quadlet_without_pin(client, settings):
+def test_unit_without_pin(client, settings):
     settings.RUNNER_CA_SHA256 = ""
     settings.RUNNER_TLS_CERT = ""
     login(client, make_user("anna"))
     response = client.post(reverse("runner:index"), {"name": "x", "expires": "never"})
-    assert "MGPT_CA_SHA256" not in response.context["quadlet"]
+    assert "MGPT_CA_SHA256" not in response.context["unit"]
     assert RunnerToken.objects.get().expires_at is None
 
 

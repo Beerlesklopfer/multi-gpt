@@ -3,7 +3,7 @@
 Nur das angemeldete Konto, ohne Parameter für ein anderes: Auch Verwalter
 sehen hier keine fremden Tokens und keine fremden Arbeitsstände. Ein neuer
 Token erscheint genau einmal in der Antwort auf das Anlegen
-(``Cache-Control: no-store``), zusammen mit der fertigen Quadlet-Datei.
+(``Cache-Control: no-store``), zusammen mit den Befehlen für das native Programm.
 Anlegen nur mit Rollenrecht „Runner nutzen“; vorhandene Tokens lassen sich
 immer widerrufen, eigene Arbeitsstände immer ansehen, herunterladen und löschen.
 """
@@ -22,7 +22,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from multigpt.accounts.permissions import Action, can
 
-from . import audit, control, quadlet, tokens, trust, workspaces
+from . import audit, control, pairing, tokens, trust, workspaces
 from .mcp_server import ensure_mcp_server
 from .models import Runner, RunnerAudit, RunnerToken, RunnerWorkspace
 
@@ -87,27 +87,23 @@ def _runner_context(request, form, created=None):
         "tokens": own,
         "created": created,
         "can_pair": can(user, Action.USE_RUNNER),
-        "commands": quadlet.setup_commands(),
-        "quadlet_name": quadlet.FILE_NAME,
-        "secret_name": quadlet.SECRET_NAME,
-        "unit_name": quadlet.UNIT_NAME,
+        "unit_name": pairing.UNIT_NAME,
         "server_key": trust.public_key_text(),
         "outdated": Runner.objects.filter(token__owner=user, token__revoked_at__isnull=True)
         .exclude(catalog_state__in=("valid", "dev"))
         .exists(),
     }
     if created is not None:
-        url = quadlet.server_url(request)
+        url = pairing.server_url(request)
         info = trust.dist_info()
         context.update(
             {
-                "quadlet": quadlet.render(url),
-                "unit": quadlet.render_unit(url),
+                "unit": pairing.render_unit(url),
                 "dist": info,
                 "downloads": [
                     {"arch": arch, **item} for arch, item in sorted(info.binaries.items())
                 ],
-                "native_commands": quadlet.native_commands(url, info.binaries),
+                "native_commands": pairing.native_commands(url, info.binaries),
                 # Eingabe für "multigpt-runner pair": Token und Schlüssel des Servers
                 "pair_input": f"{created.secret}\n{trust.public_key_text()}",
             }

@@ -101,13 +101,12 @@ fmt: ## Code formatieren und Autofixes anwenden
 	$(BIN)/ruff check --fix .
 	$(BIN)/ruff format .
 
-# Images des Runners (M14-13) lokal bauen: Arbeits-Image (Sitzungscontainer)
-# und Agent-Image. Veröffentlicht werden sie beim Tag vom Workflow images.yml.
+# Arbeits-Image des Runners (M14-13, Sitzungscontainer) lokal bauen.
+# Veröffentlicht wird es beim Tag vom Workflow images.yml.
 RUNNER_IMAGE_TAG ?= dev
 RUNNER_IMAGE_PREFIX ?= localhost/multigpt-runner
-runner-images: ## Arbeits- und Agent-Image des Runners lokal bauen (podman)
+runner-images: ## Arbeits-Image des Runners lokal bauen (podman)
 	podman build -f containers/work/Containerfile -t $(RUNNER_IMAGE_PREFIX)-work:$(RUNNER_IMAGE_TAG) .
-	podman build -f containers/agent/Containerfile -t $(RUNNER_IMAGE_PREFIX):$(RUNNER_IMAGE_TAG) .
 
 # Runner-Agent als Rust-Crate (M14, runner-rs/). cargo aus dem PATH, sonst
 # rustup unter ~/.cargo/bin. Release-Binaries baut die CI (package.yml).

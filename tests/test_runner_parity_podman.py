@@ -1,14 +1,13 @@
-"""Gleichwertigkeit Python-/Rust-Agent mit echtem Podman (Marker ``podman``, rs-e2e).
+"""Runner Ende-zu-Ende mit echtem Podman (Marker ``podman``, rs-e2e).
 
-Dieselbe Kette wie ``test_runner_e2e_podman.py`` – Chat-Stream (Modell
-gefälscht) → Werkzeugschleife → Zustellung → Runner-Dienst (uvicorn im
-Prozess) → Agent als eigener Prozess mit Podman → Arbeitscontainer –, aber für
-beide Agenten (``agent_variant``). Der Dienstkatalog ist mit einem
+Die ganze Kette – Chat-Stream (Modell gefälscht) → Werkzeugschleife →
+Zustellung → Runner-Dienst (uvicorn im Prozess) → Rust-Agent als eigener
+Prozess mit Podman → Arbeitscontainer. Der Dienstkatalog ist mit einem
 Wegwerf-Release-Schlüssel signiert (wie in der CI), sonst bekäme der Runner
 keine Werkzeuge.
 
 Zusätzlich die Sicherheitsprüfungen: Ist-Werte des echten Containers gegen die
-feste Vorlage (``check_inspect`` der Python-Referenz als Orakel), keine
+feste Vorlage (``check_inspect`` aus ``tests/runner_template.py`` als Orakel), keine
 Geheimnisse des Rechners in der Umgebung, und der Zugang eines Telnet-Hosts ist
 zu keinem Zeitpunkt im Arbeitscontainer lesbar (weder in Dateien noch in /proc).
 
@@ -44,7 +43,7 @@ from multigpt.runner import chat as runner_chat
 from multigpt.runner import tokens, workspaces
 from multigpt.runner.mcp_server import ensure_mcp_server
 from multigpt.runner.models import Runner, RunnerHost, RunnerSession, RunnerWorkspace
-from runner_agent import template
+from tests import runner_template as template
 from tests.node_support import make_user
 from tests.runner_parity_support import (
     VARIANTS,

@@ -1625,7 +1625,7 @@ mod podman {
                 .collect();
             assert!(String::from_utf8_lossy(&out).contains("42"));
 
-            // Vorschau an 127.0.0.1 mit Token, ohne Verzeichnislisten
+            // Vorschau mit Token, ohne Verzeichnislisten
             h.write(&s1, "site/index.html", "<h1>Hi</h1>").await.unwrap();
             let info = h.handle(&s1).start_preview(Some("site")).await.unwrap();
             let port = info["port"].as_u64().unwrap() as u16;
@@ -1639,7 +1639,8 @@ mod podman {
                 tokio::time::sleep(Duration::from_millis(200)).await;
             }
             assert_eq!(got, (200, b"<h1>Hi</h1>".to_vec()));
-            assert_eq!(http_get(port, "/index.html").await.0, 404);
+            // lighttpd: Inhalt auch ohne Token unter / (Web-Ausgabe, Entscheidung 2026-10-14)
+            assert_eq!(http_get(port, "/index.html").await.0, 200);
             assert_eq!(http_get(port, &format!("/{token}/../main.py")).await.0, 404);
 
             h.manager.stop(&s1, "user").await;

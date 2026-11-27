@@ -1,7 +1,7 @@
 //! Tests der Werkzeuge und des MCP-Servers mit einer Test-Sitzung (`FakeHost`).
 //!
 //! Wie die FakeEngine des Python-Agents laufen Befehle als lokale Prozesse in
-//! eigenen Verzeichnissen: `mgpt-fs` ist das echte `runner_agent/mgpt_fs.py`
+//! eigenen Verzeichnissen: `mgpt-fs` ist das echte `containers/work/mgpt_fs.py`
 //! (mit `MGPT_WORKSPACE`/`MGPT_SCRATCH`), `bash` läuft lokal, `ssh`/`telnet`
 //! werden durch Skripte ersetzt. Rahmen an den Server landen in einem Mitschnitt.
 
@@ -22,7 +22,10 @@ use super::setup;
 use super::tools::{self, SessionTools, clean_output, split_chunks, summary};
 use super::{CATALOG_JSON, McpRouter};
 
-const MGPT_FS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../runner_agent/mgpt_fs.py");
+const MGPT_FS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../containers/work/mgpt_fs.py"
+);
 
 /// `mgpt-fs` des Arbeits-Images (Umgebung `MGPT_FS_PY` geht vor).
 fn mgpt_fs() -> PathBuf {
