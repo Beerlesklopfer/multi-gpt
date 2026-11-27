@@ -154,12 +154,12 @@ jobs:
         run: |
           {
             echo "# MultiGPT runner images ${TAG} (pull by digest)"
-            cat digests/multigpt-runner.txt digests/multigpt-runner-work.txt
+            cat digests/multigpt-runner-work.txt
           } > images.txt
           {
             echo "# Runner-Images (M14) dieses Pakets, erzeugt von images.yml – Werte in"
             echo "# /etc/multi-gpt/.env gehen vor."
-            cat digests/multigpt-runner.env digests/multigpt-runner-work.env
+            cat digests/multigpt-runner-work.env
           } > runner-images.env
           cat images.txt runner-images.env
           { echo '```'; cat images.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
