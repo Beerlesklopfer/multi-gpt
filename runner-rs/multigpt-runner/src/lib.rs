@@ -14,6 +14,7 @@ pub mod config;
 pub mod connection;
 pub mod engine;
 pub mod fetch;
+pub mod flux;
 pub mod handler;
 pub mod mcp;
 pub mod outbox;

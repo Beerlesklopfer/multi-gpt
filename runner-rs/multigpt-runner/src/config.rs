@@ -18,6 +18,7 @@
 //! | `MGPT_SCRATCH_DIR`, `MGPT_SCRATCH_HOST_DIR` | lokales Scratchpad (`…/MultiGPT/Scratch`) |
 //! | `MGPT_LABELS` | zusätzliche Labels `k=v k2=v2` (Tests: `multigpt.test=1`) |
 //! | `MGPT_ENGINE` | `podman` (Vorgabe); `fake` nur mit Feature `fake-engine` und `MGPT_INSECURE_DEV=1` |
+//! | `MGPT_FLUX_*` | lokale Freigabe für das geplante GPU-Profil (siehe `flux::FluxConfig`) |
 //! | `MGPT_SERVER_KEY_FILE` | öffentlicher Ed25519-Schlüssel der Installation (eine Zeile Base64) |
 //! | `MGPT_CATALOG_FILE`, `MGPT_CATALOG_SIG_FILE`, `MGPT_CATALOG_KEY` | Dienstkatalog statt des eingebauten |
 //!
@@ -56,6 +57,8 @@ fn err(text: impl Into<String>) -> ConfigError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
+    /// Lokale FLUX-Freigabe; erweitert nicht die Rechte von Coding-Sitzungen.
+    pub flux: Option<crate::flux::FluxConfig>,
     /// `wss://host/runner/ws`
     pub url: String,
     pub token_file: PathBuf,
@@ -119,6 +122,7 @@ impl Config {
     /// Einstellungen mit Vorgaben (für Tests).
     pub fn new(url: impl Into<String>) -> Self {
         Self {
+            flux: None,
             url: url.into(),
             token_file: PathBuf::from("/run/secrets/token"),
             ca_sha256: None,
@@ -283,6 +287,7 @@ impl Config {
         config.hostname = hostname.chars().take(253).collect();
         config.labels = parse_labels(get("MGPT_LABELS").unwrap_or(""))?;
         config.engine = engine;
+        config.flux = crate::flux::FluxConfig::from_env(env)?;
         Ok(config)
     }
 }
