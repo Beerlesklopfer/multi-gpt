@@ -2034,6 +2034,33 @@ except OSError as e:
         })
         .await;
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn podman_container_logs() {
+        let Some(setup) = setup(8, None) else { return };
+        let h = &setup.harness;
+        run(async {
+            let s8 = sid(8);
+            let state = h.start(&s8, "pw8", json!({})).await;
+            assert_eq!(state["state"], "running", "{state}");
+            let Frame::LogRequest(request) = server_frame(
+                "log_request",
+                json!({"session": s8, "request": "r8", "lines": 50}),
+            ) else {
+                unreachable!()
+            };
+            h.manager.log_request(&request).await.unwrap();
+            h.settle().await;
+            let answer = h.last("log_response");
+            let logs = answer["logs"].as_array().unwrap();
+            assert_eq!(logs.len(), 1, "{answer}");
+            assert_eq!(logs[0]["role"], "work");
+            let text = logs[0]["text"].as_str().unwrap();
+            assert!(!text.starts_with("[Logs nicht lesbar"), "{text}");
+            h.manager.stop(&s8, "user").await;
+        })
+        .await;
+    }
 }
 
 #[tokio::test]
@@ -2080,4 +2107,53 @@ async fn data_volume_mounted_measured_and_locked_when_full() {
     fields.insert("path".into(), json!("/data/cache/a.txt"));
     let read = handle.fs("read", fields).await.unwrap();
     assert!(read.to_string().contains("hallo"), "{read}");
+}
+
+#[tokio::test]
+async fn log_request_returns_cleaned_tail_per_container() {
+    let h = Harness::new(config());
+    let state = h.start("s1", "w1", json!({})).await;
+    assert_eq!(state["state"], "running", "{state}");
+    let work = h.work("s1");
+    let mut text = Vec::new();
+    for i in 1..=5 {
+        text.extend_from_slice(format!("zeile {i}\n").as_bytes());
+    }
+    text.extend_from_slice(b"\x1b[31mrot\x1b[0m\x07 ende\n");
+    h.engine.state().logs.insert(work.clone(), text);
+    let Frame::LogRequest(request) = server_frame(
+        "log_request",
+        json!({"session": "s1", "request": "r1", "lines": 3}),
+    ) else {
+        unreachable!()
+    };
+    h.manager.log_request(&request).await.unwrap();
+    h.settle().await;
+    let answer = h.last("log_response");
+    assert_eq!(answer["request"], "r1");
+    let logs = answer["logs"].as_array().unwrap();
+    assert_eq!(logs.len(), 1, "{answer}");
+    assert_eq!(logs[0]["role"], "work");
+    assert_eq!(logs[0]["name"], work);
+    assert_eq!(logs[0]["text"], "zeile 4\nzeile 5\nrot ende\n");
+    // Fremde Sitzung: keine Container, leere Liste
+    let Frame::LogRequest(other) = server_frame(
+        "log_request",
+        json!({"session": "s9", "request": "r2", "lines": 3}),
+    ) else {
+        unreachable!()
+    };
+    h.manager.log_request(&other).await.unwrap();
+    h.settle().await;
+    assert_eq!(h.last("log_response")["logs"], json!([]));
+}
+
+#[test]
+fn clean_log_strips_controls_and_keeps_the_end() {
+    assert_eq!(
+        clean_log(b"a\tb\r\nc\x1b[1mfett\x1b[0m\n", 100),
+        "a\tb\ncfett\n"
+    );
+    assert_eq!(clean_log(b"0123456789", 5), "…6789");
+    assert_eq!(clean_log(&[0xff, b'x'], 10), "\u{fffd}x");
 }

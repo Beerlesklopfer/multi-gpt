@@ -116,6 +116,21 @@ fn session_info() -> Check {
     ])
 }
 
+/// Container-Logs (`log_request`/`log_response`): Zeilen je Anfrage, Container je
+/// Antwort, Zeichen je Container.
+pub const MAX_LOG_LINES: i128 = 1000;
+pub const MAX_LOG_ENTRIES: usize = 10;
+pub const MAX_LOG_TEXT: usize = 64 * 1024;
+pub const LOG_ROLES: &[&str] = &["work", "relay", "tool"];
+
+fn log_entry() -> Check {
+    Check::Object(vec![
+        req("role", Check::Enum(LOG_ROLES)),
+        req("name", s(64)),
+        req("text", s(MAX_LOG_TEXT)),
+    ])
+}
+
 /// Obergrenze für `data_mb`/`data_used_mb` (1 TiB in MB).
 const DATA_MB_MAX: i128 = 1024 * 1024;
 
@@ -374,6 +389,24 @@ fn build_frames() -> HashMap<&'static str, FrameSpec> {
             req("running", Check::Bool),
             opt("port", preview_port()),
             opt("token", sp(128, &TOKEN_RE)),
+        ],
+    );
+    add(
+        "log_request",
+        SERVER,
+        vec![
+            req("session", id()),
+            req("request", id()),
+            req("lines", int(1, MAX_LOG_LINES)),
+        ],
+    );
+    add(
+        "log_response",
+        AGENT,
+        vec![
+            req("session", id()),
+            req("request", id()),
+            req("logs", Check::List(Box::new(log_entry()), MAX_LOG_ENTRIES)),
         ],
     );
     add(

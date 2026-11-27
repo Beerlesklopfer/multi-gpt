@@ -313,8 +313,9 @@ def parse_catalog(text: str) -> tuple[str, list[dict]]:
 
 
 # Fähigkeiten, die ein Agent im Katalog melden kann (``"features"``); Unbekanntes
-# wird ignoriert. ``data``: Volumen /data (``session_start.data_mb``).
-KNOWN_FEATURES = ("data",)
+# wird ignoriert. ``data``: Volumen /data (``session_start.data_mb``); ``logs``:
+# Container-Logs (``log_request``/``log_response``).
+KNOWN_FEATURES = ("data", "logs")
 
 
 def parse_features(text: str) -> list[str]:

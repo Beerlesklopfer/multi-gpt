@@ -120,6 +120,7 @@ impl FrameHandler for AgentHandler {
             Frame::PtyResize(resize) => self.manager.pty_resize(&resize).await?,
             Frame::PtyClose(close) => self.manager.pty_close(&close).await?,
             Frame::PreviewRequest(request) => self.manager.preview_request(&request).await?,
+            Frame::LogRequest(request) => self.manager.log_request(&request).await?,
             // close/error/welcome behandelt der Kern; Rahmen des Agents kommen nicht vom Server.
             _ => {}
         }

@@ -283,6 +283,8 @@ class Connection:
             self.routes.pop(("pty", frame["pty"]), None)
         elif frame["type"] == "preview_response" and frame["last"]:
             self.routes.pop(("request", frame["request"]), None)
+        elif frame["type"] == "log_response":
+            self.routes.pop(("request", frame["request"]), None)
         elif frame["type"] == "file_chunk" and frame["last"]:
             self.routes.pop(("transfer", frame["transfer"]), None)
 
@@ -304,7 +306,15 @@ class Connection:
         elif kind == "preview":
             await db(store.preview, self.runner_id, frame)
             await self.forward_to_server(frame)
-        elif kind in ("mcp", "pty_data", "pty_exit", "preview_response", "error", "file_chunk"):
+        elif kind in (
+            "mcp",
+            "pty_data",
+            "pty_exit",
+            "preview_response",
+            "log_response",
+            "error",
+            "file_chunk",
+        ):
             await self.forward_to_server(frame)
         elif kind == "bundle_get":
             self.spawn(self._send_bundle(frame))

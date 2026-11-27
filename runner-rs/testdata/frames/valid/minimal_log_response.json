@@ -1,0 +1,21 @@
+{
+ "frame": {
+  "logs": [
+   {
+    "name": "mgpt-ses-0123456789abcdef",
+    "role": "work",
+    "text": ""
+   },
+   {
+    "name": "mgpt-rly-0123456789abcdef",
+    "role": "relay",
+    "text": "403 x.example\n"
+   }
+  ],
+  "request": "r2",
+  "session": "s1",
+  "type": "log_response"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "agent"
+}

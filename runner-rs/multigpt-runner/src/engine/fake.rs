@@ -64,6 +64,8 @@ pub struct FakeState {
     pub root_calls: Vec<(String, Vec<String>)>,
     /// Name → Größe der beschreibbaren Schicht (Byte) für `container_size`.
     pub sizes: HashMap<String, u64>,
+    /// Name → Ausgabe des Containers für `container_logs` (ganze Zeilen).
+    pub logs: HashMap<String, Vec<u8>>,
 }
 
 pub struct FakeEngine {
@@ -453,6 +455,19 @@ impl Engine for FakeEngine {
     async fn container_size(&self, name: &str) -> EngineResult<u64> {
         self.get(name)?;
         Ok(self.state().sizes.get(name).copied().unwrap_or(0))
+    }
+
+    async fn container_logs(&self, name: &str, tail: u32) -> EngineResult<Vec<u8>> {
+        let state = self.state();
+        if !state.containers.contains_key(name) {
+            return Err(EngineError::new(format!(
+                "Container nicht gefunden: {name}"
+            )));
+        }
+        let text = state.logs.get(name).cloned().unwrap_or_default();
+        let lines: Vec<&[u8]> = text.split_inclusive(|b| *b == b'\n').collect();
+        let start = lines.len().saturating_sub(tail as usize);
+        Ok(lines[start..].concat())
     }
 
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>> {

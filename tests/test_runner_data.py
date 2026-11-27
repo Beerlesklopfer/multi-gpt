@@ -73,7 +73,7 @@ def test_protocol_data_fields():
 
 def test_catalog_features():
     catalog = (ROOT / "runner-rs" / "catalog.json").read_text(encoding="utf-8")
-    assert trust.parse_features(catalog) == ["data"]
+    assert trust.parse_features(catalog) == ["data", "logs"]
     assert trust.parse_features(json.dumps({"features": ["data", "unbekannt"]})) == ["data"]
     assert trust.parse_features(json.dumps({"features": "data"})) == []
     assert trust.parse_features("kein json") == []
@@ -154,7 +154,7 @@ def test_features_stored_from_trusted_catalog_only(runner, monkeypatch):
     monkeypatch.setattr(trust, "check_catalog", lambda hello: trusted)
     store.connect(runner.token_id, hello, None)
     runner.refresh_from_db()
-    assert runner.features == ["data"]
+    assert runner.features == ["data", "logs"]
     monkeypatch.setattr(trust, "check_catalog", lambda hello: trust.CatalogCheck("invalid"))
     store.connect(runner.token_id, hello, None)
     runner.refresh_from_db()

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{# Container-Logs einer eigenen Runner-Sitzung: letzte Zeilen je Container, nichts wird gespeichert. #}
+{% block title %}Logs {{ session.uuid|stringformat:"s"|slice:":8" }} – Runner – MultiGPT{% endblock %}
+{% block content %}
+  <section class="page page-wide runner-session-page" aria-labelledby="logs-title">
+    <p class="breadcrumb"><a href="{% url 'runner:index' %}">Runner</a> › <a href="{% url 'runner:session' session.uuid %}">Sitzung</a> › Logs</p>
+    <h1 id="logs-title">Container-Logs <code>{{ session.uuid|stringformat:"s"|slice:":8" }}</code></h1>
+    <p class="hint">Letzte {{ lines }} Zeilen je Container, gekürzt und ohne Steuerzeichen. Die Logs kommen direkt vom Runner und werden nicht gespeichert.</p>
+    <form method="get" class="runner-live-actions">
+      <label for="logs-lines">Zeilen</label>
+      <select id="logs-lines" name="zeilen">
+        <option value="50"{% if lines == 50 %} selected{% endif %}>50</option>
+        <option value="200"{% if lines == 200 %} selected{% endif %}>200</option>
+        <option value="500"{% if lines == 500 %} selected{% endif %}>500</option>
+        <option value="1000"{% if lines == 1000 %} selected{% endif %}>1000</option>
+      </select>
+      <button type="submit" class="button">Neu laden</button>
+    </form>
+    {% if error %}
+      <p class="form-error" role="alert">{{ error }}</p>
+    {% else %}
+      {% for entry in entries %}
+        <h2 class="section-title">{{ entry.label }} <code>{{ entry.name }}</code></h2>
+        {% if entry.text %}
+          <pre class="runner-logs">{{ entry.text }}</pre>
+        {% else %}
+          <p class="hint">Keine Ausgabe.</p>
+        {% endif %}
+      {% empty %}
+        <p>Keine Container dieser Sitzung gefunden.</p>
+      {% endfor %}
+    {% endif %}
+  </section>
+{% endblock %}

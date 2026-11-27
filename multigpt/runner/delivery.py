@@ -113,7 +113,7 @@ def route_key(frame: dict) -> tuple[str, str] | None:
         return ("pipe", frame["pipe"])
     if kind in ("pty_open", "pty_input", "pty_resize", "pty_close", "pty_data", "pty_exit"):
         return ("pty", frame["pty"])
-    if kind in ("preview_request", "preview_response"):
+    if kind in ("preview_request", "preview_response", "log_request", "log_response"):
         return ("request", frame["request"])
     if kind in ("session_start", "session_stop", "session_state", "preview"):
         return ("session", frame["session"])

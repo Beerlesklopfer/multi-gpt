@@ -10,6 +10,10 @@ Admin (``admin.py``, ohne Inhalte).
   5 s abfragt: Runner, aktive und letzte Sitzungen, Arbeitsstände, Laufzeit.
 - **Audit je Sitzung** (``/runner/sitzung/<uuid>/``): gekürzte Argumente,
   Exit-Code, Dauer, Meldung – nie Ausgaben.
+- **Container-Logs** (``/runner/sitzung/<uuid>/logs/``): letzte Zeilen je
+  Container der eigenen, laufenden Sitzung über den Rückkanal
+  (``log_request``/``log_response``), nur bei Agents mit Fähigkeit ``logs``.
+  Serverseitig gerendert, ``no-store``, nichts wird gespeichert.
 - **Terminal** (PTY, 8p): bevorzugt direkt per WebSocket zum Runner-Dienst
   (``pty_direct.py``, Adresse ``pty_ws_url``); die folgenden Endpunkte sind der
   Rückfall. ``GET …/pty/`` ist ein SSE-Strom. Er legt die
@@ -269,6 +273,86 @@ def session_api(request, session_uuid):
                 "audit_url": reverse("runner:session", args=[session.uuid]),
                 "minutes": session.minutes,
             }
+        )
+    )
+
+
+# --- Container-Logs --------------------------------------------------------------------
+
+LOG_TIMEOUT = 15.0
+LOG_LINES_DEFAULT = 200
+LOG_ROLE_LABELS = {
+    "work": "Arbeitscontainer",
+    "relay": "Relay bzw. Proxy (Netz)",
+    "tool": "Hilfscontainer",
+}
+
+
+def _log_lines(value) -> int:
+    try:
+        lines = int(value)
+    except (TypeError, ValueError):
+        return LOG_LINES_DEFAULT
+    return max(10, min(protocol.MAX_LOG_LINES, lines))
+
+
+def fetch_logs(session: RunnerSession, lines: int) -> tuple[list[dict], str]:
+    """Letzte Zeilen je Container über den Rückkanal: (Einträge, Fehlermeldung)."""
+    runner = session.runner
+    if session.status != RunnerSession.Status.RUNNING or runner is None:
+        return [], "Die Sitzung läuft nicht."
+    if "logs" not in (runner.features or ()):
+        return [], (
+            "Dieser Runner kann noch keine Container-Logs liefern. Bitte das Programm "
+            "multigpt-runner aktualisieren."
+        )
+    request_id = uuid.uuid4().hex
+    frame = {
+        "type": "log_request",
+        "session": str(session.uuid),
+        "request": request_id,
+        "lines": lines,
+    }
+    deadline = time.monotonic() + LOG_TIMEOUT
+    try:
+        with delivery.subscribe("request", request_id) as sub:
+            delivery.send(runner.pk, frame, session=session)
+            while True:
+                answer = sub.get(max(0.0, deadline - time.monotonic()))
+                if answer.get("type") == "error":
+                    return [], answer.get("message") or "Fehler im Runner."
+                if answer.get("type") == "log_response":
+                    break
+    except delivery.RunnerOffline:
+        return [], MSG_OFFLINE
+    except delivery.RunnerTimeout:
+        return [], "Der Runner hat nicht rechtzeitig geantwortet."
+    except delivery.RunnerError as exc:
+        return [], exc.message
+    entries = [
+        {
+            "role": item.get("role"),
+            "label": LOG_ROLE_LABELS.get(item.get("role"), item.get("role")),
+            "name": item.get("name"),
+            "text": item.get("text") or "",
+        }
+        for item in answer.get("logs") or []
+    ]
+    return entries, ""
+
+
+@require_GET
+@login_required
+def session_logs(request, session_uuid):
+    """Container-Logs der eigenen Sitzung (letzte Zeilen, gekürzt)."""
+    session = _own_session(request, session_uuid)
+    lines = _log_lines(request.GET.get("zeilen"))
+    entries, error = fetch_logs(session, lines)
+    return _no_store(
+        render(
+            request,
+            "runner/session_logs.html",
+            {"session": session, "entries": entries, "error": error, "lines": lines},
         )
     )
 

@@ -619,6 +619,27 @@ impl Engine for PodmanEngine {
         Ok(info["SizeRw"].as_i64().unwrap_or(0).max(0) as u64)
     }
 
+    async fn container_logs(&self, name: &str, tail: u32) -> EngineResult<Vec<u8>> {
+        if !template::NAME_RE.is_match(name) {
+            return Err(EngineError::new("Fremder Container wird nicht angefasst."));
+        }
+        let body = self
+            .request(
+                Method::GET,
+                &format!("/containers/{}/logs", quote(name)),
+                &[
+                    ("stdout", "true".into()),
+                    ("stderr", "true".into()),
+                    ("tail", tail.to_string()),
+                ],
+                None,
+                &[200],
+            )
+            .await?
+            .body;
+        Ok(demux_logs(&body))
+    }
+
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>> {
         let filters = json!({"label": [format!("{}=1", template::LABEL_RUNNER)]}).to_string();
         let data = self
@@ -754,9 +775,43 @@ impl Engine for PodmanEngine {
     }
 }
 
+/// Log-Strom von Podman ohne TTY: Stücke mit 8-Byte-Kopf (Strom, 0, 0, 0, Länge
+/// big-endian). Ohne erkennbaren Kopf (Container mit TTY) die Bytes unverändert.
+pub fn demux_logs(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut rest = data;
+    while rest.len() >= 8 {
+        let header = &rest[..8];
+        if header[0] > 2 || header[1..4] != [0, 0, 0] {
+            return data.to_vec();
+        }
+        let size = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+        if rest.len() < 8 + size {
+            return data.to_vec();
+        }
+        out.extend_from_slice(&rest[8..8 + size]);
+        rest = &rest[8 + size..];
+    }
+    if !rest.is_empty() {
+        return data.to_vec();
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn demux_logs_strips_stream_headers() {
+        let mut data = vec![1, 0, 0, 0, 0, 0, 0, 6];
+        data.extend_from_slice(b"hallo\n");
+        data.extend_from_slice(&[2, 0, 0, 0, 0, 0, 0, 5]);
+        data.extend_from_slice(b"fehl\n");
+        assert_eq!(demux_logs(&data), b"hallo\nfehl\n");
+        assert_eq!(demux_logs(b"tty-ausgabe\n"), b"tty-ausgabe\n");
+        assert_eq!(demux_logs(b""), b"");
+    }
 
     #[test]
     fn quote_encodes_everything_but_unreserved() {

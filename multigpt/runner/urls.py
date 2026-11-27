@@ -22,6 +22,7 @@ urlpatterns = [
     # Live-Status, Audit, Terminal und Vorschau (M14-12, 8p/8x; views_live.py)
     path("status/", views_live.status_api, name="status"),
     path("sitzung/<uuid:session_uuid>/", views_live.session_page, name="session"),
+    path("sitzung/<uuid:session_uuid>/logs/", views_live.session_logs, name="session_logs"),
     path("api/sitzungen/<uuid:session_uuid>/", views_live.session_api, name="session_api"),
     path("api/sitzungen/<uuid:session_uuid>/pty/", views_live.pty_stream, name="pty_stream"),
     path(

@@ -120,6 +120,8 @@ pub trait Engine: Send + Sync {
     async fn inspect_container(&self, name: &str) -> EngineResult<Value>;
     /// Größe der beschreibbaren Container-Schicht in Byte (`SizeRw`).
     async fn container_size(&self, name: &str) -> EngineResult<u64>;
+    /// Letzte `tail` Zeilen der Ausgabe eines eigenen Containers (stdout und stderr).
+    async fn container_logs(&self, name: &str, tail: u32) -> EngineResult<Vec<u8>>;
     /// Alle Container mit dem Label `multigpt.runner=1`.
     async fn list_containers(&self) -> EngineResult<Vec<ContainerInfo>>;
     async fn exec(

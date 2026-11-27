@@ -1,0 +1,10 @@
+{
+ "frame": {
+  "lines": 200,
+  "request": "r2",
+  "session": "s1",
+  "type": "log_request"
+ },
+ "note": "nur Pflichtfelder",
+ "sender": "server"
+}

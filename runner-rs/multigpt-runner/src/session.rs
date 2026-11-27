@@ -42,8 +42,8 @@ use crate::mcp::host::{
 };
 use crate::outbox::{Outbox, SendError};
 use crate::protocol::{
-    self, BundleAck, BundleAssembler, BundleChunk, BundleInfo, PreviewRequest, PtyClose, PtyInput,
-    PtyOpen, PtyResize, SessionInfo, SessionStart,
+    self, BundleAck, BundleAssembler, BundleChunk, BundleInfo, LogRequest, PreviewRequest,
+    PtyClose, PtyInput, PtyOpen, PtyResize, SessionInfo, SessionStart,
 };
 use crate::template::{self, Bounds, Limits, Scratch, TemplateError};
 
@@ -1872,6 +1872,38 @@ impl SessionManager {
         found
     }
 
+    /// Container-Logs einer Sitzung (`log_request`): letzte Zeilen je eigenem Container
+    /// (Arbeits-, Relay- bzw. Proxy- und Hilfscontainer), ohne Steuerzeichen, gekürzt.
+    pub async fn log_request(&self, frame: &LogRequest) -> SessionResult<()> {
+        let mut logs = Vec::new();
+        let containers = self.engine.list_containers().await.unwrap_or_default();
+        for info in containers
+            .into_iter()
+            .filter(|c| c.labels.get(template::LABEL_SESSION) == Some(&frame.session))
+            .take(protocol::schema::MAX_LOG_ENTRIES)
+        {
+            let role = info
+                .labels
+                .get(template::LABEL_ROLE)
+                .cloned()
+                .unwrap_or_default();
+            if !protocol::schema::LOG_ROLES.contains(&role.as_str()) {
+                continue;
+            }
+            let text = match self.engine.container_logs(&info.name, frame.lines).await {
+                Ok(bytes) => clean_log(&bytes, protocol::schema::MAX_LOG_TEXT),
+                Err(e) => format!("[Logs nicht lesbar: {e}]"),
+            };
+            logs.push(json!({"role": role, "name": info.name, "text": text}));
+        }
+        logs.sort_by(|a, b| a["role"].as_str().cmp(&b["role"].as_str()).reverse());
+        self.send(
+            "log_response",
+            json!({"session": frame.session, "request": frame.request, "logs": logs}),
+        )
+        .await
+    }
+
     /// Vorschau über den Rückkanal (8p): Datei per `mgpt-fs fetch`, nie Verzeichnislisten.
     pub async fn preview_request(&self, frame: &PreviewRequest) -> SessionResult<()> {
         let session = guard(&self.sessions).get(&frame.session).cloned();
@@ -2031,6 +2063,40 @@ pub fn base_url(url: &str) -> String {
 }
 
 /// Belegung eines Ordners in Byte (Blöcke wie `du`, Symlinks nicht folgen).
+/// Log-Text für den Server: UTF-8 (verlustbehaftet), ohne ANSI- und Steuerzeichen
+/// außer Zeilenumbruch und Tab, höchstens `max` Zeichen vom Ende.
+pub fn clean_log(bytes: &[u8], max: usize) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // CSI: ESC [ … Endbuchstabe; sonst ESC + ein Zeichen
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for d in chars.by_ref() {
+                    if ('@'..='~').contains(&d) {
+                        break;
+                    }
+                }
+            } else {
+                chars.next();
+            }
+            continue;
+        }
+        if c == '\n' || c == '\t' || !c.is_control() {
+            out.push(c);
+        }
+    }
+    let count = out.chars().count();
+    if count > max {
+        let cut: String = out.chars().skip(count - max + 1).collect();
+        format!("…{cut}")
+    } else {
+        out
+    }
+}
+
 /// Erste Zahl der Ausgabe von `du -sm` (MB).
 pub fn parse_du_mb(stdout: &[u8]) -> Option<u64> {
     String::from_utf8_lossy(stdout)

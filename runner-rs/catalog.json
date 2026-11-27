@@ -1,7 +1,7 @@
 {
   "format": 1,
   "release": "dev",
-  "features": ["data"],
+  "features": ["data", "logs"],
   "services": [
     {
       "name": "read",

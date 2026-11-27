@@ -4508,6 +4508,14 @@ span.message-source-link {
   font-size: 0.8rem;
 }
 
+.runner-logs {
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+}
+
 .runner-live {
   margin-top: 1.5rem;
 }

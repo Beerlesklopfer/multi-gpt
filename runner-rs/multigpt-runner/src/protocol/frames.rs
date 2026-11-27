@@ -288,6 +288,29 @@ pub struct Preview {
     pub token: Option<String>,
 }
 
+/// Container-Logs einer Sitzung anfordern (nur Agents mit Fähigkeit `logs`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LogRequest {
+    pub session: String,
+    pub request: String,
+    pub lines: u32,
+}
+
+/// Letzte Zeilen je Container der Sitzung.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub role: String,
+    pub name: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LogResponse {
+    pub session: String,
+    pub request: String,
+    pub logs: Vec<LogEntry>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewRequest {
     pub session: String,
@@ -356,6 +379,8 @@ pub enum Frame {
     Preview(Preview),
     PreviewRequest(PreviewRequest),
     PreviewResponse(PreviewResponse),
+    LogRequest(LogRequest),
+    LogResponse(LogResponse),
     Error(ErrorFrame),
     Close(Close),
 }
@@ -385,6 +410,8 @@ impl Frame {
             Frame::Preview(_) => "preview",
             Frame::PreviewRequest(_) => "preview_request",
             Frame::PreviewResponse(_) => "preview_response",
+            Frame::LogRequest(_) => "log_request",
+            Frame::LogResponse(_) => "log_response",
             Frame::Error(_) => "error",
             Frame::Close(_) => "close",
         }
@@ -410,6 +437,8 @@ impl Frame {
             Frame::Preview(f) => Some(&f.session),
             Frame::PreviewRequest(f) => Some(&f.session),
             Frame::PreviewResponse(f) => Some(&f.session),
+            Frame::LogRequest(f) => Some(&f.session),
+            Frame::LogResponse(f) => Some(&f.session),
             Frame::Error(f) => f.session.as_deref(),
             Frame::Hello(_)
             | Frame::Welcome(_)
@@ -432,6 +461,8 @@ impl Frame {
             Frame::PtyExit(f) => Some(&f.pty),
             Frame::PreviewRequest(f) => Some(&f.request),
             Frame::PreviewResponse(f) => Some(&f.request),
+            Frame::LogRequest(f) => Some(&f.request),
+            Frame::LogResponse(f) => Some(&f.request),
             Frame::BundleGet(f) => Some(&f.transfer),
             Frame::BundleChunk(f) => Some(&f.transfer),
             Frame::FileChunk(f) => Some(&f.transfer),
@@ -480,6 +511,8 @@ frame_from!(
     Preview(Preview),
     PreviewRequest(PreviewRequest),
     PreviewResponse(PreviewResponse),
+    LogRequest(LogRequest),
+    LogResponse(LogResponse),
     Error(ErrorFrame),
     Close(Close),
 );

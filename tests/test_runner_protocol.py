@@ -163,6 +163,18 @@ EXAMPLES = {
             "last": True,
         },
     ),
+    "log_request": (P.SERVER, {"session": "s1", "request": "r2", "lines": 200}),
+    "log_response": (
+        P.AGENT,
+        {
+            "session": "s1",
+            "request": "r2",
+            "logs": [
+                {"role": "work", "name": "mgpt-ses-0123456789abcdef", "text": ""},
+                {"role": "relay", "name": "mgpt-rly-0123456789abcdef", "text": "403 x.example\n"},
+            ],
+        },
+    ),
     "error": (
         P.AGENT,
         {"code": "unknown_session", "message": "Sitzung unbekannt", "session": "s1"},

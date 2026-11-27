@@ -188,6 +188,11 @@ MAX_PACKAGE_HOSTS = 50
 MIN_ROOTFS_MB = 64
 MAX_ROOTFS_MB = 1024 * 1024
 MAX_DATA_MB = 1024 * 1024  # Volumen /data (MB)
+# Container-Logs (log_request/log_response, nur Agents mit Fähigkeit „logs“)
+MAX_LOG_LINES = 1000
+MAX_LOG_ENTRIES = 10
+MAX_LOG_TEXT = 64 * 1024
+LOG_ROLES = ("work", "relay", "tool")
 SCRATCH_MODES = ("container", "local")
 ERROR_CODES = (
     "invalid_frame",  # Rahmen verletzt das Schema
@@ -649,6 +654,34 @@ FRAMES: dict[str, tuple[frozenset[str], dict[str, tuple[Check, bool]]]] = {
             "running": (_bool, True),
             "port": (_int(*REPORTED_PORTS), False),
             "token": (_str(128, TOKEN_RE), False),
+        },
+    ),
+    "log_request": (
+        frozenset({SERVER}),
+        {
+            "session": (_id, True),
+            "request": (_id, True),
+            "lines": (_int(1, MAX_LOG_LINES), True),
+        },
+    ),
+    "log_response": (
+        frozenset({AGENT}),
+        {
+            "session": (_id, True),
+            "request": (_id, True),
+            "logs": (
+                _list(
+                    _object(
+                        {
+                            "role": (_enum(LOG_ROLES), True),
+                            "name": (_str(64), True),
+                            "text": (_str(MAX_LOG_TEXT), True),
+                        }
+                    ),
+                    MAX_LOG_ENTRIES,
+                ),
+                True,
+            ),
         },
     ),
     "preview_request": (

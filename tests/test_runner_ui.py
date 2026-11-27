@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from multigpt.chat.models import AIModel, Conversation, Provider
-from multigpt.runner import audit, control, delivery, tokens, views_live
+from multigpt.runner import audit, control, delivery, protocol, tokens, views_live
 from multigpt.runner.mcp_server import ensure_mcp_server
 from multigpt.runner.models import (
     Runner,
@@ -417,3 +417,81 @@ def test_preview_subpath_and_type(client, setup, fake_delivery):
 )
 def test_clean_preview_path(path, expected):
     assert views_live.clean_preview_path(path) == expected
+
+
+# --- Container-Logs ------------------------------------------------------------------
+
+
+def _log_reply(entries):
+    return lambda kind, key: [
+        {"type": "log_response", "session": "x", "request": key, "logs": entries}
+    ]
+
+
+def test_logs_page_shows_entries_of_capable_runner(client, anna, setup, fake_delivery):
+    runner, session = setup
+    Runner.objects.filter(pk=runner.pk).update(features=["data", "logs"])
+    fake_delivery["replies"] = _log_reply(
+        [
+            {"role": "work", "name": "mgpt-ses-0123456789abcdef", "text": ""},
+            {"role": "relay", "name": "mgpt-rly-0123456789abcdef", "text": "403 evil.example\n<b>"},
+        ]
+    )
+    client.force_login(anna)
+    response = client.get(reverse("runner:session_logs", args=[session.uuid]), {"zeilen": "5000"})
+    assert response.status_code == 200 and response["Cache-Control"] == "no-store"
+    frame = fake_delivery["sent"][0]["frame"]
+    assert frame["type"] == "log_request" and frame["lines"] == 1000  # gekappt
+    protocol.validate(frame, protocol.SERVER)
+    page = response.content.decode()
+    assert "Relay bzw. Proxy" in page and "403 evil.example" in page
+    assert "&lt;b&gt;" in page and "<b>" not in page.split("403 evil.example")[1][:20]
+    assert "Keine Ausgabe." in page  # leerer Arbeitscontainer
+    # Link auf der Sitzungsseite
+    assert (
+        reverse("runner:session_logs", args=[session.uuid])
+        in client.get(reverse("runner:session", args=[session.uuid])).content.decode()
+    )
+
+
+def test_logs_need_the_feature_and_a_running_session(client, anna, setup, fake_delivery):
+    runner, session = setup
+    client.force_login(anna)
+    page = client.get(reverse("runner:session_logs", args=[session.uuid])).content.decode()
+    assert "multigpt-runner aktualisieren" in page and fake_delivery["sent"] == []
+    Runner.objects.filter(pk=runner.pk).update(features=["logs"])
+    RunnerSession.objects.filter(pk=session.pk).update(status=RunnerSession.Status.STOPPED)
+    page = client.get(reverse("runner:session_logs", args=[session.uuid])).content.decode()
+    assert "Die Sitzung läuft nicht." in page and fake_delivery["sent"] == []
+
+
+def test_logs_of_foreign_session_are_404(client, setup, fake_delivery):
+    _, session = setup
+    client.force_login(make_user("bert"))
+    response = client.get(reverse("runner:session_logs", args=[session.uuid]))
+    assert response.status_code == 404 and fake_delivery["sent"] == []
+
+
+def test_logs_timeout_is_explained(client, anna, setup, fake_delivery):
+    runner, session = setup
+    Runner.objects.filter(pk=runner.pk).update(features=["logs"])
+    client.force_login(anna)
+    page = client.get(reverse("runner:session_logs", args=[session.uuid])).content.decode()
+    assert "nicht rechtzeitig" in page
+
+
+def test_protocol_log_frames():
+    request = {"type": "log_request", "session": "s1", "request": "r1", "lines": 200}
+    assert protocol.validate(request, protocol.SERVER)["lines"] == 200
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate({**request, "lines": 0}, protocol.SERVER)
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate(request, protocol.AGENT)  # falsche Richtung
+    answer = {"type": "log_response", "session": "s1", "request": "r1",
+              "logs": [{"role": "work", "name": "n", "text": "x"}]}  # fmt: skip
+    protocol.validate(answer, protocol.AGENT)
+    for bad in ({"role": "host", "name": "n", "text": "x"},
+                {"role": "work", "name": "n", "text": "x" * (64 * 1024 + 1)}):  # fmt: skip
+        with pytest.raises(protocol.ProtocolError):
+            protocol.validate({**answer, "logs": [bad]}, protocol.AGENT)
+    assert delivery.route_key(answer) == ("request", "r1")

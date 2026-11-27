@@ -45,6 +45,10 @@
       {% include "runner/_terminal.html" %}
     {% endif %}
 
+    {% if session.status == "running" %}
+      <p><a class="button" href="{% url 'runner:session_logs' session.uuid %}">Container-Logs</a></p>
+    {% endif %}
+
     <h2 class="section-title" id="session-audit-title">Audit-Log</h2>
     <p class="hint">Werkzeugaufrufe mit gekürzten Argumenten (Geheimnisse entfernt), ohne Ausgaben.</p>
     {% if entries %}
