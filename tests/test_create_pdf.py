@@ -5,6 +5,7 @@ WeasyPrint bzw. Pango werden diese Tests übersprungen. Geometrie (Lineaturen)
 wird über ein mit pdftoppm gerendertes PNG nachgemessen (10 Pixel je mm).
 """
 
+import base64
 import http.server
 import io
 import json
@@ -698,6 +699,34 @@ def test_embeds_image_attachment_of_same_chat():
     assert job.html.count("data:image/png;base64,") == 1 and "[Bild: Fremd]" in job.html
     data, _ = documents_pdf.render(job.html)
     assert PdfReader(io.BytesIO(data)).pages[0].images  # Bild wirklich eingebettet
+
+
+@pytest.mark.django_db
+def test_embeds_image_attachment_by_name():
+    """LOP C26: ``attachment:NAME`` wie im Chat; Groß-/Kleinschreibung egal, neuester gewinnt."""
+    user = make_user("adult", "erwachsen")
+    conversation = Conversation.objects.create(user=user)
+    answer = append_message(conversation, role="assistant", author=user)
+    stored = []
+    for color in ((200, 30, 30), (30, 200, 30)):
+        buffer = io.BytesIO()
+        Image.new("RGB", (40, 30), color).save(buffer, "PNG")
+        image = Attachment(
+            message=answer,
+            kind=Attachment.Kind.IMAGE,
+            mime_type="image/png",
+            size=len(buffer.getvalue()),
+            original_name="Balken Diagramm.png",
+        )
+        image.file.save("b.png", ContentFile(buffer.getvalue()), save=True)
+        stored.append(image)
+    content = "![Balken](attachment:balken%20diagramm.png) ![Fehlt](attachment:nichts.png)"
+    found = documents_pdf.embedded_images(user, answer, content)
+    assert set(found) == {"name:balken diagramm.png"}
+    job = documents_pdf.build(user, answer, {"layout": "arbeitsblatt", "content": content})
+    assert job.html.count("data:image/png;base64,") == 1 and "[Bild: Fehlt]" in job.html
+    newest = base64.b64encode(stored[1].file.open("rb").read()).decode("ascii")
+    assert newest in job.html
 
 
 # --- PDF aus run_python ---------------------------------------------------------------------

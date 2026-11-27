@@ -57,10 +57,12 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from urllib.parse import unquote
 from xml.sax.saxutils import escape
 
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Q
 from django.utils.text import slugify
 
 from multigpt.accounts.permissions import Action, can
@@ -287,7 +289,7 @@ _BOX = re.compile(r"\[( |x|X)\]")
 class MarkdownOptions:
     content_width: float  # mm
     lineatur: str = "4"
-    images: dict | None = None  # Anhang-ID -> data-URI
+    images: dict | None = None  # Anhang-ID bzw. "name:<datei>" -> data-URI
 
 
 def _widget_html(kind: str, raw: str, opts: MarkdownOptions) -> str:
@@ -380,8 +382,7 @@ def _render_link_close(self, tokens, idx, options, env) -> str:
 def _render_image(self, tokens, idx, options, env) -> str:
     token = tokens[idx]
     alt = self.renderInlineAsText(token.children or [], options, env)
-    match = re.fullmatch(r"anhang:(\d+)", (token.attrGet("src") or "").strip())
-    data = (env["opts"].images or {}).get(int(match.group(1))) if match else None
+    data = (env["opts"].images or {}).get(_image_key((token.attrGet("src") or "").strip()))
     if data:
         return f'<img class="embed" src="{escape(data, {chr(34): "&quot;"})}" alt="{escape(alt)}">'
     return f'<span class="missing-image">[Bild: {escape(alt or "nicht verfügbar")}]</span>'
@@ -611,17 +612,51 @@ def _page(args, default: tuple[str, str]) -> tuple[str, str]:
     return size, _choice(args.get("orientation"), ("portrait", "landscape"), default[1])
 
 
-def embedded_images(user, message, content: str) -> dict[int, str]:
-    """``![](anhang:ID)``: Bilder aus diesem Chat (Leserecht) als data-URI."""
-    ids = {int(i) for i in re.findall(r"\]\(\s*anhang:(\d+)\s*\)", content)}
-    if not ids or message is None or not can(user, Action.READ, message.conversation):
+_REF_ID = re.compile(r"\]\(\s*anhang:(\d+)\s*\)")
+# ``attachment:NAME`` (Dateiname wie unter der Antwort angezeigt); Modelle schreiben das gern
+# statt ``anhang:ID`` (LOP C26). Leerzeichen im Namen kodiert Markdown als %20.
+_REF_NAME = re.compile(r"\]\(\s*attachment:([^\s)]+)\s*\)")
+
+
+def _image_key(src: str) -> int | str | None:
+    """Schlüssel in ``embedded_images`` für ein Bildziel: Zahl (ID) oder ``name:<klein>``."""
+    match = re.fullmatch(r"anhang:(\d+)", src)
+    if match:
+        return int(match.group(1))
+    match = re.fullmatch(r"attachment:(\S+)", src)
+    if match:
+        return "name:" + unquote(match.group(1)).strip().lower()
+    return None
+
+
+def embedded_images(user, message, content: str) -> dict[int | str, str]:
+    """``![](anhang:ID)`` bzw. ``![](attachment:NAME)``: Bilder aus diesem Chat (Leserecht) als
+    data-URI. Bei gleichem Namen gilt der neueste Anhang."""
+    ids = {int(i) for i in _REF_ID.findall(content)}
+    names = {unquote(n).strip().lower() for n in _REF_NAME.findall(content)}
+    if not (ids or names) or message is None:
         return {}
-    found, total = {}, 0
-    rows = Attachment.objects.filter(
-        pk__in=list(ids)[:20],
-        kind=Attachment.Kind.IMAGE,
-        message__conversation_id=message.conversation_id,
+    if not can(user, Action.READ, message.conversation):
+        return {}
+    in_chat = Attachment.objects.filter(
+        kind=Attachment.Kind.IMAGE, message__conversation_id=message.conversation_id
     )
+    rows = list(in_chat.filter(pk__in=list(ids)[:20]))
+    by_name: dict[str, Attachment] = {}
+    if names:
+        named = Q()
+        for name in list(names)[:20]:
+            named |= Q(original_name__iexact=name)
+        for attachment in in_chat.filter(named).order_by("created", "id"):
+            by_name[attachment.original_name.lower()] = attachment  # neuester gewinnt
+    found, total = {}, 0
+    keys: dict[int, list] = {}
+    for attachment in rows:
+        keys.setdefault(attachment.pk, []).append(attachment.pk)
+    for name, attachment in by_name.items():
+        if attachment.pk not in keys:
+            rows.append(attachment)
+        keys.setdefault(attachment.pk, []).append("name:" + name)
     for attachment in rows:
         if attachment.mime_type not in EMBED_TYPES or attachment.size > MAX_EMBED_BYTES:
             continue
@@ -634,7 +669,8 @@ def embedded_images(user, message, content: str) -> dict[int, str]:
         if len(data) > MAX_EMBED_BYTES or total > MAX_EMBED_TOTAL:
             break
         encoded = base64.b64encode(data).decode("ascii")
-        found[attachment.pk] = f"data:{attachment.mime_type};base64,{encoded}"
+        for key in keys[attachment.pk]:
+            found[key] = f"data:{attachment.mime_type};base64,{encoded}"
     return found
 
 
