@@ -5,8 +5,8 @@ Werkzeugschleife → Runner-Dienst (uvicorn im Prozess) → **Rust-Agent** als
 eigener Prozess → Podman –, hier nur für den Rust-Agent (der Python-Agent kennt
 den Modus nicht). Geprüft wird:
 
-1. ``apt_install(["jq"])`` installiert als root im Container, ``jq`` läuft danach
-   als Nutzer 1000;
+1. ``apt_install(["bc"])`` installiert als root im Container, ``bc`` läuft danach
+   als Nutzer 1000 (``bc`` steht nicht im Arbeits-Image, ``jq`` seit 2026-10-14 schon);
 2. ``pip install`` und ``npm install`` über den Proxy (``six``, ``left-pad``)
    landen in ``/workspace`` und stehen in ``.gitignore``;
 3. nicht freigegebene Hosts, IP-Literale, Ziele im Heimnetz und direkte
@@ -263,7 +263,9 @@ for k, v in checks.items():
 def _probe(chat: Chat) -> dict[str, str]:
     tc = chat.tool("bash", {"command": f"python3 - <<'EOF'\n{PROBE}\nEOF"})
     assert tc.status == "ok", (tc.result, chat.stack["agent"].log())
-    text = _text(tc).replace("\\n", "\n")
+    # Rohtext des Werkzeugs, nicht das JSON (sonst klebt ``{"text": "`` an der ersten Zeile).
+    result = tc.result if isinstance(tc.result, dict) else {}
+    text = str(result.get("text") or _text(tc).replace("\\n", "\n"))
     found = {}
     for line in text.splitlines():
         key, sep, value = line.strip(' "').partition("=")
@@ -326,7 +328,7 @@ def test_packages_mode_end_to_end(stack, monkeypatch):
     # (4) Nutzer 1000 hat keine Rechte für apt/dpkg, sudo gibt es nicht
     out = _bash(
         chat,
-        "apt-get install -y --no-install-recommends jq >/dev/null 2>&1; echo APT=$?; "
+        "apt-get install -y --no-install-recommends bc >/dev/null 2>&1; echo APT=$?; "
         "dpkg --configure -a >/dev/null 2>&1; echo DPKG=$?; "
         "touch /var/lib/dpkg/x 2>/dev/null; echo TOUCH=$?; "
         "command -v sudo >/dev/null && echo SUDO=yes || echo SUDO=no; "
@@ -338,14 +340,14 @@ def test_packages_mode_end_to_end(stack, monkeypatch):
     assert "SUDO=no" in out, out
     assert "SUID:" not in out, out
 
-    # (1) apt_install als root, jq danach als Nutzer 1000
-    tc = chat.tool("apt_install", {"packages": ["jq"]})
+    # (1) apt_install als root, bc danach als Nutzer 1000
+    tc = chat.tool("apt_install", {"packages": ["bc"]})
     assert tc.status == "ok", (tc.result, agent.log())
-    out = _bash(chat, "jq --version; id -u; echo '{\"a\":42}' | jq .a; cat .mgpt/apt-packages")
-    assert "jq-" in out and "1000" in out and "42" in out, out
-    assert "jq" in out.split("jq-", 1)[1], out  # .mgpt/apt-packages nennt jq
+    out = _bash(chat, "bc --version | head -1; id -u; echo '6*7' | bc; cat .mgpt/apt-packages")
+    assert "bc 1." in out and "1000" in out and "42" in out, out
+    assert "bc" in out.split("bc 1.", 1)[1], out  # .mgpt/apt-packages nennt bc
     # Ungültige Paketnamen lehnt schon der Server bzw. Agent ab
-    bad = chat.tool("apt_install", {"packages": ["jq; touch /tmp/x"]})
+    bad = chat.tool("apt_install", {"packages": ["bc; touch /tmp/x"]})
     assert bad.status != "ok" or "error" in _text(bad).lower(), _text(bad)
 
     # (4b) auch ein installiertes sudo verschafft keine Rechte (no-new-privileges, kein setuid)
@@ -421,12 +423,12 @@ def test_packages_mode_end_to_end(stack, monkeypatch):
     chat2 = Chat(stack, monkeypatch, "Pakete 2", workspace)
     out = _bash(
         chat2,
-        "cat .mgpt/apt-packages; for i in $(seq 90); do command -v jq >/dev/null && break; "
-        "sleep 2; done; jq --version; echo '[1,2]' | jq length",
+        "cat .mgpt/apt-packages; for i in $(seq 90); do command -v bc >/dev/null && break; "
+        "sleep 2; done; bc --version | head -1; echo '1+1' | bc",
     )
     session2 = _session(anna)
     assert session2.pk != session.pk and session2.status == RunnerSession.Status.RUNNING
-    assert "jq-" in out and "2" in out.split("jq-", 1)[1], (out, agent.log())
+    assert "bc 1." in out and "2" in out.split("bc 1.", 1)[1], (out, agent.log())
     out = _bash(chat2, "ls .venv/bin/python node_modules 2>&1 | head -3; echo END")
     # .venv/node_modules sind ignoriert und kommen nicht über das Bundle zurück
     assert "No such file" in out or "cannot access" in out, out
@@ -458,7 +460,7 @@ def test_without_role_right_network_stays_off(stack, monkeypatch):
     assert not info["HostConfig"].get("CapAdd")
     assert not _own_containers(run_id, "relay"), "ohne Recht kein Proxy"
     # apt_install direkt aufgerufen (Modell kennt den Namen): abgewiesen, nichts installiert
-    tc = chat.tool("apt_install", {"packages": ["jq"]})
+    tc = chat.tool("apt_install", {"packages": ["bc"]})
     assert tc.status != "ok" or "error" in _text(tc).lower(), _text(tc)
-    out = _bash(chat, "command -v jq || echo NOJQ")
-    assert "NOJQ" in out, out
+    out = _bash(chat, "command -v bc || echo NOBC")
+    assert "NOBC" in out, out

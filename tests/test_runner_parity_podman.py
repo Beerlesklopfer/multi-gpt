@@ -127,6 +127,11 @@ def stack(agent_variant, settings, tmp_path):
     server = GatewayServer()
     server.start()
     anna = make_user("anna")
+    # Startrollen haben seit accounts 0015 „Paketquellen“; diese Kette prüft die gesperrte
+    # Vorlage ohne Netz (schreibgeschütztes Wurzeldateisystem, telnet/setup_host angeboten).
+    # Den Modus Paketquellen prüft test_runner_packages_podman.py.
+    anna.role.runner_packages = False
+    anna.role.save()
     created = tokens.create_token(anna, "Parität")
     private, key_id = make_release_key(settings, tmp_path)
     env = agent_env(
