@@ -106,6 +106,10 @@ def tool_model(ai_model):
 @pytest.fixture
 def adult(client):
     user = make_user("adult", "erwachsen")
+    # Ohne Recht „Bilder“: diese Tests prüfen die genaue Werkzeugliste, transform_image
+    # (Bildwerkzeuge, M9-03) gehört nicht dazu.
+    user.role.can_images = False
+    user.role.save()
     client.force_login(user)
     return user
 

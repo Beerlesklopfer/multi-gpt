@@ -49,6 +49,8 @@ def attach(message, data: bytes, name="foto.png", mime="image/png") -> Attachmen
 @pytest.fixture
 def chat():
     user = make_user("anna")
+    user.role.can_images = True  # Rollenrecht „Bilder erzeugen und bearbeiten“
+    user.role.save()
     conversation = Conversation.objects.create(user=user, title="Bilder")
     question = append_message(conversation, role="user", content="Bild", author=user)
     answer = append_message(conversation, role="assistant", author=user)
@@ -267,6 +269,10 @@ def test_tool_is_offered_to_tool_models(chat):
         supports_tools = True
 
     assert "transform_image" in tooling.builtin_bindings(user, Model())
+    user.role.can_images = False
+    user.role.save()
+    user.refresh_from_db()
+    assert "transform_image" not in tooling.builtin_bindings(user, Model())
 
 
 # --- Über den MCP-Knoten ----------------------------------------------------------------------

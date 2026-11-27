@@ -473,7 +473,9 @@ def transform(user, message: Message, arguments: dict) -> Attachment:
 
 
 def _tool_available(user, ai_model) -> bool:
-    return True  # nur lokale Rechenarbeit; Leserechte prüft jeder Aufruf
+    """Rollenrecht „Bilder erzeugen und bearbeiten“ (``Role.can_images``); die Leserechte auf
+    die Eingaben prüft jeder Aufruf."""
+    return can(user, Action.IMAGES)
 
 
 def _tool_run(user, arguments: dict, sources) -> tooling.BuiltinResult:
