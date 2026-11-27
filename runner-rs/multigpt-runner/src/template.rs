@@ -383,7 +383,8 @@ pub fn check_image(
     };
     expect(
         local_images.contains(image),
-        "Image steht nicht in der lokalen Positivliste (MGPT_IMAGES).",
+        "Image steht nicht in der lokalen Positivliste (MGPT_IMAGES). Freigeben auf dem \
+         Rechner des Runners: multigpt-runner images add <Image mit Digest>",
     )?;
     if let Some(server) = server_images {
         expect(

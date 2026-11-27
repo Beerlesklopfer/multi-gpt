@@ -20,6 +20,8 @@ use crate::handler::FrameHandler;
 use crate::outbox::Outbox;
 use crate::protocol::{self, CLOSE_NORMAL};
 
+mod images;
+
 /// Vorlage der systemd-User-Unit.
 pub const UNIT_TEMPLATE: &str = include_str!("../systemd/multigpt-runner.service");
 pub const UNIT_NAME: &str = "multigpt-runner.service";
@@ -38,6 +40,10 @@ Aufruf:
                                   Server-Schlüssel (Token unsichtbar); sonst stdin: Zeile 1 Token,
                                   Zeile 2 Server-Schlüssel (Base64)
 ";
+
+fn usage() -> String {
+    format!("{USAGE}{}", images::USAGE)
+}
 
 /// Protokollierung nach stderr (journald), Stufe über `RUST_LOG` (Vorgabe info).
 pub fn init_logging() {
@@ -63,12 +69,13 @@ where
             EXIT_OK
         }
         Some("--help" | "-h" | "help") => {
-            print!("{USAGE}");
+            print!("{}", usage());
             EXIT_OK
         }
         Some("pair") => pair_main(&args[2..]),
+        Some("images") => images::main(&args[2..]),
         Some(other) => {
-            eprintln!("Unbekannter Aufruf: {other}\n{USAGE}");
+            eprintln!("Unbekannter Aufruf: {other}\n{}", usage());
             EXIT_CONFIG
         }
         None => {
