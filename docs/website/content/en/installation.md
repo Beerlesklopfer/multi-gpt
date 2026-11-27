@@ -157,6 +157,19 @@ A note on security: by default the runner's web ports (24080 and 24443) are reac
 whole home network without any login. If you do not want that, set
 `MGPT_EXPOSE_BIND=127.0.0.1` (details in the wiki).
 
+### Backup, upgrade, removal
+
+- **Backup:** `sudo mgpt-ctl backup` stores the database, media and `/etc/multi-gpt/.env` as an
+  archive in `/var/backups/multi-gpt` (`--keep 7` removes older ones). Daily with
+  `sudo systemctl enable --now multi-gpt-backup.timer`. The archive contains the key for the
+  stored API keys – treat it like a password.
+- **Upgrade:** back up first, then `sudo apt update && sudo apt upgrade`; the package migrates
+  and restarts.
+- **Removal:** `sudo apt remove multi-gpt` keeps data and configuration, `purge` also deletes
+  `/etc/multi-gpt` (including the key!); database and media stay.
+
+Restoring and all details: wiki page "Backup, Update und Entfernen" (German).
+
 ## Updating to 0.3
 
 The package migrates the database itself on every update. When updating from 0.2 to 0.3.x,

@@ -160,6 +160,19 @@ Zur Sicherheit: Die Web-Ports des Runners (24080 und 24443) sind standardmäßig
 Heimnetz ohne Anmeldung erreichbar. Wer das nicht will, setzt `MGPT_EXPOSE_BIND=127.0.0.1`
 (Einzelheiten im Wiki).
 
+### Sichern, aktualisieren, entfernen
+
+- **Sichern:** `sudo mgpt-ctl backup` legt Datenbank, Medien und `/etc/multi-gpt/.env` als
+  Archiv nach `/var/backups/multi-gpt` (`--keep 7` räumt alte auf). Täglich automatisch mit
+  `sudo systemctl enable --now multi-gpt-backup.timer`. Das Archiv enthält den Schlüssel für die
+  gespeicherten API-Keys – wie ein Passwort behandeln.
+- **Aktualisieren:** vorher sichern, dann `sudo apt update && sudo apt upgrade`; das Paket
+  migriert und startet neu.
+- **Entfernen:** `sudo apt remove multi-gpt` lässt Daten und Konfiguration stehen, `purge`
+  löscht zusätzlich `/etc/multi-gpt` (samt Schlüssel!), Datenbank und Medien bleiben.
+
+Zurückspielen und alle Einzelheiten: Wiki-Seite „Backup, Update und Entfernen“.
+
 ## Update auf 0.3
 
 Das Paket migriert die Datenbank bei jedem Update selbst. Beim Update von 0.2 auf 0.3.x sind
