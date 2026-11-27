@@ -92,7 +92,7 @@ def test_rights_follow_the_share_and_later_chats(anna, ben, project, chats):
 
 
 def test_group_share_and_leave(ben, project, chats):
-    group = UserGroup.objects.create(name="Familie")
+    group = UserGroup.objects.create(name="Projektgruppe")
     ben.groups.add(group)
     Share.objects.create(project=project, group=group)
     shared = chats[0]
