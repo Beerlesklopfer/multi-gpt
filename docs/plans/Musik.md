@@ -187,12 +187,12 @@ einem Motorwechsel:
 - `POST /v1/music` → `{"id": …}`. Felder: `model`, `caption`, `lyrics` (leer = erfinden,
   `"[Instrumental]"`), `duration`, `bpm`, `keyscale`, `timesignature`, `vocal_language`
   (Code; Eliezer übersetzt in den ausgeschriebenen Namen), `seed`, `lm_seed`, `steps`,
-  `lm_temperature`, `variant` (XL/Standard, sofern freigegeben), `postprocess` (z. B. `highs`).
+  `lm_temperature`, `variant` (XL oder Standard), `postprocess` (z. B. `highs`).
 - `GET /v1/jobs/{id}` → Status und Fortschritt; `GET /v1/jobs/{id}/result` → WAV und der
   `eliezer`-Block wie oben (beide Seeds, Modelldateien, Werte, Nachbearbeitung).
 - `DELETE /v1/jobs/{id}` → Abbruch bis in `ace-server`.
 - `POST /v1/music/describe` (Datei) → Stil, Tempo, Tonart, Takt, Liedtext.
-- Modellmeldung: `capabilities.music = true` in `GET /api/v1/models`; MultiGPT ordnet das
+- Modellmeldung: `capabilities.music = true` und `max_duration` (Sekunden) in `GET /api/v1/models`; MultiGPT ordnet das
   Modell der vorhandenen Fähigkeit `music` zu (`AIModel.Capability.MUSIC`).
 
 Eliezer übernimmt die Erfahrungen oben: SFT als Vorgabe, `peak_clip: 0`, Kürzen der Codes,
@@ -210,9 +210,11 @@ ein Musikauftrag je GPU und Abstimmung mit geladenen Sprach- und Bildmodellen.
   Herunterladen als WAV oder MP3 (MP3 bei Bedarf erzeugt und zwischengespeichert).
 - **Versionen:** „Neu erzeugen“ und „weitere Variante“ legen Geschwister über `Message.parent`
   an, mit dem Erzeugungsdatensatz als Quelle.
-- **Kosten:** Lokale Musik kostet kein Geld. Zählen nach Sekunden Audio
-  (`units={"audio_second": n}`) auf einem Token- bzw. Laufzeitkonto; nicht zusätzlich
-  Container-Minuten buchen.
+- **Kosten (entschieden):** Lokale Musik kostet kein Geld. Gezählt werden Sekunden Audio
+  (`units={"audio_second": n}`), keine GPU- oder Container-Minuten.
+- **Höchstlänge (entschieden):** je Rolle, Vorgabe 20 Minuten, begrenzt durch die Höchstlänge,
+  die Eliezer meldet (siehe Entscheidungen).
+- **Aufbewahrung (entschieden):** dauerhaft wie andere Anhänge.
 - **MCP:** `generate_music` auch über den MCP-Server, Ergebnis wie bei Bildern als Anhang mit
   `get_file`.
 
@@ -227,17 +229,31 @@ ein Musikauftrag je GPU und Abstimmung mit geladenen Sprach- und Bildmodellen.
 | M11-05 Songs beschreiben | `describe` über Eliezer, Upload eines Songs im Chat | Beschreibung mit Tempo und Tonart; „Daraus einen Song machen“ füllt die Felder vor |
 | M11-06 Doku | Wiki-Seite „Musik“, Website, Release-Notes | — |
 
-M11-01 hängt nicht von der Musik ab und kann sofort beginnen.
+M11-01 hängt technisch nicht von der Musik ab, wird aber nach Entscheidung des Nutzers nicht
+vorgezogen: Reihenfolge M11-02 → M11-03 → M11-01 → M11-04 → M11-05 → M11-06.
+
+## Entscheidungen des Nutzers (2026-11-27)
+
+1. **Aufbewahrung:** Erzeugte Songs werden dauerhaft gespeichert, wie andere Anhänge (Antwort
+   „ja“ auf „dauerhaft speichern?“; keine eigene Frist).
+2. **Kontierung:** nach **Sekunden Audio** (`units={"audio_second": n}`), keine GPU-Minuten.
+3. **Höchstlänge:** **20 Minuten** als Grenze je Rolle (Feld an `Role`, Vorgabe 20 min, der
+   Verwalter kann sie je Rolle senken). **Achtung:** acestep.cpp erzeugt höchstens 600 s
+   (10 min) am Stück. Für mehr als 10 Minuten braucht es ein Fortsetzen bzw. Verlängern eines
+   Songs; ob ACE-Step 1.5 bzw. acestep.cpp das sauber kann, klärt M11-02. Bis dahin begrenzt
+   MultiGPT auf das, was Eliezer als Höchstlänge meldet (`max_duration` in der Modellmeldung),
+   und sagt das an.
+4. **XL:** freigeschaltet. Eliezer bietet Standard und XL an; XL braucht etwa 12 GB
+   Grafikspeicher und läuft über die normale Speicherplanung und Austausch-Frage von Eliezer.
+5. **M11-01 nicht vorziehen:** Der Erzeugungsdatensatz entsteht zusammen mit der Musik, nicht
+   vorab für Bilder. Reihenfolge: M11-02 (Versuch) → M11-03 (Eliezer) → M11-01 (Datensatz für
+   Bilder und Musik) → M11-04 ff.
 
 ## Offene Fragen
 
 1. Umfang so recht (Erzeugen, Beschreiben, Erzeugungsdatensatz; ohne NAS-Sammlung und Akkorde)?
-2. Soll M11-01 vorgezogen werden, also vor M17 und unabhängig von der Musik?
-3. XL freischalten? Es braucht etwa 12 GB Grafikspeicher und konkurriert mit den Sprachmodellen.
-4. Höchstlänge je Rolle (z. B. Jugendliche 3 Minuten, Erwachsene 10)?
-5. Darf MultiGPT erzeugte Songs dauerhaft speichern, oder gilt eine Aufbewahrungsfrist wie für
-   andere Anhänge?
-6. Kontierung: Sekunden Audio als eigene Einheit, oder GPU-Minuten wie beim Runner?
+2. Wie geht es über 10 Minuten: Fortsetzen im Motor (falls M11-02 das hergibt) oder mehrere
+   Teile mit Überblendung? Erst nach dem Versuch entscheidbar.
 
 Keine Installation, kein Modell-Download und keine Änderung an Eliezer werden allein durch
 dieses Planungsdokument ausgelöst.
