@@ -14,9 +14,12 @@ Chats des Besitzers (``Conversation.project``) und gibt ihnen vor:
   (``page_context``). Modellfreigabe (``can(USE_MODEL)``) und Leserechte der
   Sammlungen gelten weiter; nicht mehr lesbare Sammlungen fallen weg.
 
-Rechte: Nur der Besitzer sieht und ändert ein Projekt; fremde Projekte gibt
-es für alle anderen nicht (404, auch für Verwalter). Chats ordnet nur ihr
-Besitzer zu, und nur einem eigenen Projekt.
+Rechte: Nur der Besitzer ändert ein Projekt. Teilen (C6) über ``Share`` mit Ziel Projekt:
+Empfänger sehen die Projektseite nur lesend (Name, Beschreibung, Anweisungen, nicht private
+Chats) und bekommen auf die Chats die Rechte der Freigabe, auch auf später angelegte; ein
+Chat mit ``private_in_project`` bleibt außen vor. Fremde, nicht geteilte Projekte gibt es
+für alle anderen nicht (404, auch für Verwalter). Chats ordnet nur ihr Besitzer zu, und
+nur einem eigenen Projekt.
 
 Löschen: Die Chats bleiben (ohne Projekt, ``on_delete=SET_NULL``) oder werden
 ausdrücklich mitgelöscht (``delete_project(..., delete_chats=True)``, mit
@@ -25,9 +28,6 @@ im Archiv erscheinen archivierte Projekte und archivierte Chats.
 
 Später:
 
-- **Teilen:** Freigabe über ``Share`` mit Ziel Projekt (weiterer nullable
-  Fremdschlüssel, Constraint „genau ein Ziel“), ``can()`` prüft bei Chats
-  zusätzlich die Freigaben ihres Projekts. Noch nicht umgesetzt.
 - **Scratchpad (Sammelmappe):** eigenes Modell mit Fremdschlüssel auf
   ``Project`` (CASCADE); ``delete_project`` und die Projektseite sind die
   Stellen, an denen es dazukommt.
@@ -140,9 +140,11 @@ def page_context(request, conversation: Conversation | None = None) -> dict:
     bleibt das Projekt des Besitzers verborgen."""
     user = request.user
     project = None
-    if conversation is not None:
-        if conversation.user_id == user.pk and conversation.project_id:
+    if conversation is not None and conversation.project_id:
+        if conversation.user_id == user.pk:
             project = conversation.project
+        elif not conversation.private_in_project and can(user, Action.READ, conversation.project):
+            project = conversation.project  # über das Projekt geteilt (C6)
     elif request.GET.get("projekt"):
         project = get_own_project(user, request.GET["projekt"])
     model = usable_default_model(user, project)
@@ -298,11 +300,27 @@ def project_url(project: Project) -> str:
     return reverse("chat:project_detail", args=[project.pk])
 
 
-def project_chats(project: Project):
-    """Alle Chats des Projekts für die Projektseite, neueste zuerst."""
-    return sharing.with_shared_flag(
-        Conversation.objects.filter(project=project, user_id=project.owner_id)
-    ).order_by("archived", "-updated", "-pk")
+def project_chats(project: Project, viewer=None):
+    """Chats des Projekts für die Projektseite, neueste zuerst. Empfänger einer
+    Projektfreigabe (C6) sehen die nicht privaten, nicht archivierten Chats."""
+    qs = Conversation.objects.filter(project=project, user_id=project.owner_id)
+    if viewer is not None and viewer.pk != project.owner_id:
+        qs = qs.filter(private_in_project=False, archived=False)
+    return sharing.with_shared_flag(qs).order_by("archived", "-updated", "-pk")
+
+
+def get_readable_project(user, pk) -> Project | None:
+    """Eigenes oder mit ``user`` geteiltes Projekt (C6), sonst None."""
+    if isinstance(pk, bool):
+        return None
+    try:
+        pk = int(pk)
+    except (TypeError, ValueError):
+        return None
+    project = Project.objects.select_related("owner").filter(pk=pk).first()
+    if project is None or not can(user, Action.READ, project):
+        return None
+    return project
 
 
 def sidebar_projects(

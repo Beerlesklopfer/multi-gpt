@@ -974,6 +974,13 @@ class Conversation(models.Model):
     created = models.DateTimeField("erstellt", auto_now_add=True)
     updated = models.DateTimeField("geändert", auto_now=True)
     archived = models.BooleanField("archiviert", default=False)
+    # Projektfreigabe (C6): ein einzelner Chat lässt sich aus der Freigabe seines Projekts
+    # ausnehmen; dann gilt für ihn nur seine eigene Freigabe.
+    private_in_project = models.BooleanField(
+        "nicht mit dem Projekt teilen",
+        default=False,
+        help_text="Der Chat bleibt privat, auch wenn das Projekt geteilt ist.",
+    )
     # Ende des angezeigten Zweigs (Nachrichten bearbeiten, Versionen): Der
     # Verlauf ist der Pfad von der Wurzel bis hierher über ``Message.parent``.
     current_leaf = models.ForeignKey(
@@ -1297,12 +1304,14 @@ class Collection(models.Model):
 
 
 class Share(models.Model):
-    """Freigabe eines Chats oder einer Sammlung an eine Gruppe oder ein Konto.
+    """Freigabe eines Chats, eines Projekts oder einer Sammlung an eine Gruppe oder ein Konto.
 
-    Ziel als zwei nullable Fremdschlüssel; ein CheckConstraint erzwingt, dass
+    Ziel als drei nullable Fremdschlüssel; ein CheckConstraint erzwingt, dass
     genau eines gesetzt ist (referenzielle Integrität statt GenericForeignKey).
     Empfänger genauso: genau eines von ``group`` und ``user``. Sammlungen
-    werden nur an Gruppen geteilt (Constraint), Chats an Gruppen oder Konten.
+    werden nur an Gruppen geteilt (Constraint), Chats und Projekte an Gruppen
+    oder Konten. Eine Projektfreigabe gilt für alle Chats des Projekts, auch
+    später angelegte, außer für Chats mit ``private_in_project`` (C6).
 
     Rechte (RWUD, Lesen ist immer enthalten): ``can_write`` (W), bei Chats
     zusätzlich ``can_update`` (U: Nachrichten bearbeiten, umbenennen,
@@ -1327,6 +1336,14 @@ class Share(models.Model):
         blank=True,
         related_name="shares",
         verbose_name="Sammlung",
+    )
+    project = models.ForeignKey(
+        "Project",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="shares",
+        verbose_name="Projekt",
     )
     group = models.ForeignKey(
         "accounts.UserGroup",
@@ -1361,10 +1378,24 @@ class Share(models.Model):
         verbose_name_plural = "Freigaben"
         constraints = [
             models.CheckConstraint(
-                condition=(Q(conversation__isnull=False) & Q(collection__isnull=True))
-                | (Q(conversation__isnull=True) & Q(collection__isnull=False)),
+                condition=(
+                    Q(conversation__isnull=False)
+                    & Q(collection__isnull=True)
+                    & Q(project__isnull=True)
+                )
+                | (
+                    Q(conversation__isnull=True)
+                    & Q(collection__isnull=False)
+                    & Q(project__isnull=True)
+                )
+                | (
+                    Q(conversation__isnull=True)
+                    & Q(collection__isnull=True)
+                    & Q(project__isnull=False)
+                ),
                 name="chat_share_exactly_one_target",
-                violation_error_message="Freigabe gilt genau einem Chat oder einer Sammlung.",
+                violation_error_message="Freigabe gilt genau einem Chat, einem Projekt oder "
+                "einer Sammlung.",
             ),
             models.CheckConstraint(
                 condition=(Q(group__isnull=False) & Q(user__isnull=True))
@@ -1392,20 +1423,33 @@ class Share(models.Model):
                 condition=Q(collection__isnull=False),
                 name="chat_share_unique_collection_group",
             ),
+            models.UniqueConstraint(
+                fields=["project", "group"],
+                condition=Q(project__isnull=False, group__isnull=False),
+                name="chat_share_unique_project_group",
+            ),
+            models.UniqueConstraint(
+                fields=["project", "user"],
+                condition=Q(project__isnull=False, user__isnull=False),
+                name="chat_share_unique_project_user",
+            ),
         ]
 
     def __str__(self):
         # Ohne Titel des Ziels: Der Admin zeigt Freigaben nur als Metadaten.
-        target = (
-            f"Chat {self.conversation_id}"
-            if self.conversation_id
-            else f"Sammlung {self.collection_id}"
-        )
+        if self.conversation_id:
+            target = f"Chat {self.conversation_id}"
+        elif self.project_id:
+            target = f"Projekt {self.project_id}"
+        else:
+            target = f"Sammlung {self.collection_id}"
         return f"{target} → {self.recipient}"
 
     @property
     def target(self):
-        return self.conversation if self.conversation_id else self.collection
+        if self.conversation_id:
+            return self.conversation
+        return self.project if self.project_id else self.collection
 
     @property
     def recipient(self):

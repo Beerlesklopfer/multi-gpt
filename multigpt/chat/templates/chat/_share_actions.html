@@ -8,3 +8,12 @@
     <span>Teilen</span>{% if chat_is_shared %}<span class="sr-only"> (geteilt)</span>{% endif %}
   </button>
 {% endif %}
+{% if project_is_shared %}
+  {# Projektfreigabe (C6): diesen Chat ausnehmen; sharing.js speichert sofort. #}
+  <label class="chat-private-toggle button button-small" title="Das Projekt ist geteilt. Angehakt bleibt dieser Chat privat.">
+    <input type="checkbox" data-chat-private
+           data-api-private="{% url 'chat:api_conversation_private' active_conversation.pk %}"
+           {% if active_conversation.private_in_project %}checked{% endif %}>
+    Nicht mit dem Projekt teilen
+  </label>
+{% endif %}

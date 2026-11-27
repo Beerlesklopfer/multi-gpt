@@ -6,7 +6,8 @@
     <h1 id="projects-title">Projekte</h1>
     <p class="page-intro">
       Ein Projekt fasst Chats zusammen. Seine Anweisungen gelten in allen Chats des Projekts,
-      Standardmodell und Sammlungen sind dort vorausgewählt. Projekte sieht nur du.
+      Standardmodell und Sammlungen sind dort vorausgewählt. Projekte sieht nur du, außer du
+      teilst sie (Projektseite → „Teilen“).
     </p>
     {% if can_create %}
       <form method="post" action="{% url 'chat:project_list' %}" class="inline-form" id="neu">
@@ -28,6 +29,21 @@
       </ul>
     {% else %}
       <p class="hint">Du hast noch kein Projekt angelegt.</p>
+    {% endif %}
+
+    {% if shared_projects %}
+      <h2 class="section-title">Mit mir geteilt</h2>
+      <ul class="project-page-list">
+        {% for project in shared_projects %}
+          <li class="project-page-item">
+            <a href="{% url 'chat:project_detail' project.pk %}" class="project-page-link">
+              <span class="project-dot project-color-{{ project.color|default:'none' }}" aria-hidden="true"></span>
+              {{ project.name }}
+            </a>
+            <span class="hint">von {{ project.owner }}</span>
+          </li>
+        {% endfor %}
+      </ul>
     {% endif %}
 
     {% if archived_projects %}

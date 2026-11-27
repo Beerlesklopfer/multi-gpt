@@ -186,7 +186,9 @@
   async function leaveChat(button) {
     const ok = await mg().openDialog({
       heading: "Aus deiner Liste entfernen?",
-      text: `Der Chat bleibt bei ${button.dataset.owner} erhalten. Du siehst ihn erst wieder, wenn er erneut mit dir geteilt wird.`,
+      text:
+        button.dataset.leaveText ||
+        `Der Chat bleibt bei ${button.dataset.owner} erhalten. Du siehst ihn erst wieder, wenn er erneut mit dir geteilt wird.`,
       confirmLabel: "Entfernen",
       danger: true,
     });
@@ -245,14 +247,15 @@
     const listUrl = button.dataset.apiShares;
     const detailTemplate = button.dataset.apiShareTemplate;
     const dialog = el("dialog", "dialog share-dialog");
-    const heading = el("h2", "", "Chat teilen");
+    const heading = el("h2", "", button.dataset.shareTitle || "Chat teilen");
     heading.id = `share-dialog-title-${Date.now()}`;
     dialog.setAttribute("aria-labelledby", heading.id);
     const intro = el(
       "p",
       "hint",
-      "Lesen ist immer enthalten – mit Kopieren, Exportieren und „Als eigene Kopie fortsetzen“. " +
-        "Antworten, die jemand anderes auslöst, laufen über dessen Konto und Budget.",
+      button.dataset.shareIntro ||
+        "Lesen ist immer enthalten – mit Kopieren, Exportieren und „Als eigene Kopie fortsetzen“. " +
+          "Antworten, die jemand anderes auslöst, laufen über dessen Konto und Budget.",
     );
     const listTitle = el("h3", "share-dialog-subtitle", "Freigaben");
     const list = el("ul", "share-list chat-share-list");
@@ -427,6 +430,29 @@
       button.addEventListener("click", () =>
         button.hasAttribute("data-share-copy") ? copyChat(button) : leaveChat(button),
       );
+    }
+    // Projektseite (C6): Teilen-Knopf und „Aus meiner Liste entfernen“.
+    for (const button of document.querySelectorAll("[data-project-share]")) {
+      button.hidden = false;
+      button.addEventListener("click", () => openShareDialog(button));
+    }
+    for (const button of document.querySelectorAll("[data-project-leave]")) {
+      button.hidden = false;
+      button.addEventListener("click", () => leaveChat(button));
+    }
+    // Chat aus der Projektfreigabe ausnehmen (nur Besitzer, Kasten in der Chatansicht).
+    for (const box of document.querySelectorAll("[data-chat-private]")) {
+      box.addEventListener("change", async () => {
+        box.disabled = true;
+        try {
+          await mg().requestJson("POST", box.dataset.apiPrivate, { private: box.checked });
+        } catch (err) {
+          box.checked = !box.checked;
+          mg().announce(`Speichern fehlgeschlagen: ${err.message}`, true);
+        } finally {
+          box.disabled = false;
+        }
+      });
     }
     startPolling();
   });

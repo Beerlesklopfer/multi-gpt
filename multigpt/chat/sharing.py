@@ -130,8 +130,22 @@ def access_for(user, conversation: Conversation) -> Access:
     )
 
 
+def _project_shared(conversation: Conversation) -> Q:
+    """Freigaben über das Projekt des Chats (C6), falls er nicht davon ausgenommen ist."""
+    if conversation.project_id and not conversation.private_in_project:
+        return Q(project_id=conversation.project_id)
+    return Q(pk__in=[])
+
+
 def is_shared(conversation: Conversation) -> bool:
-    return Share.objects.filter(conversation=conversation).exists()
+    return Share.objects.filter(
+        Q(conversation=conversation) | _project_shared(conversation)
+    ).exists()
+
+
+def shared_via_project(conversation: Conversation) -> bool:
+    """Ist der Chat (auch) über sein Projekt geteilt?"""
+    return Share.objects.filter(_project_shared(conversation)).exists()
 
 
 def has_other_authors(conversation: Conversation) -> bool:
@@ -323,13 +337,16 @@ def redact_sources(refs, items: list[dict], user) -> list[dict]:
 
 def shared_with(user, query: str = "", archived: bool = False, limit: int = 100):
     """Chats anderer Konten, die mit ``user`` geteilt sind („Mit mir geteilt“)."""
-    shares = (
-        Share.objects.filter(conversation__isnull=False)
-        .filter(Q(user=user) | Q(group__in=user.groups.values("pk")))
-        .exclude(left_by=user)
+    shares = Share.objects.filter(Q(user=user) | Q(group__in=user.groups.values("pk"))).exclude(
+        left_by=user
     )
+    direct = shares.filter(conversation__isnull=False).values("conversation_id")
+    via_project = shares.filter(project__isnull=False).values("project_id")
     qs = (
-        Conversation.objects.filter(pk__in=shares.values("conversation_id"), archived=archived)
+        Conversation.objects.filter(
+            Q(pk__in=direct) | Q(project_id__in=via_project, private_in_project=False),
+            archived=archived,
+        )
         .exclude(user=user)
         .select_related("user")
     )
@@ -339,8 +356,10 @@ def shared_with(user, query: str = "", archived: bool = False, limit: int = 100)
 
 
 def with_shared_flag(queryset):
-    """Eigene Chats mit ``is_shared`` (Symbol in der Seitenleiste)."""
-    return queryset.annotate(is_shared=Exists(Share.objects.filter(conversation_id=OuterRef("pk"))))
+    """Eigene Chats mit ``is_shared`` (Symbol in der Seitenleiste), auch über das Projekt."""
+    direct = Exists(Share.objects.filter(conversation_id=OuterRef("pk")))
+    via_project = Exists(Share.objects.filter(project_id=OuterRef("project_id")))
+    return queryset.annotate(is_shared=direct | (via_project & Q(private_in_project=False)))
 
 
 def page_context(user, conversation: Conversation) -> dict:
@@ -362,6 +381,12 @@ def page_context(user, conversation: Conversation) -> dict:
         "chat_owner_name": display_name(conversation.user),
         "show_authors": shared or has_other_authors(conversation),
         "share_stamp": state_stamp(conversation) if shared else "",
+        # Projektfreigabe (C6): Besitzer kann den Chat davon ausnehmen.
+        "project_is_shared": bool(
+            access.owner
+            and conversation.project_id
+            and Share.objects.filter(project_id=conversation.project_id).exists()
+        ),
     }
 
 
@@ -381,8 +406,9 @@ def author_label(msg: Message, viewer, owner_id: int, owner_name: str, show: boo
 
 def leave(user, conversation: Conversation) -> bool:
     """„Aus meiner Liste entfernen“: Freigabe an das Konto löschen, bei
-    Gruppenfreigaben austragen. False, wenn es keine Freigabe gab."""
-    shares = list(applicable_shares(user, conversation))
+    Gruppenfreigaben austragen. False, wenn es keine Freigabe gab. Nur Freigaben des
+    Chats selbst; ein über das Projekt geteilter Chat geht mit ``leave_project``."""
+    shares = list(applicable_shares(user, conversation).filter(conversation=conversation))
     if not shares:
         return False
     with transaction.atomic():
@@ -471,6 +497,46 @@ def serialize_share(share: Share) -> dict:
         "label": share.rights_label,
         "text": rights_text(share.can_write, share.can_update, share.can_delete),
     }
+
+
+# --- Projekte teilen (C6) ---------------------------------------------------------------
+
+
+def project_shares(project) -> list[dict]:
+    shares = project.shares.select_related("group", "user")
+    rows = [serialize_share(s) for s in shares]
+    return sorted(rows, key=lambda r: (r["kind"] != "user", r["name"].casefold()))
+
+
+def shared_projects(user, archived: bool = False):
+    """Projekte anderer Konten, die mit ``user`` geteilt sind."""
+    from .models import Project
+
+    shares = Share.objects.filter(project__isnull=False).filter(
+        Q(user=user) | Q(group__in=user.groups.values("pk"))
+    )
+    return (
+        Project.objects.filter(pk__in=shares.exclude(left_by=user).values("project_id"))
+        .filter(archived=archived)
+        .exclude(owner=user)
+        .select_related("owner")
+        .order_by("name")
+    )
+
+
+def leave_project(user, project) -> bool:
+    """Geteiltes Projekt aus der eigenen Liste entfernen (samt seiner Chats)."""
+    shares = list(applicable_shares(user, project))
+    if not shares:
+        return False
+    with transaction.atomic():
+        for share in shares:
+            if share.user_id == user.pk:
+                share.delete()
+            else:
+                share.left_by.add(user)
+        ConversationView.objects.filter(conversation__project=project, user=user).delete()
+    return True
 
 
 def conversation_shares(conversation: Conversation) -> list[dict]:

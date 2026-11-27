@@ -19,7 +19,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from multigpt.accounts.permissions import Action, can
 
-from . import creativity, projects, services
+from . import creativity, projects, services, sharing
 from .models import AIModel, Project, ReasoningEffort
 from .rag.search import readable_collections
 
@@ -183,6 +183,7 @@ def project_list(request):
             "can_create": may_create,
             "active_projects": [p for p in items if not p.archived],
             "archived_projects": [p for p in items if p.archived],
+            "shared_projects": list(sharing.shared_projects(user)),
         },
     )
 
@@ -190,7 +191,13 @@ def project_list(request):
 @require_http_methods(["GET", "POST"])
 @login_required
 def project_detail(request, pk):
-    project = _own_project(request, pk)
+    project = projects.get_readable_project(request.user, pk)
+    if project is None:
+        raise Http404
+    if project.owner_id != request.user.pk:
+        if request.method == "POST":
+            raise PermissionDenied
+        return _shared_project_page(request, project)
     if request.method == "POST":
         form = ProjectForm(request.POST, instance=project, user=request.user)
         if form.is_valid():
@@ -216,6 +223,28 @@ def project_detail(request, pk):
             ],
             "project_model": model,
             "new_chat_url": f"{reverse('chat:index')}?projekt={project.pk}",
+            "can_share": can(request.user, Action.SHARE),
+            "share_count": project.shares.count(),
+        },
+    )
+
+
+def _shared_project_page(request, project):
+    """Projektseite für Empfänger einer Projektfreigabe (C6): nur lesen."""
+    chats = list(projects.project_chats(project, viewer=request.user))
+    readable = set(projects.readable_collection_ids(request.user, project))
+    return render(
+        request,
+        "chat/projects/shared.html",
+        {
+            "project": project,
+            "project_chats_list": chats,
+            "chat_count": len(chats),
+            "project_collections": [
+                c for c in project.collections.order_by("name") if c.pk in readable
+            ],
+            "project_model": projects.usable_default_model(request.user, project),
+            "owner_name": str(project.owner),
         },
     )
 

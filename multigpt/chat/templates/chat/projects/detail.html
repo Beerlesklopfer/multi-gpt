@@ -1,6 +1,8 @@
 {% extends "base.html" %}
-{# Projektseite (M5-07): Einstellungen, Chats, Archivieren, Löschen. Nur für den Besitzer; ohne JavaScript bedienbar. #}
+{% load static %}
+{# Projektseite (M5-07): Einstellungen, Chats, Teilen (C6), Archivieren, Löschen. Nur für den Besitzer; ohne JavaScript bedienbar (Teilen braucht sharing.js). #}
 {% block title %}{{ project.name }} – Projekte – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/sharing.js' %}" defer></script>{% endblock %}
 {% block content %}
   <section class="page page-wide project-page" id="project-page" aria-labelledby="project-title"
            data-project-id="{{ project.pk }}" data-name="{{ project.name }}" data-chat-count="{{ chat_count }}">
@@ -13,6 +15,13 @@
       {% if project.archived %}<span class="badge">Archiviert</span>{% endif %}
       <div class="page-header-actions">
         <a href="{{ new_chat_url }}" class="button button-primary">Neuer Chat im Projekt</a>
+        {% if can_share %}
+          <button type="button" class="button" hidden data-project-share aria-haspopup="dialog"
+                  data-share-title="Projekt teilen"
+                  data-share-intro="Die Freigabe gilt für alle Chats des Projekts, auch für später angelegte. Einzelne Chats nimmst du in der Chatansicht aus („Nicht mit dem Projekt teilen“). Empfänger sehen Name, Beschreibung und Anweisungen; ändern kannst nur du. Antworten, die jemand anderes auslöst, laufen über dessen Konto und Budget."
+                  data-api-shares="{% url 'chat:api_project_shares' project.pk %}"
+                  data-api-share-template="{% url 'chat:api_project_share_detail' project.pk 0 %}">Teilen{% if share_count %} ({{ share_count }}){% endif %}</button>
+        {% endif %}
         <form method="post" action="{% url 'chat:project_archive' project.pk %}">
           {% csrf_token %}
           <input type="hidden" name="archived" value="{{ project.archived|yesno:'0,1' }}">

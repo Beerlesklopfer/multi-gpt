@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+{# Projektseite für Empfänger einer Projektfreigabe (C6): nur lesen, Chats öffnen, aus der Liste entfernen. #}
+{% block title %}{{ project.name }} – Projekte – MultiGPT{% endblock %}
+{% block extra_head %}<script src="{% static 'chat/sharing.js' %}" defer></script>{% endblock %}
+{% block content %}
+  <section class="page page-wide project-page" aria-labelledby="project-title">
+    <p class="breadcrumb"><a href="{% url 'chat:project_list' %}">Projekte</a></p>
+    <div class="page-header">
+      <h1 id="project-title">
+        <span class="project-dot project-color-{{ project.color|default:'none' }}" aria-hidden="true"></span>
+        {{ project.name }}
+      </h1>
+      <span class="badge">Geteilt von {{ owner_name }}</span>
+      <div class="page-header-actions">
+        <button type="button" class="button" hidden data-project-leave
+                data-api-leave="{% url 'chat:api_project_leave' project.pk %}"
+                data-leave-text="Das Projekt bleibt bei {{ owner_name }} erhalten. Du siehst es und seine Chats erst wieder, wenn es erneut mit dir geteilt wird.">Aus meiner Liste entfernen</button>
+      </div>
+    </div>
+    <p class="hint">Dieses Projekt ist mit dir geteilt. Die Rechte der Freigabe gelten für seine Chats; Einstellungen und Anweisungen ändert nur {{ owner_name }}.</p>
+    {% if project.description %}<p class="project-description">{{ project.description|linebreaksbr }}</p>{% endif %}
+
+    <dl class="project-facts">
+      <dt>Standardmodell</dt>
+      <dd>{% if project_model %}{{ project_model.display_name }}{% elif project.default_model_id %}für dich nicht verfügbar{% else %}keins{% endif %}</dd>
+      <dt>Sammlungen</dt>
+      <dd>{% for c in project_collections %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% empty %}keine, die du lesen darfst{% endfor %}</dd>
+      <dt>Anweisungen</dt>
+      <dd>{% if project.instructions %}<div class="project-instructions">{{ project.instructions|linebreaksbr }}</div>{% else %}keine{% endif %}</dd>
+    </dl>
+
+    <h2 class="section-title" id="project-chats-title">Chats ({{ chat_count }})</h2>
+    {% if project_chats_list %}
+      <ul class="project-page-list" aria-labelledby="project-chats-title">
+        {% for item in project_chats_list %}
+          <li class="project-page-item">
+            <a href="{% url 'chat:conversation' item.pk %}" class="project-page-link">{{ item.title|default:"Neuer Chat" }}</a>
+            <span class="hint">{{ item.updated|date:"d.m.Y H:i" }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint">Noch keine Chats.</p>
+    {% endif %}
+  </section>
+{% endblock %}

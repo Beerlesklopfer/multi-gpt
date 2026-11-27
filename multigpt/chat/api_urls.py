@@ -36,6 +36,18 @@ urlpatterns = [
     path("conversations/<int:pk>/leave/", api_sharing.leave, name="api_conversation_leave"),
     path("conversations/<int:pk>/copy/", api_sharing.copy, name="api_conversation_copy"),
     path("conversations/<int:pk>/state/", api_sharing.state, name="api_conversation_state"),
+    path(
+        "conversations/<int:pk>/private/",
+        api_sharing.private,
+        name="api_conversation_private",
+    ),
+    path("projects/<int:pk>/shares/", api_sharing.project_shares, name="api_project_shares"),
+    path(
+        "projects/<int:pk>/shares/<int:share_id>/",
+        api_sharing.project_share_detail,
+        name="api_project_share_detail",
+    ),
+    path("projects/<int:pk>/leave/", api_sharing.project_leave, name="api_project_leave"),
     # Projekte (api_projects.py)
     path(
         "conversations/<int:pk>/project/",

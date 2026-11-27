@@ -86,6 +86,7 @@ _ADMIN_ACTIONS = {Action.MANAGE_FAMILY, Action.VIEW_USAGE_ALL, Action.ADMIN}
 _OWNER_FIELDS = {
     "chat.conversation": "user",
     "chat.collection": "owner",
+    "chat.project": "owner",
 }
 
 
@@ -185,6 +186,12 @@ def _can_supervise(user, obj) -> bool:
     return supervision_active(obj.user)
 
 
+# Ziel einer Freigabe je Objektart.
+_SHARE_TARGETS = {
+    "chat.conversation": "conversation",
+    "chat.collection": "collection",
+    "chat.project": "project",
+}
 # Recht -> Feld der Freigabe (RWUD; READ braucht nur irgendeine Freigabe).
 _SHARE_FLAGS = {
     Action.WRITE: "can_write",
@@ -195,12 +202,23 @@ _SHARE_FLAGS = {
 
 def applicable_shares(user, obj):
     """Freigaben von ``obj``, die für ``user`` gelten: an eine seiner Gruppen
-    oder (Chats) direkt an ihn, ohne die, aus denen er sich ausgetragen hat."""
+    oder (Chats, Projekte) direkt an ihn, ohne die, aus denen er sich ausgetragen hat.
+
+    Chats gelten zusätzlich die Freigaben ihres Projekts (C6), außer der Besitzer hat den
+    Chat aus der Projektfreigabe ausgenommen (``private_in_project``)."""
     from django.db.models import Q
 
-    return obj.shares.filter(Q(group__in=user.groups.values("pk")) | Q(user=user)).exclude(
-        left_by=user
-    )
+    from multigpt.chat.models import Share
+
+    recipient = Q(group__in=user.groups.values("pk")) | Q(user=user)
+    target = Q(**{_SHARE_TARGETS[obj._meta.label_lower]: obj})
+    if (
+        obj._meta.label_lower == "chat.conversation"
+        and obj.project_id
+        and not obj.private_in_project
+    ):
+        target |= Q(project_id=obj.project_id)
+    return Share.objects.filter(target).filter(recipient).exclude(left_by=user)
 
 
 def _can_access(user, obj, action) -> bool:
@@ -214,8 +232,12 @@ def _can_access(user, obj, action) -> bool:
     if action is Action.READ and _can_supervise(user, obj):
         return True
     is_conversation = obj._meta.label_lower == "chat.conversation"
-    if action in (Action.UPDATE, Action.DELETE) and not is_conversation:
-        return False  # Sammlungen: umbenennen/löschen nur der Besitzer
+    if action is not Action.READ and not is_conversation:
+        # Sammlungen: Schreiben heißt Dokumente hochladen (Freigabe mit W); Projekte
+        # (Name, Anweisungen, Freigaben) ändert nur der Besitzer, Schreiben in den Chats
+        # prüft der Chat selbst.
+        if obj._meta.label_lower == "chat.project" or action is not Action.WRITE:
+            return False
     shares = applicable_shares(user, obj)
     if action is not Action.READ:
         # Ändern über eine Freigabe nur für Konten, die chatten dürfen.
