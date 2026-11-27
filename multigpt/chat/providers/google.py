@@ -113,11 +113,11 @@ from .base import (
 )
 from .openai_compat import (
     IMAGE_MAX_RESPONSE_BYTES,
-    IMAGE_TIMEOUT,
     LIST_TIMEOUT,
     MSG_EMPTY_IMAGE_PROMPT,
     MSG_INVALID_IMAGE_ANSWER,
     STREAM_TIMEOUT,
+    image_timeout,
 )
 
 logger = logging.getLogger(__name__)
@@ -287,7 +287,7 @@ class GoogleAdapter(ProviderAdapter):
             raise ProviderError(MSG_EMPTY_IMAGE_PROMPT)
         url = f"{self.base_url}/models/{_model_path(model_id)}:generateContent"
         try:
-            with httpx.Client(timeout=IMAGE_TIMEOUT) as client:
+            with httpx.Client(timeout=image_timeout(self.image_timeout_seconds)) as client:
                 response = client.post(
                     url, headers=self._headers(), json=_image_body(prompt, params)
                 )

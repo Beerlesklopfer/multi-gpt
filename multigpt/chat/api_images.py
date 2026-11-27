@@ -21,8 +21,9 @@ das nur Text liefert.
 from __future__ import annotations
 
 import logging
+import threading
 
-from django.db import transaction
+from django.db import connections, transaction
 from django.utils import timezone
 
 from multigpt.accounts.permissions import Action, can
@@ -439,6 +440,45 @@ def wait_hint(ai_model) -> bool:
     return bool(provider.is_local and model_manager.eliezer(provider))
 
 
+KEEPALIVE_SECONDS = 15.0
+
+
+def _waiting(work, interval: float = KEEPALIVE_SECONDS):
+    """``work()`` in einem Thread ausführen und solange Lebenszeichen ``(None, None)`` liefern.
+
+    Ohne Daten bricht nginx den Stream nach ``proxy_read_timeout`` (300 s) ab; kalte lokale
+    Bildmodelle brauchen mitunter länger (LOP C45). Der Thread nutzt dieselbe
+    Datenbankverbindung wie die Anfrage (wie Djangos LiveServerThread); das ist sicher, weil
+    diese hier nur wartet. Wird der Stream geschlossen, wartet ``finally`` auf den Thread, bevor
+    die Verbindung zurückgegeben wird. Ergebnis per ``yield from``, Fehler werden weitergeworfen.
+    """
+    conn = connections["default"]
+    conn.inc_thread_sharing()
+    outcome: dict = {}
+
+    def target():
+        connections["default"] = conn
+        try:
+            outcome["value"] = work()
+        except BaseException as exc:  # noqa: BLE001 – im aufrufenden Thread erneut geworfen
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=target, name="image-generation", daemon=True)
+    thread.start()
+    try:
+        while True:
+            thread.join(interval)
+            if not thread.is_alive():
+                break
+            yield None, None
+    finally:
+        thread.join()
+        conn.dec_thread_sharing()
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
+
+
 def run(turn, fmt: str, quality: str, transparent: bool):
     """SSE-Events (Name, Daten) der Bild-Antwort."""
     msg = turn.assistant_message
@@ -480,35 +520,43 @@ def run(turn, fmt: str, quality: str, transparent: bool):
                 Message.objects.filter(pk=msg.pk).update(tool_state=msg.tool_state)
         elif mask is None and turn.options.get("image_mask_png"):
             mask = images.expand_mask(turn.options["image_mask_png"])
-        if source_ids:
-            sources = list(Attachment.objects.filter(pk__in=source_ids).order_by("created", "id"))
-            try:
-                made, revised = images.edit_many(
-                    turn.user, msg, turn.query, sources, mask=mask, **common
+
+        def work():
+            nonlocal edited, chained, state
+            if source_ids:
+                sources = list(
+                    Attachment.objects.filter(pk__in=source_ids).order_by("created", "id")
                 )
-            except images.EditUnsupported:
-                # Beim stillen Weiterarbeiten (nicht bei hochgeladenen Vorlagen) weicht der Server
-                # auf die Beschreibung aus, wenn dem Anbieter das Bearbeiten fehlt.
-                previous = (
-                    images.previous_image(_question_parent(turn))
-                    if turn.options.get("image_reuse")
-                    else None
-                )
-                if previous is None:
-                    raise
-                logger.warning(
-                    "Bildmodell %s kann nicht bearbeiten: Weiterarbeiten mit der Beschreibung",
-                    turn.ai_model.pk,
-                )
-                prompt = images.chain_prompt(previous[1], turn.query)
-                made, revised = images.generate_many(turn.user, msg, prompt, **common)
-                edited, chained = False, True
-                state = {**state, "edit": False, "prompt": prompt[: images.MAX_PROMPT]}
-                Message.objects.filter(pk=msg.pk).update(
-                    tool_state={**(msg.tool_state or {}), "image": state}
-                )
-        else:
-            made, revised = images.generate_many(turn.user, msg, turn.query, **common)
+                try:
+                    made, revised = images.edit_many(
+                        turn.user, msg, turn.query, sources, mask=mask, **common
+                    )
+                except images.EditUnsupported:
+                    # Beim stillen Weiterarbeiten (nicht bei hochgeladenen Vorlagen) weicht der
+                    # Server auf die Beschreibung aus, wenn dem Anbieter das Bearbeiten fehlt.
+                    previous = (
+                        images.previous_image(_question_parent(turn))
+                        if turn.options.get("image_reuse")
+                        else None
+                    )
+                    if previous is None:
+                        raise
+                    logger.warning(
+                        "Bildmodell %s kann nicht bearbeiten: Weiterarbeiten mit der Beschreibung",
+                        turn.ai_model.pk,
+                    )
+                    prompt = images.chain_prompt(previous[1], turn.query)
+                    made, revised = images.generate_many(turn.user, msg, prompt, **common)
+                    edited, chained = False, True
+                    state = {**state, "edit": False, "prompt": prompt[: images.MAX_PROMPT]}
+                    Message.objects.filter(pk=msg.pk).update(
+                        tool_state={**(msg.tool_state or {}), "image": state}
+                    )
+            else:
+                made, revised = images.generate_many(turn.user, msg, turn.query, **common)
+            return made, revised
+
+        made, revised = yield from _waiting(work)
         text = answer_text(
             turn.ai_model,
             fmt,

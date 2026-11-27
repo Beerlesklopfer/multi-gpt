@@ -221,6 +221,10 @@ ATTACHMENT_MAX_PER_MESSAGE = env.int("ATTACHMENT_MAX_PER_MESSAGE", default=10)
 # Bildmodus „Am letzten Bild weiterarbeiten“: Nachrichten bis zu dieser Länge (Zeichen) gelten als
 # Änderung am letzten Bild, längere als neues Bild; 0 = nie. Im Chat je Browser überschreibbar.
 IMAGE_CONTINUE_MAX_CHARS = env.int("IMAGE_CONTINUE_MAX_CHARS", default=200)
+# Längste Wartezeit auf ein Bild (Sekunden). Lokale Bildmodelle laden kalt und verdrängen dafür
+# Chatmodelle; das dauert mitunter länger als 5 Minuten. Der Chat-Stream sendet währenddessen
+# Lebenszeichen, damit nginx (proxy_read_timeout 300 s) die Verbindung offen hält.
+IMAGE_TIMEOUT_SECONDS = env.int("IMAGE_TIMEOUT_SECONDS", default=600)
 OCR_LANGUAGES = env("OCR_LANGUAGES", default="deu+eng")
 JOB_MAX_ATTEMPTS = env.int("JOB_MAX_ATTEMPTS", default=5)
 

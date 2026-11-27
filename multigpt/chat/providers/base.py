@@ -974,6 +974,9 @@ class ProviderAdapter:
 
         return getattr(sys.modules[cls.__module__], "DEFAULT_BASE_URL", "")
 
+    # Längste Wartezeit auf ein Bild; ``registry.get_adapter`` setzt sie aus den Einstellungen.
+    image_timeout_seconds: float = 600.0
+
     def __init__(self, provider: Provider):
         self.provider = provider
 

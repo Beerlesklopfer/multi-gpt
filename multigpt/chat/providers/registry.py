@@ -30,7 +30,11 @@ def get_adapter(provider: Provider) -> ProviderAdapter:
     cls = _adapter_classes().get(provider.kind)
     if cls is None:
         raise ProviderError(f"Anbieterart „{provider.kind}“ wird nicht unterstützt.")
-    return cls(provider)
+    adapter = cls(provider)
+    from django.conf import settings
+
+    adapter.image_timeout_seconds = float(getattr(settings, "IMAGE_TIMEOUT_SECONDS", 600))
+    return adapter
 
 
 # Bekannte OpenAI-kompatible Endpunkte als Vorschläge im Admin (nur Bequemlichkeit,

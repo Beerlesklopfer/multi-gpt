@@ -628,9 +628,13 @@ def tool_confirm(request, pk: int):
 
 
 def _sse(events):
-    """(Name, Daten) -> SSE-Bytes. Schließen reicht der Server an ``events`` weiter."""
+    """(Name, Daten) -> SSE-Bytes. Schließen reicht der Server an ``events`` weiter.
+    Name ``None`` ist ein Lebenszeichen (SSE-Kommentar, vom Browser übergangen)."""
     try:
         for name, data in events:
+            if name is None:
+                yield b": keepalive\n\n"
+                continue
             payload = json.dumps(data, ensure_ascii=False)
             yield f"event: {name}\ndata: {payload}\n\n".encode()
     finally:

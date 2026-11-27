@@ -149,9 +149,14 @@ MSG_INVALID_VISION_ANSWER = (
 MSG_INVALID_IMAGE_ANSWER = MSG_INVALID_VISION_ANSWER
 MSG_VISION_TRUNCATED = "Die Antwort des Modells wurde wegen der Längenbegrenzung abgeschnitten."
 
+
 # Bilderzeugung (M9-01): GPT Image braucht für große Bilder in hoher Qualität
-# leicht ein bis zwei Minuten. Antwort mit base64 (1536x1024 PNG ≈ 3–4 MB).
-IMAGE_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
+# leicht ein bis zwei Minuten, lokale Bildmodelle laden kalt mitunter länger
+# (settings.IMAGE_TIMEOUT_SECONDS). Antwort mit base64 (1536x1024 PNG ≈ 3–4 MB).
+def image_timeout(seconds: float) -> httpx.Timeout:
+    return httpx.Timeout(connect=10.0, read=max(30.0, float(seconds)), write=30.0, pool=10.0)
+
+
 IMAGE_MAX_RESPONSE_BYTES = 80 * 1024 * 1024
 IMAGE_QUALITIES = ("low", "medium", "high", "auto")
 _DALLE3_SIZES = {"square": "1024x1024", "landscape": "1792x1024", "portrait": "1024x1792"}
@@ -589,7 +594,7 @@ class OpenAICompatAdapter(ProviderAdapter):
     def _image_request(self, path: str, model_id: str, **request) -> ImageResult:
         """Gemeinsamer Teil von Erzeugen und Bearbeiten: senden, Fehler übersetzen, parsen."""
         try:
-            with httpx.Client(timeout=IMAGE_TIMEOUT) as client:
+            with httpx.Client(timeout=image_timeout(self.image_timeout_seconds)) as client:
                 response = client.post(
                     f"{self.base_url}/{path}", headers=self._headers(), **request
                 )
