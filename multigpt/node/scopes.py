@@ -55,7 +55,8 @@ SCOPES: dict[str, tuple[str, str]] = {
     ),
     TOOLS_RUN: (
         "Werkzeuge ausführen",
-        "create_pdf, generate_image, run_python, fetch_url und web_search direkt aufrufen "
+        "create_pdf, generate_image, run_python, fetch_url, web_search und transform_image direkt "
+        "aufrufen "
         "(Rollenrechte und Budgets gelten).",
     ),
     USAGE_READ: ("Verbrauch lesen", "Eigener Verbrauch und Budgetstand."),

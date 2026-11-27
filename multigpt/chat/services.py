@@ -85,6 +85,7 @@ from . import (
     context_budget,
     creativity,
     documents_pdf,  # registriert create_pdf (Blätter als PDF), System-Hinweis
+    image_tools,  # noqa: F401 - registriert transform_image (Bildwerkzeuge, M9-03)
     images,  # registriert generate_image (Bilderzeugung, M9-01), System-Hinweis
     model_manager,
     reasoning,
