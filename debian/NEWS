@@ -13,11 +13,6 @@ multi-gpt (0.4.1) unstable; urgency=medium
   Arbeits-Image. Der Python-Agent und die Quadlet-Unit sind entfernt; wer sie noch
   nutzt, koppelt den Rechner mit dem nativen Programm neu (Wiki „Runner“).
 
-  Anmeldenamen: Groß- und Kleinschreibung zählen nicht mehr („Anna“ = „anna“).
-  Gibt es schon zwei Konten, die sich nur darin unterscheiden, bricht die
-  Migration accounts 0017 mit den Namen ab; eines umbenennen und erneut
-  aktualisieren.
-
   Neu: eigener Modellserver Eliezer (Schnittstelle „LM Studio“) samt Hub-Suche im
   Admin, Bilder bearbeiten und Bildwerkzeuge (transform_image, Rollenrecht
   „Bilder“), Sprache (Mikrofon und Vorlesen; braucht stt-/tts-Modelle und HTTPS),
