@@ -1,0 +1,83 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{# Hub-Suche über Eliezer (LOP C43): nur lesend, ohne JavaScript. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'rag/admin_rag.css' %}">{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='rag' %}">Dokumente (RAG)</a>
+  &rsaquo; <a href="{% url 'admin:rag_ragoverview_changelist' %}">RAG-Übersicht</a>
+  &rsaquo; Hub-Suche
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if not provider %}
+    <p class="help rag-hint">Kein aktiver lokaler Anbieter (Eliezer) eingerichtet.</p>
+  {% else %}
+  <p class="help rag-hint">Sucht über {{ provider.name }} auf Hugging Face und prüft, welche Varianten in den Speicher passen. Geladen oder heruntergeladen wird hier nichts; ein Modell legst du danach wie gewohnt unter „KI-Modelle“ an.</p>
+  <form method="get" class="module" style="padding: 0.8em">
+    {% if providers|length > 1 %}
+      <label>Anbieter
+        <select name="provider">{% for p in providers %}<option value="{{ p.pk }}"{% if p.pk == provider.pk %} selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+      </label>
+    {% endif %}
+    <label>Suchtext <input type="search" name="q" value="{{ query }}" maxlength="100" placeholder="z. B. qwen3 8b"></label>
+    <label>Aufgabe
+      <select name="task">{% for key, label in tasks %}<option value="{{ key }}"{% if key == task %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    </label>
+    <label>Lizenz <input type="text" name="license" value="{{ license }}" maxlength="40" placeholder="z. B. apache-2.0"></label>
+    <input type="submit" value="Suchen">
+  </form>
+
+  {% if error %}<p class="errornote">{{ error }}</p>{% endif %}
+
+  {% if model %}
+  <div class="module" style="margin-bottom: 1.2em">
+    <h2>{{ model.repo }}</h2>
+    <p class="help rag-hint">Aufgabe {{ model.task|default:"?" }}, Architektur {{ model.architecture|default:"?" }}, Lizenz {{ model.license|default:"?" }}{% if model.gated %} (Zustimmung auf Hugging Face nötig){% endif %}, Unterstützung durch Eliezer: {{ model.support }}, {{ model.downloads }} Downloads.</p>
+    {% if model.variants %}
+    <table style="width: 100%">
+      <thead><tr><th>Datei</th><th>Quantisierung</th><th>Größe</th><th>Speicherbedarf (Schätzung)</th><th>Passform</th></tr></thead>
+      <tbody>
+        {% for v in model.variants %}
+        <tr><td>{{ v.file }}</td><td>{{ v.quantization }}</td><td>{{ v.bytes|filesizeformat }}</td><td>{{ v.estimate_bytes|filesizeformat }}</td><td>{{ v.fit_label }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="help rag-hint">Eliezer meldet keine Varianten.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <div class="module">
+    <h2>Treffer</h2>
+    {% if result.gpu_bytes or result.ram_bytes %}<p class="help rag-hint">Speicher für Modelle: GPU {{ result.gpu_bytes|filesizeformat }}, RAM {{ result.ram_bytes|filesizeformat }}.</p>{% endif %}
+    {% if result.items %}
+    <table style="width: 100%">
+      <thead><tr><th>Modell</th><th>Aufgabe</th><th>Lizenz</th><th>GGUF</th><th>Downloads</th><th>Likes</th></tr></thead>
+      <tbody>
+        {% for item in result.items %}
+        <tr>
+          <td><a href="?provider={{ provider.pk }}&amp;q={{ query|urlencode }}&amp;task={{ task }}&amp;license={{ license|urlencode }}&amp;repo={{ item.repo|urlencode }}">{{ item.repo }}</a></td>
+          <td>{{ item.task }}</td><td>{{ item.license }}</td><td>{{ item.gguf|yesno:"ja,nein" }}</td>
+          <td>{{ item.downloads }}</td><td>{{ item.likes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="help rag-hint">Keine Treffer.</p>
+    {% endif %}
+  </div>
+  {% elif not searched and not model %}
+    <p class="help rag-hint">Suchtext eingeben oder eine Aufgabe wählen.</p>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

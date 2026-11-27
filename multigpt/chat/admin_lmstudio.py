@@ -429,6 +429,54 @@ def hub_view(request):
     return JsonResponse(result)
 
 
+HUB_TASK_LABELS = {
+    "any": "alle",
+    "llm": "Sprachmodelle",
+    "vision": "Bildverstehen",
+    "embedding": "Embeddings",
+    "image": "Bilderzeugung",
+}
+HUB_FIT_LABELS = {"gpu": "passt auf die GPU", "cpu": "nur CPU", "too_large": "zu groß"}
+
+
+def hub_page_context(request) -> dict:
+    """Formularwerte, Treffer bzw. Modelldetails für die Seite „Hub-Suche“."""
+    providers = [p for p in model_manager.local_providers() if p.active]
+    raw = request.GET.get("provider", "")
+    chosen = next((p for p in providers if raw.isdigit() and p.pk == int(raw)), None)
+    provider = chosen or (providers[0] if providers else None)
+    query = (request.GET.get("q") or "").strip()[:100]
+    task = request.GET.get("task", "any")
+    task = task if task in lmstudio.HUB_TASKS else "any"
+    license_ = (request.GET.get("license") or "").strip()[:40]
+    repo = (request.GET.get("repo") or "").strip()
+    data = {
+        "providers": providers,
+        "provider": provider,
+        "query": query,
+        "task": task,
+        "license": license_,
+        "tasks": [(key, HUB_TASK_LABELS[key]) for key in lmstudio.HUB_TASKS],
+        "searched": bool(query or task != "any"),
+        "result": None,
+        "model": None,
+        "error": "",
+    }
+    if provider is None:
+        return data
+    try:
+        if repo:
+            model = lmstudio.hub_model(provider, repo)
+            for variant in model["variants"]:
+                variant["fit_label"] = HUB_FIT_LABELS.get(variant["fit"], variant["fit"] or "?")
+            data["model"] = model
+        if data["searched"]:
+            data["result"] = lmstudio.hub_search(provider, query, task=task, license=license_)
+    except lmstudio.LmsError as exc:
+        data["error"] = exc.message
+    return data
+
+
 # --- Seite „LM Studio: geladene Modelle“ ---------------------------------------------
 
 

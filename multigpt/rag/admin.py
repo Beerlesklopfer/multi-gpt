@@ -156,6 +156,7 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
             path("lmstudio/", view(self.lmstudio_view), name="rag_overview_lmstudio"),
             path("vram/", view(self.vram_view), name="rag_overview_vram"),
             path("hub/", view(self.hub_view), name="rag_overview_hub"),
+            path("hub/suche/", view(self.hub_page_view), name="rag_overview_hub_page"),
         ]
 
     def _require(self, request):
@@ -287,6 +288,18 @@ class RagOverviewAdmin(RagAdminMixin, admin.ModelAdmin):
         if not request.user.has_perm("chat.view_aimodel"):
             raise PermissionDenied
         return admin_lmstudio.hub_view(request)
+
+    def hub_page_view(self, request):
+        """Hub-Suche als Seite (LOP C43): suchen, Treffer, Varianten mit Passform. Nur lesend;
+        geladen oder heruntergeladen wird nichts."""
+        self._require(request)
+        if not request.user.has_perm("chat.view_aimodel"):
+            raise PermissionDenied
+        context = {
+            **self._context(request, "Modelle auf dem Hub suchen"),
+            **admin_lmstudio.hub_page_context(request),
+        }
+        return TemplateResponse(request, "admin/rag/ragoverview/hub.html", context)
 
 
 # --- Einstellungen ------------------------------------------------------------

@@ -532,3 +532,45 @@ def test_admin_hub_view_is_json_and_admin_only(admin_client, client, provider):
     assert ok.status_code == 200 and ok.json()["items"] == []
     assert bad.status_code == 400
     assert client.get(url, {"q": "qwen"}).status_code in (302, 403)
+
+
+def test_admin_hub_page_searches_and_shows_variants(admin_client, client, provider):
+    """LOP C43: Seite statt JSON; Treffer verlinken auf die Varianten mit Passform."""
+    from django.urls import reverse
+
+    url = reverse("admin:rag_overview_hub_page")
+    search = {
+        "data": [{"repo": "unsloth/Qwen3-8B-GGUF", "task": "llm", "license": "apache-2.0"}],
+        "budgets": {"gpu_bytes": 22 * GB},
+    }
+    model = {
+        "repo": "unsloth/Qwen3-8B-GGUF",
+        "support": {"level": "verified"},
+        "variants": [{"file": "q4.gguf", "quantization": "Q4_K_M", "bytes": GB, "fit": "gpu"}],
+    }
+    with respx.mock() as mock:
+        mock.get(f"{ROOT}/api/v1/hub/search").mock(
+            return_value=httpx.Response(200, json=search, headers=SERVER)
+        )
+        mock.get(f"{ROOT}/api/v1/hub/models/unsloth/Qwen3-8B-GGUF").mock(
+            return_value=httpx.Response(200, json=model, headers=SERVER)
+        )
+        empty = admin_client.get(url)
+        found = admin_client.get(url, {"q": "qwen3"})
+        detail = admin_client.get(url, {"q": "qwen3", "repo": "unsloth/Qwen3-8B-GGUF"})
+    assert empty.status_code == 200 and "Suchtext eingeben" in empty.content.decode()
+    page = found.content.decode()
+    assert "unsloth/Qwen3-8B-GGUF" in page and "repo=unsloth/Qwen3-8B-GGUF" in page
+    text = detail.content.decode()
+    assert "Q4_K_M" in text and "passt auf die GPU" in text and "verified" in text
+    assert client.get(url).status_code in (302, 403)
+
+
+def test_admin_hub_page_shows_errors(admin_client, provider):
+    from django.urls import reverse
+
+    url = reverse("admin:rag_overview_hub_page")
+    with respx.mock() as mock:
+        mock.get(f"{ROOT}/api/v1/hub/search").mock(return_value=httpx.Response(404))
+        page = admin_client.get(url, {"q": "x"}).content.decode()
+    assert lmstudio.MSG_NO_HUB in page
