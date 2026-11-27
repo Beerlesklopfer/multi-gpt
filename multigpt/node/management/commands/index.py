@@ -294,7 +294,7 @@ class Command(BaseCommand):
         )
 
     def _upload(self, options):
-        user = get_user_model().objects.filter(username=options["account"]).first()
+        user = get_user_model().objects.filter(username__iexact=options["account"]).first()
         if user is None or not user.is_active:
             raise CommandError(f"Konto „{options['account']}“ nicht gefunden oder gesperrt.")
         try:

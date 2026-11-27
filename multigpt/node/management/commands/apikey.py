@@ -76,7 +76,7 @@ class Command(BaseCommand):
         return getattr(self, f"_{options['action']}")(options)
 
     def _user(self, username):
-        user = get_user_model().objects.filter(username=username).first()
+        user = get_user_model().objects.filter(username__iexact=username).first()
         if user is None:
             raise CommandError(f"Konto „{username}“ nicht gefunden.")
         return user

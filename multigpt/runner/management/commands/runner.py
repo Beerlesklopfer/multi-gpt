@@ -79,7 +79,7 @@ class Command(BaseCommand):
         self.stdout.write(key.public_b64)
 
     def _user(self, username):
-        user = get_user_model().objects.filter(username=username).first()
+        user = get_user_model().objects.filter(username__iexact=username).first()
         if user is None:
             raise CommandError(f"Konto „{username}“ nicht gefunden.")
         return user

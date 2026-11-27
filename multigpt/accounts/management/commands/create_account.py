@@ -40,7 +40,7 @@ class Command(BaseCommand):
             raise CommandError("Es gibt keine Rollen. Zuerst `make migrate` ausführen.")
 
         username = (options["username"] or "").strip() or self._ask("Anmeldename: ")
-        if User.objects.filter(username=username).exists():
+        if User.objects.filter(username__iexact=username).exists():
             raise CommandError(f"Das Konto „{username}“ existiert bereits.")
 
         role = self._resolve_role(options["role"], roles)

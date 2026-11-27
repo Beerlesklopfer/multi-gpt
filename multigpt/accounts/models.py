@@ -1,8 +1,10 @@
 from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser, Group
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models.functions import Lower
 
 from multigpt.chat import citations
 from multigpt.node import scopes as api_scopes
@@ -201,6 +203,18 @@ class Role(models.Model):
         self.api_scopes = api_scopes.clean(self.api_scopes)
 
 
+class UserManager(DjangoUserManager):
+    """Anmeldenamen ohne Unterschied von Groß- und Kleinschreibung (Nutzer, 2026-11-27).
+
+    ``get_by_natural_key`` nutzen Djangos ``ModelBackend`` (Anmeldung) und die Fixtures; die
+    Schreibweise beim Anlegen bleibt erhalten, eindeutig ist der Name unabhängig davon
+    (``Meta.constraints``).
+    """
+
+    def get_by_natural_key(self, username):
+        return self.get(**{f"{self.model.USERNAME_FIELD}__iexact": username})
+
+
 class User(AbstractUser):
     """Familienkonto. Erweitert Djangos User; gesperrt wird über ``is_active``.
 
@@ -265,10 +279,20 @@ class User(AbstractUser):
         "Aus: überall das Browsermenü.",
     )
 
+    objects = UserManager()
+
     class Meta(AbstractUser.Meta):
         swappable = "AUTH_USER_MODEL"
         verbose_name = "Konto"
         verbose_name_plural = "Konten"
+        constraints = [
+            models.UniqueConstraint(
+                Lower("username"),
+                name="accounts_user_username_ci_unique",
+                violation_error_message="Ein Konto mit diesem Anmeldenamen gibt es schon "
+                "(Groß- und Kleinschreibung zählen nicht).",
+            )
+        ]
 
     def __str__(self):
         return self.display_name or self.get_username()

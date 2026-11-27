@@ -178,6 +178,8 @@ AXES_LOCKOUT_TEMPLATE = "registration/locked.html"
 # veralteten Namen mit axes.W004 anmahnt.
 REVERSE_PROXY_COUNT = env.int("AXES_PROXY_COUNT", default=0)
 AXES_CLIENT_IP_CALLABLE = "multigpt.accounts.client_ip.client_ip"
+# Anmeldenamen ohne Groß-/Kleinschreibung: die Sperre zählt „Anna“ und „anna“ zusammen.
+AXES_USERNAME_CALLABLE = "multigpt.accounts.client_ip.login_username"
 
 # Logging nach stdout (journald bzw. Docker). Keine Nachrichteninhalte, keine Keys.
 LOGGING = {

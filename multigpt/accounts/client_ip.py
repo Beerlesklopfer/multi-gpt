@@ -17,6 +17,17 @@ import ipaddress
 from django.conf import settings
 
 
+def login_username(request, credentials=None) -> str | None:
+    """Anmeldename für die Login-Drosselung (``AXES_USERNAME_CALLABLE``), klein geschrieben:
+    Anmeldenamen unterscheiden Groß- und Kleinschreibung nicht, sonst ließe sich die Sperre
+    mit „aNNa“ statt „anna“ umgehen."""
+    if credentials:
+        value = credentials.get("username")
+    else:
+        value = getattr(request, "data", request.POST).get("username") if request else None
+    return value.strip().lower() if isinstance(value, str) else value
+
+
 def client_ip(request) -> str | None:
     remote = request.META.get("REMOTE_ADDR") or None
     count = int(getattr(settings, "REVERSE_PROXY_COUNT", 0) or 0)
