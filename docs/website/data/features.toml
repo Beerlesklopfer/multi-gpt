@@ -70,8 +70,8 @@
     de = "Projekte"
     en = "Projects"
   [items.text]
-    de = "Chats zu Projekten bündeln, mit gemeinsamen Anweisungen, Standardmodell und vorausgewählten Sammlungen – wie in ChatGPT oder Claude."
-    en = "Group chats into projects with shared instructions, a default model and preselected collections – as in ChatGPT or Claude."
+    de = "Chats zu Projekten bündeln, mit gemeinsamen Anweisungen, Standardmodell und vorausgewählten Sammlungen – wie in ChatGPT oder Claude. Als Nächstes: ganze Projekte teilen (fertig, noch nicht veröffentlicht)."
+    en = "Group chats into projects with shared instructions, a default model and preselected collections – as in ChatGPT or Claude. Next: sharing whole projects (done, not yet released)."
 
 [[items]]
   status = "done"

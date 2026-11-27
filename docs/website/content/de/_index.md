@@ -116,7 +116,19 @@ Mehr dazu unter [Funktionen]({{< relref "features" >}}).
 - **Websuche** mit Suchanfragen aus dem Gesprächsverlauf, **Werkzeugauswahl** als aufklappbare
   Liste, **Preisvorschläge** für Cloud-Modelle und auswertbare **Fehlerdetails** im Chat.
 
-Geplant sind als Nächstes Hintergrund-Aufträge und Musik, siehe [Roadmap]({{< relref "roadmap" >}}).
+## In Arbeit für die nächste Version
+
+Fertig, aber noch nicht veröffentlicht:
+
+- **Projekte teilen:** ein ganzes Projekt mit Konten oder Gruppen teilen, mit denselben Rechten
+  wie bei Chats. Die Freigabe gilt für alle Chats des Projekts, auch für später angelegte;
+  einzelne Chats bleiben auf Wunsch privat. Empfänger sehen Anweisungen und Chats nur lesend.
+- **Anmeldenamen ohne Groß- und Kleinschreibung:** „Anna“ und „anna“ sind dasselbe Konto, die
+  Login-Sperre zählt alle Schreibweisen zusammen.
+- **Verwaltung auf der Kommandozeile:** `mgpt-ctl` setzt Preise (aus der LiteLLM-Preisliste),
+  Budgets, Einstellungen von Anbietern und Modellen und prüft die Sandbox – ohne Admin-Seite.
+
+Geplant sind danach Hintergrund-Aufträge und Musik, siehe [Roadmap]({{< relref "roadmap" >}}).
 
 ## Stand
 
