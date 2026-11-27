@@ -30,10 +30,26 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        users = get_user_model().objects.select_related("role").order_by("username")
+        # Nur die angezeigten Felder: läuft so auch auf einer Datenbank, der neuere Migrationen
+        # (z. B. neue Rollenfelder) noch fehlen – gerade dann braucht man den Überblick.
+        users = (
+            get_user_model()
+            .objects.select_related("role")
+            .only(
+                "username",
+                "display_name",
+                "is_active",
+                "is_staff",
+                "is_superuser",
+                "last_login",
+                "role__name",
+            )
+            .order_by("username")
+        )
         if options["role"]:
-            if not Role.objects.filter(key=options["role"]).exists():
-                keys = ", ".join(Role.objects.order_by("key").values_list("key", flat=True))
+            roles = Role.objects.only("key")
+            if not roles.filter(key=options["role"]).exists():
+                keys = ", ".join(roles.order_by("key").values_list("key", flat=True))
                 raise CommandError(f"Unbekannte Rolle „{options['role']}“. Möglich: {keys}.")
             users = users.filter(role__key=options["role"])
         if options["active"]:
