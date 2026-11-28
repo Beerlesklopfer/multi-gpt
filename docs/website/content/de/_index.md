@@ -1,7 +1,7 @@
 ---
 title: "MultiGPT"
 description: "Selbst gehostetes Multi-KI-Chatsystem für Familie und Haushalt: eigene Daten, viele Anbieter, ein Chat."
-eyebrow: "Selbst gehostet · in Entwicklung · Version 0.4.1"
+eyebrow: "Selbst gehostet · in Entwicklung · Version 0.4.2"
 headline: "Ein KI-Chat für die ganze Familie – auf dem eigenen Server"
 lead: "MultiGPT ist eine Web-App für das Heimnetz, über die alle im Haushalt mit verschiedenen KI-Modellen chatten – von OpenAI über Anthropic und Google bis zu lokalen Modellen auf der eigenen Grafikkarte. Chats, Konten und API-Keys bleiben dabei auf dem eigenen Server."
 pillarsTitle: "Die Idee dahinter"
@@ -116,9 +116,8 @@ Mehr dazu unter [Funktionen]({{< relref "features" >}}).
 - **Websuche** mit Suchanfragen aus dem Gesprächsverlauf, **Werkzeugauswahl** als aufklappbare
   Liste, **Preisvorschläge** für Cloud-Modelle und auswertbare **Fehlerdetails** im Chat.
 
-## In Arbeit für die nächste Version
+## Neu in 0.4.2
 
-Fertig, aber noch nicht veröffentlicht:
 
 - **Projekte teilen:** ein ganzes Projekt mit Konten oder Gruppen teilen, mit denselben Rechten
   wie bei Chats. Die Freigabe gilt für alle Chats des Projekts, auch für später angelegte;
@@ -127,6 +126,8 @@ Fertig, aber noch nicht veröffentlicht:
   Login-Sperre zählt alle Schreibweisen zusammen.
 - **Verwaltung auf der Kommandozeile:** `mgpt-ctl` setzt Preise (aus der LiteLLM-Preisliste),
   Budgets, Einstellungen von Anbietern und Modellen und prüft die Sandbox – ohne Admin-Seite.
+- **Sicherung:** `mgpt-ctl backup` legt Datenbank, Medien und Konfiguration in ein Archiv, auf
+  Wunsch täglich per Timer; Installation, Update und Entfernen sind im Container geprüft.
 
 Geplant sind danach Hintergrund-Aufträge und Musik, siehe [Roadmap]({{< relref "roadmap" >}}).
 

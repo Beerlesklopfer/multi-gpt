@@ -1,8 +1,8 @@
 ---
 title: "Funktionen"
 slug: "funktionen"
-description: "Was MultiGPT kann, Stand 0.4.1: Chat mit vielen Anbietern, lokale Modelle über den eigenen Modellserver Eliezer oder LM Studio, eigene Dokumente mit Zitaten, Websuche, Bilder, Sprache, Werkzeuge über MCP, Runner, Familienkonten mit Rollen und Budgets."
-lead: "Was MultiGPT heute kann, wie man es nutzt und wo die Grenzen liegen – Stand Version 0.4.1. Umgesetzt sind Chat mit vielen Anbietern, lokale Modelle über den eigenen Modellserver Eliezer oder LM Studio, eigene Dokumente mit Zitaten, Websuche, Bilder erzeugen und bearbeiten, Sprache, Werkzeuge über MCP, der Runner und Familienkonten mit Rollen und Budgets. Projekte teilen und die Verwaltung per mgpt-ctl sind fertig für die nächste Version. Geplant sind Musik, Hintergrund-Aufträge und das eigentliche Scratchpad."
+description: "Was MultiGPT kann, Stand 0.4.2: Chat mit vielen Anbietern, lokale Modelle über den eigenen Modellserver Eliezer oder LM Studio, eigene Dokumente mit Zitaten, Websuche, Bilder, Sprache, Werkzeuge über MCP, Runner, Familienkonten mit Rollen und Budgets."
+lead: "Was MultiGPT heute kann, wie man es nutzt und wo die Grenzen liegen – Stand Version 0.4.2. Umgesetzt sind Chat mit vielen Anbietern, lokale Modelle über den eigenen Modellserver Eliezer oder LM Studio, eigene Dokumente mit Zitaten, Websuche, Bilder erzeugen und bearbeiten, Sprache, Werkzeuge über MCP, der Runner und Familienkonten mit Rollen und Budgets. Projekte teilen und die Verwaltung per mgpt-ctl sind fertig für die nächste Version. Geplant sind Musik, Hintergrund-Aufträge und das eigentliche Scratchpad."
 menus:
   main:
     weight: 10
@@ -320,9 +320,9 @@ Jugendliche und Gäste haben anfangs keine Modelle; der Verwalter gibt sie je Ro
 
 ### Anmeldenamen ohne Groß- und Kleinschreibung
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Fertig für die nächste Version: „Anna“ und „anna“ sind dasselbe Konto, die Login-Sperre zählt
+Seit 0.4.2: „Anna“ und „anna“ sind dasselbe Konto, die Login-Sperre zählt
 alle Schreibweisen zusammen. Gibt es beim Update zwei Konten, die sich nur in der Schreibweise
 unterscheiden, bricht die Umstellung ab und nennt die Namen.
 
@@ -344,9 +344,9 @@ Anleitungen: [Wiki: Projekte](https://github.com/Beerlesklopfer/multi-gpt/wiki/P
 
 ### Projekte teilen
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Fertig für die nächste Version: ein ganzes Projekt mit Konten oder Gruppen teilen, mit
+Seit 0.4.2: ein ganzes Projekt mit Konten oder Gruppen teilen, mit
 denselben Rechten wie bei Chats. Die Freigabe gilt für alle Chats des Projekts, auch für später
 angelegte; einzelne Chats bleiben auf Wunsch privat. Empfänger sehen Anweisungen und Chats nur
 lesend; ändern kann nur, wer das Projekt angelegt hat.
@@ -387,9 +387,9 @@ Schritt für Schritt: [Installation]({{< relref "installation" >}}).
 
 ### Verwaltung per mgpt-ctl
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Fertig für die nächste Version: `mgpt-ctl` setzt Preise (aus der LiteLLM-Preisliste), Budgets
+Seit 0.4.2: `mgpt-ctl` setzt Preise (aus der LiteLLM-Preisliste), Budgets
 und Einstellungen von Anbietern und Modellen und prüft die Sandbox – ohne Admin-Oberfläche
 (`prices`, `providers`, `models`, `budgets`, `sandbox_check`).
 

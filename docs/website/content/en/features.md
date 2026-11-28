@@ -1,7 +1,7 @@
 ---
 title: "Features"
-description: "What MultiGPT does, as of 0.4.1: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, images, voice, tools via MCP, the runner, family accounts with roles and budgets."
-lead: "What MultiGPT does today, how to use it and where its limits are – as of version 0.4.1. Done: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, creating and editing images, voice, tools via MCP, the runner and family accounts with roles and budgets. Sharing projects and administration via mgpt-ctl are ready for the next version. Planned: music, background jobs and the actual scratchpad."
+description: "What MultiGPT does, as of 0.4.2: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, images, voice, tools via MCP, the runner, family accounts with roles and budgets."
+lead: "What MultiGPT does today, how to use it and where its limits are – as of version 0.4.2. Done: chat with many providers, local models via our own model server Eliezer or LM Studio, your own documents with citations, web search, creating and editing images, voice, tools via MCP, the runner and family accounts with roles and budgets. Sharing projects and administration via mgpt-ctl are ready for the next version. Planned: music, background jobs and the actual scratchpad."
 menus:
   main:
     weight: 10
@@ -322,9 +322,9 @@ Teenagers and guests start without models; the administrator enables them per ro
 
 ### Login names regardless of case
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Ready for the next version: “Anna” and “anna” are the same account, and the login lock counts
+Since 0.4.2: “Anna” and “anna” are the same account, and the login lock counts
 all spellings together. If two accounts differ only in case, the update stops and names them.
 
 ## Projects and sharing
@@ -344,9 +344,9 @@ Guides: [wiki: Projekte](https://github.com/Beerlesklopfer/multi-gpt/wiki/Projek
 
 ### Sharing projects
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Ready for the next version: share a whole project with accounts or groups, with the same
+Since 0.4.2: share a whole project with accounts or groups, with the same
 permissions as for chats. The share covers all chats of the project, including ones created
 later; single chats can be kept private. Recipients see instructions and chats read-only; only
 the person who created the project can change it.
@@ -387,9 +387,9 @@ Step by step: [installation]({{< relref "installation" >}}).
 
 ### Administration via mgpt-ctl
 
-{{< status "progress" >}}
+{{< status "done" >}}
 
-Ready for the next version: `mgpt-ctl` sets prices (from the LiteLLM price list), budgets and
+Since 0.4.2: `mgpt-ctl` sets prices (from the LiteLLM price list), budgets and
 provider and model settings, and checks the sandbox – without the admin interface (`prices`,
 `providers`, `models`, `budgets`, `sandbox_check`).
 

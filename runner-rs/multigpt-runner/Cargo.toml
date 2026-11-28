@@ -1,6 +1,6 @@
 [package]
 name = "multigpt-runner"
-version = "0.4.1"
+version = "0.4.2"
 description = "Runner-Agent von MultiGPT: Arbeitscontainer auf dem Rechner, gesteuert über eine ausgehende WebSocket-Verbindung"
 edition.workspace = true
 rust-version.workspace = true

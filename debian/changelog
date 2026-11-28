@@ -1,3 +1,14 @@
+multi-gpt (0.4.2) unstable; urgency=medium
+
+  * Projekte als Ganzes teilen, einzelne Chats ausnehmen (Migration chat 0055)
+  * Anmeldenamen ohne Unterschied von Groß- und Kleinschreibung (accounts 0017)
+  * mgpt-ctl backup samt Timer multi-gpt-backup (ab Werk aus); postgresql-client
+  * mgpt-ctl prices, providers, models, budgets, sandbox_check
+  * Paket-Zyklus im Container geprüft (tests/packaging/apt_cycle.sh)
+  * Release-Notizen und Upgrade-Hinweise siehe docs/releases/0.4.2.md und NEWS
+
+ -- Joerg Bernau <joerg@bernau.family>  Sat, 28 Nov 2026 11:03:37 +0100
+
 multi-gpt (0.4.1) unstable; urgency=medium
 
   * Eliezer: eigener Modellserver als Anbieter (Schnittstelle „LM Studio“),

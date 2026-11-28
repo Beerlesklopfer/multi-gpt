@@ -2,7 +2,7 @@
 # status: "done" | "partial" | "progress" | "planned"  (Texte dazu in i18n/*.toml;
 #   "progress" = in Arbeit, noch nicht veröffentlicht)
 # Beim Abschluss eines Meilensteins hier den Status ändern – Startseite und
-# Roadmap lesen beide aus dieser Datei. Stand: Version 0.4.1 (veröffentlicht).
+# Roadmap lesen beide aus dieser Datei. Stand: Version 0.4.2 (veröffentlicht).
 # steps: Arbeitspakete je Meilenstein (id, status, optional version = erschienen mit;
 #   version nur für veröffentlichte Versionen setzen).
 
@@ -699,7 +699,7 @@
 
 [[milestones]]
   id = "12"
-  status = "progress"
+  status = "done"
   [milestones.title]
     de = "Betrieb"
     en = "Operations"
@@ -707,8 +707,8 @@
     de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
     en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."
   [milestones.note]
-    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Seit 0.3.4 baut GitHub Actions zu jedem Versions-Tag das Paket und stellt es in eine signierte apt-Paketquelle. Fertig für die nächste Version: Sicherung mit `mgpt-ctl backup` (auf Wunsch täglich per Timer), Anleitung für Sichern, Zurückspielen, Update und Entfernen, und der Paket-Zyklus (Installation 0.4.0, Update auf 0.4.1, remove, purge, Neuinstallation) im Container geprüft."
-    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Since 0.3.4 GitHub Actions builds the package for every version tag and publishes it in a signed apt repository. Ready for the next version: backup with `mgpt-ctl backup` (daily via a timer if you like), a guide for backup, restore, upgrade and removal, and the package cycle (install 0.4.0, upgrade to 0.4.1, remove, purge, reinstall) verified in a container."
+    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Seit 0.3.4 baut GitHub Actions zu jedem Versions-Tag das Paket und stellt es in eine signierte apt-Paketquelle. Erschienen mit 0.4.2: Sicherung mit `mgpt-ctl backup` (auf Wunsch täglich per Timer), Anleitung für Sichern, Zurückspielen, Update und Entfernen, und der Paket-Zyklus (Installation 0.4.0, Update auf 0.4.1, remove, purge, Neuinstallation) im Container geprüft."
+    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Since 0.3.4 GitHub Actions builds the package for every version tag and publishes it in a signed apt repository. Released with 0.4.2: backup with `mgpt-ctl backup` (daily via a timer if you like), a guide for backup, restore, upgrade and removal, and the package cycle (install 0.4.0, upgrade to 0.4.1, remove, purge, reinstall) verified in a container."
 
   [[milestones.steps]]
     id = "M12-01"
@@ -718,19 +718,22 @@
 
   [[milestones.steps]]
     id = "M12-02"
-    status = "planned"
+    status = "done"
+    version = "0.4.2"
     de = "Backup von Datenbank, Dateien und Einstellungen"
     en = "Backup of database, files and settings"
 
   [[milestones.steps]]
     id = "M12-03"
-    status = "partial"
+    status = "done"
+    version = "0.4.2"
     de = "Vollständige Installationsanleitung"
     en = "Complete installation guide"
 
   [[milestones.steps]]
     id = "M12-04"
-    status = "partial"
+    status = "done"
+    version = "0.4.2"
     de = "Upgrade und Entfernen des Pakets geprüft (automatische Tests vorhanden, Prüfung auf Debian 13 offen)"
     en = "Verified package upgrade and removal (automated tests exist, check on Debian 13 open)"
 
