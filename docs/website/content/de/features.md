@@ -381,8 +381,7 @@ Anleitung: [Wiki: Kosten und Budgets](https://github.com/Beerlesklopfer/multi-gp
   liefert nginx aus. Ein AppArmor-Profil für die Sandbox liegt bei.
 - Verwaltungsbefehle über `mgpt-ctl`, etwa für Konten, API-Keys, Indexierung und
   Modellfähigkeiten. Die Version samt git-Stand steht in der Oberfläche.
-- Docker gibt es als Ausweichweg, der Build ist aber ungetestet. Ein Backup ist noch nicht
-  eingebaut.
+- Docker gibt es als Ausweichweg, der Build ist aber ungetestet.
 
 Schritt für Schritt: [Installation]({{< relref "installation" >}}).
 
@@ -393,6 +392,9 @@ Schritt für Schritt: [Installation]({{< relref "installation" >}}).
 Fertig für die nächste Version: `mgpt-ctl` setzt Preise (aus der LiteLLM-Preisliste), Budgets
 und Einstellungen von Anbietern und Modellen und prüft die Sandbox – ohne Admin-Oberfläche
 (`prices`, `providers`, `models`, `budgets`, `sandbox_check`).
+
+Ebenso **Sicherung:** `mgpt-ctl backup` legt Datenbank, Medien und Konfiguration in ein Archiv,
+auf Wunsch täglich per Timer; Zurückspielen, Update und Entfernen beschreibt das Wiki.
 
 ## Geplant
 

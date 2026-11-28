@@ -381,7 +381,7 @@ Guide: [wiki: Kosten und Budgets](https://github.com/Beerlesklopfer/multi-gpt/wi
   attachments and documents. An AppArmor profile for the sandbox is included.
 - Admin commands via `mgpt-ctl`, e.g. for accounts, API keys, indexing and model capabilities.
   The version including the git revision is shown in the interface.
-- Docker is available as a fallback, but the build is untested. Backup is not built in yet.
+- Docker is available as a fallback, but the build is untested.
 
 Step by step: [installation]({{< relref "installation" >}}).
 
@@ -392,6 +392,9 @@ Step by step: [installation]({{< relref "installation" >}}).
 Ready for the next version: `mgpt-ctl` sets prices (from the LiteLLM price list), budgets and
 provider and model settings, and checks the sandbox – without the admin interface (`prices`,
 `providers`, `models`, `budgets`, `sandbox_check`).
+
+Likewise **backup:** `mgpt-ctl backup` stores the database, media and configuration in one
+archive, daily via a timer if you like; the wiki describes restoring, upgrading and removal.
 
 ## Planned
 
