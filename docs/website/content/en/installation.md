@@ -11,9 +11,9 @@ menus:
 > attaches it to the [GitHub release](https://github.com/Beerlesklopfer/multi-gpt/releases) and
 > publishes it in the apt repository (the last three versions). New dependencies are bubblewrap (calculations) plus Pango,
 > harfbuzz and the DejaVu fonts (PDF sheets). Coming from 0.2? Read
-> [Updating to 0.3](#updating-to-03). A test installation on a fresh Debian 13 is still
-> pending, and the Docker route is untested so far. The complete operations guide (with
-> backup) follows with milestone 12.
+> [Updating to 0.3](#updating-to-03). Installation, the upgrade from 0.4.0 to 0.4.1,
+> `remove` and `purge` are verified on a fresh Debian 13 (container with systemd); the Docker
+> route is untested so far. Backup, restore and removal: see below.
 
 ## Requirements
 

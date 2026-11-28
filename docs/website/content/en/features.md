@@ -418,7 +418,8 @@ when something is done or looks wrong.
 
 - MultiGPT runs in real use with OpenAI and local models. Anthropic and Gemini have so far
   mostly been tested with simulated responses.
-- A test installation on a fresh Debian 13 is still pending.
+- Installation, upgrade, `remove` and `purge` are verified on a fresh Debian 13 in a container,
+  not yet on real hardware.
 - The runner only works with Podman, not with Docker.
 
 **Deliberately not in version 1:**

@@ -35,19 +35,31 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends systemd systemd-sysv dbus ca-certificates \
       curl postgresql postgresql-17-pgvector >/dev/null \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ # Debian-Images verbieten mit policy-rc.d das Starten von Diensten bei der Paketinstallation;
+ # hier soll das postinst sie wie auf einem echten Rechner starten.
+ && rm -f /usr/sbin/policy-rc.d
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 EOF
 
 echo "== Image bauen"
 podman build -q -t "$IMAGE" "$WORK" >/dev/null
-podman run -d --name "$NAME" --systemd=always -v "$WORK:/debs:ro,Z" "$IMAGE" >/dev/null
+# --privileged (nur im rootless User-Namespace): die Schutzoptionen der Units brauchen
+# Namespaces und CAP_SYS_ADMIN beim Start, sonst scheitert systemd mit 217/USER.
+podman run -d --name "$NAME" --systemd=always --privileged -v "$WORK:/debs:ro,Z" "$IMAGE" >/dev/null
 
 ct() { podman exec "$NAME" bash -c "$*"; }
 check() {
     local label=$1; shift
     if ct "$@" >/dev/null 2>&1; then echo "PASS $label"; else echo "FAIL $label"; FAILED=1; fi
+}
+diagnose() {
+    echo "---- Diagnose: $1"
+    ct "systemctl --no-pager --full status multi-gpt multi-gpt-worker 2>&1 | head -40" || true
+    ct "journalctl --no-pager -u multi-gpt -u multi-gpt-worker -n 40 2>&1" || true
+    ct "curl -sk -o /dev/null -w 'healthz HTTP %{http_code}\n' https://localhost/healthz/" || true
+    echo "----"
 }
 wait_active() {
     for _ in $(seq 60); do
@@ -69,7 +81,7 @@ echo "== Alte Version installieren"
 ct "apt-get update -qq && apt-get install -y -qq /debs/old.deb" >"$WORK/install-old.log" 2>&1 \
     || { echo "FAIL Installation alt"; tail -30 "$WORK/install-old.log"; exit 1; }
 echo "PASS Installation alt ($(ct "dpkg-query -W -f='\${Version}' multi-gpt"))"
-if wait_active; then echo "PASS Dienst und /healthz/ (alt)"; else echo "FAIL Dienst (alt)"; FAILED=1; fi
+if wait_active; then echo "PASS Dienst und /healthz/ (alt)"; else echo "FAIL Dienst (alt)"; FAILED=1; diagnose alt; fi
 ct "echo marker > /var/lib/multi-gpt/media/marker.txt && chown multi-gpt: /var/lib/multi-gpt/media/marker.txt"
 ct "mgpt-ctl shell -c \"from django.contrib.auth import get_user_model as g; g().objects.create_user('Probe', password='Probe-Kennwort-1')\"" \
     >/dev/null 2>&1 || true
@@ -79,7 +91,7 @@ echo "== Update auf die neue Version"
 ct "apt-get install -y -qq /debs/new.deb" >"$WORK/install-new.log" 2>&1 \
     || { echo "FAIL Update"; tail -30 "$WORK/install-new.log"; exit 1; }
 echo "PASS Update ($(ct "dpkg-query -W -f='\${Version}' multi-gpt"))"
-if wait_active; then echo "PASS Dienst und /healthz/ (neu)"; else echo "FAIL Dienst (neu)"; FAILED=1; fi
+if wait_active; then echo "PASS Dienst und /healthz/ (neu)"; else echo "FAIL Dienst (neu)"; FAILED=1; diagnose neu; fi
 check "Keine offenen Migrationen" "! mgpt-ctl showmigrations --plan | grep -q '\[ \]'"
 check "Worker läuft" "systemctl is-active --quiet multi-gpt-worker"
 check "Konto erhalten" "mgpt-ctl shell -c \"from django.contrib.auth import get_user_model as g; assert g().objects.filter(username='Probe').exists()\""

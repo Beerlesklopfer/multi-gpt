@@ -418,7 +418,8 @@ Meldungen, wenn etwas fertig ist oder auffällt.
 
 - Mit OpenAI und lokalen Modellen läuft MultiGPT im echten Betrieb. Anthropic und Gemini sind
   bisher überwiegend simuliert getestet.
-- Eine Testinstallation auf einem frischen Debian 13 steht aus.
+- Installation, Update, `remove` und `purge` sind in einem frischen Debian 13 im Container
+  geprüft, auf echter Hardware noch nicht.
 - Der Runner läuft nur mit Podman, nicht mit Docker.
 
 **Bewusst nicht in Version 1:**

@@ -16,8 +16,8 @@
     de = "Django-Projekt mit Einstellungen aus der Umgebung, Makefile, Anmeldung mit Login-Drosselung, gunicorn (gthread), Health-Check `/healthz/`, Debian-Paket mit systemd-Unit und `mgpt-ctl`, Docker-Dateien. Das Paket legt bei lokalem PostgreSQL Rolle, Datenbank und pgvector an, migriert automatisch, fragt Hostnamen und Zertifikat per debconf ab und richtet nginx mit TLS ein."
     en = "Django project configured from the environment, Makefile, login with brute-force throttling, gunicorn (gthread), health check `/healthz/`, Debian package with systemd unit and `mgpt-ctl`, Docker files. With a local PostgreSQL the package creates the role, database and pgvector, migrates automatically, asks for host names and certificate via debconf and sets up nginx with TLS."
   [milestones.note]
-    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.4.0). Noch offen für die Abnahme: Testinstallation auf einem frischen Debian 13 und der Docker-Build (ungetestet)."
-    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.4.0). Still open for acceptance: a test installation on a fresh Debian 13 and the Docker build (untested)."
+    de = "Tests, Linter und `make deb` sind grün, Versionen werden mit `make release` getaggt (aktuell 0.4.0). Installation, Update, `remove` und `purge` sind in einem frischen Debian 13 (Container mit systemd) geprüft; offen bleibt der Docker-Build (ungetestet)."
+    en = "Tests, linter and `make deb` pass, and versions are tagged with `make release` (currently 0.4.0). Installation, upgrade, `remove` and `purge` are verified on a fresh Debian 13 (container with systemd); the Docker build remains untested."
 
   [[milestones.steps]]
     id = "M1-01"
@@ -699,7 +699,7 @@
 
 [[milestones]]
   id = "12"
-  status = "partial"
+  status = "progress"
   [milestones.title]
     de = "Betrieb"
     en = "Operations"
@@ -707,8 +707,8 @@
     de = "Worker-Unit, nginx-Beispiel mit TLS, Backup, vollständige Installationsanleitung, geprüftes Upgrade und Entfernen des Pakets."
     en = "Worker unit, nginx example with TLS, backup, complete installation guide, verified package upgrade and removal."
   [milestones.note]
-    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Seit 0.3.4 baut GitHub Actions zu jedem Versions-Tag das Paket und stellt es in eine signierte apt-Paketquelle. Offen: Backup, vollständige Anleitung sowie geprüftes Upgrade und Entfernen."
-    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Since 0.3.4 GitHub Actions builds the package for every version tag and publishes it in a signed apt repository. Still open: backup, a complete guide and verified upgrade and removal."
+    de = "Die Worker-Unit `multi-gpt-worker.service` liegt bereits im Paket. Die nginx-Site mit TLS ist ebenfalls im Paket: gunicorn lauscht nur auf localhost, Hostname und Zertifikat fragt debconf ab. Die Verwaltungsbefehle von `mgpt-ctl` sind im Wiki beschrieben, `debian/NEWS` nennt die Schritte nach einem Update. Seit 0.3.4 baut GitHub Actions zu jedem Versions-Tag das Paket und stellt es in eine signierte apt-Paketquelle. Fertig für die nächste Version: Sicherung mit `mgpt-ctl backup` (auf Wunsch täglich per Timer), Anleitung für Sichern, Zurückspielen, Update und Entfernen, und der Paket-Zyklus (Installation 0.4.0, Update auf 0.4.1, remove, purge, Neuinstallation) im Container geprüft."
+    en = "The worker unit `multi-gpt-worker.service` already ships in the package. The nginx site with TLS ships in the package as well: gunicorn listens on localhost only, and debconf asks for the host name and certificate. The `mgpt-ctl` admin commands are documented in the wiki, and `debian/NEWS` lists the steps after an update. Since 0.3.4 GitHub Actions builds the package for every version tag and publishes it in a signed apt repository. Ready for the next version: backup with `mgpt-ctl backup` (daily via a timer if you like), a guide for backup, restore, upgrade and removal, and the package cycle (install 0.4.0, upgrade to 0.4.1, remove, purge, reinstall) verified in a container."
 
   [[milestones.steps]]
     id = "M12-01"

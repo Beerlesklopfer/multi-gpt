@@ -11,9 +11,9 @@ menus:
 > das [GitHub-Release](https://github.com/Beerlesklopfer/multi-gpt/releases) und stellt es in die
 > apt-Paketquelle (die letzten drei Versionen). Neu sind die Abhängigkeiten bubblewrap (Berechnungen) sowie
 > Pango, harfbuzz und DejaVu-Schriften (PDF-Blätter). Wer von 0.2 kommt, liest
-> [Update auf 0.3](#update-auf-03). Eine Testinstallation auf einem frischen Debian 13 steht
-> noch aus, der Docker-Weg ist bisher ungetestet. Die vollständige Betriebsanleitung (mit
-> Backup) folgt mit Meilenstein 12.
+> [Update auf 0.3](#update-auf-03). Installation, Update von 0.4.0 auf 0.4.1, `remove`
+> und `purge` sind in einem frischen Debian 13 (Container mit systemd) geprüft; der Docker-Weg
+> ist bisher ungetestet. Sichern, Zurückspielen und Entfernen: siehe unten.
 
 ## Voraussetzungen
 

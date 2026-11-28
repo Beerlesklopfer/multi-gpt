@@ -131,8 +131,8 @@ After that, background jobs and music are planned, see the [roadmap]({{< relref 
 ## Status
 
 It already runs for real with OpenAI and local models; the other cloud providers have mostly
-been tested with simulations so far. A fresh Debian installation is still pending, and the
-Docker build is untested. There is no Docker support for the runner, only Podman. Music, backup and the actual scratchpad follow –
+been tested with simulations so far. Installation and upgrade are verified on a fresh Debian 13
+in a container; the Docker build is untested. There is no Docker support for the runner, only Podman. Music and the actual scratchpad follow –
 details in the [roadmap]({{< relref "roadmap" >}}).
 
 ## The tech in one sentence

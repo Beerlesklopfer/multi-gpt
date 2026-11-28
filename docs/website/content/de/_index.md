@@ -133,8 +133,8 @@ Geplant sind danach Hintergrund-Aufträge und Musik, siehe [Roadmap]({{< relref 
 ## Stand
 
 Mit OpenAI und lokalen Modellen läuft es bereits echt, die übrigen Cloud-Anbieter sind bisher
-überwiegend simuliert getestet; eine frische Debian-Installation steht noch aus, der
-Docker-Build ist ungetestet. Docker für den Runner gibt es nicht, nur Podman. Musik, Backup und
+überwiegend simuliert getestet; Installation und Update sind in einem frischen Debian 13 im
+Container geprüft, der Docker-Build ist ungetestet. Docker für den Runner gibt es nicht, nur Podman. Musik und
 das eigentliche Scratchpad folgen – Details in der [Roadmap]({{< relref "roadmap" >}}).
 
 ## Technik in einem Satz
