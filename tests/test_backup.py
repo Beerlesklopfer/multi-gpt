@@ -10,7 +10,7 @@ import pytest
 from django.core.management import CommandError, call_command
 
 pytestmark = [
-    pytest.mark.django_db(transaction=True),
+    pytest.mark.django_db,
     pytest.mark.skipif(shutil.which("pg_dump") is None, reason="pg_dump fehlt"),
 ]
 
